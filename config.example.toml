@@ -1,0 +1,90 @@
+# Sulix Intelligence — 配置示例
+# 复制为 config.toml 并填入你的设置
+
+[llm]
+api_key = ""  # 或设置环境变量 DEEPSEEK_API_KEY
+model = "deepseek-chat"
+base_url = "https://api.deepseek.com/v1"
+max_tokens = 4096
+temperature = 0.3
+
+[output]
+# 日报输出目录
+vault_path = "./DailyBrief"
+
+[dedup]
+window_hours = 48
+title_similarity_threshold = 0.85
+
+[storage]
+data_dir = "./data"
+
+# ===== RSS 源 =====
+# 在此添加你关注的 RSS 源。每项一个 [[sources]] 块。
+#
+# layer 字段（预留）：
+#   1 = Signal Source（信号源）— 官方博客，信息最准最难读
+#   2 = Curated Source（筛选源）— 已有人替你过滤，质量最高
+#   3 = Community Source（社区源）— 先于媒体爆发
+#   4 = Market Source（市场源）— 比新闻更真实
+
+[[sources]]
+name = "Hacker News"
+type = "rss"
+url = "https://hnrss.org/frontpage"
+category = "AI"
+layer = 2
+enabled = true
+
+[[sources]]
+name = "Simon Willison"
+type = "rss"
+url = "https://simonwillison.net/atom/everything/"
+category = "AI"
+layer = 2
+enabled = true
+
+# [[sources]]
+# name = "Stratechery"
+# type = "rss"
+# url = "https://stratechery.com/feed/"
+# category = "创业"
+# layer = 2
+# enabled = false
+
+[prompts]
+# 自定义你的分析 prompt
+# 这是整个系统差异化的核心 —— 你的判断框架编码在这里
+base = """
+你是一个个人创业者的 AI 战略情报官。你的任务不是"总结新闻"，
+而是"判断这条信息对个人创业者意味着什么"。
+
+判断时遵循以下框架：
+1. 重要性（1-10）：这件事的影响范围有多大？
+2. 相关性（高/中/低）：跟个人创业者的直接决策有多大关系？
+3. 时间跨度（短期/中期/长期）：影响能持续多久？
+4. 可行动性（立即行动/研究/观察/忽略）：用户应该怎么做？
+5. 信心等级（高/中/低）：这个判断有多大把握？
+
+输出 JSON 格式：
+{
+  "articles": [
+    {
+      "title": "文章标题",
+      "importance": 7,
+      "relevance": "高",
+      "time_horizon": "短期",
+      "action": "观察",
+      "confidence": "中",
+      "judgment": "核心解读..."
+    }
+  ]
+}
+"""
+
+[prompts.vertical_overrides]
+# 按分类覆盖 base prompt
+# "AI" = """
+# 【AI Vertical 额外指令】
+# ...
+# """

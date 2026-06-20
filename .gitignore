@@ -1,0 +1,7 @@
+/target
+/config.toml
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.env
