@@ -44,7 +44,7 @@ pub fn render_daily_report(
     render_normal_mode(md, analysis, calibration)
 }
 
-/// 红蓝模式：今日信念更新 + 今日观察
+/// 红蓝模式：今日决策看板
 fn render_debate_mode(
     mut md: String,
     debate_results: &[ArbitrationResult],
@@ -64,78 +64,125 @@ fn render_debate_mode(
         return render_footer(md, calibration);
     }
 
-    // === 💡 幕僚长今日信念看板 ===
-    md.push_str("> 💡 **幕僚长今日信念看板**\n>\n");
-    md.push_str(&format!(
-        "> 今日 {} 条信息匹配到信念系统，为现有信念提供了新证据。\n",
-        all_articles.len()
-    ));
-    md.push_str(
-        "> 今日核心对账逻辑：模型能力门槛发生雪崩，但部署的长尾调试地狱被市场严重低估。\n>\n\n",
-    );
-    md.push_str("---\n\n");
-
-    // === 🔄 今日信念更新 ===
-    md.push_str("## 🔄 今日信念更新\n\n");
-
-    for (signal_idx, (_, article)) in all_articles.iter().enumerate() {
-        let summary = if article.summary.is_empty() {
-            truncate_line(&article.judgment, 50)
+    // === 按 belief_id 分组 ===
+    use std::collections::BTreeMap;
+    let mut by_belief: BTreeMap<String, Vec<(&str, &AnalyzedArticle)>> = BTreeMap::new();
+    let mut unmatched: Vec<(&str, &AnalyzedArticle)> = Vec::new();
+    for item in all_articles {
+        let bid = item.1.belief_id.clone();
+        if bid.is_empty() {
+            unmatched.push(item);
         } else {
-            article.summary.clone()
-        };
-        let red_stance = extract_red_stance(&article.judgment);
-        let ev_type = if article.evidence_type == "challenge" {
-            "⚠️ 挑战"
-        } else {
-            "✅ 支持"
-        };
-        let belief_tag = if article.belief_id.is_empty() {
-            "未匹配信念".into()
-        } else {
-            format!("信念: {}", article.belief_id)
-        };
-
-        md.push_str(&format!(
-            "### [SIGNAL {:02}] {}\n\n{} | **{}**\n\n💬 {}\n\n",
-            signal_idx + 1,
-            article.title,
-            ev_type,
-            belief_tag,
-            summary,
-        ));
-        md.push_str(&format!("📊 **效率变动/资本红利**: {}\n\n", red_stance));
-        if !article.blue_rebuttal.is_empty() {
-            md.push_str(&format!(
-                "📊 **长尾隐患/壁垒审计**: {}\n\n",
-                article.blue_rebuttal
-            ));
+            by_belief.entry(bid).or_default().push(item);
         }
-        if !article.arbitration.is_empty() {
-            md.push_str(&format!("⚖️ **战略执行建议**: {}\n\n", article.arbitration));
-        }
-
-        let judgment_line = if !article.judgment.is_empty() {
-            format!(
-                "🎯 **决策结论**: {} 信心:{}\n\n",
-                article.judgment, article.confidence
-            )
-        } else {
-            String::new()
-        };
-        md.push_str(&judgment_line);
-
-        if !article.url.is_empty() {
-            md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
-        }
-        md.push_str("---\n\n");
     }
 
-    // === 📋 今日观察 ===
-    md.push_str("## 📋 今日观察\n\n");
-    md.push_str("> 今日无其他值得关注的边缘信号。\n\n");
+    md.push_str("## 📋 今日决策看板\n\n");
 
-    render_footer(md, calibration)
+    // === ✅ 继续坚持（支持证据 ≥ 2 且多于挑战） ===
+    let mut has_continue = false;
+    for articles in by_belief.values() {
+        let supports = articles
+            .iter()
+            .filter(|a| a.1.evidence_type != "challenge")
+            .count();
+        let challenges = articles
+            .iter()
+            .filter(|a| a.1.evidence_type == "challenge")
+            .count();
+        if supports > challenges && supports >= 1 {
+            has_continue = true;
+        }
+    }
+    if has_continue {
+        md.push_str("### ✅ 继续坚持\n\n");
+        for (bid, articles) in &by_belief {
+            let supports = articles
+                .iter()
+                .filter(|a| a.1.evidence_type != "challenge")
+                .count();
+            let challenges = articles
+                .iter()
+                .filter(|a| a.1.evidence_type == "challenge")
+                .count();
+            if supports <= challenges || supports < 1 {
+                continue;
+            }
+            md.push_str(&format!(
+                "**{}** — 信心:{}\n\n",
+                bid, articles[0].1.confidence
+            ));
+            for (_, a) in articles {
+                md.push_str(&format!(
+                    "• ✅ {} — {}\n",
+                    a.title,
+                    truncate_line(&a.judgment, 120)
+                ));
+            }
+            md.push('\n');
+        }
+    }
+
+    // === ⚠️ 需要关注（有反证） ===
+    let mut has_watch = false;
+    for articles in by_belief.values() {
+        let challenges = articles
+            .iter()
+            .filter(|a| a.1.evidence_type == "challenge")
+            .count();
+        if challenges > 0 {
+            has_watch = true;
+        }
+    }
+    if has_watch {
+        md.push_str("### ⚠️ 需要关注\n\n");
+        for (bid, articles) in &by_belief {
+            let challenges = articles
+                .iter()
+                .filter(|a| a.1.evidence_type == "challenge")
+                .count();
+            if challenges == 0 {
+                continue;
+            }
+            md.push_str(&format!("**{}** — {} 条反证\n\n", bid, challenges));
+            for (_, a) in articles {
+                if a.evidence_type == "challenge" {
+                    md.push_str(&format!(
+                        "• ⚠️ {} — {}\n",
+                        a.title,
+                        truncate_line(&a.judgment, 120)
+                    ));
+                }
+            }
+            md.push('\n');
+        }
+    }
+
+    // === 📋 今日可忽略 ===
+    if !unmatched.is_empty() {
+        md.push_str("### 📋 今日可忽略\n\n");
+        for (_, a) in &unmatched {
+            md.push_str(&format!("• {} — 与当前决策无关\n", a.title));
+        }
+        md.push('\n');
+    }
+
+    // === 认知校准 ===
+    if let Some(text) = calibration {
+        if !text.is_empty() {
+            md.push_str("────────────────────────────────────────\n\n");
+            md.push_str(&format!("🤖 **认知校准**\n\n> {}\n\n", text));
+            md.push_str("（不回答也没事，看到就行）\n\n");
+            md.push_str("────────────────────────────────────────\n\n");
+        }
+    }
+
+    md.push_str("---\n\n");
+    md.push_str(&format!(
+        "*由 Sulix Intelligence 自动生成于 {}. Powered by DeepSeek.*\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M"),
+    ));
+    Ok(md)
 }
 
 #[allow(dead_code)]
@@ -603,6 +650,8 @@ mod tests {
         a.judgment = "这是一个重要的核心信号。".into();
         a.blue_rebuttal = "蓝军对此提出质疑。".into();
         a.arbitration = "仲裁认为可以采纳。".into();
+        a.belief_id = "应用大于模型".into();
+        a.evidence_type = "support".into();
         let analysis = mock_analysis("AI", vec![a]);
         let debate = ArbitrationResult {
             category: "AI".into(),
@@ -610,10 +659,9 @@ mod tests {
             verdict: "仲裁结论".into(),
         };
         let result = render_daily_report(&[analysis], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("今日信念更新"));
+        assert!(result.contains("决策看板"));
         assert!(result.contains("Core Signal"));
-        assert!(result.contains("蓝军对此提出质疑"));
-        assert!(result.contains("仲裁认为可以采纳"));
+        assert!(result.contains("这是一个重要的核心信号"));
         // Should NOT contain normal-mode sections
         assert!(!result.contains("最重要的 3 件事"));
         assert!(!result.contains("今日结论"));
@@ -631,7 +679,7 @@ mod tests {
             verdict: "无明确评级".into(),
         };
         let result = render_daily_report(&[analysis2], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("今日信念更新"));
+        assert!(result.contains("决策看板"));
         assert!(result.contains("Low Signal"));
     }
 

@@ -25,9 +25,9 @@ pub struct Config {
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
-    /// 世界模型：显式认知清单（Thesis Engine 的输入）
+    /// 决策系统：当前活跃战略赌注
     #[serde(default)]
-    pub world_model: Option<WorldModelConfig>,
+    pub decisions: Option<DecisionConfig>,
 }
 
 /// LLM 配置
@@ -150,24 +150,39 @@ fn default_burial_threshold() -> u8 {
     3
 }
 
-/// 世界模型配置：结构化信念系统
+/// 决策配置：当前活跃战略赌注
 #[derive(Debug, Deserialize, Clone)]
-pub struct WorldModelConfig {
+pub struct DecisionConfig {
     #[serde(default)]
-    pub belief_statements: Vec<BeliefStatement>,
+    pub decisions: Vec<Decision>,
 }
 
-/// 单条信念
+/// 单条决策
 #[derive(Debug, Deserialize, Clone)]
+pub struct Decision {
+    pub id: String,
+    pub statement: String,
+    #[allow(dead_code)]
+    pub status: String,
+    #[serde(default = "default_decision_confidence")]
+    pub confidence: u8,
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub beliefs: Vec<String>,
+    #[allow(dead_code)]
+    pub decision_action: Option<String>,
+}
+
+fn default_decision_confidence() -> u8 {
+    50
+}
+
+/// 向后兼容：Editor Agent 使用的信念结构（由 decisions 转换而来）
+#[derive(Debug, Clone)]
 pub struct BeliefStatement {
     pub id: String,
     pub statement: String,
-    #[serde(default = "default_belief_confidence")]
     pub base_confidence: u8,
-}
-
-fn default_belief_confidence() -> u8 {
-    5
 }
 
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）
