@@ -65,6 +65,31 @@ enabled = true
 # layer = 2
 # enabled = false
 
+# [[sources]]
+# name = "东方财富-要闻"
+# type = "rss"
+# url = "https://rsshub.app/eastmoney/news"
+# category = "A股"
+# layer = 2
+# enabled = false
+
+# [[sources]]
+# name = "财联社-电报"
+# type = "rss"
+# url = "https://rsshub.app/cls/telegraph"
+# category = "A股"
+# layer = 3
+# enabled = false
+# # 警告：此源单日数百条，必须搭配 fetcher.rs 的关键词预过滤使用
+
+# [[sources]]
+# name = "财联社-政策频道"
+# type = "rss"
+# url = "https://rsshub.app/cls/channels/1075"
+# category = "政策"
+# layer = 1
+# enabled = false
+
 [prompts]
 # 自定义你的分析 prompt
 # 这是整个系统差异化的核心 —— 你的判断框架编码在这里
@@ -251,3 +276,10 @@ AI 原生创业方法论（四阶段：Idea → MVP → Launch → Scale）。
 - 对每个利好判断附带"最可能错在哪里"（执行不力？资源不足？优先级变化？）
 - 重要性考虑：这个政策变化会改变创业者的资源获取环境吗？
 """
+
+# "A股" = """
+# A 股全维度分析框架，详见 docs/superpowers/specs/2026-06-21-ashare-market-vertical-design.md
+# 核心：六维交叉比对（资金面/技术面/政策面/基本面/情绪面/背离检测）
+# 红蓝对抗：红军找真布局，蓝军抓假掩护
+# 信号分级：A股含金量漏斗 L1-L5
+# """
