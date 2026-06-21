@@ -1717,6 +1717,7 @@ dependencies = [
  "env_logger",
  "feed-rs",
  "log",
+ "regex",
  "reqwest",
  "rusqlite",
  "scraper",
