@@ -248,14 +248,24 @@ async fn main() -> Result<()> {
         renderer::render_daily_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
     log::info!("日报渲染完成 ({} 字符)", report.len());
 
-    // 10. 写入 SulixNote Vault
+    // 10. 渲染 HTML 内参页面
+    let html =
+        renderer::render_html_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
+    log::info!("HTML 内参渲染完成 ({} 字符)", html.len());
+
+    // 11. 写入 SulixNote Vault
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let report_dir = PathBuf::from(&config.output.vault_path);
     fs::create_dir_all(&report_dir)?;
     let report_path = report_dir.join(format!("{}.md", today));
     fs::write(&report_path, &report)?;
 
-    // 11. 记录到数据库
+    // 12. 写入 HTML 内参（index.html 覆盖最新版）
+    let html_path = report_dir.join("index.html");
+    fs::write(&html_path, &html)?;
+    log::info!("✅ HTML 内参已生成: {}", html_path.display());
+
+    // 13. 记录到数据库
     db.record_report(&today, &report, total_new)?;
 
     // === Phase D: Decay Agent 记忆墓地 ===

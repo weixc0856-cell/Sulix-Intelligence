@@ -249,6 +249,170 @@ fn render_footer(mut md: String, calibration: Option<&str>) -> Result<String> {
     Ok(md)
 }
 
+/// 生成 HTML 静态内参页面（Tailwind 样式，适配移动端，模糊层就绪）
+pub fn render_html_report(
+    analysis: &[VerticalAnalysis],
+    debate: Option<&[ArbitrationResult]>,
+    calibration: Option<&str>,
+) -> Result<String> {
+    let today = Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let date_en = Local::now().format("%Y-%m-%d").to_string();
+    let mut body = String::new();
+
+    // 收集并排序文章
+    let mut all_articles: Vec<&AnalyzedArticle> = Vec::new();
+    if let Some(debate_results) = debate {
+        for result in debate_results {
+            for article in &result.analysis.articles {
+                all_articles.push(article);
+            }
+        }
+    } else {
+        for va in analysis {
+            for article in &va.articles {
+                all_articles.push(article);
+            }
+        }
+    }
+    all_articles.sort_by_key(|a| Reverse(a.importance));
+
+    let mut core_articles: Vec<&AnalyzedArticle> = Vec::new();
+    let mut edge_articles: Vec<&AnalyzedArticle> = Vec::new();
+    for a in all_articles {
+        if a.importance >= CORE_THRESHOLD {
+            core_articles.push(a);
+        } else {
+            edge_articles.push(a);
+        }
+    }
+
+    // 核心信号卡片
+    if !core_articles.is_empty() {
+        body.push_str("<div class=\"space-y-6\">\n");
+        for article in &core_articles {
+            let summary = if article.summary.is_empty() {
+                truncate_line(&article.judgment, 50)
+            } else {
+                article.summary.clone()
+            };
+            let red_stance = extract_red_stance(&article.judgment);
+            let safe_id = article
+                .title
+                .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "");
+
+            body.push_str(&format!(r#"<div class="border border-slate-200 bg-white p-5 rounded-lg shadow-sm" id="core-{}">
+    <div class="flex items-start justify-between mb-2">
+        <h2 class="text-base font-bold text-slate-900 leading-snug">{}</h2>
+        <span class="shrink-0 ml-3 text-xs font-mono font-bold px-2 py-0.5 rounded {}">{}</span>
+    </div>
+    <p class="text-sm text-slate-600 mb-3 leading-relaxed">💬 {}</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3 mt-3">
+        <div class="bg-red-50 p-3 rounded"><span class="font-bold text-red-700">🔴 红军</span><p class="text-red-900 mt-1 leading-relaxed">{}</p></div>
+        <div class="bg-blue-50 p-3 rounded"><span class="font-bold text-blue-700">🔵 蓝军</span><p class="text-blue-900 mt-1 leading-relaxed">{}</p></div>
+    </div>
+    <div class="mt-3 text-xs text-slate-500 italic">{}</div>
+</div>
+"#,
+                safe_id,
+                article.title,
+                badge_color(&article.confidence),
+                article.confidence,
+                summary,
+                red_stance,
+                if article.blue_rebuttal.is_empty() { "蓝军未就此条提出反驳".to_string() } else { article.blue_rebuttal.clone() },
+                if article.arbitration.is_empty() { format!("重要性: {}/10 | 建议: {} | 信心: {}", article.importance, article.action, article.confidence) } else { article.arbitration.clone() },
+            ));
+        }
+        body.push_str("</div>\n");
+    } else {
+        body.push_str("<p class=\"text-slate-400 text-sm\">今日无高优先级信号。</p>\n");
+    }
+
+    // 折叠附录：低分信号
+    if !edge_articles.is_empty() {
+        body.push_str(&format!(
+            r#"<details class="mt-8 border border-slate-200 bg-white rounded-lg p-4">
+    <summary class="text-sm font-medium text-slate-500 cursor-pointer">📦 其他信号 ({} 条)</summary>
+    <div class="mt-3 space-y-3">
+"#,
+            edge_articles.len()
+        ));
+        for article in &edge_articles {
+            let s = if article.summary.is_empty() {
+                truncate_line(&article.judgment, 50)
+            } else {
+                article.summary.clone()
+            };
+            body.push_str(&format!(r#"        <div class="border-b border-slate-100 pb-2 last:border-0">
+            <span class="text-xs font-mono text-slate-400 mr-2">{}</span><span class="text-sm font-medium">{}</span>
+            <p class="text-xs text-slate-500 mt-1">💬 {}</p>
+        </div>
+"#, article.confidence, article.title, s));
+        }
+        body.push_str("    </div>\n</details>\n");
+    }
+
+    // 认知校准
+    let calibration_html = if let Some(text) = calibration {
+        format!(
+            r#"<div class="mt-8 border-l-4 border-slate-300 bg-slate-50 p-4 rounded-r-lg">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">🤖 认知校准</p>
+    <p class="text-sm text-slate-700 italic">{}</p>
+</div>
+"#,
+            text
+        )
+    } else {
+        String::new()
+    };
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sulix Intelligence — 每日内参 {}</title>
+<script src="https://cdn.tailwindcss.com">
+</script>
+</head>
+<body class="bg-gray-50 text-slate-900 antialiased">
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <header class="border-b-2 border-slate-900 pb-4 mb-8 flex items-end justify-between">
+        <div>
+            <h1 class="text-xl font-bold tracking-tight">SULIX INTELLIGENCE</h1>
+            <p class="text-xs text-slate-400 mt-0.5">每日策略内参</p>
+        </div>
+        <time class="text-xs text-slate-400 font-mono">{}</time>
+    </header>
+
+    <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">📌 今日核心信号</h2>
+    {}
+
+    {}
+</div>
+<footer class="max-w-2xl mx-auto px-4 pb-8 text-center">
+    <p class="text-xs text-slate-300">由 Sulix Intelligence 自动生成 · Powered by DeepSeek</p>
+</footer>
+</body>
+</html>"#,
+        date_en, today, body, calibration_html
+    );
+
+    Ok(html)
+}
+
+/// 信心等级对应的 badge 颜色
+fn badge_color(confidence: &str) -> &'static str {
+    if confidence.contains('1') || confidence.contains('2') || confidence == "高" {
+        "bg-green-100 text-green-800"
+    } else if confidence.contains('4') || confidence.contains('5') || confidence == "低" {
+        "bg-red-100 text-red-800"
+    } else {
+        "bg-amber-100 text-amber-800"
+    }
+}
+
 /// 从所有分析结果中提取最重要的 3 条（按 importance 降序）
 fn extract_top3(analysis: &[VerticalAnalysis]) -> Vec<&AnalyzedArticle> {
     let mut all: Vec<&AnalyzedArticle> = analysis
