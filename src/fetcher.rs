@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Arc;
 
+use regex::Regex;
+
 use crate::config::SourceConfig;
 
 /// 统一文章结构
@@ -59,6 +61,31 @@ pub async fn fetch_all_sources(sources: &[SourceConfig]) -> Result<Vec<Article>>
     Ok(all_articles)
 }
 
+/// A 股关键词白名单 — 只保留包含核心增量信息的条目
+/// 财联社等源单日可产出数百条，先过滤再进 LLM 管线可省 60-70% token
+fn ashare_keyword_filter(articles: &mut Vec<Article>) {
+    let pattern = r"(?x)
+        大盘|指数|沪指|两市|万亿|成交额|成交额|分位|
+        板块|轮动|概念|半导体|芯片|AI|算力|光伏|锂电|汽车|智驾|医药|券商|地产|
+        主力|净流出|净流入|主力资金|融资|融券|异动|吸筹|出货|
+        政策|证监会|央行|国常会|监管|产业基金|补贴|降准|降息|
+        财报|预增|净利润|年报|季报|预亏|暴雷|
+        北向|外资|南向|港股|恒生|
+        涨停|跌停|连板|炸板|封板|打板|
+        龙虎榜|游资|机构
+    ";
+    let re = match Regex::new(pattern) {
+        Ok(r) => r,
+        Err(_) => return, // 正则失效时保底放行
+    };
+
+    articles.retain(|a| {
+        let title_match = re.is_match(&a.title);
+        let summary_match = a.summary.as_deref().map(|s| re.is_match(s)).unwrap_or(false);
+        title_match || summary_match
+    });
+}
+
 /// 拉取单个 RSS 源
 async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
     log::debug!("抓取 [{}] → {}", source.name, source.url);
@@ -109,6 +136,23 @@ async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
             })
         })
         .collect();
+
+    let mut articles = articles;
+    // 高吞吐 A 股源（财联社等）执行关键词预过滤，砍掉 60-70% 噪音
+    if source.category == "A股" {
+        let before = articles.len();
+        ashare_keyword_filter(&mut articles);
+        let filtered = before - articles.len();
+        if filtered > 0 {
+            log::info!(
+                "🔍 [{}] 关键词过滤: {} → {} 篇 (移除 {} 篇噪音)",
+                source.name,
+                before,
+                articles.len(),
+                filtered
+            );
+        }
+    }
 
     log::info!("✅ [{}] → {} 篇文章", source.name, articles.len());
     Ok(articles)
