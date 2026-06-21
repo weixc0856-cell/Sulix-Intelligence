@@ -11,6 +11,8 @@ use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::config::BeliefStatement;
+
 mod agent;
 mod config;
 mod db;
@@ -151,32 +153,32 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // 7. Phase Chief of Staff: Editor Agent 精选（认知压缩）
+    // 7. Phase Chief of Staff: Editor Agent 信念匹配
     let world_state = build_world_state(&config.output.vault_path)?;
-    let theses: Vec<String> = config
+    let beliefs: Vec<BeliefStatement> = config
         .world_model
         .as_ref()
-        .map(|wm| wm.theses.clone())
+        .map(|wm| wm.belief_statements.clone())
         .unwrap_or_default();
-    let editor_picks = agent::editor::select_top_articles(
+    let editor_matches = agent::editor::match_to_beliefs(
         &keep_articles,
         &world_state,
-        &theses,
+        &beliefs,
         &api_key,
         &config.llm,
     )
     .await?;
-    // 按 Editor 的路由分类重新分组
+    // 按 Editor 的路由分类分组
     let mut routed_articles: Vec<fetcher::Article> = Vec::new();
-    for pick in &editor_picks {
+    for pick in &editor_matches {
         let mut article = pick.article.clone();
-        article.category = pick.routed_category.clone(); // 按 Editor 路由重写分类
+        article.category = pick.routed_category.clone();
         routed_articles.push(article);
     }
     log::info!(
-        "🎯 Editor Agent: {} → {} 篇精选",
-        keep_articles.len(),
-        routed_articles.len()
+        "🎯 Editor Agent: {}/{} 篇匹配到信念",
+        routed_articles.len(),
+        keep_articles.len()
     );
 
     // 8. 重新分组（按 routed category）
@@ -247,6 +249,8 @@ async fn main() -> Result<()> {
                             strategic_level: String::new(),
                             blue_rebuttal: String::new(),
                             arbitration: String::new(),
+                            belief_id: String::new(),
+                            evidence_type: String::new(),
                         })
                         .collect();
                     let analysis = VerticalAnalysis {
@@ -281,7 +285,7 @@ async fn main() -> Result<()> {
         &analysis,
         debate_data.as_deref(),
         Some(&calibration_text),
-        &theses,
+        &beliefs.iter().map(|b| b.id.clone()).collect::<Vec<_>>(),
     )?;
     log::info!("日报渲染完成 ({} 字符)", report.len());
 

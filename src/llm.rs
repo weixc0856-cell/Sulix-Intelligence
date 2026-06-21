@@ -46,6 +46,10 @@ pub struct AnalyzedArticle {
     pub blue_rebuttal: String,
     #[serde(default)]
     pub arbitration: String,
+    #[serde(default)]
+    pub belief_id: String,
+    #[serde(default)]
+    pub evidence_type: String,
 }
 
 /// 按 category 将文章分组
@@ -131,6 +135,8 @@ pub async fn analyze(
                             strategic_level: String::new(),
                             blue_rebuttal: String::new(),
                             arbitration: String::new(),
+                            belief_id: String::new(),
+                            evidence_type: String::new(),
                         });
                     }
                 }
@@ -476,6 +482,8 @@ fn enrich_with_urls(
                 strategic_level: String::new(),
                 blue_rebuttal: String::new(),
                 arbitration: String::new(),
+                belief_id: String::new(),
+                evidence_type: String::new(),
             }
         })
         .collect()

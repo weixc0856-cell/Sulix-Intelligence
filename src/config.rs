@@ -150,12 +150,24 @@ fn default_burial_threshold() -> u8 {
     3
 }
 
-/// 世界模型配置：显式认知清单
+/// 世界模型配置：结构化信念系统
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorldModelConfig {
-    /// 核心认知列表（每条是一个可证伪的 belief）
     #[serde(default)]
-    pub theses: Vec<String>,
+    pub belief_statements: Vec<BeliefStatement>,
+}
+
+/// 单条信念
+#[derive(Debug, Deserialize, Clone)]
+pub struct BeliefStatement {
+    pub id: String,
+    pub statement: String,
+    #[serde(default = "default_belief_confidence")]
+    pub base_confidence: u8,
+}
+
+fn default_belief_confidence() -> u8 {
+    5
 }
 
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）

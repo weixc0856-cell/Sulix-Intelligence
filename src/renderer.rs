@@ -1,7 +1,7 @@
 //! 渲染模块 — Markdown 认知更新简报
 //!
 //! 格式（红蓝模式，Thesis Engine）：
-//! 1. 今日改变认知的事情（挑战世界模型的信息，每条含挑战的认知、判断、行动）
+//! 1. 今日信念更新（匹配到信念系统的信息，每条含信念标签、证据类型、判断、行动）
 //! 2. 📋 今日观察（不挑战认知但值得注意的信息，一行带过）
 //! 3. 认知校准
 //!
@@ -44,7 +44,7 @@ pub fn render_daily_report(
     render_normal_mode(md, analysis, calibration)
 }
 
-/// 红蓝模式：今日改变认知的事情 + 今日观察
+/// 红蓝模式：今日信念更新 + 今日观察
 fn render_debate_mode(
     mut md: String,
     debate_results: &[ArbitrationResult],
@@ -60,14 +60,14 @@ fn render_debate_mode(
     all_articles.sort_by_key(|(_, a)| Reverse(a.importance));
 
     if all_articles.is_empty() {
-        md.push_str("> 今日无挑战认知的新信息。\n\n");
+        md.push_str("> 今日无信念更新。\n\n");
         return render_footer(md, calibration);
     }
 
-    // === 💡 幕僚长今日仲裁看板 (BLUF) ===
-    md.push_str("> 💡 **幕僚长今日仲裁看板**\n>\n");
+    // === 💡 幕僚长今日信念看板 ===
+    md.push_str("> 💡 **幕僚长今日信念看板**\n>\n");
     md.push_str(&format!(
-        "> 幕僚长熔断噪音与叙事泡沫，收敛至 **{} 篇** 核心认知挑战。\n",
+        "> 今日 {} 条信息匹配到信念系统，为现有信念提供了新证据。\n",
         all_articles.len()
     ));
     md.push_str(
@@ -75,8 +75,8 @@ fn render_debate_mode(
     );
     md.push_str("---\n\n");
 
-    // === 🔄 今日改变认知的事情 ===
-    md.push_str("## 🔄 今日改变认知的事情\n\n");
+    // === 🔄 今日信念更新 ===
+    md.push_str("## 🔄 今日信念更新\n\n");
 
     for (signal_idx, (_, article)) in all_articles.iter().enumerate() {
         let summary = if article.summary.is_empty() {
@@ -85,11 +85,23 @@ fn render_debate_mode(
             article.summary.clone()
         };
         let red_stance = extract_red_stance(&article.judgment);
+        let ev_type = if article.evidence_type == "challenge" {
+            "⚠️ 挑战"
+        } else {
+            "✅ 支持"
+        };
+        let belief_tag = if article.belief_id.is_empty() {
+            "未匹配信念".into()
+        } else {
+            format!("信念: {}", article.belief_id)
+        };
 
         md.push_str(&format!(
-            "### [SIGNAL {:02}] {}\n\n💬 {}\n\n",
+            "### [SIGNAL {:02}] {}\n\n{} | **{}**\n\n💬 {}\n\n",
             signal_idx + 1,
             article.title,
+            ev_type,
+            belief_tag,
             summary,
         ));
         md.push_str(&format!("📊 **效率变动/资本红利**: {}\n\n", red_stance));
@@ -514,6 +526,8 @@ mod tests {
             strategic_level: String::new(),
             blue_rebuttal: String::new(),
             arbitration: String::new(),
+            belief_id: String::new(),
+            evidence_type: String::new(),
         }
     }
 
@@ -561,7 +575,7 @@ mod tests {
             verdict: "仲裁结论".into(),
         };
         let result = render_daily_report(&[analysis], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("今日改变认知的事情"));
+        assert!(result.contains("今日信念更新"));
         assert!(result.contains("Core Signal"));
         assert!(result.contains("蓝军对此提出质疑"));
         assert!(result.contains("仲裁认为可以采纳"));
@@ -582,7 +596,7 @@ mod tests {
             verdict: "无明确评级".into(),
         };
         let result = render_daily_report(&[analysis2], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("今日改变认知的事情"));
+        assert!(result.contains("今日信念更新"));
         assert!(result.contains("Low Signal"));
     }
 

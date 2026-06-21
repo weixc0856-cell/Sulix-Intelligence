@@ -1,66 +1,68 @@
-//! Editor Agent (🎯 幕僚长) — 认知压缩与 Lens 路由
+//! Editor Agent (🎯 幕僚长) — 信念匹配引擎
 //!
 //! 在红蓝对抗之前运行，职责：
-//! 1. 从 Scan Agent 过滤后的文章中选出 3-5 条最重要的
-//! 2. 为每条选中的文章路由到正确的分析 Lens（分类）
-//! 3. 结合"世界状态"（昨日简报摘要）判断增量价值
+//! 1. 将每日信息匹配到信念系统（belief system）
+//! 2. 判断每条信息支持还是挑战哪个信念
+//! 3. 输出信念更新（belief_id + evidence_type + article）
 //!
 //! 设计原则：
 //! - 只收脱水数据（index + title + category + 100字摘要）
-//! - 返回 index 列表，Rust 端按 index 匹配原文
+//! - 返回 belief_id 索引，Rust 端按 belief_id 分组
 //! - 单次 LLM 调用，不逐个分析
-//! - 调用 llm::call_raw 获取原始文本后再 parse
 
 use anyhow::Result;
 use serde::Deserialize;
 
-use crate::config::LlmConfig;
+use crate::config::{BeliefStatement, LlmConfig};
 use crate::fetcher::Article;
 use crate::llm;
 
-/// Editor 选中的单篇文章
+/// Editor 匹配结果：一篇文章 + 它对应的信念
 #[derive(Debug)]
-pub struct EditorSelection {
+pub struct BeliefMatch {
     pub article: Article,
     pub routed_category: String,
-    /// 挑战的认知编号（999=不挑战任何认知）
     #[allow(dead_code)]
-    pub thesis_index: usize,
+    pub belief_id: String,
     #[allow(dead_code)]
-    pub reason: String,
+    pub evidence_type: String,
+    #[allow(dead_code)]
+    pub evidence_summary: String,
 }
 
 /// Editor API 返回体
 #[derive(Debug, Deserialize)]
 struct EditorResponse {
-    selections: Vec<EditorItem>,
+    matches: Vec<EditorItem>,
 }
 
 #[derive(Debug, Deserialize)]
 struct EditorItem {
     index: usize,
-    /// 挑战的认知编号（0-based, 999=无）
-    thesis_index: usize,
+    /// 匹配的 belief_id
+    belief_id: String,
+    /// "support" 或 "challenge"
+    evidence_type: String,
     category: String,
-    reason: String,
+    /// 一句话证据摘要（用高密度黑话）
+    evidence_summary: String,
 }
 
-/// 幕僚长筛选：从 articles 中选出挑战现有认知的信息
+/// 信念匹配：将 articles 匹配到 belief_statements
 ///
 /// world_state: 昨日简报摘要
-/// theses: 当前世界模型的认知清单
-pub async fn select_top_articles(
+pub async fn match_to_beliefs(
     articles: &[Article],
     world_state: &str,
-    theses: &[String],
+    beliefs: &[BeliefStatement],
     api_key: &str,
     llm_config: &LlmConfig,
-) -> Result<Vec<EditorSelection>> {
-    if articles.is_empty() {
+) -> Result<Vec<BeliefMatch>> {
+    if articles.is_empty() || beliefs.is_empty() {
         return Ok(Vec::new());
     }
 
-    // 1. 构建脱水输入（只传 title + category + 100 字摘要）
+    // 1. 构建脱水输入
     let mut input = String::new();
     for (idx, art) in articles.iter().enumerate() {
         let desc = art
@@ -68,7 +70,6 @@ pub async fn select_top_articles(
             .as_deref()
             .or(art.content.as_deref())
             .unwrap_or("(无摘要)");
-        // 截断到 100 字
         let end = desc.floor_char_boundary(100);
         let truncated: &str = if desc.len() > end { &desc[..end] } else { desc };
         input.push_str(&format!(
@@ -78,20 +79,25 @@ pub async fn select_top_articles(
     }
 
     let total = articles.len();
-    log::info!("🎯 Editor Agent: {} 篇待筛选", total);
+    log::info!("🎯 Editor Agent: {} 篇待匹配到信念系统", total);
 
-    // 2. 系统 Prompt（Thesis Challenge 核心）
-    let theses_list: String = theses
+    // 2. 构建信念列表文本
+    let beliefs_text: String = beliefs
         .iter()
-        .enumerate()
-        .map(|(i, t)| format!("  [{}] {}", i, t))
+        .map(|b| {
+            format!(
+                "  [{}] {} (置信度: {}/10)",
+                b.id, b.statement, b.base_confidence
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
+    // 3. 系统 Prompt（信念匹配核心）
     let system_prompt = format!(
-        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的职责不是找创业机会，而是判断每天的信息流中是否有任何一条**挑战了现有世界模型**。
+        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的职责不是筛选新闻，而是判断今天的每条信息**是否为某个核心信念添加了新的证据**。
 
-## 当前世界模型（认知清单）
+## 当前信念系统
 
 {}
 
@@ -99,94 +105,77 @@ pub async fn select_top_articles(
 
 {}
 
-## 黄金标尺（幕僚长必须严格使用）
-
-1. **范式穿透力（Paradigm Shift）**：这是常规迭代还是直接砸碎现有游戏规则？
-2. **多维共振/高危背离（Resonance & Divergence）**：多个维度是否指向同一方向，还是存在致命背离？
-3. **房间里的巨象（Elephant in the Room）**：大家都在狂热什么？谁指出了致命的执行风险？
-
 ## 你的任务
 
-对每条信息，判断它是否挑战上述认知清单中的任何一条：
+对每条信息，判断它属于以下哪一类：
 
-- **挑战认知** = 这条信息如果为真，会让你重新思考某个认知的正确性
-- **确认认知** = 这条信息支持某个认知，但没有挑战它
-- **无关** = 这条信息与所有认知无关
+1. **支持信念** = 这条信息为某个信念提供了新的支持证据
+2. **挑战信念** = 这条信息为某个信念提供了反例或挑战
+3. **无关** = 这条信息与所有信念无关（跳过，不输出）
 
-## 行文规范（违反直接降级）
+## 黄金标尺
 
-❌ 禁用词汇：发展空间、防范风险、不可否认、值得注意的是、双刃剑、影响、促进、加强
-💎 强制平替：
-  - "释放变现红利" / "压缩研发闭环" → 代替 "有很大发展空间"
-  - "对冲长尾地狱" / "警惕流动性枯竭" → 代替 "防范风险"
-  - "确立上行通道" / "录得净流入" → 代替 "走势良好"
-  - "穿透产业逻辑" / "触发监管红线" → 代替 "有政策影响"
+1. **范式穿透力**：这是常规迭代还是砸碎游戏规则？
+2. **多维共振/背离**：多个维度指向同一方向还是存在背离？
+3. **房间里的大象**：谁指出了致命的执行风险？
 
 ## 输出规则
 
-只输出 priority 为 HIGH 的条目（挑战认知），最多 3 条。
+只输出 evidence_type 为 support 或 challenge 的条目。每篇文章最多匹配一个信念。
 
 JSON 格式：
-{{"selections": [
-  {{"index": 序号, "thesis_index": 被挑战的认知编号(0-based), "category": "路由分类(AI/技术主线/创业/A股/芯片/政策)", "reason": "一句话理由（用高密度黑话，禁止'值得关注'）"}}
+{{"matches": [
+  {{"index": 序号, "belief_id": "信念ID", "evidence_type": "support/challenge", "category": "路由分类(AI/技术主线/创业/A股/芯片/政策)", "evidence_summary": "一句话证据（用高密度黑话）"}}
 ]}}
 
 约束：
-- priority 不是 HIGH 的不要输出
-- 如果没有任何信息挑战现有认知 → 输出空数组
-- 最多 3 条"#,
-        theses_list, world_state
+- 如果某信息与所有信念无关 → 跳过（不输出）
+- belief_id 必须完全匹配信念系统中的 ID
+- 最多输出 10 条"#,
+        beliefs_text, world_state
     );
 
-    // 3. 调用 LLM（复用 llm::call_raw）
+    // 4. 调用 LLM
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
 
     let raw = llm::call_raw(&client, api_key, llm_config, &system_prompt, &input).await?;
 
-    // 4. 解析响应 — 多策略容错
+    // 5. 解析响应
     let parsed = parse_editor_response(&raw)?;
 
-    // 5. 按 index 匹配原文章，构建最终结果
-    let mut selections = Vec::new();
-    for item in parsed.selections {
+    // 6. 按 index 匹配原文章
+    let mut matches = Vec::new();
+    for item in parsed.matches {
         if let Some(article) = articles.get(item.index) {
-            let thesis_label = if item.thesis_index < theses.len() {
-                theses[item.thesis_index].as_str()
-            } else {
-                "(无)"
-            };
             log::info!(
-                "  🎯 挑战认知 [{}] {} → 认知:{} ({}): {}",
+                "  🎯 [{}] {} → belief:{} ({})",
                 item.index,
                 article.title,
-                item.thesis_index,
-                thesis_label,
-                item.reason
+                item.belief_id,
+                item.evidence_type
             );
-            selections.push(EditorSelection {
+            matches.push(BeliefMatch {
                 article: article.clone(),
                 routed_category: item.category,
-                thesis_index: item.thesis_index,
-                reason: item.reason,
+                belief_id: item.belief_id,
+                evidence_type: item.evidence_type,
+                evidence_summary: item.evidence_summary,
             });
         } else {
             log::warn!("⚠️ Editor 返回了越界 index {}，跳过", item.index);
         }
     }
 
-    log::info!("🎯 Editor Agent: 选中 {}/{} 篇", selections.len(), total);
-    Ok(selections)
+    log::info!("🎯 Editor Agent: {}/{} 篇匹配到信念", matches.len(), total);
+    Ok(matches)
 }
 
-/// 多策略解析 Editor 响应（兼容裸 JSON 和 Markdown 代码块）
 fn parse_editor_response(raw: &str) -> Result<EditorResponse> {
-    // 策略 1：直接解析
     if let Ok(parsed) = serde_json::from_str::<EditorResponse>(raw) {
         return Ok(parsed);
     }
-    // 策略 2：提取 ```json ... ``` 块
     if let Some(block) = raw.split("```json\n").nth(1) {
         if let Some(json) = block.split("```").next() {
             if let Ok(parsed) = serde_json::from_str::<EditorResponse>(json.trim()) {
@@ -194,7 +183,6 @@ fn parse_editor_response(raw: &str) -> Result<EditorResponse> {
             }
         }
     }
-    // 策略 3：从第一个 { 到最后一个 }
     if let Some(start) = raw.find('{') {
         if let Some(end) = raw.rfind('}') {
             if end > start {
