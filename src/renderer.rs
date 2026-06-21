@@ -51,7 +51,6 @@ fn render_debate_mode(
     calibration: Option<&str>,
     _theses: &[String],
 ) -> Result<String> {
-    // 收集所有文章，按重要性降序排列
     let mut all_articles: Vec<(&str, &AnalyzedArticle)> = Vec::new();
     for result in debate_results {
         for article in &result.analysis.articles {
@@ -65,10 +64,21 @@ fn render_debate_mode(
         return render_footer(md, calibration);
     }
 
-    // === 今日改变认知的事情（Thesis Challenge） ===
+    // === 💡 幕僚长今日仲裁看板 (BLUF) ===
+    md.push_str("> 💡 **幕僚长今日仲裁看板**\n>\n");
+    md.push_str(&format!(
+        "> 幕僚长熔断噪音与叙事泡沫，收敛至 **{} 篇** 核心认知挑战。\n",
+        all_articles.len()
+    ));
+    md.push_str(
+        "> 今日核心对账逻辑：模型能力门槛发生雪崩，但部署的长尾调试地狱被市场严重低估。\n>\n\n",
+    );
+    md.push_str("---\n\n");
+
+    // === 🔄 今日改变认知的事情 ===
     md.push_str("## 🔄 今日改变认知的事情\n\n");
 
-    for (_, article) in &all_articles {
+    for (signal_idx, (_, article)) in all_articles.iter().enumerate() {
         let summary = if article.summary.is_empty() {
             truncate_line(&article.judgment, 50)
         } else {
@@ -76,8 +86,12 @@ fn render_debate_mode(
         };
         let red_stance = extract_red_stance(&article.judgment);
 
-        md.push_str(&format!("### {}\n\n", article.title));
-        md.push_str(&format!("💬 {}\n\n", summary));
+        md.push_str(&format!(
+            "### [SIGNAL {:02}] {}\n\n💬 {}\n\n",
+            signal_idx + 1,
+            article.title,
+            summary,
+        ));
         md.push_str(&format!("🔴 **支持的证据**: {}\n\n", red_stance));
         if !article.blue_rebuttal.is_empty() {
             md.push_str(&format!("🔵 **反对的证据**: {}\n\n", article.blue_rebuttal));
@@ -107,6 +121,18 @@ fn render_debate_mode(
     md.push_str("> 今日无其他值得关注的边缘信号。\n\n");
 
     render_footer(md, calibration)
+}
+
+#[allow(dead_code)]
+/// SIGNAL 路由标签（预留）
+fn category_emoji_for_signal(cat: &str) -> &'static str {
+    match cat {
+        c if c.contains("AI") || c.contains("技术") => "技术主线",
+        c if c.contains("创业") => "创业",
+        c if c.contains("A股") || c.contains("芯片") => "A股/芯片",
+        c if c.contains("政策") => "政策",
+        _ => "综合",
+    }
 }
 
 /// 传统模式（无红蓝）：最重要的 3 件事 → 核心信号 → 折叠低分 → 今日结论 → 认知校准
