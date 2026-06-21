@@ -298,3 +298,70 @@ fn simple_hash(url: &str) -> String {
     url.hash(&mut hasher);
     format!("{:x}", hasher.finish())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_article_tag() {
+        let html = "<html><body><article><p>This is article content that is long enough to pass the 100 char threshold. Let me add more text here to make sure we cross that barrier easily.</p></article></body></html>";
+        let text = extract_text_from_html(html);
+        assert!(text.contains("article content"));
+        assert!(text.len() > 100);
+    }
+
+    #[test]
+    fn test_extract_main_tag() {
+        let html = "<html><body><main><p>This is main content that needs to be long enough to pass the 100 character threshold for extraction. Adding more filler text to ensure we reach the threshold.</p></main></body></html>";
+        let text = extract_text_from_html(html);
+        assert!(text.contains("main content"));
+    }
+
+    #[test]
+    fn test_extract_p_tags() {
+        let html = "<html><body><p>First paragraph with enough text to pass the 20 char minimum.</p><p>Second paragraph that also has enough text for the test.</p></body></html>";
+        let text = extract_text_from_html(html);
+        assert!(text.contains("First paragraph"));
+        assert!(text.contains("Second paragraph"));
+    }
+
+    #[test]
+    fn test_extract_empty_html() {
+        let text = extract_text_from_html("<html><head></head><body></body></html>");
+        assert!(text.is_empty() || text.trim().is_empty());
+    }
+
+    #[test]
+    fn test_simple_hash_consistency() {
+        let h1 = simple_hash("https://example.com/article");
+        let h2 = simple_hash("https://example.com/article");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_simple_hash_different() {
+        let h1 = simple_hash("https://example.com/a");
+        let h2 = simple_hash("https://example.com/b");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_simple_hash_non_empty() {
+        let h = simple_hash("https://example.com/test");
+        assert!(!h.is_empty());
+    }
+
+    #[test]
+    fn test_limit_text_short() {
+        let text = "Hello world.".to_string();
+        assert_eq!(limit_text(text.clone(), 100), text);
+    }
+
+    #[test]
+    fn test_limit_text_sentence_boundary() {
+        let text = "First sentence. Second sentence. Third sentence.".to_string();
+        let result = limit_text(text, 20);
+        assert!(result.ends_with("..."));
+    }
+}

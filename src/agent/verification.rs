@@ -1,0 +1,207 @@
+//! Verification Agent (🔵 蓝军) — 极致怀疑
+//!
+//! 对红军的叙事分析做逐条反驳，注入两大核心技能：
+//! 1. AI 神话拆解六问
+//! 2. 证据等级 L1-L5
+//!
+//! 角色: 极致怀疑主义者。以驳倒红军为荣。
+//! 思维模式: "如果这一切都是错的……"
+
+use anyhow::Result;
+
+use crate::config::LlmConfig;
+use crate::llm;
+
+use super::synthesis::{Narrative, SynthesisOutput};
+
+/// 蓝军对一个 vertical 的反驳输出
+pub struct VerificationOutput {
+    #[allow(dead_code)]
+    pub category: String,
+    pub rebuttals: Vec<Rebuttal>,
+}
+
+/// 单篇反驳
+pub struct Rebuttal {
+    pub title: String,
+    pub counter_narrative: String,
+    pub evidence_level: String,
+    #[allow(dead_code)]
+    pub refutation_strength: u8,
+    #[allow(dead_code)]
+    pub ai_myth_flags: Vec<String>,
+}
+
+/// 对红军的输出执行蓝军验证
+pub async fn verify(
+    synthesis: &[SynthesisOutput],
+    base_prompt: &str,
+    verification_override: Option<&str>,
+    api_key: &str,
+    llm_config: &LlmConfig,
+) -> Result<Vec<VerificationOutput>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+
+    let mut results = Vec::new();
+
+    for sv in synthesis {
+        if sv.narratives.is_empty() {
+            continue;
+        }
+
+        log::info!(
+            "🔵 Verification [{}] — {} 条叙事",
+            sv.category,
+            sv.narratives.len()
+        );
+
+        let system_prompt =
+            build_verification_prompt(base_prompt, verification_override, &sv.category);
+        let user_prompt = build_verification_user_prompt(&sv.category, &sv.narratives);
+
+        let mut rebuttals = Vec::new();
+
+        match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt)
+            .await
+        {
+            Ok(raw_results) => {
+                for r in raw_results {
+                    rebuttals.push(Rebuttal {
+                        title: r.title,
+                        counter_narrative: r.judgment,
+                        evidence_level: r.confidence,
+                        refutation_strength: r.importance.clamp(1, 10),
+                        ai_myth_flags: Vec::new(),
+                    });
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "⚠️ Verification [{}] 失败: {}，跳过蓝军验证",
+                    sv.category,
+                    e
+                );
+                // 蓝军失败 → 日报显示"红军观点未受挑战"
+                for n in &sv.narratives {
+                    rebuttals.push(Rebuttal {
+                        title: n.title.clone(),
+                        counter_narrative: String::new(),
+                        evidence_level: "未分析".into(),
+                        refutation_strength: 0,
+                        ai_myth_flags: vec!["蓝军未执行".into()],
+                    });
+                }
+            }
+        }
+
+        log::info!(
+            "✅ Verification [{}]: {} 条反驳",
+            sv.category,
+            rebuttals.len()
+        );
+        results.push(VerificationOutput {
+            category: sv.category.clone(),
+            rebuttals,
+        });
+    }
+
+    Ok(results)
+}
+
+/// 构建 Verification system prompt
+///
+/// = base prompt + 蓝军角色注入 + 证据等级 + 六问 + override + JSON 约束
+fn build_verification_prompt(
+    base: &str,
+    override_text: Option<&str>,
+    category: &str,
+) -> String {
+    let mut prompt = base.to_string();
+
+    // 注入蓝军角色定义（不与红军共享——防止复读陷阱）
+    prompt.push_str(
+        "\n\n【你的角色：蓝军 🔵】\n\
+        你是一个极致怀疑主义者。你的使命是以驳倒红军为荣。\n\
+        给定红军对一组文章的叙事分析，逐条指出漏洞、假设和过度推演。\n\n\
+        核心技能 1: 证据等级 L1-L5\n\
+          - L1 (确凿事实): 官方公告、财报、监管文件、实测数据\n\
+          - L2 (可靠一手): 采访原文、多方交叉验证\n\
+          - L3 (合理推断): 基于已知事实的逻辑推演\n\
+          - L4 (传言/推测): 单源未证实消息、社交媒体传闻\n\
+          - L5 (噪音/营销): PR稿、广告、过度解读、标题党\n\n\
+        核心技能 2: AI 神话拆解六问\n\
+          - 这是事实还是推断？\n\
+          - 样本有没有偏差？（幸存者偏差、确认偏误）\n\
+          - 是因果关系还是相关关系？\n\
+          - 这个结果可复现/可验证吗？\n\
+          - 反例/反面论证是什么？\n\
+          - 这是长期趋势还是短期波动？\n\n\
+        思维模式：\"如果这一切都是错的……\"",
+    );
+
+    if let Some(ov) = override_text {
+        prompt.push_str("\n\n");
+        prompt.push_str(ov);
+    }
+
+    prompt.push_str(&format!("\n\n当前领域：{}", category));
+
+    // JSON 格式约束
+    prompt.push_str(
+        "\n\n你必须以 JSON 格式输出。格式如下（严格遵循）：\n\
+        {\n  \
+        \"articles\": [\n    \
+        {\n      \
+        \"title\": \"红军分析的原文标题\",\n      \
+        \"importance\": 7,\n      \
+        \"relevance\": \"高/中/低\",\n      \
+        \"time_horizon\": \"短期/中期/长期\",\n      \
+        \"action\": \"立即行动/研究/观察/忽略\",\n      \
+        \"confidence\": \"L1/L2/L3/L4/L5\",\n      \
+        \"judgment\": \"反驳分析（2-4句话，指出漏洞和过度推演）\"\n    \
+        }\n  \
+        ]\n\
+        }\n\n\
+        注意事项：\n\
+        1. importance 表示反驳力度（1-10），越高反驳越有力\n\
+        2. confidence 请使用证据等级 L1/L2/L3/L4/L5\n\
+        3. judgment 必须包含反驳逻辑和使用了哪个拆解技能\n\
+        4. 为每条红军叙事都生成一条反驳结果，数量严格对应\n\
+        5. 输出纯 JSON，不要在前后加任何说明文字",
+    );
+
+    prompt
+}
+
+/// 构建 Verification user prompt
+///
+/// 将红军的叙事分析发给蓝军做反驳
+fn build_verification_user_prompt(
+    category: &str,
+    narratives: &[Narrative],
+) -> String {
+    let mut prompt = format!(
+        "请对以下 {} 领域的 {} 条红军叙事分析进行反驳，输出 JSON：\n\n",
+        category,
+        narratives.len(),
+    );
+
+    for (i, n) in narratives.iter().enumerate() {
+        prompt.push_str(&format!(
+            "--- 叙事 {} ---\n标题: {}\n叙事: {}\n推演逻辑: {}\n信号强度: {}/10\n\n",
+            i + 1,
+            n.title,
+            if n.narrative.is_empty() {
+                "(分析失败，无红军叙事)"
+            } else {
+                &n.narrative
+            },
+            n.reasoning,
+            n.signal_strength,
+        ));
+    }
+
+    prompt
+}

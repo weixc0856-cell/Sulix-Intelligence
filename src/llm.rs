@@ -221,7 +221,7 @@ fn build_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> 
 // ===== P1: 重试机制 =====
 
 /// 带指数退避重试的 API 调用
-async fn call_with_retry(
+pub(crate) async fn call_with_retry(
     client: &reqwest::Client,
     api_key: &str,
     llm_config: &LlmConfig,
@@ -418,12 +418,91 @@ struct ArticlesWrapper {
 }
 
 #[derive(Debug, Deserialize)]
-struct AnalyzedArticleRaw {
-    title: String,
-    importance: u8,
-    relevance: String,
-    time_horizon: String,
-    action: String,
-    confidence: String,
-    judgment: String,
+pub(crate) struct AnalyzedArticleRaw {
+    pub(crate) title: String,
+    pub(crate) importance: u8,
+    pub(crate) relevance: String,
+    pub(crate) time_horizon: String,
+    pub(crate) action: String,
+    pub(crate) confidence: String,
+    pub(crate) judgment: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_json_direct() {
+        let json = r#"{"articles":[{"title":"Test","importance":7,"relevance":"高","time_horizon":"短期","action":"研究","confidence":"中","judgment":"测试"}]}"#;
+        let result = parse_json_response(json).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Test");
+    }
+
+    #[test]
+    fn test_parse_json_codeblock() {
+        let json = "text\n```json\n{\"articles\":[{\"title\":\"CodeBlock\",\"importance\":5,\"relevance\":\"中\",\"time_horizon\":\"短期\",\"action\":\"观察\",\"confidence\":\"低\",\"judgment\":\"test\"}]}\n```\nmore";
+        let result = parse_json_response(json).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "CodeBlock");
+    }
+
+    #[test]
+    fn test_parse_json_bare_codeblock() {
+        let json = "```\n{\"articles\":[{\"title\":\"Bare\",\"importance\":3,\"relevance\":\"低\",\"time_horizon\":\"短期\",\"action\":\"忽略\",\"confidence\":\"低\",\"judgment\":\"bare\"}]}\n```";
+        let result = parse_json_response(json).unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_json_brace_extract() {
+        let json = "prefix\n{\"articles\":[{\"title\":\"Extract\",\"importance\":6,\"relevance\":\"高\",\"time_horizon\":\"中期\",\"action\":\"研究\",\"confidence\":\"中\",\"judgment\":\"extract\"}]}\nsuffix";
+        let result = parse_json_response(json).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Extract");
+    }
+
+    #[test]
+    fn test_parse_json_invalid() {
+        let result = parse_json_response("not json at all");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_json_empty_array() {
+        let json = r#"{"articles":[]}"#;
+        let result = parse_json_response(json).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_json_block_normal() {
+        let result = extract_json_block("before\n```json\n{\"key\":\"val\"}\n```\nafter", "```json\n");
+        assert_eq!(result, Some("{\"key\":\"val\"}".into()));
+    }
+
+    #[test]
+    fn test_extract_json_block_no_end() {
+        let result = extract_json_block("before\n```json\n{\"key\":\"val\"}", "```json\n");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_group_by_category_empty() {
+        let result = group_by_category(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_group_by_category_multiple() {
+        use crate::fetcher::Article;
+        let a1 = Article { id: "1".into(), source: "s".into(), title: "A".into(), url: "u1".into(), content: None, summary: None, published_at: None, category: "AI".into() };
+        let a2 = Article { id: "2".into(), source: "s".into(), title: "B".into(), url: "u2".into(), content: None, summary: None, published_at: None, category: "创业".into() };
+        let a3 = Article { id: "3".into(), source: "s".into(), title: "C".into(), url: "u3".into(), content: None, summary: None, published_at: None, category: "AI".into() };
+        let grouped = group_by_category(&[a1, a2, a3]);
+        assert_eq!(grouped.len(), 2);
+        assert_eq!(grouped.get("AI").unwrap().len(), 2);
+        assert_eq!(grouped.get("创业").unwrap().len(), 1);
+    }
 }

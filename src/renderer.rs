@@ -9,9 +9,14 @@ use anyhow::Result;
 use chrono::Local;
 
 use crate::llm::{AnalyzedArticle, VerticalAnalysis};
+use crate::agent::orchestrator::ArbitrationResult;
 
 /// 生成最终日报 Markdown
-pub fn render_daily_report(analysis: &[VerticalAnalysis]) -> Result<String> {
+pub fn render_daily_report(
+    analysis: &[VerticalAnalysis],
+    debate: Option<&[ArbitrationResult]>,
+    calibration: Option<&str>,
+) -> Result<String> {
     let today = Local::now().format("%Y-%m-%d").to_string();
     let mut md = String::new();
 
@@ -43,6 +48,33 @@ pub fn render_daily_report(analysis: &[VerticalAnalysis]) -> Result<String> {
     }
 
     md.push_str("---\n\n");
+
+    // === Phase B: 红蓝对抗概览 ===
+    if let Some(debate_results) = debate {
+        let has_content = debate_results.iter().any(|r| !r.verdict.is_empty());
+        if has_content {
+            md.push_str("## 🔴🔵 红蓝对抗\n\n");
+            for result in debate_results {
+                if result.verdict.is_empty() {
+                    continue;
+                }
+                md.push_str(&format!("### {}\n\n", category_emoji(&result.category)));
+                md.push_str(&format!(
+                    "**🔴 红军叙事**:\n{}\n\n",
+                    result.red_summary
+                ));
+                md.push_str(&format!(
+                    "**🔵 蓝军反驳**:\n{}\n\n",
+                    result.blue_summary
+                ));
+                md.push_str(&format!(
+                    "**⚖️ 仲裁结论**:\n> {}\n\n",
+                    result.verdict
+                ));
+                md.push_str("---\n\n");
+            }
+        }
+    }
 
     // === 按分类展开 ===
     for va in analysis {
@@ -96,6 +128,16 @@ pub fn render_daily_report(analysis: &[VerticalAnalysis]) -> Result<String> {
         md.push('\n');
     }
 
+    // === Phase C: 认知校准 ===
+    if let Some(text) = calibration {
+        if !text.is_empty() {
+            md.push_str("────────────────────────────────────────\n\n");
+            md.push_str(&format!("🤖 **认知校准**\n\n> {}\n\n", text));
+            md.push_str("（不回答也没事，看到就行）\n\n");
+            md.push_str("────────────────────────────────────────\n\n");
+        }
+    }
+
     // 脚注
     md.push_str("---\n\n");
     md.push_str(&format!(
@@ -139,5 +181,118 @@ fn truncate_line(text: &str, max_len: usize) -> String {
         format!("{}...", &line[..max_len])
     } else {
         line.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::{AnalyzedArticle, VerticalAnalysis};
+
+    fn mock_article(title: &str, importance: u8, action: &str) -> AnalyzedArticle {
+        AnalyzedArticle {
+            title: title.into(),
+            url: format!("https://example.com/{}", title),
+            importance,
+            relevance: "高".into(),
+            time_horizon: "短期".into(),
+            action: action.into(),
+            confidence: "中".into(),
+            judgment: format!("关于{}的分析判断", title),
+        }
+    }
+
+    fn mock_analysis(category: &str, articles: Vec<AnalyzedArticle>) -> VerticalAnalysis {
+        VerticalAnalysis {
+            category: category.into(),
+            articles,
+        }
+    }
+
+    #[test]
+    fn test_empty_analysis() {
+        let result = render_daily_report(&[], None, None).unwrap();
+        assert!(result.contains("今日无新增情报分析"));
+        assert!(result.contains("今日创业情报"));
+    }
+
+    #[test]
+    fn test_top3_extraction() {
+        let articles = vec![
+            mock_article("Article A", 10, "研究"),
+            mock_article("Article B", 8, "观察"),
+            mock_article("Article C", 6, "观察"),
+            mock_article("Article D", 3, "忽略"),
+        ];
+        let analysis = mock_analysis("AI", articles);
+        let result = render_daily_report(&[analysis], None, None).unwrap();
+        assert!(result.contains("Article A"));
+        assert!(result.contains("Article B"));
+        assert!(result.contains("Article C"));
+        // D is filtered from top3 but still rendered in category section
+        assert!(result.contains("今日最重要的 3 件事"));
+    }
+
+    #[test]
+    fn test_debate_section_present() {
+        use crate::agent::orchestrator::ArbitrationResult;
+        let a = mock_article("Debate Article", 7, "研究");
+        let analysis = mock_analysis("AI", vec![a]);
+        let debate = ArbitrationResult {
+            category: "AI".into(),
+            analysis: analysis.clone(),
+            verdict: "仲裁结论：各有依据".into(),
+            red_summary: "红军认为有机会".into(),
+            blue_summary: "蓝军认为有风险".into(),
+        };
+        let result = render_daily_report(&[analysis], Some(&[debate]), None).unwrap();
+        assert!(result.contains("红蓝对抗"));
+        assert!(result.contains("红军认为有机会"));
+        assert!(result.contains("蓝军认为有风险"));
+    }
+
+    #[test]
+    fn test_calibration_section_present() {
+        let a = mock_article("Calib Article", 5, "观察");
+        let analysis = mock_analysis("AI", vec![a]);
+        let result = render_daily_report(&[analysis], None, Some("你为什么跳过了所有芯片新闻？")).unwrap();
+        assert!(result.contains("认知校准"));
+        assert!(result.contains("你为什么跳过了所有芯片新闻？"));
+    }
+
+    #[test]
+    fn test_category_emoji_all() {
+        let categories = ["AI", "Agent", "独立开发", "Indie", "芯片", "政策", "财税", "创业", "出海", "其他"];
+        for cat in &categories {
+            let a = mock_article("Test", 5, "观察");
+            let analysis = mock_analysis(cat, vec![a]);
+            let result = render_daily_report(&[analysis], None, None).unwrap();
+            assert!(!result.is_empty(), "Category {} should render", cat);
+        }
+    }
+
+    #[test]
+    fn test_truncate_line_short() {
+        assert_eq!(truncate_line("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_line_long() {
+        let result = truncate_line("hello world this is a long text", 10);
+        assert!(result.len() <= 13);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_extract_top3_excludes_low_importance() {
+        let articles = vec![
+            mock_article("Low", 2, "忽略"),
+            mock_article("High", 9, "研究"),
+        ];
+        let analysis = mock_analysis("AI", articles);
+        let analyses = [analysis];  // bind to extend lifetime
+        let top3 = extract_top3(&analyses);
+        assert_eq!(top3.len(), 1);
+        assert_eq!(top3[0].title, "High");
     }
 }

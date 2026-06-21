@@ -16,6 +16,15 @@ pub struct Config {
     pub sources: Vec<SourceConfig>,
     #[allow(dead_code)]
     pub prompts: PromptConfig,
+    /// Phase A: Scan Agent 配置
+    #[serde(default)]
+    pub scan_agent: Option<ScanAgentConfig>,
+    /// Phase B: 红蓝对抗 Agent 配置
+    #[serde(default)]
+    pub agent: Option<AgentConfig>,
+    /// Phase D: 记忆墓地配置
+    #[serde(default)]
+    pub graveyard: Option<GraveyardConfig>,
 }
 
 /// LLM 配置
@@ -74,6 +83,56 @@ fn default_enabled() -> bool {
     true
 }
 
+/// Scan Agent 配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct ScanAgentConfig {
+    /// 是否启用 Scan Agent
+    #[serde(default = "default_scan_enabled")]
+    pub enabled: bool,
+    /// 重要性阈值，≤此值的文章被跳过（默认 3）
+    #[serde(default = "default_scan_threshold")]
+    pub threshold: u8,
+}
+
+fn default_scan_enabled() -> bool { true }
+fn default_scan_threshold() -> u8 { 3 }
+
+/// Phase B: 红蓝对抗 Agent 配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct AgentConfig {
+    /// 是否启用 Synthesis Agent（红军）
+    #[serde(default = "default_agent_enabled")]
+    pub synthesis_enabled: bool,
+    /// 是否启用 Verification Agent（蓝军）
+    #[serde(default = "default_agent_enabled")]
+    pub verification_enabled: bool,
+}
+
+fn default_agent_enabled() -> bool { true }
+
+/// Phase D: 记忆墓地配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct GraveyardConfig {
+    /// 是否启用 Decay Agent
+    #[serde(default = "default_graveyard_enabled")]
+    pub enabled: bool,
+    /// 文章保留天数（超过此天数进入墓地评估）
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+    /// 是否启用 LLM 压缩
+    #[serde(default = "default_compression_enabled")]
+    pub compression: bool,
+    /// 埋葬阈值（重要性 ≤ 此值即埋葬）
+    #[allow(dead_code)]
+    #[serde(default = "default_burial_threshold")]
+    pub burial_threshold: u8,
+}
+
+fn default_graveyard_enabled() -> bool { true }
+fn default_retention_days() -> u32 { 90 }
+fn default_compression_enabled() -> bool { true }
+fn default_burial_threshold() -> u8 { 3 }
+
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）
 #[derive(Debug, Deserialize, Clone)]
 pub struct PromptConfig {
@@ -95,13 +154,53 @@ impl Config {
     }
 
     /// 获取 DeepSeek API Key
+    ///
+    /// 从 config.toml 读取（已在 .gitignore 中，不会上传 GitHub）。
+    /// 环境变量 DEEPSEEK_API_KEY 可作为替代。
     pub fn get_api_key(&self) -> Result<String> {
+        // config.toml 优先（推荐使用方式——Key 只在本地）
         if let Some(key) = &self.llm.api_key {
             if !key.is_empty() {
                 return Ok(key.clone());
             }
         }
-        std::env::var("DEEPSEEK_API_KEY")
-            .map_err(|_| anyhow::anyhow!("未设置 DEEPSEEK_API_KEY 环境变量或在 config.toml 中配置"))
+        // 环境变量作为替代方案
+        if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+            if !key.is_empty() {
+                return Ok(key);
+            }
+        }
+        Err(anyhow::anyhow!(
+            "请在 config.toml 中填写 api_key，或设置 DEEPSEEK_API_KEY 环境变量。\
+             config.toml 已在 .gitignore 中，不会上传 GitHub。"
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_from_example() {
+        let config = Config::from_file("config.example.toml").unwrap();
+        assert_eq!(config.llm.model, "deepseek-chat");
+        assert!(config.sources.len() >= 2);
+    }
+
+    #[test]
+    fn test_get_api_key_from_config() {
+        let mut config = Config::from_file("config.example.toml").unwrap();
+        config.llm.api_key = Some("test-key".into());
+        let key = config.get_api_key().unwrap();
+        assert_eq!(key, "test-key");
+    }
+
+    #[test]
+    fn test_get_api_key_empty_fails() {
+        let config = Config::from_file("config.example.toml").unwrap();
+        assert!(config.llm.api_key.as_deref() == Some("") || config.llm.api_key.is_none());
+        // config 中 key 为空，且测试环境下 DEEPSEEK_API_KEY 大概率未设置
+        assert!(config.get_api_key().is_err());
     }
 }
