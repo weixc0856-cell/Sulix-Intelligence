@@ -1,9 +1,13 @@
-//! 渲染模块 — Markdown 认知更新简报
+//! 渲染模块 — 咨询级交付简报
 //!
-//! 格式（红蓝模式，Thesis Engine）：
-//! 1. 今日信念更新（匹配到信念系统的信息，每条含信念标签、证据类型、判断、行动）
-//! 2. 📋 今日观察（不挑战认知但值得注意的信息，一行带过）
-//! 3. 认知校准
+//! 参考标准：麦肯锡 Action Title → BLUF → Key Variables
+//!           高盛 现状 → 催化剂 → 损益冲击 → 风险审计
+//!
+//! 格式（红蓝模式）：
+//! 1. 🎯 今日行动变化（执行摘要）
+//! 2. 各问题卡片（Action Title → 核心洞察 → 关键变量 → 压力测试）
+//! 3. 📋 今日无关信息
+//! 4. 🤖 认知校准
 //!
 //! 格式（传统模式）：
 //! 1. 最重要的 3 件事
@@ -44,130 +48,114 @@ pub fn render_daily_report(
     render_normal_mode(md, analysis, calibration)
 }
 
-/// 红蓝模式：今日问题看板（战略参谋格式）
+/// 咨询级交付模式（麦肯锡 Action Title → BLUF → Key Variables）
 fn render_debate_mode(
     mut md: String,
     debate_results: &[ArbitrationResult],
     calibration: Option<&str>,
     _theses: &[String],
 ) -> Result<String> {
-    let mut all_articles: Vec<(&str, &AnalyzedArticle)> = Vec::new();
+    let mut all_articles: Vec<&AnalyzedArticle> = Vec::new();
     for result in debate_results {
         for article in &result.analysis.articles {
-            all_articles.push((result.verdict.as_str(), article));
+            all_articles.push(article);
         }
     }
-    all_articles.sort_by_key(|(_, a)| Reverse(a.importance));
+    all_articles.sort_by_key(|a| Reverse(a.importance));
 
     if all_articles.is_empty() {
-        md.push_str("> 今日无信念更新。\n\n");
+        md.push_str("> 今日无新证据。\n\n");
         return render_footer(md, calibration);
     }
 
-    // === 按 belief_id 分组 ===
+    // 按 question_id 分组
     use std::collections::BTreeMap;
-    let mut by_belief: BTreeMap<String, Vec<(&str, &AnalyzedArticle)>> = BTreeMap::new();
-    let mut unmatched: Vec<(&str, &AnalyzedArticle)> = Vec::new();
-    for item in all_articles {
-        let bid = item.1.belief_id.clone();
-        if bid.is_empty() {
-            unmatched.push(item);
+    let mut by_question: BTreeMap<String, Vec<&AnalyzedArticle>> = BTreeMap::new();
+    let mut unmatched: Vec<&AnalyzedArticle> = Vec::new();
+    for article in all_articles {
+        if article.belief_id.is_empty() {
+            unmatched.push(article);
         } else {
-            by_belief.entry(bid).or_default().push(item);
+            by_question
+                .entry(article.belief_id.clone())
+                .or_default()
+                .push(article);
         }
     }
 
+    // 🎯 今日行动变化（执行摘要）
+    let has_challenge = by_question
+        .values()
+        .flatten()
+        .any(|a| a.evidence_type == "challenge");
     md.push_str("## 🎯 今日行动变化\n\n");
-
-    // === ✅ 继续坚持（支持证据 ≥ 2 且多于挑战） ===
-    let mut has_continue = false;
-    for articles in by_belief.values() {
-        let supports = articles
-            .iter()
-            .filter(|a| a.1.evidence_type != "challenge")
-            .count();
-        let challenges = articles
-            .iter()
-            .filter(|a| a.1.evidence_type == "challenge")
-            .count();
-        if supports > challenges && supports >= 1 {
-            has_continue = true;
-        }
+    if has_challenge {
+        md.push_str("🔴 **需要重新评估** — 部分问题出现挑战性证据\n\n");
+    } else {
+        md.push_str("🟢 **无需调整** — 继续执行当前策略\n\n");
     }
-    if has_continue {
-        md.push_str("### ✅ 继续坚持\n\n");
-        for (bid, articles) in &by_belief {
-            let supports = articles
-                .iter()
-                .filter(|a| a.1.evidence_type != "challenge")
-                .count();
-            let challenges = articles
-                .iter()
-                .filter(|a| a.1.evidence_type == "challenge")
-                .count();
-            if supports <= challenges || supports < 1 {
-                continue;
-            }
-            md.push_str(&format!(
-                "**{}** — 信心:{}\n\n",
-                bid, articles[0].1.confidence
-            ));
-            for (_, a) in articles {
+    md.push_str("---\n\n");
+
+    // 各问题卡片（McKinsey 格式）
+    for (qid, articles) in &by_question {
+        md.push_str(&format!("### {}\n\n", qid));
+
+        for article in articles {
+            // Action Title — 从 judgment 取第一句作为带判断的标题
+            let action_title = extract_red_stance(&article.judgment);
+            let summary = if article.summary.is_empty() {
+                truncate_line(&article.judgment, 50)
+            } else {
+                article.summary.clone()
+            };
+
+            // BLUF + Key Variables 行
+            md.push_str(&format!("**{}**\n\n", action_title));
+            md.push_str(&format!("💡 **核心洞察**: {}\n\n", summary));
+
+            // 关键变量（效率变动 + 长尾隐患）
+            md.push_str("**关键变量**:\n");
+            let red_first = extract_red_stance(&article.judgment);
+            md.push_str(&format!("  ▸ **{}**\n", red_first));
+            if !article.blue_rebuttal.is_empty() {
                 md.push_str(&format!(
-                    "• ✅ {} — {}\n",
-                    a.title,
-                    truncate_line(&a.judgment, 120)
+                    "  ▸ **{}**\n",
+                    truncate_line(&article.blue_rebuttal, 120)
                 ));
             }
             md.push('\n');
+
+            // 压力测试 & 信心等级
+            let conf_display = if article.confidence.starts_with('L') {
+                article.confidence.clone()
+            } else {
+                format!("L{}", article.confidence)
+            };
+            let stress = if article.arbitration.is_empty() {
+                format!("建议: {} | 信心: {}", article.action, conf_display)
+            } else {
+                format!("{} | 信心:{}", article.arbitration, conf_display)
+            };
+            md.push_str(&format!("**压力测试**: {}\n\n", stress));
+
+            if !article.url.is_empty() {
+                md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
+            }
         }
+        md.push_str("---\n\n");
     }
 
-    // === ⚠️ 需要关注（有反证） ===
-    let mut has_watch = false;
-    for articles in by_belief.values() {
-        let challenges = articles
-            .iter()
-            .filter(|a| a.1.evidence_type == "challenge")
-            .count();
-        if challenges > 0 {
-            has_watch = true;
-        }
-    }
-    if has_watch {
-        md.push_str("### ⚠️ 需要关注\n\n");
-        for (bid, articles) in &by_belief {
-            let challenges = articles
-                .iter()
-                .filter(|a| a.1.evidence_type == "challenge")
-                .count();
-            if challenges == 0 {
-                continue;
-            }
-            md.push_str(&format!("**{}** — {} 条反证\n\n", bid, challenges));
-            for (_, a) in articles {
-                if a.evidence_type == "challenge" {
-                    md.push_str(&format!(
-                        "• ⚠️ {} — {}\n",
-                        a.title,
-                        truncate_line(&a.judgment, 120)
-                    ));
-                }
-            }
-            md.push('\n');
-        }
-    }
-
-    // === 📋 今日可忽略 ===
+    // 📋 今日无关信息
     if !unmatched.is_empty() {
         md.push_str("### 📋 今日无关信息\n\n");
-        for (_, a) in &unmatched {
-            md.push_str(&format!("• {} — 未回答任何当前问题\n", a.title));
+        for article in &unmatched {
+            md.push_str(&format!("• {} — 未回答任何当前问题\n", article.title));
         }
         md.push('\n');
+        md.push_str("---\n\n");
     }
 
-    // === 认知校准 ===
+    // 认知校准 + 脚注
     if let Some(text) = calibration {
         if !text.is_empty() {
             md.push_str("────────────────────────────────────────\n\n");
@@ -185,122 +173,7 @@ fn render_debate_mode(
     Ok(md)
 }
 
-#[allow(dead_code)]
-/// SIGNAL 路由标签（预留）
-fn category_emoji_for_signal(cat: &str) -> &'static str {
-    match cat {
-        c if c.contains("AI") || c.contains("技术") => "技术主线",
-        c if c.contains("创业") => "创业",
-        c if c.contains("A股") || c.contains("芯片") => "A股/芯片",
-        c if c.contains("政策") => "政策",
-        _ => "综合",
-    }
-}
-
-/// 传统模式（无红蓝）：最重要的 3 件事 → 核心信号 → 折叠低分 → 今日结论 → 认知校准
-fn render_normal_mode(
-    mut md: String,
-    analysis: &[VerticalAnalysis],
-    calibration: Option<&str>,
-) -> Result<String> {
-    // === 最重要的 3 件事 ===
-    md.push_str("## 📌 今日最重要的 3 件事\n\n");
-
-    let top3 = extract_top3(analysis);
-    if top3.is_empty() {
-        md.push_str("> 今日无新增情报分析。\n\n");
-    } else {
-        for (i, article) in top3.iter().enumerate() {
-            md.push_str(&format!(
-                "{}. **{}** — 重要性:{}/10 | 建议:{} | 信心:{}\n",
-                i + 1,
-                article.title,
-                article.importance,
-                article.action,
-                article.confidence,
-            ));
-            if !article.judgment.is_empty() {
-                let brief = truncate_line(&article.judgment, 120);
-                md.push_str(&format!("   > {}\n", brief));
-            }
-            md.push('\n');
-        }
-    }
-
-    md.push_str("---\n\n");
-
-    // === 按分类展开 ===
-    for va in analysis {
-        if va.articles.is_empty() {
-            continue;
-        }
-
-        md.push_str(&format!("## {}\n\n", category_emoji(&va.category)));
-
-        let mut sorted = va.articles.clone();
-        sorted.sort_by_key(|b| Reverse(b.importance));
-
-        let mut high_p = Vec::new();
-        let mut low_p = Vec::new();
-        for a in &sorted {
-            if a.importance >= CORE_THRESHOLD {
-                high_p.push(a);
-            } else {
-                low_p.push(a);
-            }
-        }
-
-        for article in &high_p {
-            md.push_str(&format!("### {}\n\n", article.title));
-            md.push_str(&format!(
-                "**重要性**: {}/10 | **相关性**: {} | **时间跨度**: {}  \n",
-                article.importance, article.relevance, article.time_horizon,
-            ));
-            md.push_str(&format!(
-                "**建议动作**: {} | **信心等级**: {}  \n\n",
-                article.action, article.confidence,
-            ));
-            if !article.judgment.is_empty() {
-                md.push_str(&format!("**判断**:\n{}\n\n", article.judgment));
-            }
-            if !article.url.is_empty() {
-                md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
-            }
-            md.push_str("---\n\n");
-        }
-
-        if !low_p.is_empty() {
-            md.push_str(&format!(
-                "<details>\n<summary>📎 低优先级 ({})</summary>\n\n",
-                low_p.len()
-            ));
-            for article in &low_p {
-                md.push_str(&format!(
-                    "**{}** — {}/10\n\n> {}\n\n---\n\n",
-                    article.title, article.importance, article.judgment
-                ));
-            }
-            md.push_str("</details>\n\n");
-        }
-    }
-
-    // === 今日结论 ===
-    md.push_str("## 💡 今日结论\n\n");
-    if top3.is_empty() {
-        md.push_str("> 今日无重要情报。\n");
-    } else {
-        md.push_str("> 今天最重要的信号是：\n");
-        for article in &top3 {
-            let brief = truncate_line(&article.judgment, 100);
-            md.push_str(&format!("> - **{}** — {}\n", article.title, brief));
-        }
-        md.push('\n');
-    }
-
-    render_footer(md, calibration)
-}
-
-/// 渲染底部：认知校准 + 脚注
+/// 渲染底部
 fn render_footer(mut md: String, calibration: Option<&str>) -> Result<String> {
     if let Some(text) = calibration {
         if !text.is_empty() {
@@ -316,11 +189,10 @@ fn render_footer(mut md: String, calibration: Option<&str>) -> Result<String> {
         "*由 Sulix Intelligence 自动生成于 {}. Powered by DeepSeek.*\n",
         Local::now().format("%Y-%m-%d %H:%M"),
     ));
-
     Ok(md)
 }
 
-/// 生成 HTML 静态内参页面（Tailwind 样式，适配移动端，模糊层就绪）
+/// 生成 HTML 静态内参页面（Tailwind 样式，麦肯锡级交付格式）
 pub fn render_html_report(
     analysis: &[VerticalAnalysis],
     debate: Option<&[ArbitrationResult]>,
@@ -370,7 +242,7 @@ pub fn render_html_report(
         ));
     }
 
-    // 核心信号卡片
+    // 核心信号卡片（consulting-grade 格式）
     if !core_articles.is_empty() {
         body.push_str("<div class=\"space-y-6\">\n");
         for article in &core_articles {
@@ -385,7 +257,7 @@ pub fn render_html_report(
                 .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "");
 
             body.push_str(&format!(r#"<div class="border border-slate-200 bg-white p-5 rounded-lg shadow-sm" id="core-{}">
-    <div class="flex items-start justify-between mb-2">
+    <div class="flex items-start justify-between mb-3">
         <h2 class="text-base font-bold text-slate-900 leading-snug">{}</h2>
         <div class="shrink-0 ml-3 flex gap-1">
             {}
@@ -410,8 +282,8 @@ pub fn render_html_report(
         <span class="text-xs font-bold text-slate-800">⚖️ 战略执行建议</span>
         <p class="text-xs text-slate-700 mt-1 font-medium">{}</p>
     </div>
-    <div class="mt-2 text-xs text-slate-700">
-        <span class="font-bold">🎯 决策结论</span>: {} 信心:{}
+    <div class="mt-2 text-xs text-slate-700 font-medium">
+        🎯 <span class="font-bold">决策结论</span>: {} 信心:{}
     </div>
 </div>
 "#,
@@ -454,11 +326,18 @@ pub fn render_html_report(
             } else {
                 article.summary.clone()
             };
-            body.push_str(&format!(r#"        <div class="border-b border-slate-100 pb-2 last:border-0">
-            <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded {}">{}</span><span class="text-sm font-medium">{}</span>
+            body.push_str(&format!(
+                r#"        <div class="border-b border-slate-100 pb-2 last:border-0">
+            <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded {}">{}</span>
+            <span class="text-sm font-medium ml-2">{}</span>
             <p class="text-xs text-slate-500 mt-1">💬 {}</p>
         </div>
-"#, badge_color(&article.confidence), article.confidence, article.title, s));
+"#,
+                badge_color(&article.confidence),
+                article.confidence,
+                article.title,
+                s
+            ));
         }
         body.push_str("    </div>\n</details>\n");
     }
@@ -534,6 +413,106 @@ fn badge_color(confidence: &str) -> &'static str {
     }
 }
 
+/// 传统模式（无红蓝）：最重要的 3 件事 → 按分类展开 → 今日结论 → 认知校准
+fn render_normal_mode(
+    mut md: String,
+    analysis: &[VerticalAnalysis],
+    calibration: Option<&str>,
+) -> Result<String> {
+    // === 最重要的 3 件事 ===
+    md.push_str("## 📌 今日最重要的 3 件事\n\n");
+
+    let top3 = extract_top3(analysis);
+    if top3.is_empty() {
+        md.push_str("> 今日无新增情报分析。\n\n");
+    } else {
+        for (i, article) in top3.iter().enumerate() {
+            md.push_str(&format!(
+                "{}. **{}** — 重要性:{}/10 | 建议:{} | 信心:{}\n",
+                i + 1,
+                article.title,
+                article.importance,
+                article.action,
+                article.confidence,
+            ));
+            if !article.judgment.is_empty() {
+                let brief = truncate_line(&article.judgment, 120);
+                md.push_str(&format!("   > {}\n", brief));
+            }
+            md.push('\n');
+        }
+    }
+    md.push_str("---\n\n");
+
+    // === 按分类展开 ===
+    for va in analysis {
+        if va.articles.is_empty() {
+            continue;
+        }
+        md.push_str(&format!("## {}\n\n", category_emoji(&va.category)));
+        let mut sorted = va.articles.clone();
+        sorted.sort_by_key(|b| Reverse(b.importance));
+
+        let mut high_p = Vec::new();
+        let mut low_p = Vec::new();
+        for a in &sorted {
+            if a.importance >= CORE_THRESHOLD {
+                high_p.push(a);
+            } else {
+                low_p.push(a);
+            }
+        }
+
+        for article in &high_p {
+            md.push_str(&format!("### {}\n\n", article.title));
+            md.push_str(&format!(
+                "**重要性**: {}/10 | **相关性**: {} | **时间跨度**: {}  \n",
+                article.importance, article.relevance, article.time_horizon,
+            ));
+            md.push_str(&format!(
+                "**建议动作**: {} | **信心等级**: {}  \n\n",
+                article.action, article.confidence
+            ));
+            if !article.judgment.is_empty() {
+                md.push_str(&format!("**判断**:\n{}\n\n", article.judgment));
+            }
+            if !article.url.is_empty() {
+                md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
+            }
+            md.push_str("---\n\n");
+        }
+
+        if !low_p.is_empty() {
+            md.push_str(&format!(
+                "<details>\n<summary>📎 低优先级 ({})</summary>\n\n",
+                low_p.len()
+            ));
+            for article in &low_p {
+                md.push_str(&format!(
+                    "**{}** — {}/10\n\n> {}\n\n---\n\n",
+                    article.title, article.importance, article.judgment
+                ));
+            }
+            md.push_str("</details>\n\n");
+        }
+    }
+
+    // === 今日结论 ===
+    md.push_str("## 💡 今日结论\n\n");
+    if top3.is_empty() {
+        md.push_str("> 今日无重要情报。\n");
+    } else {
+        md.push_str("> 今天最重要的信号是：\n");
+        for article in &top3 {
+            let brief = truncate_line(&article.judgment, 100);
+            md.push_str(&format!("> - **{}** — {}\n", article.title, brief));
+        }
+        md.push('\n');
+    }
+
+    render_footer(md, calibration)
+}
+
 /// 从所有分析结果中提取最重要的 3 条（按 importance 降序）
 fn extract_top3(analysis: &[VerticalAnalysis]) -> Vec<&AnalyzedArticle> {
     let mut all: Vec<&AnalyzedArticle> = analysis
@@ -571,7 +550,7 @@ fn truncate_line(text: &str, max_len: usize) -> String {
     }
 }
 
-/// 从 judgment 中提取红军立场第一句
+/// 从 judgment 中提取 Action Title（第一句）
 /// 防崩：如果第一句太长（>80字）或为空，整体截断
 fn extract_red_stance(judgment: &str) -> String {
     let first = judgment
@@ -644,13 +623,13 @@ mod tests {
     }
 
     #[test]
-    fn test_debate_mode_shows_core_signals() {
+    fn test_debate_mode_shows_action_change() {
         use crate::agent::orchestrator::ArbitrationResult;
         let mut a = mock_article("Core Signal", 9, "研究");
         a.judgment = "这是一个重要的核心信号。".into();
         a.blue_rebuttal = "蓝军对此提出质疑。".into();
         a.arbitration = "仲裁认为可以采纳。".into();
-        a.belief_id = "应用大于模型".into();
+        a.belief_id = "d1".into();
         a.evidence_type = "support".into();
         let analysis = mock_analysis("AI", vec![a]);
         let debate = ArbitrationResult {
@@ -661,7 +640,7 @@ mod tests {
         let result = render_daily_report(&[analysis], Some(&[debate]), None, &[]).unwrap();
         assert!(result.contains("行动变化"));
         assert!(result.contains("Core Signal"));
-        assert!(result.contains("这是一个重要的核心信号"));
+        assert!(result.contains("蓝军对此提出质疑"));
         // Should NOT contain normal-mode sections
         assert!(!result.contains("最重要的 3 件事"));
         assert!(!result.contains("今日结论"));
