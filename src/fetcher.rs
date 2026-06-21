@@ -81,7 +81,11 @@ fn ashare_keyword_filter(articles: &mut Vec<Article>) {
 
     articles.retain(|a| {
         let title_match = re.is_match(&a.title);
-        let summary_match = a.summary.as_deref().map(|s| re.is_match(s)).unwrap_or(false);
+        let summary_match = a
+            .summary
+            .as_deref()
+            .map(|s| re.is_match(s))
+            .unwrap_or(false);
         title_match || summary_match
     });
 }
