@@ -257,6 +257,9 @@ async fn main() -> Result<()> {
                             arbitration: String::new(),
                             belief_id: String::new(),
                             evidence_type: String::new(),
+                            capital_score: 0,
+                            policy_score: 0,
+                            risk_score: 0,
                         })
                         .collect();
                     let analysis = VerticalAnalysis {

@@ -349,6 +349,12 @@ pub fn render_html_report(
         <span class="text-xs font-bold text-slate-800 tracking-tight block">💡 核心洞察 (BLUF)</span>
         <p class="text-sm text-slate-700 mt-1 leading-relaxed">{}</p>
     </div>
+    <div class="mb-3 bg-white p-3 border border-slate-100 rounded-lg space-y-2">
+        <span class="text-xs font-bold text-slate-800 tracking-tight block">📊 核心变量压力测试</span>
+        <div><div class="flex justify-between text-[11px] text-slate-500 mb-0.5"><span>资金/效率红利</span><span class="font-bold text-emerald-700">{}%</span></div><div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="bg-emerald-600 h-full rounded-full" style="width:{}%"></div></div></div>
+        <div><div class="flex justify-between text-[11px] text-slate-500 mb-0.5"><span>政策/技术共振</span><span class="font-bold text-blue-700">{}%</span></div><div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="bg-blue-600 h-full rounded-full" style="width:{}%"></div></div></div>
+        <div><div class="flex justify-between text-[11px] text-slate-500 mb-0.5"><span>壁垒/长尾风险</span><span class="font-bold text-rose-700">{}%</span></div><div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="bg-rose-500 h-full rounded-full" style="width:{}%"></div></div></div>
+    </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3 mt-3">
         <div class="bg-emerald-50 p-3 rounded"><span class="font-bold text-emerald-700">📊 效率变动/资本红利</span><p class="text-emerald-900 mt-1 leading-relaxed">{}</p></div>
         <div class="bg-rose-50 p-3 rounded"><span class="font-bold text-rose-700">📊 长尾隐患/壁垒审计</span><p class="text-rose-900 mt-1 leading-relaxed">{}</p></div>
@@ -368,6 +374,12 @@ pub fn render_html_report(
                 badge_color(&article.confidence),
                 article.confidence,
                 summary,
+                article.capital_score.min(100),
+                article.capital_score.min(100),
+                article.policy_score.min(100),
+                article.policy_score.min(100),
+                article.risk_score.min(100),
+                article.risk_score.min(100),
                 red_stance,
                 if article.blue_rebuttal.is_empty() { "蓝军未就此条提出反驳".to_string() } else { article.blue_rebuttal.clone() },
                 if article.arbitration.is_empty() { format!("重要性: {}/10 | 建议: {} | 信心: {}", article.importance, article.action, article.confidence) } else { article.arbitration.clone() },
@@ -548,6 +560,9 @@ mod tests {
             arbitration: String::new(),
             belief_id: String::new(),
             evidence_type: String::new(),
+            capital_score: 0,
+            policy_score: 0,
+            risk_score: 0,
         }
     }
 

@@ -93,6 +93,9 @@ pub fn arbitrate(
                 arbitration: arbitration_text,
                 belief_id: String::new(),
                 evidence_type: String::new(),
+                capital_score: 0,
+                policy_score: 0,
+                risk_score: 0,
             });
         }
 

@@ -50,6 +50,12 @@ pub struct AnalyzedArticle {
     pub belief_id: String,
     #[serde(default)]
     pub evidence_type: String,
+    #[serde(default)]
+    pub capital_score: u8,
+    #[serde(default)]
+    pub policy_score: u8,
+    #[serde(default)]
+    pub risk_score: u8,
 }
 
 /// 按 category 将文章分组
@@ -137,6 +143,9 @@ pub async fn analyze(
                             arbitration: String::new(),
                             belief_id: String::new(),
                             evidence_type: String::new(),
+                            capital_score: 0,
+                            policy_score: 0,
+                            risk_score: 0,
                         });
                     }
                 }
@@ -181,6 +190,9 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         \"time_horizon\": \"短期/中期/长期\",\n      \
         \"action\": \"立即行动/研究/观察/忽略\",\n      \
         \"confidence\": \"高/中/低\",\n      \
+        \"capital_score\": 85,\n      \
+        \"policy_score\": 70,\n      \
+        \"risk_score\": 45,\n      \
         \"judgment\": \"核心解读（2-4 句话）\"\n    \
         }\n  \
         ]\n\
@@ -190,10 +202,11 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         2. strategic_level 是必填字段，必须精确使用 S/A/B/C 中的一个字母\n\
         3. importance 必须是 1-10 的整数\n\
         4. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
-        5. judgment 必须包含判断逻辑和从创业者视角的解读\n\
-        6. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        7. id 字段必须从输入原文中获取并严格保持原样\n\
-        8. 输出纯 JSON，不要在前后加任何说明文字",
+        5. capital_score/policy_score/risk_score 必须是 0-100 的整数\n\
+        6. judgment 必须包含判断逻辑和从创业者视角的解读\n\
+        7. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
+        8. id 字段必须从输入原文中获取并严格保持原样\n\
+        9. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
@@ -484,6 +497,9 @@ fn enrich_with_urls(
                 arbitration: String::new(),
                 belief_id: String::new(),
                 evidence_type: String::new(),
+                capital_score: 0,
+                policy_score: 0,
+                risk_score: 0,
             }
         })
         .collect()
