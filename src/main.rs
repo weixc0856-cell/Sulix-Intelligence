@@ -199,6 +199,8 @@ async fn main() -> Result<()> {
                             action: n.action,
                             confidence: n.confidence,
                             judgment: n.narrative,
+                            blue_rebuttal: String::new(),
+                            arbitration: String::new(),
                         })
                         .collect();
                     let analysis = VerticalAnalysis {
@@ -209,8 +211,6 @@ async fn main() -> Result<()> {
                         category: s.category,
                         analysis,
                         verdict: String::new(),
-                        red_summary: String::new(),
-                        blue_summary: String::new(),
                     }
                 })
                 .collect();

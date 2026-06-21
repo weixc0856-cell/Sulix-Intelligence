@@ -1,11 +1,15 @@
 //! 渲染模块 — Markdown 日报生成
 //!
-//! 将 LLM 分析结果渲染为结构化 Markdown 日报，格式：
-//! 1. 今日最重要的 3 件事（按重要性排序）
-//! 2. [红蓝模式] 红蓝对抗 Top-N 卡片 → 附录（不再重复展开）
-//! 3. [普通模式] 按分类展开各条分析
-//! 4. 今日结论
-//! 5. [Phase C] 认知校准
+//! 格式（红蓝模式）：
+//! 1. 今日核心信号（importance >= 6 的卡片，包含 红军/蓝军/仲裁 三行）
+//! 2. 📦 其他信号（importance < 6 折叠）
+//! 3. 认知校准，无"最重要的 3 件事"和"今日结论"——卡片本身就是结论，不做复读。
+//!
+//! 格式（传统模式，无红蓝）：
+//! 1. 最重要的 3 件事
+//! 2. 按分类展开
+//! 3. 今日结论
+//! 4. 认知校准
 
 use std::cmp::Reverse;
 
@@ -15,8 +19,8 @@ use chrono::Local;
 use crate::agent::orchestrator::ArbitrationResult;
 use crate::llm::{AnalyzedArticle, VerticalAnalysis};
 
-/// 红蓝对抗最大展示条数（超出部分折叠到附录）
-const MAX_DEBATE_CARDS: usize = 10;
+/// 核心信号最低重要性阈值（低于此值进入折叠附录）
+const CORE_THRESHOLD: u8 = 6;
 
 /// 生成最终日报 Markdown
 pub fn render_daily_report(
@@ -27,9 +31,99 @@ pub fn render_daily_report(
     let today = Local::now().format("%Y-%m-%d").to_string();
     let mut md = String::new();
 
-    // 标题
     md.push_str(&format!("# 今日创业情报 — {}\n\n", today));
 
+    if let Some(debate_results) = debate {
+        let has_content = debate_results.iter().any(|r| !r.verdict.is_empty());
+        if has_content {
+            return render_debate_mode(md, debate_results, calibration);
+        }
+    }
+
+    render_normal_mode(md, analysis, calibration)
+}
+
+/// 红蓝模式：核心信号卡片 → 折叠附录 → 认知校准
+fn render_debate_mode(
+    mut md: String,
+    debate_results: &[ArbitrationResult],
+    calibration: Option<&str>,
+) -> Result<String> {
+    // 收集所有文章，按重要性降序排列
+    let mut all_articles: Vec<(&str, &AnalyzedArticle)> = Vec::new();
+    for result in debate_results {
+        for article in &result.analysis.articles {
+            all_articles.push((result.verdict.as_str(), article));
+        }
+    }
+    all_articles.sort_by_key(|(_, a)| Reverse(a.importance));
+
+    // 分拆核心信号和边缘信号
+    let mut core_articles: Vec<(&str, &AnalyzedArticle)> = Vec::new();
+    let mut edge_articles: Vec<(&str, &AnalyzedArticle)> = Vec::new();
+    for (verdict, article) in all_articles {
+        if article.importance < CORE_THRESHOLD {
+            edge_articles.push((verdict, article));
+        } else {
+            core_articles.push((verdict, article));
+        }
+    }
+
+    // === 今日核心信号 ===
+    if !core_articles.is_empty() {
+        md.push_str("## 📌 今日核心信号\n\n");
+        for (_, article) in &core_articles {
+            md.push_str(&format!(
+                "**{}** — 重要性:{}/10 | 信心:{}\n\n",
+                article.title, article.importance, article.confidence
+            ));
+            md.push_str(&format!(
+                "🎯 **核心**: {}\n\n",
+                truncate_line(&article.judgment, 200)
+            ));
+
+            if !article.blue_rebuttal.is_empty() {
+                md.push_str(&format!("🔵 **蓝军**: {}\n\n", article.blue_rebuttal));
+            }
+            if !article.arbitration.is_empty() {
+                md.push_str(&format!("⚖️ **仲裁**: {}\n\n", article.arbitration));
+            }
+            if !article.url.is_empty() {
+                md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
+            }
+            md.push_str("---\n\n");
+        }
+    } else {
+        md.push_str("> 今日无高优先级信号。\n\n");
+    }
+
+    // === 折叠附录：低分信号 ===
+    if !edge_articles.is_empty() {
+        md.push_str(&format!(
+            "<details>\n<summary>📦 其他信号 ({} 条)</summary>\n\n",
+            edge_articles.len()
+        ));
+        for (_, article) in &edge_articles {
+            md.push_str(&format!(
+                "**{}** — {}/10 | 信心:{}\n\n> {}\n\n---\n\n",
+                article.title,
+                article.importance,
+                article.confidence,
+                truncate_line(&article.judgment, 150),
+            ));
+        }
+        md.push_str("</details>\n\n");
+    }
+
+    render_footer(md, calibration)
+}
+
+/// 传统模式（无红蓝）：最重要的 3 件事 → 按分类展开 → 今日结论 → 认知校准
+fn render_normal_mode(
+    mut md: String,
+    analysis: &[VerticalAnalysis],
+    calibration: Option<&str>,
+) -> Result<String> {
     // === 最重要的 3 件事 ===
     md.push_str("## 📌 今日最重要的 3 件事\n\n");
 
@@ -56,85 +150,7 @@ pub fn render_daily_report(
 
     md.push_str("---\n\n");
 
-    // === Phase B: 红蓝对抗概览（如有） ===
-    if let Some(debate_results) = debate {
-        let has_content = debate_results.iter().any(|r| !r.verdict.is_empty());
-        if has_content {
-            md.push_str("## 🔴🔵 红蓝对抗\n\n");
-
-            let mut total_cards = 0usize;
-            let mut remainder = 0usize;
-
-            for result in debate_results {
-                if result.analysis.articles.is_empty() {
-                    continue;
-                }
-
-                md.push_str(&format!("### {}\n\n", category_emoji(&result.category)));
-
-                // 仲裁结论（简短一行）
-                if !result.verdict.is_empty() {
-                    md.push_str(&format!("> {}\n\n", result.verdict));
-                }
-
-                // 按重要性降序排列后展示
-                let mut sorted = result.analysis.articles.clone();
-                sorted.sort_by_key(|b| Reverse(b.importance));
-
-                let remaining_cards = MAX_DEBATE_CARDS.saturating_sub(total_cards);
-                let (show, rest) = sorted.split_at(remaining_cards.min(sorted.len()));
-                total_cards += show.len();
-                remainder += rest.len();
-
-                for article in show {
-                    md.push_str(&format!(
-                        "🔴 **{}** — 重要性:{}/10 | 信心:{}\n\n",
-                        article.title, article.importance, article.confidence,
-                    ));
-
-                    if !article.judgment.is_empty() {
-                        md.push_str(&format!("   **判断**: {}\n\n", article.judgment));
-                    }
-
-                    if !article.url.is_empty() {
-                        md.push_str(&format!("   🔗 [原文链接]({})\n\n", article.url));
-                    }
-
-                    md.push_str("---\n\n");
-                }
-            }
-
-            // 折叠附录：剩余文章
-            if remainder > 0 {
-                md.push_str(&format!(
-                    "<details>\n<summary>📋 点击展开剩余 {} 篇分析</summary>\n\n",
-                    remainder
-                ));
-                for result in debate_results {
-                    let mut sorted = result.analysis.articles.clone();
-                    sorted.sort_by_key(|b| Reverse(b.importance));
-                    if sorted.len() > MAX_DEBATE_CARDS {
-                        for article in sorted.iter().skip(MAX_DEBATE_CARDS) {
-                            md.push_str(&format!(
-                                "**{}** — {}/10 | 信心:{}\n\n> {}\n\n---\n\n",
-                                article.title,
-                                article.importance,
-                                article.confidence,
-                                truncate_line(&article.judgment, 200),
-                            ));
-                        }
-                    }
-                }
-                md.push_str("</details>\n\n");
-            }
-
-            // 红蓝模式：跳过后续的"按分类展开"（已在上方展示）
-            // 通过将 analysis 置空来跳过
-            return render_footer(md, top3, calibration);
-        }
-    }
-
-    // === 按分类展开（仅非红蓝模式） ===
+    // === 按分类展开 ===
     for va in analysis {
         if va.articles.is_empty() {
             continue;
@@ -142,14 +158,11 @@ pub fn render_daily_report(
 
         md.push_str(&format!("## {}\n\n", category_emoji(&va.category)));
 
-        // 按重要性降序排列
         let mut sorted = va.articles.clone();
         sorted.sort_by_key(|b| Reverse(b.importance));
 
         for article in &sorted {
             md.push_str(&format!("### {}\n\n", article.title));
-
-            // 元信息行
             md.push_str(&format!(
                 "**重要性**: {}/10 | **相关性**: {} | **时间跨度**: {}  \n",
                 article.importance, article.relevance, article.time_horizon,
@@ -158,30 +171,16 @@ pub fn render_daily_report(
                 "**建议动作**: {} | **信心等级**: {}  \n\n",
                 article.action, article.confidence,
             ));
-
-            // 判断
             if !article.judgment.is_empty() {
                 md.push_str(&format!("**判断**:\n{}\n\n", article.judgment));
             }
-
-            // 原文链接
             if !article.url.is_empty() {
                 md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
             }
-
             md.push_str("---\n\n");
         }
     }
 
-    render_footer(md, top3, calibration)
-}
-
-/// 渲染日报底部：今日结论 + 认知校准 + 脚注
-fn render_footer(
-    mut md: String,
-    top3: Vec<&AnalyzedArticle>,
-    calibration: Option<&str>,
-) -> Result<String> {
     // === 今日结论 ===
     md.push_str("## 💡 今日结论\n\n");
     if top3.is_empty() {
@@ -195,7 +194,11 @@ fn render_footer(
         md.push('\n');
     }
 
-    // === Phase C: 认知校准 ===
+    render_footer(md, calibration)
+}
+
+/// 渲染底部：认知校准 + 脚注
+fn render_footer(mut md: String, calibration: Option<&str>) -> Result<String> {
     if let Some(text) = calibration {
         if !text.is_empty() {
             md.push_str("────────────────────────────────────────\n\n");
@@ -205,7 +208,6 @@ fn render_footer(
         }
     }
 
-    // 脚注
     md.push_str("---\n\n");
     md.push_str(&format!(
         "*由 Sulix Intelligence 自动生成于 {}. Powered by DeepSeek.*\n",
@@ -267,6 +269,8 @@ mod tests {
             action: action.into(),
             confidence: "中".into(),
             judgment: format!("关于{}的分析判断", title),
+            blue_rebuttal: String::new(),
+            arbitration: String::new(),
         }
     }
 
@@ -285,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn test_top3_extraction() {
+    fn test_normal_mode_top3() {
         let articles = vec![
             mock_article("Article A", 10, "研究"),
             mock_article("Article B", 8, "观察"),
@@ -297,24 +301,45 @@ mod tests {
         assert!(result.contains("Article A"));
         assert!(result.contains("Article B"));
         assert!(result.contains("Article C"));
-        assert!(result.contains("今日最重要的 3 件事"));
+        assert!(result.contains("最重要的 3 件事"));
     }
 
     #[test]
-    fn test_debate_section_present() {
+    fn test_debate_mode_shows_core_signals() {
         use crate::agent::orchestrator::ArbitrationResult;
-        let a = mock_article("Debate Article", 7, "研究");
+        let mut a = mock_article("Core Signal", 9, "研究");
+        a.judgment = "这是一个重要的核心信号。".into();
+        a.blue_rebuttal = "蓝军对此提出质疑。".into();
+        a.arbitration = "仲裁认为可以采纳。".into();
         let analysis = mock_analysis("AI", vec![a]);
         let debate = ArbitrationResult {
             category: "AI".into(),
             analysis: analysis.clone(),
-            verdict: "仲裁结论：各有依据".into(),
-            red_summary: "红军认为有机会".into(),
-            blue_summary: "蓝军认为有风险".into(),
+            verdict: "仲裁结论".into(),
         };
         let result = render_daily_report(&[analysis], Some(&[debate]), None).unwrap();
-        assert!(result.contains("红蓝对抗"));
-        assert!(result.contains("Debate Article"));
+        assert!(result.contains("今日核心信号"));
+        assert!(result.contains("核心信号"));
+        assert!(result.contains("蓝军对此提出质疑"));
+        assert!(result.contains("仲裁认为可以采纳"));
+        // Should NOT contain normal-mode sections
+        assert!(!result.contains("最重要的 3 件事"));
+        assert!(!result.contains("今日结论"));
+    }
+
+    #[test]
+    fn test_debate_mode_collapses_low_importance() {
+        use crate::agent::orchestrator::ArbitrationResult;
+        let a = mock_article("Low Signal", 3, "忽略");
+        let analysis = mock_analysis("AI", vec![a]);
+        let debate = ArbitrationResult {
+            category: "AI".into(),
+            analysis: analysis,
+            verdict: "无明确评级".into(),
+        };
+        let result = render_daily_report(&[], Some(&[debate]), None).unwrap();
+        assert!(result.contains("其他信号"));
+        assert!(!result.contains("今日核心信号")); // All articles < 6, so no core section
     }
 
     #[test]
@@ -368,7 +393,7 @@ mod tests {
             mock_article("High", 9, "研究"),
         ];
         let analysis = mock_analysis("AI", articles);
-        let analyses = [analysis]; // bind to extend lifetime
+        let analyses = [analysis];
         let top3 = extract_top3(&analyses);
         assert_eq!(top3.len(), 1);
         assert_eq!(top3[0].title, "High");

@@ -27,7 +27,7 @@ pub struct VerticalAnalysis {
     pub articles: Vec<AnalyzedArticle>,
 }
 
-/// 分析后的文章
+/// 分析后的文章（支持红蓝对抗：judgment=红军叙事，blue_rebuttal=蓝军反驳）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzedArticle {
     pub title: String,
@@ -38,6 +38,10 @@ pub struct AnalyzedArticle {
     pub action: String,
     pub confidence: String,
     pub judgment: String,
+    #[serde(default)]
+    pub blue_rebuttal: String,
+    #[serde(default)]
+    pub arbitration: String,
 }
 
 /// 按 category 将文章分组
@@ -119,6 +123,8 @@ pub async fn analyze(
                             action: "未分析".into(),
                             confidence: "低".into(),
                             judgment: format!("⚠️ LLM 分析失败，原文: {}", a.url),
+                            blue_rebuttal: String::new(),
+                            arbitration: String::new(),
                         });
                     }
                 }
@@ -399,6 +405,8 @@ fn enrich_with_urls(
                 action: raw.action,
                 confidence: raw.confidence,
                 judgment: raw.judgment,
+                blue_rebuttal: String::new(),
+                arbitration: String::new(),
             }
         })
         .collect()
