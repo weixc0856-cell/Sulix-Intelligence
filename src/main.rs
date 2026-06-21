@@ -181,6 +181,12 @@ async fn main() -> Result<()> {
         keep_articles.len()
     );
 
+    // 回退：没有信念匹配时使用全部文章
+    if routed_articles.is_empty() {
+        log::info!("🎯 Editor Agent: 无信念匹配，回退到全线分析");
+        routed_articles = keep_articles.clone();
+    }
+
     // 8. 重新分组（按 routed category）
     let grouped_keep = llm::group_by_category(&routed_articles);
     log::info!(
