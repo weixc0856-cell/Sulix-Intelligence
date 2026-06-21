@@ -151,15 +151,33 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // 7. 重新分组（过滤后 vertical 可能减少）
-    let grouped_keep = llm::group_by_category(&keep_articles);
+    // 7. Phase Chief of Staff: Editor Agent 精选（认知压缩）
+    let world_state = build_world_state(&config.output.vault_path)?;
+    let editor_picks =
+        agent::editor::select_top_articles(&keep_articles, &world_state, &api_key, &config.llm)
+            .await?;
+    // 按 Editor 的路由分类重新分组
+    let mut routed_articles: Vec<fetcher::Article> = Vec::new();
+    for pick in &editor_picks {
+        let mut article = pick.article.clone();
+        article.category = pick.routed_category.clone(); // 按 Editor 路由重写分类
+        routed_articles.push(article);
+    }
     log::info!(
-        "Scan Agent 处理后: {} 个 vertical, {} 篇待分析",
-        grouped_keep.len(),
-        keep_articles.len()
+        "🎯 Editor Agent: {} → {} 篇精选",
+        keep_articles.len(),
+        routed_articles.len()
     );
 
-    // 8. Phase B: 红蓝对抗（或回退到传统 LLM 分析）
+    // 8. 重新分组（按 routed category）
+    let grouped_keep = llm::group_by_category(&routed_articles);
+    log::info!(
+        "Editor 处理后: {} 个 vertical, {} 篇待分析",
+        grouped_keep.len(),
+        routed_articles.len()
+    );
+
+    // 9. Phase B: 红蓝对抗（或回退到传统 LLM 分析）
     let use_red_blue = config.agent.as_ref().is_some_and(|a| a.synthesis_enabled);
 
     let (analysis, debate_data) = if use_red_blue && !grouped_keep.is_empty() {
@@ -325,6 +343,39 @@ async fn main() -> Result<()> {
     println!("\n✅ 日报已生成: {}", report_path.display());
     log::info!("✅ Sulix Intelligence 全链路执行完成");
     Ok(())
+}
+
+/// 构建世界状态（昨日简报摘要）供 Editor Agent 参考
+/// 冷启动时返回默认提示
+fn build_world_state(vault_path: &str) -> Result<String> {
+    let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+        .format("%Y-%m-%d")
+        .to_string();
+    let path = std::path::Path::new(vault_path).join(format!("{}.md", yesterday));
+
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            // 提取昨日 Top 3 标题（如果存在）
+            let mut state = String::from("昨日已覆盖的内容（仅摘要）：\n");
+            for line in content.lines().take(20) {
+                if line.starts_with("**")
+                    || line.starts_with("1. ")
+                    || line.starts_with("2. ")
+                    || line.starts_with("3. ")
+                {
+                    state.push_str(line);
+                    state.push('\n');
+                }
+            }
+            if state.len() < 30 {
+                state = "昨日无结构化简报，请基于绝对增量价值筛选。".into();
+            }
+            Ok(state)
+        }
+        Err(_) => {
+            Ok("首次运行或昨日无简报。请基于绝对增量价值和首发异动进行筛选，不设历史基准。".into())
+        }
+    }
 }
 
 /// 获取数据库路径

@@ -274,6 +274,59 @@ pub(crate) async fn call_with_retry(
     Err(last_error.unwrap())
 }
 
+/// 调用 DeepSeek API 返回原始文本（供 Editor Agent 等自定义解析场景使用）
+pub(crate) async fn call_raw(
+    client: &reqwest::Client,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String> {
+    let url = format!(
+        "{}/chat/completions",
+        llm_config.base_url.trim_end_matches('/')
+    );
+
+    let request_body = serde_json::json!({
+        "model": llm_config.model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "max_tokens": llm_config.max_tokens.min(2048),
+        "temperature": llm_config.temperature.min(0.2),
+        "response_format": {"type": "json_object"}
+    });
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&request_body)
+        .send()
+        .await?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "DeepSeek API 返回错误 ({}): {}",
+            status,
+            error_text
+        ));
+    }
+
+    let chat_response: ChatResponse = response.json().await?;
+    let content = chat_response
+        .choices
+        .first()
+        .map(|c| &c.message.content)
+        .ok_or_else(|| anyhow::anyhow!("API 响应中没有 choices"))?
+        .clone();
+
+    Ok(content)
+}
+
 /// 实际调用 DeepSeek API
 async fn call_deepseek(
     client: &reqwest::Client,
