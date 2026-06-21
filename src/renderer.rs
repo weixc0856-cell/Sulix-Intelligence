@@ -92,17 +92,20 @@ fn render_debate_mode(
             article.title,
             summary,
         ));
-        md.push_str(&format!("🔴 **支持的证据**: {}\n\n", red_stance));
+        md.push_str(&format!("📊 **效率变动/资本红利**: {}\n\n", red_stance));
         if !article.blue_rebuttal.is_empty() {
-            md.push_str(&format!("🔵 **反对的证据**: {}\n\n", article.blue_rebuttal));
+            md.push_str(&format!(
+                "📊 **长尾隐患/壁垒审计**: {}\n\n",
+                article.blue_rebuttal
+            ));
         }
         if !article.arbitration.is_empty() {
-            md.push_str(&format!("⚖️ **仲裁**: {}\n\n", article.arbitration));
+            md.push_str(&format!("⚖️ **战略执行建议**: {}\n\n", article.arbitration));
         }
 
         let judgment_line = if !article.judgment.is_empty() {
             format!(
-                "🎯 **判断**: {} 信心:{}\n\n",
+                "🎯 **决策结论**: {} 信心:{}\n\n",
                 article.judgment, article.confidence
             )
         } else {
