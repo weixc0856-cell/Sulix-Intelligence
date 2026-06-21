@@ -23,6 +23,9 @@ use crate::llm;
 pub struct EditorSelection {
     pub article: Article,
     pub routed_category: String,
+    /// 挑战的认知编号（999=不挑战任何认知）
+    #[allow(dead_code)]
+    pub thesis_index: usize,
     #[allow(dead_code)]
     pub reason: String,
 }
@@ -36,16 +39,20 @@ struct EditorResponse {
 #[derive(Debug, Deserialize)]
 struct EditorItem {
     index: usize,
+    /// 挑战的认知编号（0-based, 999=无）
+    thesis_index: usize,
     category: String,
     reason: String,
 }
 
-/// 幕僚长筛选：从 articles 中选出最重要的 3-5 条
+/// 幕僚长筛选：从 articles 中选出挑战现有认知的信息
 ///
-/// world_state: 昨日简报摘要，或首次运行时的默认提示
+/// world_state: 昨日简报摘要
+/// theses: 当前世界模型的认知清单
 pub async fn select_top_articles(
     articles: &[Article],
     world_state: &str,
+    theses: &[String],
     api_key: &str,
     llm_config: &LlmConfig,
 ) -> Result<Vec<EditorSelection>> {
@@ -73,28 +80,47 @@ pub async fn select_top_articles(
     let total = articles.len();
     log::info!("🎯 Editor Agent: {} 篇待筛选", total);
 
-    // 2. 系统 Prompt
-    let system_prompt = format!(
-        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的唯一职责是从今日信息流中选出 3-5 条最值得创始人关注的信号。
+    // 2. 系统 Prompt（Thesis Challenge 核心）
+    let theses_list: String = theses
+        .iter()
+        .enumerate()
+        .map(|(i, t)| format!("  [{}] {}", i, t))
+        .collect::<Vec<_>>()
+        .join("\n");
 
-当前世界状态（昨天已覆盖的内容）：
+    let system_prompt = format!(
+        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的职责不是找创业机会，而是判断每天的信息流中是否有任何一条**挑战了现有世界模型**。
+
+## 当前世界模型（认知清单）
+
 {}
 
-筛选标准：
-- 只选会改变创始人决策或认知的信息
-- 工具/插件/版本更新除非对创业假设有直接影响，否则忽略
-- 不考虑已经覆盖过的重复话题
-- 优先选范式级信号（S/A 级）> 重要信号（B 级）> 噪音（C 级）
+## 当前世界状态（昨日简报）
 
-输出 JSON 数组：
-{{"selections": [{{"index": 序号, "category": "目标分类", "reason": "麦肯锡 So-What 理由（一句话，直接指出如何冲击或修正创始人的既定路线）"}}]}}
+{}
+
+## 你的任务
+
+对每条信息，判断它是否挑战上述认知清单中的任何一条：
+
+- **挑战认知** = 这条信息如果为真，会让你重新思考某个认知的正确性
+- **确认认知** = 这条信息支持某个认知，但没有挑战它
+- **无关** = 这条信息与所有认知无关
+
+## 输出规则
+
+只输出 priority 为 HIGH 的条目（挑战认知），最多 3 条。
+
+JSON 格式：
+{{"selections": [
+  {{"index": 序号, "thesis_index": 被挑战的认知编号(0-based), "category": "路由分类(AI/技术主线/创业/A股/芯片/政策)", "reason": "为什么它挑战了这个认知？（一句话，禁止用'值得关注'等废话）"}}
+]}}
 
 约束：
-- 最多选 5 条
-- ❌ 严禁在理由中使用"值得关注、不可否认、双刃剑、不可小觑、值得注意的是"等废话词
-- ✍️ 理由必须直接指出该信息如何影响创业者的决策或路线图
-- category 必须是已有分类之一：AI、技术主线、创业、A股、芯片、政策"#,
-        world_state
+- priority 不是 HIGH 的不要输出
+- 如果没有任何信息挑战现有认知 → 输出空数组
+- 最多 3 条"#,
+        theses_list, world_state
     );
 
     // 3. 调用 LLM（复用 llm::call_raw）
@@ -111,16 +137,23 @@ pub async fn select_top_articles(
     let mut selections = Vec::new();
     for item in parsed.selections {
         if let Some(article) = articles.get(item.index) {
+            let thesis_label = if item.thesis_index < theses.len() {
+                theses[item.thesis_index].as_str()
+            } else {
+                "(无)"
+            };
             log::info!(
-                "  🎯 选中 [{}] {} → {}: {}",
+                "  🎯 挑战认知 [{}] {} → 认知:{} ({}): {}",
                 item.index,
                 article.title,
-                item.category,
+                item.thesis_index,
+                thesis_label,
                 item.reason
             );
             selections.push(EditorSelection {
                 article: article.clone(),
                 routed_category: item.category,
+                thesis_index: item.thesis_index,
                 reason: item.reason,
             });
         } else {

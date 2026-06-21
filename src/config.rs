@@ -25,6 +25,9 @@ pub struct Config {
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
+    /// 世界模型：显式认知清单（Thesis Engine 的输入）
+    #[serde(default)]
+    pub world_model: Option<WorldModelConfig>,
 }
 
 /// LLM 配置
@@ -145,6 +148,14 @@ fn default_compression_enabled() -> bool {
 }
 fn default_burial_threshold() -> u8 {
     3
+}
+
+/// 世界模型配置：显式认知清单
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorldModelConfig {
+    /// 核心认知列表（每条是一个可证伪的 belief）
+    #[serde(default)]
+    pub theses: Vec<String>,
 }
 
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）

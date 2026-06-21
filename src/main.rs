@@ -153,9 +153,19 @@ async fn main() -> Result<()> {
 
     // 7. Phase Chief of Staff: Editor Agent 精选（认知压缩）
     let world_state = build_world_state(&config.output.vault_path)?;
-    let editor_picks =
-        agent::editor::select_top_articles(&keep_articles, &world_state, &api_key, &config.llm)
-            .await?;
+    let theses: Vec<String> = config
+        .world_model
+        .as_ref()
+        .map(|wm| wm.theses.clone())
+        .unwrap_or_default();
+    let editor_picks = agent::editor::select_top_articles(
+        &keep_articles,
+        &world_state,
+        &theses,
+        &api_key,
+        &config.llm,
+    )
+    .await?;
     // 按 Editor 的路由分类重新分组
     let mut routed_articles: Vec<fetcher::Article> = Vec::new();
     for pick in &editor_picks {
@@ -267,8 +277,12 @@ async fn main() -> Result<()> {
     let calibration_text = agent::calibration::calibrate(&analysis, &api_key, &config.llm).await?;
 
     // 9. 渲染日报（支持辩论痕迹 + 认知校准）
-    let report =
-        renderer::render_daily_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
+    let report = renderer::render_daily_report(
+        &analysis,
+        debate_data.as_deref(),
+        Some(&calibration_text),
+        &theses,
+    )?;
     log::info!("日报渲染完成 ({} 字符)", report.len());
 
     // 10. 渲染 HTML 内参页面
