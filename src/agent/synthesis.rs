@@ -198,6 +198,7 @@ fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &st
         \"articles\": [\n    \
         {\n      \
         \"id\": \"文章的 ID（从输入获取，严格保持原样）\",\n      \
+        \"summary\": \"一句话核心摘要（30-50字，大白话）\",\n      \
         \"title\": \"文章标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
@@ -209,12 +210,13 @@ fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &st
         ]\n\
         }\n\n\
         注意事项：\n\
-        1. importance 必须是 1-10 的整数\n\
-        2. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
-        3. judgment 必须包含从创业者视角的乐观叙事解读\n\
-        4. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        5. id 字段必须从输入原文中获取并严格保持原样\n\
-        6. 输出纯 JSON，不要在前后加任何说明文字",
+        1. summary 必须是一句话（30-50字），用大白话写出核心信息\n\
+        2. importance 必须是 1-10 的整数\n\
+        3. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
+        4. judgment 必须包含从创业者视角的乐观叙事解读\n\
+        5. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
+        6. id 字段必须从输入原文中获取并严格保持原样\n\
+        7. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt

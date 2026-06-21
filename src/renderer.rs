@@ -73,15 +73,21 @@ fn render_debate_mode(
     if !core_articles.is_empty() {
         md.push_str("## 📌 今日核心信号\n\n");
         for (_, article) in &core_articles {
+            // 💬 summary（防呆：为空时用 judgment 前 50 字替代）
+            let summary = if article.summary.is_empty() {
+                truncate_line(&article.judgment, 50)
+            } else {
+                article.summary.clone()
+            };
+            // 🔴 红军立场（从 judgment 取第一句，防崩：太长或为空时整体截断）
+            let red_stance = extract_red_stance(&article.judgment);
+
             md.push_str(&format!(
                 "**{}** — 重要性:{}/10 | 信心:{}\n\n",
                 article.title, article.importance, article.confidence
             ));
-            md.push_str(&format!(
-                "🎯 **核心**: {}\n\n",
-                truncate_line(&article.judgment, 200)
-            ));
-
+            md.push_str(&format!("💬 {}\n\n", summary));
+            md.push_str(&format!("🔴 **红军**: {}\n\n", red_stance));
             if !article.blue_rebuttal.is_empty() {
                 md.push_str(&format!("🔵 **蓝军**: {}\n\n", article.blue_rebuttal));
             }
@@ -97,19 +103,21 @@ fn render_debate_mode(
         md.push_str("> 今日无高优先级信号。\n\n");
     }
 
-    // === 折叠附录：低分信号 ===
+    // === 折叠附录：低分信号（统一一个 <details>，不套娃） ===
     if !edge_articles.is_empty() {
         md.push_str(&format!(
             "<details>\n<summary>📦 其他信号 ({} 条)</summary>\n\n",
             edge_articles.len()
         ));
         for (_, article) in &edge_articles {
+            let s = if article.summary.is_empty() {
+                truncate_line(&article.judgment, 50)
+            } else {
+                article.summary.clone()
+            };
             md.push_str(&format!(
-                "**{}** — {}/10 | 信心:{}\n\n> {}\n\n---\n\n",
-                article.title,
-                article.importance,
-                article.confidence,
-                truncate_line(&article.judgment, 150),
+                "**{}** — {}/10 | 信心:{}\n\n💬 {}\n\n---\n\n",
+                article.title, article.importance, article.confidence, s,
             ));
         }
         md.push_str("</details>\n\n");
@@ -118,7 +126,7 @@ fn render_debate_mode(
     render_footer(md, calibration)
 }
 
-/// 传统模式（无红蓝）：最重要的 3 件事 → 按分类展开 → 今日结论 → 认知校准
+/// 传统模式（无红蓝）：最重要的 3 件事 → 核心信号 → 折叠低分 → 今日结论 → 认知校准
 fn render_normal_mode(
     mut md: String,
     analysis: &[VerticalAnalysis],
@@ -161,7 +169,17 @@ fn render_normal_mode(
         let mut sorted = va.articles.clone();
         sorted.sort_by_key(|b| Reverse(b.importance));
 
-        for article in &sorted {
+        let mut high_p = Vec::new();
+        let mut low_p = Vec::new();
+        for a in &sorted {
+            if a.importance >= CORE_THRESHOLD {
+                high_p.push(a);
+            } else {
+                low_p.push(a);
+            }
+        }
+
+        for article in &high_p {
             md.push_str(&format!("### {}\n\n", article.title));
             md.push_str(&format!(
                 "**重要性**: {}/10 | **相关性**: {} | **时间跨度**: {}  \n",
@@ -178,6 +196,20 @@ fn render_normal_mode(
                 md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
             }
             md.push_str("---\n\n");
+        }
+
+        if !low_p.is_empty() {
+            md.push_str(&format!(
+                "<details>\n<summary>📎 低优先级 ({})</summary>\n\n",
+                low_p.len()
+            ));
+            for article in &low_p {
+                md.push_str(&format!(
+                    "**{}** — {}/10\n\n> {}\n\n---\n\n",
+                    article.title, article.importance, article.judgment
+                ));
+            }
+            md.push_str("</details>\n\n");
         }
     }
 
@@ -254,6 +286,21 @@ fn truncate_line(text: &str, max_len: usize) -> String {
     }
 }
 
+/// 从 judgment 中提取红军立场第一句
+/// 防崩：如果第一句太长（>80字）或为空，整体截断
+fn extract_red_stance(judgment: &str) -> String {
+    let first = judgment
+        .split(['。', '\n', '.'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    if first.is_empty() || first.chars().count() > 80 {
+        format!("{}...", judgment.chars().take(75).collect::<String>())
+    } else {
+        first.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,6 +316,7 @@ mod tests {
             action: action.into(),
             confidence: "中".into(),
             judgment: format!("关于{}的分析判断", title),
+            summary: String::new(),
             blue_rebuttal: String::new(),
             arbitration: String::new(),
         }
