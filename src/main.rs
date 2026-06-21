@@ -1,19 +1,14 @@
 //! Sulix Intelligence — 个人创业者的 AI 战略情报助手
 //!
-//! 全链路管线：RSS 抓取 → SQLite 去重 → 正文提取 → LLM 分析（分批+重试）
-//!          → Markdown 日报 → 写入 SulixNote
-//!
-//! 架构原则（继承 OPC）：
-//! - 确定性核心（抓取/去重/路由/渲染）+ LLM 只在判断节点
-//! - 正文提取解决 RSS 摘要过程的质量瓶颈（P0）
+//! 管线：RSS 抓取 → 去重 → 全文提取 → 主题聚类 → 影响分析 → 咨询简报
 
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::BeliefStatement;
-
 mod agent;
+mod catalog;
+mod clusterer;
 mod config;
 mod db;
 mod enricher;
@@ -21,10 +16,6 @@ mod fetcher;
 mod llm;
 mod renderer;
 
-// Phase B types used inline in the pipeline
-use llm::{AnalyzedArticle, VerticalAnalysis};
-
-/// Application entry point
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -33,420 +24,154 @@ async fn main() -> Result<()> {
     // 1. 加载配置
     let config = config::Config::from_file("config.toml")?;
     let api_key = config.get_api_key()?;
-    log::info!(
-        "配置加载完成: {} 个数据源, LLM 模型: {}",
-        config.sources.len(),
-        config.llm.model
-    );
+    log::info!("配置加载完成: {} 个数据源, LLM 模型: {}", config.sources.len(), config.llm.model);
 
     // 2. 初始化数据库
     let db_path = get_db_path(&config);
     let db = db::Database::open(&db_path)?;
     log::info!("数据库已连接: {}", db_path.display());
 
-    // 3. 拉取所有 RSS 源（并发）
+    // 3. 初始化认知审计链
+    let data_dir = config.storage.as_ref().and_then(|s| s.data_dir.as_deref())
+        .map(PathBuf::from).unwrap_or_else(|| PathBuf::from("data"));
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let catalog = catalog::DataCatalog::new(&data_dir, &today);
+
+    // 4. 拉取 RSS 源
     log::info!("开始拉取 RSS 源...");
     let mut articles = fetcher::fetch_all_sources(&config.sources).await?;
     log::info!("拉取完成: {} 篇文章", articles.len());
+    catalog.save_step(1, "raw_signals", &articles)?;
 
-    // 3.5 Delta 检测：同一新闻多源报道合并（不同 URL 但标题相似）
+    // 5. Delta 去重 + SQLite 去重
     let before_dedup = articles.len();
     fetcher::dedup_by_title(&mut articles, 0.75);
     if articles.len() < before_dedup {
-        log::info!(
-            "🔀 Delta 去重: {} → {} 篇 (合并 {} 篇重复报道)",
-            before_dedup,
-            articles.len(),
-            before_dedup - articles.len()
-        );
+        log::info!("🔀 Delta 去重: {} → {} 篇", before_dedup, articles.len());
     }
-
-    // 4. 去重（只保留新文章）
     let mut new_articles = db.dedup_and_insert(&articles)?;
-    log::info!(
-        "去重完成: {} 篇新文章, {} 篇已存在",
-        new_articles.len(),
-        articles.len() - new_articles.len()
-    );
-    // 释放已用缓冲区
     drop(articles);
+    catalog.save_step(2, "unique_signals", &new_articles)?;
 
     if new_articles.is_empty() {
         log::info!("今日无新文章，跳过分析。");
         return Ok(());
     }
 
-    // 打印新文章概览
     println!("\n📋 === 今日新增 {} 篇 ===\n", new_articles.len());
-    for article in &new_articles {
-        println!(
-            "  [{}/{}] {}",
-            article.category, article.source, article.title
-        );
+    for a in &new_articles {
+        println!("  [{}/{}] {}", a.category, a.source, a.title);
     }
 
-    // 5. Wikipedia 上下文注入（为技术词提供背景知识）
+    // 6. Wikipedia 上下文注入 + 正文提取
     enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
+    catalog.save_step(3, "enriched_signals", &new_articles)?;
+    fetcher::enrich_articles_content(&mut new_articles, 5).await;
 
-    // 6. 【P0】正文提取 — RSS 摘要不足时，去原文抓取正文
-    log::info!("📄 检查并补充正文...");
-    let enriched = fetcher::enrich_articles_content(&mut new_articles, 5).await;
-    if enriched > 0 {
-        log::info!("正文补充完成: {} 篇", enriched);
-    } else {
-        log::info!("所有文章正文内容已充足，无需补充");
-    }
-
-    // 6. 按 vertical 分组（用于 Scan Agent + LLM 分析）
+    // 7. 分组 + Scan Agent v1.1 信号标记 + 三层分流
     let grouped = llm::group_by_category(&new_articles);
-    log::info!("分组完成: {} 个 vertical", grouped.len());
-
-    // === Phase A: Scan Agent 初筛 ===
-    let total_new = new_articles.len(); // 在 move 前保存计数
-    let keep_articles: Vec<fetcher::Article> = if let Some(ref scan_config) = config.scan_agent {
-        if scan_config.enabled && !grouped.is_empty() {
-            match agent::scan::scan_and_filter(
-                &grouped,
-                scan_config.threshold,
-                &api_key,
-                &config.llm,
-            )
-            .await
-            {
-                Ok(filtered) => {
-                    log::info!(
-                        "Scan Agent 完成: {} 篇保留, {} 篇跳过 (阈值≤{})",
-                        filtered.keep.len(),
-                        filtered.filtered_out.len(),
-                        scan_config.threshold,
-                    );
-                    // debug 日志打印被过滤文章
-                    for a in &filtered.filtered_out {
-                        log::debug!("  ↳ 跳过: [{}] {}", a.category, a.title);
-                    }
-                    filtered.keep
+    let total_new = new_articles.len();
+    let triage = if let Some(ref sc) = config.scan_agent {
+        if sc.enabled && !grouped.is_empty() {
+            match agent::scan::scan_and_triage(&grouped, &api_key, &config.llm).await {
+                Ok(t) => {
+                    log::info!("Scan v1.1: 🟢Insight:{} 🟡Watchlist:{} 🔵Memory:{}",
+                        t.insight.len(), t.watchlist.len(), t.signal_memory.len());
+                    t
                 }
                 Err(e) => {
-                    // 防呆：失败时回退全线分析
-                    log::warn!(
-                        "⚠️ Scan Agent 失败 ({}), 回退到全线分析 ({} 篇)",
-                        e,
-                        new_articles.len()
-                    );
-                    new_articles
+                    log::warn!("Scan Agent 失败 ({}), 全部进入 Insight", e);
+                    agent::scan::TriageResult {
+                        insight: new_articles.clone(),
+                        watchlist: vec![],
+                        signal_memory: vec![],
+                    }
                 }
             }
         } else {
-            new_articles
+            agent::scan::TriageResult {
+                insight: new_articles.clone(),
+                watchlist: vec![],
+                signal_memory: vec![],
+            }
         }
     } else {
-        new_articles
+        agent::scan::TriageResult {
+            insight: new_articles.clone(),
+            watchlist: vec![],
+            signal_memory: vec![],
+        }
     };
 
-    // 检查是否仍有文章需要分析
-    if keep_articles.is_empty() {
-        log::info!("所有文章均被 Scan Agent 过滤，跳过 LLM 分析。");
-        println!(
-            "\n📋 今日 {} 篇新文章全部被过滤（噪音/广告/无关），跳过 LLM 分析。\n",
-            total_new
-        );
+    catalog.save_step(4, "triage", &triage)?;
+
+    // 即使 Insight 为空，Watchlist 也可能有内容
+    if triage.insight.is_empty() && triage.watchlist.is_empty() {
+        println!("\n📋 今日 {} 篇全部进入 Signal Memory。\n", total_new);
         return Ok(());
     }
 
-    // 7. Phase Chief of Staff: Editor Agent 决策匹配
-    let world_state = build_world_state(&config.output.vault_path)?;
-    let questions_list: Vec<BeliefStatement> = config
-        .questions
-        .as_ref()
-        .map(|qc| {
-            qc.questions
-                .iter()
-                .map(|q| BeliefStatement {
-                    id: q.id.clone(),
-                    statement: q.question.clone(),
-                    base_confidence: 5,
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let editor_matches = agent::editor::match_to_beliefs(
-        &keep_articles,
-        &world_state,
-        &questions_list,
-        &api_key,
-        &config.llm,
-    )
-    .await?;
-    // 按 Editor 的路由分类分组
-    let mut routed_articles: Vec<fetcher::Article> = Vec::new();
-    for pick in &editor_matches {
-        let mut article = pick.article.clone();
-        article.category = pick.routed_category.clone();
-        article.belief_id = pick.belief_id.clone();
-        article.evidence_type = pick.evidence_type.clone();
-        routed_articles.push(article);
-    }
-    log::info!(
-        "🎯 Editor Agent: {}/{} 篇匹配到信念",
-        routed_articles.len(),
-        keep_articles.len()
-    );
-
-    // 回退：没有信念匹配时使用全部文章
-    if routed_articles.is_empty() {
-        log::info!("🎯 Editor Agent: 无信念匹配，回退到全线分析");
-        routed_articles = keep_articles.clone();
-    }
-
-    // 8. 重新分组（按 routed category）
-    let grouped_keep = llm::group_by_category(&routed_articles);
-    log::info!(
-        "Editor 处理后: {} 个 vertical, {} 篇待分析",
-        grouped_keep.len(),
-        routed_articles.len()
-    );
-
-    // 9. Phase B: 红蓝对抗（或回退到传统 LLM 分析）
-    let use_red_blue = config.agent.as_ref().is_some_and(|a| a.synthesis_enabled);
-
-    let (analysis, debate_data) = if use_red_blue && !grouped_keep.is_empty() {
-        // Phase B: 红蓝对抗管线（按 category 传入各自的 vertical override）
-        log::info!("🔴 开始 Synthesis (红军) 分析...");
-        let synthesis = agent::synthesis::synthesize(
-            &grouped_keep,
-            &config.prompts.base,
-            &config.prompts.vertical_overrides,
-            &api_key,
-            &config.llm,
-        )
-        .await?;
-        log::info!("✅ Synthesis 完成: {} 个 vertical", synthesis.len());
-
-        let use_verification = config
-            .agent
-            .as_ref()
-            .is_some_and(|a| a.verification_enabled);
-
-        let mut debate = if use_verification && !synthesis.is_empty() {
-            log::info!("🔵 开始 Verification (蓝军) 分析...");
-            let verification = agent::verification::verify(
-                &synthesis,
-                &config.prompts.base,
-                &config.prompts.vertical_overrides,
-                &api_key,
-                &config.llm,
-            )
-            .await?;
-            log::info!("✅ Verification 完成: {} 个 vertical", verification.len());
-
-            log::info!("⚖️ 开始仲裁...");
-            let arbitrated = agent::orchestrator::arbitrate(synthesis, verification)?;
-            log::info!("✅ 仲裁完成: {} 个 vertical", arbitrated.len());
-
-            arbitrated
-        } else {
-            // 仅红军，无蓝军 → 跳过仲裁
-            log::info!("⚖️ 蓝军未启用，跳过仲裁");
-            let analysis: Vec<agent::orchestrator::ArbitrationResult> = synthesis
-                .into_iter()
-                .map(|s| {
-                    let articles: Vec<AnalyzedArticle> = s
-                        .narratives
-                        .into_iter()
-                        .map(|n| AnalyzedArticle {
-                            title: n.title,
-                            url: String::new(),
-                            importance: n.signal_strength,
-                            relevance: n.relevance,
-                            time_horizon: n.time_horizon,
-                            action: n.action,
-                            confidence: n.confidence,
-                            judgment: n.narrative,
-                            summary: String::new(),
-                            strategic_level: String::new(),
-                            blue_rebuttal: String::new(),
-                            arbitration: String::new(),
-                            belief_id: String::new(),
-                            evidence_type: String::new(),
-                            capital_score: 0,
-                            policy_score: 0,
-                            risk_score: 0,
-                        })
-                        .collect();
-                    let analysis = VerticalAnalysis {
-                        category: s.category.clone(),
-                        articles,
-                    };
-                    agent::orchestrator::ArbitrationResult {
-                        category: s.category,
-                        analysis,
-                        verdict: String::new(),
-                    }
-                })
-                .collect();
-            analysis
-        };
-
-        // 9. 回填 Editor 匹配的 belief_id/evidence_type 到分析结果
-        {
-            use std::collections::HashMap;
-            let mut bmap: HashMap<&str, (&str, &str)> = HashMap::new();
-            for m in &editor_matches {
-                bmap.insert(
-                    m.article.title.as_str(),
-                    (m.belief_id.as_str(), m.evidence_type.as_str()),
-                );
-            }
-            for ar in &mut debate {
-                for a in &mut ar.analysis.articles {
-                    if a.belief_id.is_empty() {
-                        if let Some(&(bid, etype)) = bmap.get(a.title.as_str()) {
-                            a.belief_id = bid.to_string();
-                            a.evidence_type = etype.to_string();
-                        }
-                    }
-                }
-            }
-        }
-
-        let analysis: Vec<VerticalAnalysis> = debate.iter().map(|r| r.analysis.clone()).collect();
-        (analysis, Some(debate))
+    // ==================== 聚类分析（只对 Insight 层） ====================
+    log::info!("📊 开始主题聚类 (Insight: {} 篇)...", triage.insight.len());
+    let themes = if triage.insight.is_empty() {
+        vec![]
     } else {
-        // 传统 LLM 分析（向后兼容）
-        log::info!("🤖 开始 LLM 分析...");
-        let analysis = llm::analyze(&grouped_keep, &config.prompts, &api_key, &config.llm).await?;
-        log::info!("LLM 分析完成: {} 个 vertical", analysis.len());
-        (analysis, None)
+        clusterer::cluster_articles(&triage.insight, &api_key, &config.llm).await?
     };
+    catalog.save_step(5, "themes", &themes)?;
 
-    // === Phase C: 认知校准 ===
-    let calibration_text = agent::calibration::calibrate(&analysis, &api_key, &config.llm).await?;
+    let mut analyses = Vec::new();
+    for theme in &themes {
+        log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
+        analyses.push(clusterer::analyze_theme(theme, &api_key, &config.llm).await?);
+    }
+    catalog.save_step(6, "theme_analyses", &analyses)?;
 
-    // 9. 渲染日报（支持辩论痕迹 + 认知校准）
+    let summary = clusterer::synthesize(&themes, &analyses);
+    log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
+    catalog.save_step(7, "summary", &summary)?;
+
+    // 认知校准
+    use llm::VerticalAnalysis;
+    let empty_analysis: Vec<VerticalAnalysis> = Vec::new();
+    let calibration_text = agent::calibration::calibrate(&empty_analysis, &api_key, &config.llm).await?;
+    catalog.save_step(8, "calibration", &calibration_text)?;
+
+    // 渲染咨询简报
     let report = renderer::render_daily_report(
-        &analysis,
-        debate_data.as_deref(),
+        &themes, &analyses, &summary,
         Some(&calibration_text),
-        &questions_list
-            .iter()
-            .map(|b| b.id.clone())
-            .collect::<Vec<_>>(),
+        if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
     )?;
-    log::info!("日报渲染完成 ({} 字符)", report.len());
+    log::info!("📝 简报渲染完成 ({} 字符)", report.len());
 
-    // 10. 渲染 HTML 内参页面
-    let html =
-        renderer::render_html_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
-    log::info!("HTML 内参渲染完成 ({} 字符)", html.len());
-
-    // 11. 写入 SulixNote Vault
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    // 写入 Vault
     let report_dir = PathBuf::from(&config.output.vault_path);
     fs::create_dir_all(&report_dir)?;
     let report_path = report_dir.join(format!("{}.md", today));
     fs::write(&report_path, &report)?;
 
-    // 12. 写入 HTML 内参（index.html 覆盖最新版）
-    let html_path = report_dir.join("index.html");
-    fs::write(&html_path, &html)?;
-    log::info!("✅ HTML 内参已生成: {}", html_path.display());
-
-    // 13. 记录到数据库
+    // 记录到数据库
     db.record_report(&today, &report, total_new)?;
 
-    // === Phase D: Decay Agent 记忆墓地 ===
+    // Decay Agent 记忆墓地
     if let Some(ref grave_config) = config.graveyard {
         if grave_config.enabled {
-            match agent::decay::run_maintenance(
-                &db,
-                &keep_articles,
-                &api_key,
-                &config.llm,
-                grave_config,
-            )
-            .await
-            {
-                Ok(decay_report) => {
-                    if decay_report.buried > 0 || !decay_report.wakeups.is_empty() {
-                        log::info!(
-                            "🪦 Decay Agent: {} 篇埋葬, {} 条唤醒",
-                            decay_report.buried,
-                            decay_report.wakeups.len()
-                        );
-                    }
-                    // 如果有唤醒条目，追加到日报
-                    if !decay_report.wakeups.is_empty() {
-                        let mut wakeup_md = String::from("\n\n---\n## 📢 从墓地唤醒\n\n");
-                        for entry in &decay_report.wakeups {
-                            wakeup_md.push_str(&format!(
-                                "- **{}** ({}): {}\n",
-                                entry.title,
-                                entry.category,
-                                if entry.compressed_content.is_empty() {
-                                    "旧信号今日重新激活"
-                                } else {
-                                    &entry.compressed_content
-                                },
-                            ));
-                        }
-                        // 追加到已写入的日报文件
-                        let mut full_report = fs::read_to_string(&report_path)?;
-                        full_report.push_str(&wakeup_md);
-                        fs::write(&report_path, &full_report)?;
-                        log::info!("📢 唤醒标记已追加到日报");
-                    }
-                }
-                Err(e) => {
-                    log::warn!("⚠️ Decay Agent 失败: {}", e);
+            let all_articles: Vec<fetcher::Article> = triage.insight.iter().chain(triage.watchlist.iter()).cloned().collect();
+            if let Ok(decay_report) = agent::decay::run_maintenance(&db, &all_articles, &api_key, &config.llm, grave_config).await {
+                if decay_report.buried > 0 || !decay_report.wakeups.is_empty() {
+                    log::info!("🪦 Decay: {} 埋葬, {} 唤醒", decay_report.buried, decay_report.wakeups.len());
                 }
             }
         }
     }
 
-    println!("\n✅ 日报已生成: {}", report_path.display());
-    log::info!("✅ Sulix Intelligence 全链路执行完成");
+    println!("\n✅ 简报已生成: {}", report_path.display());
+    log::info!("✅ Sulix Intelligence 执行完成");
     Ok(())
 }
 
-/// 构建世界状态（昨日简报摘要）供 Editor Agent 参考
-/// 冷启动时返回默认提示
-fn build_world_state(vault_path: &str) -> Result<String> {
-    let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
-        .format("%Y-%m-%d")
-        .to_string();
-    let path = std::path::Path::new(vault_path).join(format!("{}.md", yesterday));
-
-    match fs::read_to_string(&path) {
-        Ok(content) => {
-            // 提取昨日 Top 3 标题（如果存在）
-            let mut state = String::from("昨日已覆盖的内容（仅摘要）：\n");
-            for line in content.lines().take(20) {
-                if line.starts_with("**")
-                    || line.starts_with("1. ")
-                    || line.starts_with("2. ")
-                    || line.starts_with("3. ")
-                {
-                    state.push_str(line);
-                    state.push('\n');
-                }
-            }
-            if state.len() < 30 {
-                state = "昨日无结构化简报，请基于绝对增量价值筛选。".into();
-            }
-            Ok(state)
-        }
-        Err(_) => {
-            Ok("首次运行或昨日无简报。请基于绝对增量价值和首发异动进行筛选，不设历史基准。".into())
-        }
-    }
-}
-
-/// 获取数据库路径
 fn get_db_path(config: &config::Config) -> PathBuf {
-    let data_dir = config
-        .storage
-        .as_ref()
-        .and_then(|s| s.data_dir.as_deref())
-        .unwrap_or("data");
+    let data_dir = config.storage.as_ref().and_then(|s| s.data_dir.as_deref()).unwrap_or("data");
     PathBuf::from(data_dir).join("intel.db")
 }

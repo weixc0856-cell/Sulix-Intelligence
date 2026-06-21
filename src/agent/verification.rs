@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use serde::Serialize;
 
 use crate::config::LlmConfig;
 use crate::llm;
@@ -17,6 +18,7 @@ use crate::llm;
 use super::synthesis::{Narrative, SynthesisOutput};
 
 /// 蓝军对一个 vertical 的反驳输出
+#[derive(Debug, Clone, Serialize)]
 pub struct VerificationOutput {
     #[allow(dead_code)]
     pub category: String,
@@ -24,6 +26,7 @@ pub struct VerificationOutput {
 }
 
 /// 单篇反驳
+#[derive(Debug, Clone, Serialize)]
 pub struct Rebuttal {
     pub id: String,
     pub title: String,

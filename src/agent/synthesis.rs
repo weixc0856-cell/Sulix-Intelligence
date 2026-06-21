@@ -7,6 +7,7 @@
 //! 思维模式: "如果这一切都是真的……"
 
 use anyhow::Result;
+use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::LlmConfig;
@@ -16,12 +17,14 @@ use crate::llm;
 type OverrideMap = HashMap<String, String>;
 
 /// 红军对一个 vertical 的分析输出
+#[derive(Debug, Clone, Serialize)]
 pub struct SynthesisOutput {
     pub category: String,
     pub narratives: Vec<Narrative>,
 }
 
 /// 单篇文章的叙事分析（包含完整 5 维判断框架）
+#[derive(Debug, Clone, Serialize)]
 pub struct Narrative {
     pub id: String,
     pub title: String,

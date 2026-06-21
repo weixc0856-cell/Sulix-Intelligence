@@ -1,0 +1,277 @@
+//! Clusterer — 主题聚类
+//!
+//! 将 N 篇文章聚类为 ≤5 个主题，每个主题包含关联的文章和综合影响分析。
+//! 参考 McKinsey Tech Trends 的分类分层结构。
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+use crate::config::LlmConfig;
+use crate::fetcher::Article;
+use crate::llm;
+
+/// 一个主题
+#[derive(Debug, Clone, Serialize)]
+pub struct Theme {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub articles: Vec<Article>,
+    pub sources: Vec<String>,  // 来源列表，用于溯源
+}
+
+/// Fact Base 条目（抄 situation-assessment: Evidence | Interpretation | Confidence）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactBaseEntry {
+    pub evidence: String,
+    pub interpretation: String,
+    pub confidence: String,
+}
+
+/// 主题分析结果
+#[derive(Debug, Clone, Serialize)]
+pub struct ThemeAnalysis {
+    pub theme_id: String,
+    pub theme_title: String,
+    pub bluf: String,              // 一句话结论
+    pub impact: String,            // 战略影响
+    pub evidence_level: String,    // L1-L5
+    pub signal_strength: u8,       // 1-10 信号强度
+    pub fact_base: Vec<FactBaseEntry>,  // 抄 McKinsey: 事实-解读-置信度表格
+    pub connections: Vec<String>,  // 关联的其他主题
+    pub source_urls: Vec<String>,  // 原文链接
+}
+
+/// 将文章聚类为主题
+pub async fn cluster_articles(
+    articles: &[Article],
+    api_key: &str,
+    llm_config: &LlmConfig,
+) -> Result<Vec<Theme>> {
+    if articles.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+
+    let system_prompt = r#"你是一个情报分析师。你的任务是将以下文章聚类为不超过 5 个主题。
+
+规则：
+1. 仔细阅读每篇文章的标题和摘要，找出它们共同指向的主题
+2. 同一主题必须包含 ≥2 篇文章（单篇文章不成主题）
+3. 主题标题要简洁有力（10 字以内），如"模型商品化""Agent可靠性""政策风险"
+4. 给每个主题写一句话摘要（30 字以内）
+
+输出严格 JSON：
+{"themes": [
+  {"id": "t1", "title": "模型商品化", "summary": "开源模型能力接近闭锁", "article_indices": [0, 2, 5]},
+  {"id": "t2", "title": "Agent可靠性", "summary": "可靠性成为竞争焦点", "article_indices": [1, 3]}
+]}
+
+article_indices 是文章在输入列表中的序号（从 0 开始）。
+未归入任何主题的文章直接忽略。"#;
+
+    // 构建用户 prompt：精简版，只传标题+来源+摘要
+    let mut user_prompt = format!("请将以下 {} 篇文章聚类为主题：\n\n", articles.len());
+    for (i, a) in articles.iter().enumerate() {
+        let summary = a.summary.as_deref().unwrap_or("");
+        let snippet = if summary.len() > 200 {
+            &summary[..200]
+        } else {
+            summary
+        };
+        user_prompt.push_str(&format!(
+            "[{}] 标题: {} | 来源: {} | 摘要: {}\n",
+            i, a.title, a.source, snippet
+        ));
+    }
+
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+
+    let mut themes = Vec::new();
+    if let Some(theme_list) = parsed["themes"].as_array() {
+        for t in theme_list {
+            let id = t["id"].as_str().unwrap_or("tx").to_string();
+            let title = t["title"].as_str().unwrap_or("未命名").to_string();
+            let summary = t["summary"].as_str().unwrap_or("").to_string();
+
+            let mut theme_articles = Vec::new();
+            let mut sources = Vec::new();
+            if let Some(indices) = t["article_indices"].as_array() {
+                for idx in indices {
+                    if let Some(i) = idx.as_u64() {
+                        if let Some(a) = articles.get(i as usize) {
+                            if !sources.contains(&a.source) {
+                                sources.push(a.source.clone());
+                            }
+                            theme_articles.push(a.clone());
+                        }
+                    }
+                }
+            }
+            // 只保留有 ≥2 篇文章的主题
+            if theme_articles.len() >= 2 {
+                themes.push(Theme { id, title, summary, articles: theme_articles, sources });
+            }
+        }
+    }
+
+    // 如果没有生成任何主题（LLM 输出格式问题），回退：全部归入"其他"
+    if themes.is_empty() && !articles.is_empty() {
+        let all_sources: Vec<String> = articles.iter().map(|a| a.source.clone()).collect();
+        themes.push(Theme {
+            id: "t_other".into(),
+            title: "今日要闻".into(),
+            summary: "未能自动聚类，以下为今日全部信号".into(),
+            articles: articles.to_vec(),
+            sources: all_sources,
+        });
+    }
+
+    log::info!("📊 聚类完成: {} 篇文章 → {} 个主题", articles.len(), themes.len());
+    Ok(themes)
+}
+
+/// 分析单个主题：综合所有文章，输出影响判断
+pub async fn analyze_theme(
+    theme: &Theme,
+    api_key: &str,
+    llm_config: &LlmConfig,
+) -> Result<ThemeAnalysis> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+
+    let system_prompt = r#"你是一个行业分析师。针对一个主题的多条证据，输出综合判断。
+
+严格遵循以下咨询级输出结构：
+
+1. 先用 Fact Base 表格列出所有证据（抄战略咨询的"事实-解读-置信度"框架）
+2. 再给出综合判断
+
+Fact Base 表格格式：
+| 证据 | 解读 | 置信度 |
+|------|------|--------|
+| 具体事实1 | 这意味着什么 | L1-L5 |
+| 具体事实2 | 这意味着什么 | L1-L5 |
+
+L1=确凿事实 L2=可靠一手 L3=合理推断 L4=单源传言 L5=噪音
+
+输出严格 JSON：
+{
+  "fact_base": [
+    {"evidence": "GLM-5.2 跑分接近 GPT-4o", "interpretation": "开源能力追平闭源", "confidence": "L2"},
+    {"evidence": "Claude 降价 50%", "interpretation": "价格战开打", "confidence": "L1"}
+  ],
+  "signal_strength": 7,
+  "bluf": "一句话结论（15字以内）",
+  "impact": "战略影响（50字以内）",
+  "evidence_level": "L1/L2/L3/L4/L5",
+  "connections": ["关联主题1", "关联主题2"]
+}
+
+signal_strength 评分标准：
+- 9-10：结构拐点（新范式/新约束）
+- 7-8：行业机制变化
+- 5-6：竞争格局变化
+- 3-4：单点事件
+- 1-2：噪音"#;
+
+    let mut user_prompt = format!("## 主题: {}\n{}\n\n", theme.title, theme.summary);
+    user_prompt.push_str(&format!("共 {} 条证据：\n\n", theme.articles.len()));
+    for (i, a) in theme.articles.iter().enumerate() {
+        let body = a.content.as_deref()
+            .or(a.summary.as_deref())
+            .unwrap_or("(无全文)");
+        let truncated = if body.len() > 1500 { &body[..1500] } else { body };
+        // 只传干净的描述，不传内部字段名
+        let description = if truncated.len() > 10 { truncated } else { &a.title };
+        user_prompt.push_str(&format!("证据 {}: 「{}」——来自 {}\n\n", i + 1, description, a.source));
+    }
+
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+
+    let source_urls: Vec<String> = theme.articles.iter().map(|a| a.url.clone()).collect();
+    let connections = parsed["connections"].as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let fact_base = parsed["fact_base"].as_array()
+        .map(|arr| {
+            arr.iter().filter_map(|v| {
+                Some(FactBaseEntry {
+                    evidence: v["evidence"].as_str()?.to_string(),
+                    interpretation: v["interpretation"].as_str()?.to_string(),
+                    confidence: v["confidence"].as_str().unwrap_or("L3").to_string(),
+                })
+            }).collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(ThemeAnalysis {
+        theme_id: theme.id.clone(),
+        theme_title: theme.title.clone(),
+        bluf: parsed["bluf"].as_str().unwrap_or("待分析").to_string(),
+        impact: parsed["impact"].as_str().unwrap_or("待分析").to_string(),
+        evidence_level: parsed["evidence_level"].as_str().unwrap_or("L3").to_string(),
+        signal_strength: parsed["signal_strength"].as_u64().unwrap_or(5) as u8,
+        fact_base,
+        connections,
+        source_urls,
+    })
+}
+
+/// 整合所有主题分析，输出综合判断
+pub fn synthesize(
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+) -> Summary {
+    let mut narrative = String::new();
+
+    // 找主题之间的关联
+    let mut all_connections: Vec<&str> = Vec::new();
+    for a in analyses {
+        for c in &a.connections {
+            if !all_connections.contains(&c.as_str()) {
+                all_connections.push(c);
+            }
+        }
+    }
+
+    // 构建叙事
+    if analyses.len() >= 2 {
+        narrative.push_str("多个主题指向同一方向：");
+        // 用第一个作为起点
+        if let Some(first) = analyses.first() {
+            narrative.push_str(&format!("\n- {} → {}", first.theme_title, first.bluf));
+        }
+        for a in analyses.iter().skip(1) {
+            narrative.push_str(&format!("\n- {} → {}", a.theme_title, a.bluf));
+        }
+    } else if let Some(first) = analyses.first() {
+        narrative = first.bluf.clone();
+    }
+
+    Summary {
+        headline: if analyses.len() >= 2 {
+            format!("{} 个主题指向同一趋势", analyses.len())
+        } else {
+            "单主题深度分析".into()
+        },
+        narrative,
+        total_articles: themes.iter().map(|t| t.articles.len()).sum(),
+        theme_count: themes.len(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Summary {
+    pub headline: String,
+    pub narrative: String,
+    pub total_articles: usize,
+    pub theme_count: usize,
+}

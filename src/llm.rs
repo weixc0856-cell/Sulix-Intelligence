@@ -293,8 +293,49 @@ pub(crate) async fn call_with_retry(
     Err(last_error.unwrap())
 }
 
-/// 调用 DeepSeek API 返回原始文本（供 Editor Agent 等自定义解析场景使用）
+/// 调用 DeepSeek API 返回原始文本，带指数退避重试
+pub(crate) async fn call_with_retry_raw(
+    client: &reqwest::Client,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String> {
+    let mut last_error = None;
+    for attempt in 0..=MAX_RETRIES {
+        if attempt > 0 {
+            let delay_secs = 2u64.pow(attempt);
+            log::warn!("⏳ 第 {} 次重试 ({}s 后)...", attempt, delay_secs);
+            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+        }
+        match call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("401") || err_str.contains("403") || err_str.contains("429") {
+                    log::warn!("❌ 非临时性错误，不重试: {}", err_str);
+                    return Err(e);
+                }
+                last_error = Some(e);
+            }
+        }
+    }
+    Err(last_error.unwrap())
+}
+
+/// 调用 DeepSeek API 返回原始文本（供 Editor Agent 使用，无重试）
 pub(crate) async fn call_raw(
+    client: &reqwest::Client,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String> {
+    call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt).await
+}
+
+/// 不带重试的原始 API 调用（供 call_raw 和 call_with_retry_raw 共用）
+async fn call_raw_inner(
     client: &reqwest::Client,
     api_key: &str,
     llm_config: &LlmConfig,
