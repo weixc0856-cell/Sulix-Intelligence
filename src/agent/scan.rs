@@ -69,10 +69,12 @@ pub async fn scan_and_filter(
             match result {
                 Ok(raw_results) => {
                     // 将每篇扫描结果与原文章匹配，按重要性分级
+                    // 优先按 id 匹配，再按 title 匹配（LLM 改标题时的 fallback）
                     for article in batch {
                         let importance = raw_results
                             .iter()
-                            .find(|r| r.title == article.title)
+                            .find(|r| !r.id.is_empty() && r.id == article.id)
+                            .or_else(|| raw_results.iter().find(|r| r.title == article.title))
                             .map(|r| r.importance.clamp(1, 10))
                             .unwrap_or(5); // 匹配失败时默认"保留"
 
@@ -130,12 +132,13 @@ fn build_scan_prompt(
 当前领域: {category}（第 {batch}/{total} 批，共 {n} 篇）
 
 对每篇文章输出 JSON 字段:
-1. title: 原文标题（按原文原样输出）
-2. importance (1-10)：
+1. id: 文章的 ID（从输入获取，严格保持原样）
+2. title: 原文标题（按原文原样输出）
+3. importance (1-10)：
    - 1-3 = 噪音、广告软文、PR稿、无关话题 → 不值得进一步分析
    - 4-6 = 值得关注但非紧急
    - 7-10 = 重要信号、范式级变化、直接影响个人创业决策
-3. judgment: 一句话说明为什么重要或不重要（10-30字）
+4. judgment: 一句话说明为什么重要或不重要（10-30字）
 
 必填字段（可直接给默认值）:
 - relevance: "低"（无需分析，填默认值即可）
@@ -162,8 +165,9 @@ fn build_scan_user_prompt(category: &str, batch_idx: usize, articles: &[Article]
 
     for (i, article) in articles.iter().enumerate() {
         prompt.push_str(&format!(
-            "[{}] 标题: {}\n    来源: {}\n",
+            "[{}] ID: {} | 标题: {} | 来源: {}\n",
             i + 1,
+            article.id,
             article.title,
             article.source,
         ));

@@ -167,11 +167,12 @@ fn category_emoji(category: &str) -> String {
     }
 }
 
-/// 截断一行文本到指定长度，末尾加省略号
+/// 截断一行文本到指定长度，末尾加省略号（UTF-8 安全）
 fn truncate_line(text: &str, max_len: usize) -> String {
     let line = text.lines().next().unwrap_or(text);
     if line.len() > max_len {
-        format!("{}...", &line[..max_len])
+        let end = line.floor_char_boundary(max_len);
+        format!("{}...", &line[..end])
     } else {
         line.to_string()
     }

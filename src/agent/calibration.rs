@@ -55,7 +55,10 @@ pub async fn calibrate(
             if question.is_empty() {
                 log::info!("Calibration Agent 未生成问题（返回为空）");
             } else {
-                log::info!("🤖 Calibration: {}", &question[..question.len().min(60)]);
+                log::info!(
+                    "🤖 Calibration: {}",
+                    &question[..question.floor_char_boundary(60)]
+                );
             }
             Ok(question)
         }

@@ -154,6 +154,7 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         {\n  \
         \"articles\": [\n    \
         {\n      \
+        \"id\": \"文章的 ID（从输入原文获取，严格保持原样）\",\n      \
         \"title\": \"文章标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
@@ -169,7 +170,8 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         2. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
         3. judgment 必须包含判断逻辑和从创业者视角的解读\n\
         4. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        5. 输出纯 JSON，不要在前后加任何说明文字",
+        5. id 字段必须从输入原文中获取并严格保持原样\n\
+        6. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
@@ -186,8 +188,9 @@ fn build_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> 
 
     for (i, article) in articles.iter().enumerate() {
         prompt.push_str(&format!(
-            "--- 文章 {} ---\n标题: {}\n链接: {}\n来源: {}\n",
+            "--- 文章 {} ---\nID: {}\n标题: {}\n链接: {}\n来源: {}\n",
             i + 1,
+            article.id,
             article.title,
             article.url,
             article.source,
@@ -305,11 +308,8 @@ async fn call_deepseek(
         .clone();
 
     parse_json_response(&content).map_err(|e| {
-        anyhow::anyhow!(
-            "JSON 解析失败 ({}): {}...",
-            e,
-            &content[..content.len().min(100)]
-        )
+        let end = content.floor_char_boundary(content.len().min(100));
+        anyhow::anyhow!("JSON 解析失败 ({}): {}...", e, &content[..end])
     })
 }
 
@@ -358,11 +358,16 @@ fn extract_json_block(text: &str, marker: &str) -> Option<String> {
 }
 
 /// 将 LLM 返回的分析结果与原文章关联（补全 url）
+/// 优先按 id 匹配，其次是 title（向后兼容）
 fn enrich_with_urls(
     analyzed: Vec<AnalyzedArticleRaw>,
     original_articles: &[Article],
 ) -> Vec<AnalyzedArticle> {
-    let url_map: HashMap<&str, &str> = original_articles
+    let id_url_map: HashMap<&str, &str> = original_articles
+        .iter()
+        .map(|a| (a.id.as_str(), a.url.as_str()))
+        .collect();
+    let title_url_map: HashMap<&str, &str> = original_articles
         .iter()
         .map(|a| (a.title.as_str(), a.url.as_str()))
         .collect();
@@ -370,11 +375,20 @@ fn enrich_with_urls(
     analyzed
         .into_iter()
         .map(|raw| {
-            let url = url_map
-                .get(raw.title.as_str())
-                .copied()
-                .unwrap_or("")
-                .to_string();
+            // 先按 id 匹配，失败则按 title 匹配（LLM 改标题时仍能工作）
+            let url = if !raw.id.is_empty() {
+                id_url_map
+                    .get(raw.id.as_str())
+                    .copied()
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                title_url_map
+                    .get(raw.title.as_str())
+                    .copied()
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             AnalyzedArticle {
                 title: raw.title,
@@ -414,6 +428,8 @@ struct ArticlesWrapper {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct AnalyzedArticleRaw {
+    #[serde(default)]
+    pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) importance: u8,
     pub(crate) relevance: String,

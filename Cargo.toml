@@ -2,6 +2,7 @@
 name = "sulix-intel"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.91"
 description = "Sulix Intelligence — 个人创业者的 AI 战略情报助手"
 
 [dependencies]
@@ -33,3 +34,6 @@ thiserror = "2"
 
 # 正文提取（P0）
 scraper = "0.22"
+
+# 稳定哈希（替代 std DefaultHasher，跨 Rust 版本稳定）
+sha2 = "0.10"

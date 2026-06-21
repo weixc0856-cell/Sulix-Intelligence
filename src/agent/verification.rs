@@ -7,6 +7,8 @@
 //! 角色: 极致怀疑主义者。以驳倒红军为荣。
 //! 思维模式: "如果这一切都是错的……"
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 
 use crate::config::LlmConfig;
@@ -23,6 +25,7 @@ pub struct VerificationOutput {
 
 /// 单篇反驳
 pub struct Rebuttal {
+    pub id: String,
     pub title: String,
     pub counter_narrative: String,
     pub evidence_level: String,
@@ -36,7 +39,7 @@ pub struct Rebuttal {
 pub async fn verify(
     synthesis: &[SynthesisOutput],
     base_prompt: &str,
-    verification_override: Option<&str>,
+    vertical_overrides: &HashMap<String, String>,
     api_key: &str,
     llm_config: &LlmConfig,
 ) -> Result<Vec<VerificationOutput>> {
@@ -57,8 +60,8 @@ pub async fn verify(
             sv.narratives.len()
         );
 
-        let system_prompt =
-            build_verification_prompt(base_prompt, verification_override, &sv.category);
+        let category_override = vertical_overrides.get(&sv.category).map(|s| s.as_str());
+        let system_prompt = build_verification_prompt(base_prompt, category_override, &sv.category);
         let user_prompt = build_verification_user_prompt(&sv.category, &sv.narratives);
 
         let mut rebuttals = Vec::new();
@@ -66,14 +69,41 @@ pub async fn verify(
         match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await
         {
             Ok(raw_results) => {
-                for r in raw_results {
-                    rebuttals.push(Rebuttal {
-                        title: r.title,
-                        counter_narrative: r.judgment,
-                        evidence_level: r.confidence,
-                        refutation_strength: r.importance.clamp(1, 10),
-                        ai_myth_flags: Vec::new(),
-                    });
+                // 按 id 索引 LLM 结果，fallback 到 title
+                let by_id: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> = raw_results
+                    .iter()
+                    .filter(|r| !r.id.is_empty())
+                    .map(|r| (r.id.as_str(), r))
+                    .collect();
+                let by_title: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> =
+                    raw_results.iter().map(|r| (r.title.as_str(), r)).collect();
+
+                for n in &sv.narratives {
+                    let matched = by_id
+                        .get(n.id.as_str())
+                        .copied()
+                        .or_else(|| by_title.get(n.title.as_str()).copied());
+
+                    if let Some(r) = matched {
+                        rebuttals.push(Rebuttal {
+                            id: n.id.clone(),
+                            title: r.title.clone(),
+                            counter_narrative: r.judgment.clone(),
+                            evidence_level: r.confidence.clone(),
+                            refutation_strength: r.importance.clamp(1, 10),
+                            ai_myth_flags: Vec::new(),
+                        });
+                    } else {
+                        // LLM 未返回此条，降级
+                        rebuttals.push(Rebuttal {
+                            id: n.id.clone(),
+                            title: n.title.clone(),
+                            counter_narrative: String::new(),
+                            evidence_level: "未匹配".into(),
+                            refutation_strength: 0,
+                            ai_myth_flags: vec!["蓝军未返回此条".into()],
+                        });
+                    }
                 }
             }
             Err(e) => {
@@ -85,6 +115,7 @@ pub async fn verify(
                 // 蓝军失败 → 日报显示"红军观点未受挑战"
                 for n in &sv.narratives {
                     rebuttals.push(Rebuttal {
+                        id: n.id.clone(),
                         title: n.title.clone(),
                         counter_narrative: String::new(),
                         evidence_level: "未分析".into(),
@@ -149,6 +180,7 @@ fn build_verification_prompt(base: &str, override_text: Option<&str>, category: 
         {\n  \
         \"articles\": [\n    \
         {\n      \
+        \"id\": \"文章的 ID（从输入获取，严格保持原样）\",\n      \
         \"title\": \"红军分析的原文标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
@@ -164,7 +196,8 @@ fn build_verification_prompt(base: &str, override_text: Option<&str>, category: 
         2. confidence 请使用证据等级 L1/L2/L3/L4/L5\n\
         3. judgment 必须包含反驳逻辑和使用了哪个拆解技能\n\
         4. 为每条红军叙事都生成一条反驳结果，数量严格对应\n\
-        5. 输出纯 JSON，不要在前后加任何说明文字",
+        5. id 字段必须从输入中获取并严格保持原样\n\
+        6. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
@@ -182,8 +215,9 @@ fn build_verification_user_prompt(category: &str, narratives: &[Narrative]) -> S
 
     for (i, n) in narratives.iter().enumerate() {
         prompt.push_str(&format!(
-            "--- 叙事 {} ---\n标题: {}\n叙事: {}\n推演逻辑: {}\n信号强度: {}/10\n\n",
+            "--- 叙事 {} ---\nID: {}\n标题: {}\n叙事: {}\n推演逻辑: {}\n信号强度: {}/10\n\n",
             i + 1,
+            n.id,
             n.title,
             if n.narrative.is_empty() {
                 "(分析失败，无红军叙事)"

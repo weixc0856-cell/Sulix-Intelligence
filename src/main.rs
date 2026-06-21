@@ -147,16 +147,12 @@ async fn main() -> Result<()> {
     let use_red_blue = config.agent.as_ref().is_some_and(|a| a.synthesis_enabled);
 
     let (analysis, debate_data) = if use_red_blue && !grouped_keep.is_empty() {
-        // Phase B: 红蓝对抗管线
+        // Phase B: 红蓝对抗管线（按 category 传入各自的 vertical override）
         log::info!("🔴 开始 Synthesis (红军) 分析...");
         let synthesis = agent::synthesis::synthesize(
             &grouped_keep,
             &config.prompts.base,
-            config
-                .prompts
-                .vertical_overrides
-                .get("AI")
-                .map(|s| s.as_str()),
+            &config.prompts.vertical_overrides,
             &api_key,
             &config.llm,
         )
@@ -173,7 +169,7 @@ async fn main() -> Result<()> {
             let verification = agent::verification::verify(
                 &synthesis,
                 &config.prompts.base,
-                None,
+                &config.prompts.vertical_overrides,
                 &api_key,
                 &config.llm,
             )
@@ -198,10 +194,10 @@ async fn main() -> Result<()> {
                             title: n.title,
                             url: String::new(),
                             importance: n.signal_strength,
-                            relevance: "待定".into(),
-                            time_horizon: "短期".into(),
-                            action: "观察".into(),
-                            confidence: "低".into(),
+                            relevance: n.relevance,
+                            time_horizon: n.time_horizon,
+                            action: n.action,
+                            confidence: n.confidence,
                             judgment: n.narrative,
                         })
                         .collect();

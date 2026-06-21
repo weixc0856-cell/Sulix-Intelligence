@@ -274,12 +274,18 @@ fn limit_text(text: String, max_len: usize) -> String {
     }
 }
 
-/// 简单的 URL hash 作为 ID
+/// 用 SHA-256 对 URL 取稳定哈希（跨 Rust 版本不变）
 fn simple_hash(url: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    url.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(url.as_bytes());
+    let result = hasher.finalize();
+    hex_format(&result[..8]) // 取前 8 字节 → 16 位 hex
+}
+
+/// u8 切片格式化为 hex 字符串（零依赖实现）
+fn hex_format(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 #[cfg(test)]

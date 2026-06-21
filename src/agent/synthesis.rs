@@ -13,25 +13,32 @@ use crate::config::LlmConfig;
 use crate::fetcher::Article;
 use crate::llm;
 
+type OverrideMap = HashMap<String, String>;
+
 /// 红军对一个 vertical 的分析输出
 pub struct SynthesisOutput {
     pub category: String,
     pub narratives: Vec<Narrative>,
 }
 
-/// 单篇文章的叙事分析
+/// 单篇文章的叙事分析（包含完整 5 维判断框架）
 pub struct Narrative {
+    pub id: String,
     pub title: String,
     pub narrative: String,
     pub reasoning: String,
     pub signal_strength: u8,
+    pub relevance: String,
+    pub time_horizon: String,
+    pub action: String,
+    pub confidence: String,
 }
 
 /// 对分组后的文章执行红军（Synthesis）分析
 pub async fn synthesize(
     grouped: &HashMap<String, Vec<Article>>,
     base_prompt: &str,
-    synthesis_override: Option<&str>,
+    vertical_overrides: &OverrideMap,
     api_key: &str,
     llm_config: &LlmConfig,
 ) -> Result<Vec<SynthesisOutput>> {
@@ -54,7 +61,8 @@ pub async fn synthesize(
             articles.len().div_ceil(batch_size)
         );
 
-        let system_prompt = build_synthesis_prompt(base_prompt, synthesis_override, category);
+        let category_override = vertical_overrides.get(category).map(|s| s.as_str());
+        let system_prompt = build_synthesis_prompt(base_prompt, category_override, category);
         let mut narratives = Vec::new();
 
         for (batch_idx, batch) in articles.chunks(batch_size).enumerate() {
@@ -73,8 +81,23 @@ pub async fn synthesize(
                 .await
             {
                 Ok(raw_results) => {
+                    // 建立 batch 内 id→Article 的索引（用于 LLM 未回传 id 时的 fallback）
+                    let id_map: HashMap<&str, &Article> =
+                        batch.iter().map(|a| (a.id.as_str(), a)).collect();
+                    let title_map: HashMap<&str, &Article> =
+                        batch.iter().map(|a| (a.title.as_str(), a)).collect();
+
                     for entry in raw_results {
+                        // 按 id 匹配原文章，fallback 到 title
+                        let article = (!entry.id.is_empty())
+                            .then(|| id_map.get(entry.id.as_str()).copied())
+                            .flatten()
+                            .or_else(|| title_map.get(entry.title.as_str()).copied());
+
+                        let article_id = article.map(|a| a.id.clone()).unwrap_or_default();
+
                         narratives.push(Narrative {
+                            id: article_id,
                             title: entry.title,
                             narrative: entry.judgment,
                             reasoning: format!(
@@ -82,6 +105,26 @@ pub async fn synthesize(
                                 entry.importance, entry.relevance, entry.action
                             ),
                             signal_strength: entry.importance.clamp(1, 10),
+                            relevance: if entry.relevance.is_empty() {
+                                "未分析".into()
+                            } else {
+                                entry.relevance
+                            },
+                            time_horizon: if entry.time_horizon.is_empty() {
+                                "未分析".into()
+                            } else {
+                                entry.time_horizon
+                            },
+                            action: if entry.action.is_empty() {
+                                "观察".into()
+                            } else {
+                                entry.action
+                            },
+                            confidence: if entry.confidence.is_empty() {
+                                "低".into()
+                            } else {
+                                entry.confidence
+                            },
                         });
                     }
                 }
@@ -94,10 +137,15 @@ pub async fn synthesize(
                     );
                     for a in batch {
                         narratives.push(Narrative {
+                            id: a.id.clone(),
                             title: a.title.clone(),
                             narrative: String::new(),
                             reasoning: "LLM 分析失败，使用原始条目".into(),
                             signal_strength: 5,
+                            relevance: "未分析".into(),
+                            time_horizon: "未分析".into(),
+                            action: "观察".into(),
+                            confidence: "低".into(),
                         });
                     }
                 }
@@ -149,6 +197,7 @@ fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &st
         {\n  \
         \"articles\": [\n    \
         {\n      \
+        \"id\": \"文章的 ID（从输入获取，严格保持原样）\",\n      \
         \"title\": \"文章标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
@@ -161,9 +210,11 @@ fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &st
         }\n\n\
         注意事项：\n\
         1. importance 必须是 1-10 的整数\n\
-        2. judgment 必须包含从创业者视角的乐观叙事解读\n\
-        3. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        4. 输出纯 JSON，不要在前后加任何说明文字",
+        2. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
+        3. judgment 必须包含从创业者视角的乐观叙事解读\n\
+        4. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
+        5. id 字段必须从输入原文中获取并严格保持原样\n\
+        6. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
@@ -180,8 +231,9 @@ fn build_synthesis_user_prompt(category: &str, batch_idx: usize, articles: &[Art
 
     for (i, article) in articles.iter().enumerate() {
         prompt.push_str(&format!(
-            "--- 文章 {} ---\n标题: {}\n链接: {}\n来源: {}\n",
+            "--- 文章 {} ---\nID: {}\n标题: {}\n链接: {}\n来源: {}\n",
             i + 1,
+            article.id,
             article.title,
             article.url,
             article.source,

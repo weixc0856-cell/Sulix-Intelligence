@@ -32,11 +32,15 @@ pub fn arbitrate(
 ) -> Result<Vec<ArbitrationResult>> {
     use std::collections::HashMap;
 
-    // 构建蓝军反驳索引: title → Rebuttal
-    let mut blue_index: HashMap<&str, &super::verification::Rebuttal> = HashMap::new();
+    // 构建蓝军反驳索引: id → Rebuttal（已带 title fallback 做 key）
+    let mut blue_by_id: HashMap<&str, &super::verification::Rebuttal> = HashMap::new();
+    let mut blue_by_title: HashMap<&str, &super::verification::Rebuttal> = HashMap::new();
     for v in &verification {
         for r in &v.rebuttals {
-            blue_index.insert(r.title.as_str(), r);
+            if !r.id.is_empty() {
+                blue_by_id.insert(r.id.as_str(), r);
+            }
+            blue_by_title.insert(r.title.as_str(), r);
         }
     }
 
@@ -48,7 +52,10 @@ pub fn arbitrate(
         let mut blue_points: Vec<String> = Vec::new();
 
         for narrative in &sv.narratives {
-            let rebuttal = blue_index.get(narrative.title.as_str());
+            // 优先按 id 匹配，fallback 到 title
+            let rebuttal = blue_by_id
+                .get(narrative.id.as_str())
+                .or_else(|| blue_by_title.get(narrative.title.as_str()));
 
             let (evidence_level, _blue_comment) = match rebuttal {
                 Some(r) => {
@@ -73,10 +80,13 @@ pub fn arbitrate(
                 title: narrative.title.clone(),
                 url: String::new(),
                 importance: narrative.signal_strength,
-                relevance: "待定".into(),
-                time_horizon: "短期".into(),
-                action: "观察".into(),
-                confidence: evidence_level.as_deref().unwrap_or("低").into(),
+                relevance: narrative.relevance.clone(),
+                time_horizon: narrative.time_horizon.clone(),
+                action: narrative.action.clone(),
+                confidence: evidence_level
+                    .as_deref()
+                    .unwrap_or(&narrative.confidence)
+                    .into(),
                 judgment: narrative.narrative.clone(),
             });
         }
@@ -135,10 +145,15 @@ mod tests {
             narratives: titles
                 .iter()
                 .map(|t| Narrative {
+                    id: format!("id-{}", t),
                     title: t.to_string(),
                     narrative: format!("乐观分析: {}", t),
                     reasoning: format!("推演: {}", t),
                     signal_strength: 7,
+                    relevance: "高".into(),
+                    time_horizon: "短期".into(),
+                    action: "研究".into(),
+                    confidence: "中".into(),
                 })
                 .collect(),
         }
@@ -150,6 +165,7 @@ mod tests {
             rebuttals: titles
                 .iter()
                 .map(|(t, level)| Rebuttal {
+                    id: format!("id-{}", t),
                     title: t.to_string(),
                     counter_narrative: format!("反驳: {}", t),
                     evidence_level: level.to_string(),

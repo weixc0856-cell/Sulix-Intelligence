@@ -98,36 +98,32 @@ impl Database {
 
     /// 去重并插入新文章
     /// 返回之前未存储过的新文章列表
+    /// PK 唯一性保证下，用 INSERT OR IGNORE + changes() 代替 SELECT+INSERT
     pub fn dedup_and_insert(&self, articles: &[Article]) -> Result<Vec<Article>> {
+        let tx = self.conn.unchecked_transaction()?;
         let mut new_articles = Vec::new();
 
         for article in articles {
-            // 检查是否已存在（基于 URL hash）
-            let exists: bool = self.conn.query_row(
-                "SELECT COUNT(*) > 0 FROM articles WHERE id = ?1",
-                params![article.id],
-                |row| row.get(0),
+            let rows = tx.execute(
+                "INSERT OR IGNORE INTO articles (id, source, title, url, content, summary, published_at, category)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    article.id,
+                    article.source,
+                    article.title,
+                    article.url,
+                    article.content,
+                    article.summary,
+                    article.published_at.map(|d| d.to_rfc3339()),
+                    article.category,
+                ],
             )?;
-
-            if !exists {
-                self.conn.execute(
-                    "INSERT INTO articles (id, source, title, url, content, summary, published_at, category)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![
-                        article.id,
-                        article.source,
-                        article.title,
-                        article.url,
-                        article.content,
-                        article.summary,
-                        article.published_at.map(|d| d.to_rfc3339()),
-                        article.category,
-                    ],
-                )?;
+            if rows > 0 {
                 new_articles.push(article.clone());
             }
         }
 
+        tx.commit()?;
         Ok(new_articles)
     }
 
@@ -221,6 +217,10 @@ impl Database {
     }
 
     /// 搜索墓地（唤醒匹配）
+    ///
+    /// TODO: 当前使用 `LIKE '%完整标题%'` 几乎不可能触发精准匹配。
+    /// 需要实现语义级别的主题匹配（关键词抽取 / embedding）才能让唤醒功能真正生效。
+    /// 在此之前，唤醒信号的命中率极低，属于"名存实亡"功能。
     pub fn search_graveyard(&self, keyword: &str, category: &str) -> Result<Vec<GraveyardEntry>> {
         let pattern = format!("%{}%", keyword);
         let mut stmt = self.conn.prepare(
