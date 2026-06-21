@@ -43,8 +43,20 @@ async fn main() -> Result<()> {
 
     // 3. 拉取所有 RSS 源（并发）
     log::info!("开始拉取 RSS 源...");
-    let articles = fetcher::fetch_all_sources(&config.sources).await?;
+    let mut articles = fetcher::fetch_all_sources(&config.sources).await?;
     log::info!("拉取完成: {} 篇文章", articles.len());
+
+    // 3.5 Delta 检测：同一新闻多源报道合并（不同 URL 但标题相似）
+    let before_dedup = articles.len();
+    fetcher::dedup_by_title(&mut articles, 0.75);
+    if articles.len() < before_dedup {
+        log::info!(
+            "🔀 Delta 去重: {} → {} 篇 (合并 {} 篇重复报道)",
+            before_dedup,
+            articles.len(),
+            before_dedup - articles.len()
+        );
+    }
 
     // 4. 去重（只保留新文章）
     let mut new_articles = db.dedup_and_insert(&articles)?;

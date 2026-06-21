@@ -336,6 +336,89 @@ fn hex_format(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// Jaccard 相似度（字符二元组）
+fn bigram_set(s: &str) -> std::collections::HashSet<(char, char)> {
+    s.chars().zip(s.chars().skip(1)).collect()
+}
+
+fn jaccard_similarity(a: &str, b: &str) -> f64 {
+    let set_a = bigram_set(a);
+    let set_b = bigram_set(b);
+    let intersection = set_a.intersection(&set_b).count() as f64;
+    let union = set_a.union(&set_b).count() as f64;
+    if union == 0.0 {
+        0.0
+    } else {
+        intersection / union
+    }
+}
+
+/// Delta 检测：同分类中标题高度相似的文章合并（不同 URL 同一新闻）
+/// 保留正文最长的文章，合并来源名，丢弃其余副本
+pub fn dedup_by_title(articles: &mut Vec<Article>, threshold: f64) {
+    use std::collections::HashMap;
+    let mut grouped: HashMap<String, Vec<Article>> = HashMap::new();
+    for a in articles.drain(..) {
+        grouped.entry(a.category.clone()).or_default().push(a);
+    }
+    let mut result: Vec<Article> = Vec::new();
+    for (_cat, mut group) in grouped {
+        // 正文长度降序排列（保留最全的）
+        group.sort_by(|a, b| {
+            let len_a = a.content.as_ref().map(|c| c.len()).unwrap_or(0);
+            let len_b = b.content.as_ref().map(|c| c.len()).unwrap_or(0);
+            len_b.cmp(&len_a)
+        });
+
+        let group_len = group.len();
+        let mut kept: Vec<Article> = Vec::new();
+        for article in group {
+            let mut merged = false;
+            for k in &mut kept {
+                let sim = jaccard_similarity(&article.title, &k.title);
+                if sim >= threshold {
+                    // 合并来源名：收集所有 unique source 名称
+                    let sources: Vec<&str> = k.source.split(" + ").collect();
+                    if !sources.contains(&article.source.as_str()) {
+                        k.source.push_str(&format!(" + {}", article.source));
+                    }
+                    // 如果新文章有正文而现有没有，保留正文
+                    if (k.content.is_none()
+                        || k.content.as_ref().map(|c| c.len()).unwrap_or(0) == 0)
+                        && article.content.is_some()
+                    {
+                        k.content = article.content.clone();
+                    }
+                    merged = true;
+                    log::debug!(
+                        "🔀 Delta dedup: '{}' ≈ '{}' ({:.0}%) → 合并到 {}",
+                        article.title,
+                        k.title,
+                        sim * 100.0,
+                        k.source
+                    );
+                    break;
+                }
+            }
+            if !merged {
+                kept.push(article);
+            }
+        }
+        let merged_count = group_len - kept.len();
+        if merged_count > 0 {
+            log::info!(
+                "🔀 Delta dedup [{}]: {} → {} (合并 {} 篇重复)",
+                _cat,
+                group_len,
+                kept.len(),
+                merged_count
+            );
+        }
+        result.extend(kept);
+    }
+    *articles = result;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
