@@ -21,7 +21,9 @@ pub struct ArbitrationResult {
     pub category: String,
     pub analysis: VerticalAnalysis,
     pub verdict: String,
+    #[allow(dead_code)]
     pub red_summary: String,
+    #[allow(dead_code)]
     pub blue_summary: String,
 }
 
@@ -85,37 +87,35 @@ pub fn arbitrate(
                 action: narrative.action.clone(),
                 confidence: evidence_level
                     .as_deref()
+                    .filter(|s| *s != "未分析" && *s != "未匹配")
                     .unwrap_or(&narrative.confidence)
                     .into(),
                 judgment: narrative.narrative.clone(),
             });
         }
 
-        // 仲裁结论逻辑
-        let verdict = if blue_points
+        // 仲裁结论逻辑：计数而非全文拼接
+        let l4_l5 = blue_points
             .iter()
-            .any(|p| p.contains("L4") || p.contains("L5"))
-        {
+            .filter(|p| p.contains("L4") || p.contains("L5"))
+            .count();
+        let l1_l2 = blue_points
+            .iter()
+            .filter(|p| p.contains("L1") || p.contains("L2"))
+            .count();
+
+        let verdict = if l4_l5 > 0 {
             format!(
-                "⚠️ 蓝军提出证据等级警告(L4/L5)。保留红军逻辑供参考，建议降低权重。\n---\n🔴 红军: {}\n🔵 蓝军: {}",
-                red_points.join("; "),
-                blue_points.join("; ")
+                "⚠️ 蓝军提出 {} 条证据等级警告(L4/L5)，建议降低权重，注意假掩护风险。",
+                l4_l5
             )
-        } else if blue_points
-            .iter()
-            .any(|p| p.contains("L1") || p.contains("L2"))
-        {
+        } else if l1_l2 > 0 {
             format!(
-                "✅ 蓝军确认证据等级较高(L1/L2)。双方基本一致，可以采纳。\n---\n🔴 红军: {}\n🔵 蓝军: {}",
-                red_points.join("; "),
-                blue_points.join("; ")
+                "✅ 蓝军确认 {} 条证据等级较高(L1/L2)，双方基本一致，可以采纳。",
+                l1_l2
             )
         } else {
-            format!(
-                "📌 各有依据。维持方向，关注后续发展。\n---\n🔴 红军: {}\n🔵 蓝军: {}",
-                red_points.join("; "),
-                blue_points.join("; ")
-            )
+            "📌 蓝军未形成明确评级。维持方向，关注后续发展。".into()
         };
 
         results.push(ArbitrationResult {
@@ -199,7 +199,7 @@ mod tests {
         let s = mock_synthesis("AI", &["Article C"]);
         let v = mock_verification("AI", &[("Article C", "L3")]);
         let result = arbitrate(vec![s], vec![v]).unwrap();
-        assert!(result[0].verdict.contains("各有依据"));
+        assert!(result[0].verdict.contains("未形成明确评级"));
     }
 
     #[test]

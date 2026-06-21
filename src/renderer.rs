@@ -2,8 +2,10 @@
 //!
 //! 将 LLM 分析结果渲染为结构化 Markdown 日报，格式：
 //! 1. 今日最重要的 3 件事（按重要性排序）
-//! 2. 按分类展开各条分析
-//! 3. 今日结论
+//! 2. [红蓝模式] 红蓝对抗 Top-N 卡片 → 附录（不再重复展开）
+//! 3. [普通模式] 按分类展开各条分析
+//! 4. 今日结论
+//! 5. [Phase C] 认知校准
 
 use std::cmp::Reverse;
 
@@ -12,6 +14,9 @@ use chrono::Local;
 
 use crate::agent::orchestrator::ArbitrationResult;
 use crate::llm::{AnalyzedArticle, VerticalAnalysis};
+
+/// 红蓝对抗最大展示条数（超出部分折叠到附录）
+const MAX_DEBATE_CARDS: usize = 10;
 
 /// 生成最终日报 Markdown
 pub fn render_daily_report(
@@ -42,7 +47,7 @@ pub fn render_daily_report(
                 article.confidence,
             ));
             if !article.judgment.is_empty() {
-                let brief = truncate_line(&article.judgment, 80);
+                let brief = truncate_line(&article.judgment, 120);
                 md.push_str(&format!("   > {}\n", brief));
             }
             md.push('\n');
@@ -51,25 +56,85 @@ pub fn render_daily_report(
 
     md.push_str("---\n\n");
 
-    // === Phase B: 红蓝对抗概览 ===
+    // === Phase B: 红蓝对抗概览（如有） ===
     if let Some(debate_results) = debate {
         let has_content = debate_results.iter().any(|r| !r.verdict.is_empty());
         if has_content {
             md.push_str("## 🔴🔵 红蓝对抗\n\n");
+
+            let mut total_cards = 0usize;
+            let mut remainder = 0usize;
+
             for result in debate_results {
-                if result.verdict.is_empty() {
+                if result.analysis.articles.is_empty() {
                     continue;
                 }
+
                 md.push_str(&format!("### {}\n\n", category_emoji(&result.category)));
-                md.push_str(&format!("**🔴 红军叙事**:\n{}\n\n", result.red_summary));
-                md.push_str(&format!("**🔵 蓝军反驳**:\n{}\n\n", result.blue_summary));
-                md.push_str(&format!("**⚖️ 仲裁结论**:\n> {}\n\n", result.verdict));
-                md.push_str("---\n\n");
+
+                // 仲裁结论（简短一行）
+                if !result.verdict.is_empty() {
+                    md.push_str(&format!("> {}\n\n", result.verdict));
+                }
+
+                // 按重要性降序排列后展示
+                let mut sorted = result.analysis.articles.clone();
+                sorted.sort_by_key(|b| Reverse(b.importance));
+
+                let remaining_cards = MAX_DEBATE_CARDS.saturating_sub(total_cards);
+                let (show, rest) = sorted.split_at(remaining_cards.min(sorted.len()));
+                total_cards += show.len();
+                remainder += rest.len();
+
+                for article in show {
+                    md.push_str(&format!(
+                        "🔴 **{}** — 重要性:{}/10 | 信心:{}\n\n",
+                        article.title, article.importance, article.confidence,
+                    ));
+
+                    if !article.judgment.is_empty() {
+                        md.push_str(&format!("   **判断**: {}\n\n", article.judgment));
+                    }
+
+                    if !article.url.is_empty() {
+                        md.push_str(&format!("   🔗 [原文链接]({})\n\n", article.url));
+                    }
+
+                    md.push_str("---\n\n");
+                }
             }
+
+            // 折叠附录：剩余文章
+            if remainder > 0 {
+                md.push_str(&format!(
+                    "<details>\n<summary>📋 点击展开剩余 {} 篇分析</summary>\n\n",
+                    remainder
+                ));
+                for result in debate_results {
+                    let mut sorted = result.analysis.articles.clone();
+                    sorted.sort_by_key(|b| Reverse(b.importance));
+                    if sorted.len() > MAX_DEBATE_CARDS {
+                        for article in sorted.iter().skip(MAX_DEBATE_CARDS) {
+                            md.push_str(&format!(
+                                "**{}** — {}/10 | 信心:{}\n\n> {}\n\n---\n\n",
+                                article.title,
+                                article.importance,
+                                article.confidence,
+                                truncate_line(&article.judgment, 200),
+                            ));
+                        }
+                    }
+                }
+                md.push_str("</details>\n\n");
+            }
+
+            // 红蓝模式：跳过后续的"按分类展开"（已在上方展示）
+            // 通过将 analysis 置空来跳过
+            return render_footer(md, top3, calibration);
         }
     }
 
-    // === 按分类展开 ===
+    // === 按分类展开（仅非红蓝模式） ===
     for va in analysis {
         if va.articles.is_empty() {
             continue;
@@ -108,6 +173,15 @@ pub fn render_daily_report(
         }
     }
 
+    render_footer(md, top3, calibration)
+}
+
+/// 渲染日报底部：今日结论 + 认知校准 + 脚注
+fn render_footer(
+    mut md: String,
+    top3: Vec<&AnalyzedArticle>,
+    calibration: Option<&str>,
+) -> Result<String> {
     // === 今日结论 ===
     md.push_str("## 💡 今日结论\n\n");
     if top3.is_empty() {
@@ -223,7 +297,6 @@ mod tests {
         assert!(result.contains("Article A"));
         assert!(result.contains("Article B"));
         assert!(result.contains("Article C"));
-        // D is filtered from top3 but still rendered in category section
         assert!(result.contains("今日最重要的 3 件事"));
     }
 
@@ -241,8 +314,7 @@ mod tests {
         };
         let result = render_daily_report(&[analysis], Some(&[debate]), None).unwrap();
         assert!(result.contains("红蓝对抗"));
-        assert!(result.contains("红军认为有机会"));
-        assert!(result.contains("蓝军认为有风险"));
+        assert!(result.contains("Debate Article"));
     }
 
     #[test]

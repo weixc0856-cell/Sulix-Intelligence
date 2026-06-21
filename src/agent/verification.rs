@@ -48,6 +48,7 @@ pub async fn verify(
         .build()?;
 
     let mut results = Vec::new();
+    let batch_size = 5usize;
 
     for sv in synthesis {
         if sv.narratives.is_empty() {
@@ -55,74 +56,92 @@ pub async fn verify(
         }
 
         log::info!(
-            "🔵 Verification [{}] — {} 条叙事",
+            "🔵 Verification [{}] — {} 条叙事 (分 {} 批)",
             sv.category,
-            sv.narratives.len()
+            sv.narratives.len(),
+            sv.narratives.len().div_ceil(batch_size)
         );
 
         let category_override = vertical_overrides.get(&sv.category).map(|s| s.as_str());
         let system_prompt = build_verification_prompt(base_prompt, category_override, &sv.category);
-        let user_prompt = build_verification_user_prompt(&sv.category, &sv.narratives);
 
         let mut rebuttals = Vec::new();
+        let total_batches = sv.narratives.len().div_ceil(batch_size);
 
-        match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await
-        {
-            Ok(raw_results) => {
-                // 按 id 索引 LLM 结果，fallback 到 title
-                let by_id: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> = raw_results
-                    .iter()
-                    .filter(|r| !r.id.is_empty())
-                    .map(|r| (r.id.as_str(), r))
-                    .collect();
-                let by_title: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> =
-                    raw_results.iter().map(|r| (r.title.as_str(), r)).collect();
+        for (batch_idx, batch) in sv.narratives.chunks(batch_size).enumerate() {
+            if total_batches > 1 {
+                log::debug!(
+                    "  ↳ 第 {}/{} 批 ({} 条)",
+                    batch_idx + 1,
+                    total_batches,
+                    batch.len()
+                );
+            }
 
-                for n in &sv.narratives {
-                    let matched = by_id
-                        .get(n.id.as_str())
-                        .copied()
-                        .or_else(|| by_title.get(n.title.as_str()).copied());
+            let user_prompt = build_verification_user_prompt(&sv.category, batch);
 
-                    if let Some(r) = matched {
-                        rebuttals.push(Rebuttal {
-                            id: n.id.clone(),
-                            title: r.title.clone(),
-                            counter_narrative: r.judgment.clone(),
-                            evidence_level: r.confidence.clone(),
-                            refutation_strength: r.importance.clamp(1, 10),
-                            ai_myth_flags: Vec::new(),
-                        });
-                    } else {
-                        // LLM 未返回此条，降级
+            match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt)
+                .await
+            {
+                Ok(raw_results) => {
+                    let by_id: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> =
+                        raw_results
+                            .iter()
+                            .filter(|r| !r.id.is_empty())
+                            .map(|r| (r.id.as_str(), r))
+                            .collect();
+                    let by_title: std::collections::HashMap<&str, &llm::AnalyzedArticleRaw> =
+                        raw_results.iter().map(|r| (r.title.as_str(), r)).collect();
+
+                    for n in batch {
+                        let matched = by_id
+                            .get(n.id.as_str())
+                            .copied()
+                            .or_else(|| by_title.get(n.title.as_str()).copied());
+
+                        if let Some(r) = matched {
+                            rebuttals.push(Rebuttal {
+                                id: n.id.clone(),
+                                title: r.title.clone(),
+                                counter_narrative: r.judgment.clone(),
+                                evidence_level: r.confidence.clone(),
+                                refutation_strength: r.importance.clamp(1, 10),
+                                ai_myth_flags: Vec::new(),
+                            });
+                        } else {
+                            rebuttals.push(Rebuttal {
+                                id: n.id.clone(),
+                                title: n.title.clone(),
+                                counter_narrative: String::new(),
+                                evidence_level: "未匹配".into(),
+                                refutation_strength: 0,
+                                ai_myth_flags: vec!["蓝军未返回此条".into()],
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "⚠️ Verification [{}] 第{}批失败: {}，该批降级处理",
+                        sv.category,
+                        batch_idx + 1,
+                        e
+                    );
+                    for n in batch {
                         rebuttals.push(Rebuttal {
                             id: n.id.clone(),
                             title: n.title.clone(),
                             counter_narrative: String::new(),
-                            evidence_level: "未匹配".into(),
+                            evidence_level: "未分析".into(),
                             refutation_strength: 0,
-                            ai_myth_flags: vec!["蓝军未返回此条".into()],
+                            ai_myth_flags: vec!["蓝军未执行".into()],
                         });
                     }
                 }
             }
-            Err(e) => {
-                log::warn!(
-                    "⚠️ Verification [{}] 失败: {}，跳过蓝军验证",
-                    sv.category,
-                    e
-                );
-                // 蓝军失败 → 日报显示"红军观点未受挑战"
-                for n in &sv.narratives {
-                    rebuttals.push(Rebuttal {
-                        id: n.id.clone(),
-                        title: n.title.clone(),
-                        counter_narrative: String::new(),
-                        evidence_level: "未分析".into(),
-                        refutation_strength: 0,
-                        ai_myth_flags: vec!["蓝军未执行".into()],
-                    });
-                }
+
+            if total_batches > 1 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         }
 
