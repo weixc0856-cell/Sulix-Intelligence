@@ -310,6 +310,19 @@ pub fn render_html_report(
         }
     }
 
+    // 信念看板 BLUF
+    let total_count = core_articles.len() + edge_articles.len();
+    if total_count > 0 {
+        body.push_str(&format!(
+            r#"<div class="mb-6 bg-slate-900 text-white p-4 rounded-lg">
+    <p class="text-xs font-bold tracking-wider uppercase opacity-60">💡 幕僚长今日信念看板</p>
+    <p class="text-sm mt-1">今日 {} 条信息匹配到信念系统。</p>
+</div>
+"#,
+            total_count
+        ));
+    }
+
     // 核心信号卡片
     if !core_articles.is_empty() {
         body.push_str("<div class=\"space-y-6\">\n");
@@ -332,14 +345,20 @@ pub fn render_html_report(
             <span class="text-xs font-mono font-bold px-2 py-0.5 rounded {}">{}</span>
         </div>
     </div>
-    <p class="text-sm text-slate-600 mb-3 leading-relaxed">💬 {}</p>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3 mt-3">
-        <div class="bg-red-50 p-3 rounded"><span class="font-bold text-red-700">🔴 红军</span><p class="text-red-900 mt-1 leading-relaxed">{}</p></div>
-        <div class="bg-blue-50 p-3 rounded"><span class="font-bold text-blue-700">🔵 蓝军</span><p class="text-blue-900 mt-1 leading-relaxed">{}</p></div>
+    <div class="mb-3 bg-slate-50 p-3 rounded-lg border-l-4 border-slate-700">
+        <span class="text-xs font-bold text-slate-800 tracking-tight block">💡 核心洞察 (BLUF)</span>
+        <p class="text-sm text-slate-700 mt-1 leading-relaxed">{}</p>
     </div>
-    <div class="mt-3 pt-3 border-t border-slate-100">
-        <div class="text-xs text-slate-500 italic mb-1">{}</div>
-        <div class="text-xs text-slate-700 font-medium">🎯 <span class="font-bold">我的判断</span>: {}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3 mt-3">
+        <div class="bg-emerald-50 p-3 rounded"><span class="font-bold text-emerald-700">📊 效率变动/资本红利</span><p class="text-emerald-900 mt-1 leading-relaxed">{}</p></div>
+        <div class="bg-rose-50 p-3 rounded"><span class="font-bold text-rose-700">📊 长尾隐患/壁垒审计</span><p class="text-rose-900 mt-1 leading-relaxed">{}</p></div>
+    </div>
+    <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
+        <span class="text-xs font-bold text-slate-800">⚖️ 战略执行建议</span>
+        <p class="text-xs text-slate-700 mt-1 font-medium">{}</p>
+    </div>
+    <div class="mt-2 text-xs text-slate-700">
+        <span class="font-bold">🎯 决策结论</span>: {} 信心:{}
     </div>
 </div>
 "#,
@@ -353,6 +372,7 @@ pub fn render_html_report(
                 if article.blue_rebuttal.is_empty() { "蓝军未就此条提出反驳".to_string() } else { article.blue_rebuttal.clone() },
                 if article.arbitration.is_empty() { format!("重要性: {}/10 | 建议: {} | 信心: {}", article.importance, article.action, article.confidence) } else { article.arbitration.clone() },
                 truncate_line(&article.judgment, 200),
+                article.confidence,
             ));
         }
         body.push_str("</div>\n");
@@ -376,10 +396,10 @@ pub fn render_html_report(
                 article.summary.clone()
             };
             body.push_str(&format!(r#"        <div class="border-b border-slate-100 pb-2 last:border-0">
-            <span class="text-xs font-mono text-slate-400 mr-2">{}</span><span class="text-sm font-medium">{}</span>
+            <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded {}">{}</span><span class="text-sm font-medium">{}</span>
             <p class="text-xs text-slate-500 mt-1">💬 {}</p>
         </div>
-"#, article.confidence, article.title, s));
+"#, badge_color(&article.confidence), article.confidence, article.title, s));
         }
         body.push_str("    </div>\n</details>\n");
     }
