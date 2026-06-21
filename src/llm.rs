@@ -622,6 +622,8 @@ mod tests {
             published_at: None,
             category: "AI".into(),
             wiki_summary: None,
+            belief_id: String::new(),
+            evidence_type: String::new(),
         };
         let a2 = Article {
             id: "2".into(),
@@ -633,6 +635,8 @@ mod tests {
             published_at: None,
             category: "创业".into(),
             wiki_summary: None,
+            belief_id: String::new(),
+            evidence_type: String::new(),
         };
         let a3 = Article {
             id: "3".into(),
@@ -644,6 +648,8 @@ mod tests {
             published_at: None,
             category: "AI".into(),
             wiki_summary: None,
+            belief_id: String::new(),
+            evidence_type: String::new(),
         };
         let grouped = group_by_category(&[a1, a2, a3]);
         assert_eq!(grouped.len(), 2);

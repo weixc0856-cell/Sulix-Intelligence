@@ -182,6 +182,8 @@ async fn main() -> Result<()> {
     for pick in &editor_matches {
         let mut article = pick.article.clone();
         article.category = pick.routed_category.clone();
+        article.belief_id = pick.belief_id.clone();
+        article.evidence_type = pick.evidence_type.clone();
         routed_articles.push(article);
     }
     log::info!(
@@ -225,7 +227,7 @@ async fn main() -> Result<()> {
             .as_ref()
             .is_some_and(|a| a.verification_enabled);
 
-        let debate = if use_verification && !synthesis.is_empty() {
+        let mut debate = if use_verification && !synthesis.is_empty() {
             log::info!("🔵 开始 Verification (蓝军) 分析...");
             let verification = agent::verification::verify(
                 &synthesis,
@@ -284,6 +286,28 @@ async fn main() -> Result<()> {
                 .collect();
             analysis
         };
+
+        // 9. 回填 Editor 匹配的 belief_id/evidence_type 到分析结果
+        {
+            use std::collections::HashMap;
+            let mut bmap: HashMap<&str, (&str, &str)> = HashMap::new();
+            for m in &editor_matches {
+                bmap.insert(
+                    m.article.title.as_str(),
+                    (m.belief_id.as_str(), m.evidence_type.as_str()),
+                );
+            }
+            for ar in &mut debate {
+                for a in &mut ar.analysis.articles {
+                    if a.belief_id.is_empty() {
+                        if let Some(&(bid, etype)) = bmap.get(a.title.as_str()) {
+                            a.belief_id = bid.to_string();
+                            a.evidence_type = etype.to_string();
+                        }
+                    }
+                }
+            }
+        }
 
         let analysis: Vec<VerticalAnalysis> = debate.iter().map(|r| r.analysis.clone()).collect();
         (analysis, Some(debate))

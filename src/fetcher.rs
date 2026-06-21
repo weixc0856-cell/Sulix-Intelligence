@@ -24,6 +24,10 @@ pub struct Article {
     pub category: String,
     #[serde(default)]
     pub wiki_summary: Option<String>,
+    #[serde(default)]
+    pub belief_id: String,
+    #[serde(default)]
+    pub evidence_type: String,
 }
 
 /// 并发拉取所有已启用的 RSS 源
@@ -140,6 +144,8 @@ async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
                 published_at: entry.published.map(|d| d.fixed_offset()),
                 category: source.category.clone(),
                 wiki_summary: None,
+                belief_id: String::new(),
+                evidence_type: String::new(),
             })
         })
         .collect();

@@ -310,6 +310,8 @@ mod tests {
             published_at: None,
             category: "AI".into(),
             wiki_summary: None,
+            belief_id: String::new(),
+            evidence_type: String::new(),
         }
     }
 
