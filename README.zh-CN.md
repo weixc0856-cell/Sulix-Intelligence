@@ -6,39 +6,50 @@
 
 > **面向独立开发者与个人创业者的 AI 战略情报助手。**
 
-每日自动生成情报简报，直接写入你的 Obsidian 知识库或任意 Markdown 目录。
+每日自动生成情报简报，可写入 Obsidian 知识库，或部署为静态 HTML 页面托管到 Cloudflare Pages。
 
 ## 管线
 
 ```
-RSS 源 → 并发抓取 → SQLite 去重 → 正文提取 → 按分类分组
-          (feed-rs)    (rusqlite)   (scraper)
-                           │
-               ┌───────────┴───────────┐
-               ▼                       ▼
-       [Phase A] Scan Agent     (过滤噪音/广告)
-               │
-               ▼
-       [Phase B] 红蓝对抗
-          ├─ 🔴 红军（乐观叙事）
-          ├─ 🔵 蓝军（怀疑反驳）
-          └─ ⚖️  仲裁（合并意见）
-               │
-               ▼
-       [Phase C] Calibration Agent（认知偏差校准）
-               │
-               ▼
-       Markdown 日报 → DailyBrief/（含辩论痕迹）
-               │
-               ▼
-       [Phase D] Decay Agent（记忆墓地）
-          ├─ 埋葬过期旧文章
-          └─ 唤醒重复出现的主题
+RSS / YouTube / Wikipedia → 并发抓取 → Delta 去重（标题相似度合并）
+       (feed-rs)                        (Jaccard 二元组 0.75 阈值）
+                                    │
+                        ┌───────────┴───────────┐
+                        ▼                       ▼
+                Wikipedia 上下文注入         关键词预过滤
+                （中文→英文回退）           （高吞吐源降噪）
+                                    │
+                                    ▼
+                            SQLite 去重
+                            （URL hash）
+                                    │
+                                    ▼
+                        ┌─── [Phase A] Scan Agent ───┐
+                        │  （轻量 LLM 初筛）          │
+                        └─────────────────────────────┘
+                                    │
+                                    ▼
+                        ┌─── [Phase B] 红蓝对抗 ─────┐
+                        │  🔴 红军（机会侦察）        │
+                        │  🔵 蓝军（风险审计）        │
+                        │  ⚖️  仲裁（逐条裁决）       │
+                        └────────────────────────────┘
+                                    │
+                        [Phase C] Calibration Agent
+                        （认知偏差探测）
+                                    │
+              ┌─────────────────────┴─────────────────────┐
+              ▼                                           ▼
+    Markdown → Obsidian 知识库       HTML → Cloudflare Pages
+    (DailyBrief/YYYY-MM-DD.md)       (DailyBrief/index.html)
+                                    │
+                                    ▼
+                        [Phase D] Decay Agent（记忆墓地）
 ```
 
 ## 技术栈
 
-`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Markdown` + `Cron`
+`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Wikipedia API` + `HTML/Tailwind` + `Cloudflare Pages`
 
 ## 快速开始
 
@@ -54,23 +65,29 @@ cp config.example.toml config.toml
 
 # 3. 运行
 cargo run --release
+# 输出: DailyBrief/YYYY-MM-DD.md（Markdown 日报）
+#       DailyBrief/index.html（Tailwind HTML 静态内参）
 ```
 
 ## 功能
 
 | 功能 | 状态 |
 |------|------|
-| RSS/Atom/JSON Feed 抓取 | ✅ |
+| RSS/Atom/JSON Feed + YouTube RSS 抓取 | ✅ |
 | 全文提取（scraper） | ✅ |
+| **Delta 去重** — Jaccard 标题相似度合并多源相同新闻 | ✅ |
 | SQLite 去重与存储 | ✅ |
-| LLM 分析（DeepSeek）分批调用 | ✅ |
-| 指数退避重试 | ✅ |
+| **Wikipedia 上下文注入** — 自动获取中/英文技术词摘要 | ✅ |
+| **关键词预过滤** — 正则白名单处理高吞吐源（财联社等） | ✅ |
+| LLM 分析（DeepSeek）分批调用 + 指数退避重试 | ✅ |
 | **Scan Agent** — 分析前过滤噪音/广告 | ✅ |
-| **红蓝对抗** — 乐观叙事 + 怀疑反驳 + 仲裁 | ✅ |
+| **红蓝对抗** — 机会侦察 + 风险审计 + 逐条仲裁 | ✅ |
+| **战略等级（S/A/B/C）** — 范式转移 / 季度影响 / 关注 / 噪音 | ✅ |
+| **去 AI 味麦肯锡文风** — 禁用废话词、动词驱动 | ✅ |
 | **Calibration Agent** — 认知偏差探测（每日一问） | ✅ |
 | **Decay Agent** — 记忆墓地 + 唤醒信号 | ✅ |
+| **HTML 静态内参** — Tailwind CSS，Cloudflare 就绪 | ✅ |
 | Markdown 日报生成 | ✅ |
-| Cron 定时调度 | ✅ |
 
 ## 架构
 
@@ -79,47 +96,60 @@ src/
 ├── main.rs               # 管线编排（Phase A→B→C→D）
 ├── config.rs             # TOML 配置加载
 ├── db.rs                 # SQLite 去重、存储与墓地查询
-├── fetcher.rs            # 并发 RSS 抓取 + 正文提取
+├── fetcher.rs            # 并发抓取 + 正文提取 + 关键词过滤 + Delta 去重
+├── enricher.rs           # Wikipedia 上下文注入（中文→英文回退）
 ├── llm.rs                # DeepSeek API 调用（分批+重试）
-├── renderer.rs           # Markdown 日报渲染
+├── renderer.rs           # Markdown + Tailwind HTML 日报渲染
 └── agent/
     ├── mod.rs            # 模块声明
     ├── scan.rs           # [Phase A] Scan Agent — 快速初筛
-    ├── synthesis.rs      # [Phase B] 🔴 红军 — 乐观叙事
-    ├── verification.rs   # [Phase B] 🔵 蓝军 — 怀疑反驳
-    ├── orchestrator.rs   # [Phase B] ⚖️  仲裁 — 合并红蓝
+    ├── synthesis.rs      # [Phase B] 🔴 红军 — 机会侦察
+    ├── verification.rs   # [Phase B] 🔵 蓝军 — 风险审计
+    ├── orchestrator.rs   # [Phase B] ⚖️  仲裁 — 逐条裁决
     ├── calibration.rs    # [Phase C] 🤖 认知校准 — 偏差提问
     └── decay.rs          # [Phase D] 🪦 Decay Agent — 记忆墓地
 ```
 
-核心驱动力是 **Lens Library** — 编码为系统提示词的领域判断框架。真正的差异化不在于代码，而在于你注入到每个垂直领域分析 prompt 中的认知框架。
+## 输出格式
 
-## Agent 管线说明
+红蓝模式下，每篇文章渲染为决策卡片：
 
-文章抓取并分组后，管线依次执行 4 个 agent 阶段：
+```
+📌 今日核心信号
 
-**Phase A — Scan Agent（扫描员）。** 每批文章用一次轻量 LLM 调用，给每篇文章打重要性分（1-10）。低于阈值（默认 ≤3）的跳过，视为噪音/PR/广告。在深入分析前先过滤，节省 token 开销。
+**标题** — 重要性:8/10 | 战略:A | 信心:L4
+💬 一句话大白话摘要（≤40 字）
 
-**Phase B — 红蓝对抗。** 两个独立的 LLM 回合，角色完全对立：
-- 🔴 **红军（Synthesis）**：乐观叙事构建者。跨源关联线索，识别趋势，发现机会。
-- 🔵 **蓝军（Verification）**：极端怀疑者。用证据等级（L1-L5）和"AI 神话拆解六问"挑战每一条判断。
-- ⚖️ **仲裁（Orchestrator）**：纯逻辑（不调 LLM）。合并红蓝输出，标记 L4/L5 风险，确认 L1/L2 共识。
+🔴 红军: 商业机会——谁受益、为什么是现在（≤60 字）
+🔵 蓝军: 执行风险——隐藏成本、证据等级（≤60 字）
+⚖️ 仲裁: 逐条仲裁结论
+🎯 我的判断: 针对创始人的具体建议
 
-**Phase C — Calibration Agent（认知校准）。** 每天在简报底部追加一个尖锐问题。探测当天分析中的认知盲点和矛盾。不是为了提供答案，而是为了让你思考。
+---
 
-**Phase D — Decay Agent（记忆墓地）。** 日报写完后的后台维护：埋葬超过保留期（默认 90 天）的文章，可选用 LLM 压缩后存入，并检查今天的新文章是否有匹配已埋葬主题的 — 如有则触发"唤醒信号"追加到当日简报。
+<details>📦 其他信号（N 条）...</details>
+
+🤖 认知校准
+```
 
 ## 判断框架
 
-每篇文章从 5 个维度评估：
+每篇文章从创业者视角评估：
 
 | 维度 | 评分 |
 |------|------|
+| 战略等级 | S / A / B / C（范式转移 / 季度影响 / 关注 / 噪音） |
 | 重要性 | 1-10 |
-| 相关性 | 高 / 中 / 低 |
-| 时间跨度 | 短期 / 中期 / 长期 |
+| 证据等级 | L1（数学证明）- L5（营销炒作） |
 | 可行动性 | 立即行动 / 研究 / 观察 / 忽略 |
-| 信心等级 | 高 / 中 / 低 |
+
+## 写作风格（去 AI 味）
+
+输出遵循麦肯锡/高盛专业服务标准：
+- **动词驱动**：硬数据 + 强动词，零形容词
+- **结论先行**：永远先说结论
+- **红蓝各 ≤ 60 字**：禁止废话
+- **禁用词**：惊人、炸裂、不可否认、双刃剑、值得注意的是、总而言之、时代的浪潮
 
 ## 配置说明
 
@@ -127,24 +157,30 @@ src/
 
 - `[llm]` — API Key、模型、接口地址
 - `[[sources]]` — RSS 源，每条含名称、URL、分类、层级
-- `[prompts]` — 每个垂直领域的系统提示词（这是你的核心竞争力）
+- `[prompts]` — 基础 + 垂直领域系统提示词（核心竞争力）
+- `[prompts.vertical_overrides]` — 领域专属框架：AI、技术主线、创业、A股、芯片、政策
 - `[scan_agent]` — Phase A：开关、重要性阈值
 - `[agent]` — Phase B：开关 Synthesis 和 Verification
 - `[graveyard]` — Phase D：保留天数、压缩、埋葬阈值
-- `[storage]` — SQLite 数据库目录
-- `[output]` — 日报输出路径
-- `[dedup]` — 去重窗口和标题相似度阈值
 
 ### 信息源层级
 
-源按四层模型组织：
-
 | 层级 | 名称 | 说明 |
 |------|------|------|
-| 1 | 信号源 | 官方博客，最准确但最难读 |
+| 1 | 信号源 | 官方博客、Wikipedia API、YouTube 技术频道 |
 | 2 | 精选源 | 已有人替你过滤，信号质量最高 |
-| 3 | 社区源 | 热点先于主流媒体在这里爆发 |
-| 4 | 市场源 | 招聘、融资、开源趋势 |
+| 3 | 社区源 | HN、Reddit — 先于媒体爆发 |
+| 4 | 市场源 | GitHub Trending、融资数据 |
+
+## 部署
+
+生成 HTML 静态内参后部署到 Cloudflare Pages：
+
+```bash
+cargo run --release
+# 输出: DailyBrief/index.html → CF Pages
+# 零服务器成本、全球 CDN、免 ICP 备案
+```
 
 ## 许可
 

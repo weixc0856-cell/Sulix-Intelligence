@@ -6,39 +6,53 @@
 
 > **Personal AI strategic intelligence assistant for indie founders and solo developers.**
 
-Daily automatically generated intelligence briefings, written directly to your Obsidian vault or any Markdown directory.
+Daily automatically generated intelligence briefings, written to your Obsidian vault or deployed as a static HTML briefing to Cloudflare Pages.
 
 ## Pipeline
 
 ```
-RSS feeds → Concurrent fetch → SQLite dedup → Full-text extraction → Group by category
-             (feed-rs)           (rusqlite)     (scraper)
-                              │
-                  ┌───────────┴───────────┐
-                  ▼                       ▼
-          [Phase A] Scan Agent    (skip noise/ads)
-                  │
-                  ▼
-          [Phase B] Red-Blue Team
-             ├─ 🔴 Synthesis (optimist narrative)
-             ├─ 🔵 Verification (skeptic rebuttal)
-             └─ ⚖️  Orchestrator (arbitration)
-                  │
-                  ▼
-          [Phase C] Calibration Agent (bias probing)
-                  │
-                  ▼
-          Markdown briefing → DailyBrief/ (with debate traces)
-                  │
-                  ▼
-          [Phase D] Decay Agent (memory graveyard)
-             ├─ Bury old/stale articles
-             └─ Wake signals on re-emerging topics
+RSS / YouTube / Wikipedia → Concurrent fetch → Delta dedup (title similarity)
+       (feed-rs)               (rusqlite)         (Jaccard bigram 0.75)
+                                    │
+                        ┌───────────┴───────────┐
+                        ▼                       ▼
+                Wikipedia context             Keyword filter
+                (zh → en fallback)            (for high-throughput 财联社)
+                                    │
+                                    ▼
+                            SQLite dedup
+                            (by URL hash)
+                                    │
+                                    ▼
+                        ┌─── [Phase A] Scan Agent ───┐
+                        │  (lightweight LLM filter)   │
+                        └─────────────────────────────┘
+                                    │
+                                    ▼
+                        ┌─── [Phase B] Red-Blue Team ──┐
+                        │  🔴 Synthesis (opportunity)  │
+                        │  🔵 Verification (risk audit) │
+                        │  ⚖️  Orchestrator (arbitration)│
+                        └──────────────────────────────┘
+                                    │
+                                    ▼
+                        [Phase C] Calibration Agent
+                        (cognitive bias probing)
+                                    │
+                                    ▼
+              ┌─────────────────────┴─────────────────────┐
+              ▼                                           ▼
+    Markdown → Obsidian vault           HTML → Cloudflare Pages
+    (DailyBrief/YYYY-MM-DD.md)          (DailyBrief/index.html)
+                                    │
+                                    ▼
+                        [Phase D] Decay Agent
+                        (memory graveyard)
 ```
 
 ## Tech Stack
 
-`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Markdown` + `Cron`
+`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Wikipedia API` + `HTML/Tailwind` + `Cloudflare Pages`
 
 ## Quick Start
 
@@ -54,21 +68,28 @@ cp config.example.toml config.toml
 
 # 3. Run
 cargo run --release
+# Output: DailyBrief/YYYY-MM-DD.md (Markdown for vault)
+#         DailyBrief/index.html (Tailwind HTML for hosting)
 ```
 
 ## Features
 
 | Feature | Status |
 |---------|--------|
-| RSS/Atom/JSON Feed fetching | ✅ |
+| RSS/Atom/JSON Feed + YouTube RSS fetching | ✅ |
 | Full-text extraction (scraper) | ✅ |
+| **Delta dedup** — Jaccard bigram similarity merge multi-source same story | ✅ |
 | SQLite dedup & storage | ✅ |
-| LLM analysis (DeepSeek) with batching | ✅ |
-| Retry with exponential backoff | ✅ |
+| **Wikipedia context injection** — auto-fetch zh/en summaries for tech terms | ✅ |
+| **Keyword pre-filter** — regex whitelist for high-throughput 财联社 sources | ✅ |
+| LLM analysis (DeepSeek) with batching & retry | ✅ |
 | **Scan Agent** — pre-filter noise/ads before analysis | ✅ |
-| **Red-Blue team** — optimistic narrative + skeptical rebuttal + arbitration | ✅ |
+| **Red-Blue team** — opportunity scout + risk auditor + arbitration | ✅ |
+| **Strategic level (S/A/B/C)** — paradigm shift / quarterly impact / watch / noise | ✅ |
+| **De-AI-fied McKinsey-style writing** — banned fluff words, verb-driven | ✅ |
 | **Calibration Agent** — cognitive bias probing (1 question per day) | ✅ |
 | **Decay Agent** — memory graveyard with wake signals | ✅ |
+| **HTML static page** — Tailwind CSS, Cloudflare-ready | ✅ |
 | Markdown daily briefing generation | ✅ |
 | Cron scheduling | ✅ |
 
@@ -79,47 +100,60 @@ src/
 ├── main.rs              # Pipeline orchestration (Phase A→B→C→D)
 ├── config.rs            # TOML config loader
 ├── db.rs                # SQLite dedup, storage & graveyard queries
-├── fetcher.rs           # Concurrent RSS fetching + full-text extraction
+├── fetcher.rs           # Concurrent RSS/YouTube fetching + full-text + keyword filter + delta dedup
+├── enricher.rs          # Wikipedia API context injection (zh → en fallback)
 ├── llm.rs               # DeepSeek API calling with batching & retry
-├── renderer.rs          # Markdown briefing renderer
+├── renderer.rs          # Markdown + Tailwind HTML briefing renderer
 └── agent/
     ├── mod.rs           # Module declaration
     ├── scan.rs          # [Phase A] Scan Agent — fast pre-filter
-    ├── synthesis.rs     # [Phase B] 🔴 Red team — optimistic narrative
-    ├── verification.rs  # [Phase B] 🔵 Blue team — skeptical rebuttal
-    ├── orchestrator.rs  # [Phase B] ⚖️  Arbiter — merge Red+Blue
+    ├── synthesis.rs     # [Phase B] 🔴 Red team — opportunity scout
+    ├── verification.rs  # [Phase B] 🔵 Blue team — risk auditor
+    ├── orchestrator.rs  # [Phase B] ⚖️  Arbiter — per-article arbitration
     ├── calibration.rs   # [Phase C] 🤖 Calibration — cognitive bias questions
     └── decay.rs         # [Phase D] 🪦 Decay Agent — memory graveyard
 ```
 
-The intelligence is driven by **Lens Library** — domain-specific judgment frameworks encoded as system prompts. The core differentiation is not the code, but the cognitive frameworks you inject into each vertical's analysis prompt.
+## Output Format
 
-## Agent Pipeline
+When Red-Blue mode is active, each article is rendered as a decision card:
 
-The pipeline runs 4 agent phases after articles are fetched and grouped:
+```
+📌 今日核心信号
 
-**Phase A — Scan Agent.** A lightweight LLM call per article batch that scores importance (1-10). Articles below the threshold (default ≤3) are skipped as noise/PR/advertising. Saves token cost by filtering before deep analysis.
+**Title** — 重要性:8/10 | 战略:A | 信心:L4
+💬 One-line plain-summary (≤40 chars)
 
-**Phase B — Red-Blue Team.** Two independent LLM passes with opposing roles:
-- 🔴 **Synthesis** (Red): Optimistic narrative builder. Connects dots across sources, identifies trends, spots opportunities.
-- 🔵 **Verification** (Blue): Extreme skeptic. Applies evidence-level ratings (L1-L5) and the "AI Myth Busting Six Questions" to challenge every claim.
-- ⚖️ **Orchestrator**: Pure logic (no LLM). Merges Red+Blue outputs, flags L4/L5 warnings, signals consensus at L1/L2.
+🔴 红军: Business opportunity — who benefits, why now (≤60 chars)
+🔵 蓝军: Execution risk — hidden costs, evidence level (≤60 chars)
+⚖️ 仲裁: Per-article arbitration conclusion
+🎯 我的判断: Specific advice for the founder
 
-**Phase C — Calibration Agent.** One pointed question per day appended to the briefing. Probes cognitive blind spots and contradictions in the day's analysis. Designed to make you think, not to provide answers.
+---
 
-**Phase D — Decay Agent.** Background maintenance after the briefing is written: buries articles past their retention window (default 90 days), optionally compresses them via LLM, and checks if any newly-arriving article matches a previously buried topic — if so, surfaces a "wake signal" in the briefing.
+<details>📦 其他信号 (N 条)...</details>
+
+🤖 认知校准
+```
 
 ## Judgment Framework
 
-Every article is evaluated across 5 dimensions:
+Every article is evaluated with a founder-first lens:
 
 | Dimension | Scale |
 |-----------|-------|
+| Strategic Level | S / A / B / C (paradigm shift / quarterly impact / watch / noise) |
 | Importance | 1-10 |
-| Relevance | High / Medium / Low |
-| Time Horizon | Short-term / Mid-term / Long-term |
+| Evidence Level | L1 (proof) - L5 (marketing hype) |
 | Actionability | Act Now / Research / Observe / Ignore |
-| Confidence | High / Medium / Low |
+
+## Writing Style (De-AI-fied)
+
+Output follows McKinsey/Goldman professional services standards:
+- **Verb-driven**: hard data + strong verbs, zero adjectives
+- **BLUF**: conclusion first, always
+- **Red/Blue**: ≤60 chars each, no fluff
+- **Banned words**: 惊人, 炸裂, 不可否认, 双刃剑, 值得注意的是, 总而言之, 时代的浪潮
 
 ## Configuration
 
@@ -127,24 +161,30 @@ Every article is evaluated across 5 dimensions:
 
 - `[llm]` — API key, model, endpoint
 - `[[sources]]` — RSS feeds, each with name, URL, category, layer
-- `[prompts]` — System prompts per vertical (this is where your edge lives)
+- `[prompts]` — Base + per-vertical system prompts (your competitive edge)
+- `[prompts.vertical_overrides]` — Domain-specific frameworks: AI, 技术主线, 创业, A股, 芯片, 政策
 - `[scan_agent]` — Phase A: enable/disable, importance threshold
 - `[agent]` — Phase B: enable/disable Synthesis and Verification
 - `[graveyard]` — Phase D: retention days, compression, burial threshold
-- `[storage]` — data directory for SQLite database
-- `[output]` — vault path for daily briefings
-- `[dedup]` — dedup window and title similarity threshold
 
 ### Source Layers
 
-Sources are organized in a 4-layer model:
-
 | Layer | Name | Description |
 |-------|------|-------------|
-| 1 | Signal Source | Official blogs, most accurate but hardest to read |
+| 1 | Signal Source | Official blogs, Wikipedia API, YouTube tech channels |
 | 2 | Curated Source | Pre-filtered by humans, highest signal quality |
-| 3 | Community Source | Alpha originates here before media picks up |
-| 4 | Market Source | Jobs, funding, open-source trends |
+| 3 | Community Source | HN, Reddit — alpha before media picks up |
+| 4 | Market Source | GitHub Trending, funding data |
+
+## Deployment
+
+Generate a static HTML briefing and deploy to Cloudflare Pages:
+
+```bash
+cargo run --release
+# Output: DailyBrief/index.html → CF Pages
+# Zero server cost, global CDN, no ICP备案 needed
+```
 
 ## License
 
