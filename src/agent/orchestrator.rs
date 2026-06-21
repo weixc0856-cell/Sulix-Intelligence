@@ -91,7 +91,6 @@ pub fn arbitrate(
                 strategic_level: String::new(),
                 blue_rebuttal: rebuttal_text,
                 arbitration: arbitration_text,
-                belief_id: String::new(),
                 evidence_type: String::new(),
                 capital_score: 0,
                 policy_score: 0,

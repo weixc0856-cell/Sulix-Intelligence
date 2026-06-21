@@ -28,6 +28,22 @@ pub struct FactBaseEntry {
     pub confidence: String,
 }
 
+/// 承重假设（蓝军输出）
+#[derive(Debug, Clone, Serialize)]
+pub struct Assumption {
+    pub text: String,
+    pub load_bearing: bool,
+    pub evidence_strength: String,
+}
+
+/// 逆境情景（蓝军输出）
+#[derive(Debug, Clone, Serialize)]
+pub struct AdverseScenario {
+    pub scenario: String,
+    pub early_warning: String,
+    pub severity: String,
+}
+
 /// 主题分析结果
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemeAnalysis {
@@ -40,6 +56,10 @@ pub struct ThemeAnalysis {
     pub fact_base: Vec<FactBaseEntry>,  // 抄 McKinsey: 事实-解读-置信度表格
     pub connections: Vec<String>,  // 关联的其他主题
     pub source_urls: Vec<String>,  // 原文链接
+    // Phase 1: 蓝军输出
+    pub assumptions: Vec<Assumption>,
+    pub adverse: Option<AdverseScenario>,
+    pub next_tests: Vec<String>,
 }
 
 /// 将文章聚类为主题
@@ -78,7 +98,8 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
     for (i, a) in articles.iter().enumerate() {
         let summary = a.summary.as_deref().unwrap_or("");
         let snippet = if summary.len() > 200 {
-            &summary[..200]
+            let end = summary.floor_char_boundary(200);
+            &summary[..end]
         } else {
             summary
         };
@@ -89,7 +110,7 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
     }
 
     let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+    let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let mut themes = Vec::new();
     if let Some(theme_list) = parsed["themes"].as_array() {
@@ -186,14 +207,17 @@ signal_strength 评分标准：
         let body = a.content.as_deref()
             .or(a.summary.as_deref())
             .unwrap_or("(无全文)");
-        let truncated = if body.len() > 1500 { &body[..1500] } else { body };
+        let truncated = if body.len() > 1500 {
+            let end = body.floor_char_boundary(1500);
+            &body[..end]
+        } else { body };
         // 只传干净的描述，不传内部字段名
         let description = if truncated.len() > 10 { truncated } else { &a.title };
         user_prompt.push_str(&format!("证据 {}: 「{}」——来自 {}\n\n", i + 1, description, a.source));
     }
 
     let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+    let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let source_urls: Vec<String> = theme.articles.iter().map(|a| a.url.clone()).collect();
     let connections = parsed["connections"].as_array()
@@ -222,7 +246,80 @@ signal_strength 评分标准：
         fact_base,
         connections,
         source_urls,
+        assumptions: vec![],  // 由蓝军填充
+        adverse: None,         // 由蓝军填充
+        next_tests: vec![],    // 由蓝军填充
     })
+}
+
+/// 蓝军验证：挑战主题分析，输出承重假设、逆境情景、待验证项
+pub async fn challenge_theme(
+    analysis: &ThemeAnalysis,
+    api_key: &str,
+    llm_config: &LlmConfig,
+) -> Result<(Vec<Assumption>, Option<AdverseScenario>, Vec<String>)> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+
+    let system_prompt = r#"你是一个多疑的审查员（蓝军）。你的任务是挑战给定的判断，输出：
+
+1. 承重假设（load-bearing assumptions）：该判断依赖哪些前提？标注是否承重、证据强度
+2. 逆境情景（adverse scenario）：如果前提不成立，最坏的合理情景是什么？可观测的早期预警信号是什么？
+3. 待验证项（next tests）：要证伪/证实这个判断，需要看到什么具体数据？
+
+输出严格 JSON：
+{
+  "assumptions": [
+    {"text": "假设内容", "load_bearing": true, "evidence_strength": "weak|moderate|strong"}
+  ],
+  "adverse": {"scenario": "如果...则...", "early_warning": "可观测信号", "severity": "high|med|low"},
+  "next_tests": ["测试1", "测试2"]
+}
+
+证据强度标准：
+- strong: 多方确认的事实
+- moderate: 有依据但非确凿
+- weak: 推测或无证据"#;
+
+    let user_prompt = format!(
+        "请挑战以下判断：\n\n标题: {}\n\n结论: {}\n\n影响: {}\n\n证据等级: {}\n\n信号强度: {}/10",
+        analysis.theme_title, analysis.bluf, analysis.impact, analysis.evidence_level, analysis.signal_strength,
+    );
+
+    match llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await {
+        Ok(raw) => {
+            if let Ok(parsed) = llm::parse_json_lenient(&raw) {
+                let assumptions = parsed["assumptions"].as_array()
+                    .map(|arr| arr.iter().filter_map(|v| {
+                        Some(Assumption {
+                            text: v["text"].as_str()?.to_string(),
+                            load_bearing: v["load_bearing"].as_bool().unwrap_or(false),
+                            evidence_strength: v["evidence_strength"].as_str().unwrap_or("weak").to_string(),
+                        })
+                    }).collect())
+                    .unwrap_or_default();
+
+                let adverse = parsed["adverse"].as_object().map(|_| AdverseScenario {
+                    scenario: parsed["adverse"]["scenario"].as_str().unwrap_or("").to_string(),
+                    early_warning: parsed["adverse"]["early_warning"].as_str().unwrap_or("").to_string(),
+                    severity: parsed["adverse"]["severity"].as_str().unwrap_or("med").to_string(),
+                });
+
+                let next_tests = parsed["next_tests"].as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                Ok((assumptions, adverse, next_tests))
+            } else {
+                Ok((vec![], None, vec![]))
+            }
+        }
+        Err(e) => {
+            log::warn!("⚠️ 蓝军挑战失败: {}", e);
+            Ok((vec![], None, vec![]))
+        }
+    }
 }
 
 /// 整合所有主题分析，输出综合判断

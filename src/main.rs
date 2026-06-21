@@ -123,7 +123,19 @@ async fn main() -> Result<()> {
     let mut analyses = Vec::new();
     for theme in &themes {
         log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
-        analyses.push(clusterer::analyze_theme(theme, &api_key, &config.llm).await?);
+        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm).await?;
+        // Phase 1: 蓝军挑战
+        let (assumptions, adverse, next_tests) = clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
+        analysis.assumptions = assumptions;
+        analysis.adverse = adverse;
+        analysis.next_tests = next_tests;
+        // 如果蓝军发现承重假设证据弱，降级信号强度
+        let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
+        if weak_bearing && analysis.signal_strength >= 3 {
+            analysis.signal_strength -= 2;
+            log::info!("🔵 蓝军降级: {} (承重假设证据弱)", theme.title);
+        }
+        analyses.push(analysis);
     }
     catalog.save_step(6, "theme_analyses", &analyses)?;
 
@@ -131,10 +143,18 @@ async fn main() -> Result<()> {
     log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
     catalog.save_step(7, "summary", &summary)?;
 
-    // 认知校准
-    use llm::VerticalAnalysis;
-    let empty_analysis: Vec<VerticalAnalysis> = Vec::new();
-    let calibration_text = agent::calibration::calibrate(&empty_analysis, &api_key, &config.llm).await?;
+    // 认知校准（传入真数据，非空 vec；跳过校准不中断管线）
+    let calibration_text = if !analyses.is_empty() {
+        let calibration_input: Vec<llm::VerticalAnalysis> = analyses.iter().map(|ta| {
+            llm::VerticalAnalysis {
+                category: ta.theme_title.clone(),
+                articles: vec![],
+            }
+        }).collect();
+        agent::calibration::calibrate(&calibration_input, &api_key, &config.llm).await?
+    } else {
+        String::new()
+    };
     catalog.save_step(8, "calibration", &calibration_text)?;
 
     // 渲染咨询简报

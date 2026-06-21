@@ -25,8 +25,6 @@ pub struct Article {
     #[serde(default)]
     pub wiki_summary: Option<String>,
     #[serde(default)]
-    pub belief_id: String,
-    #[serde(default)]
     pub evidence_type: String,
 }
 
@@ -144,7 +142,6 @@ async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
                 published_at: entry.published.map(|d| d.fixed_offset()),
                 category: source.category.clone(),
                 wiki_summary: None,
-                belief_id: String::new(),
                 evidence_type: String::new(),
             })
         })
@@ -327,7 +324,7 @@ fn limit_text(text: String, max_len: usize) -> String {
 
     match end {
         Some(pos) if pos > max_len / 2 => format!("{}...", &text[..=pos]),
-        _ => format!("{}...", &text[..max_len]),
+        _ => format!("{}...", &text[..search_end]),
     }
 }
 
@@ -492,5 +489,13 @@ mod tests {
         let text = "First sentence. Second sentence. Third sentence.".to_string();
         let result = limit_text(text, 20);
         assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_extract_cjk_text() {
+        let html = "<html><body><article><p>大模型能力正在快速接近闭源模型水平。这是2025年最重要的趋势之一。开源模型的能力提升正在改变整个行业的竞争格局。</p></article></body></html>";
+        let text = extract_text_from_html(html);
+        assert!(text.contains("大模型能力"));
+        assert!(text.len() > 20);
     }
 }

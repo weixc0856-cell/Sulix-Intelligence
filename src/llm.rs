@@ -47,8 +47,6 @@ pub struct AnalyzedArticle {
     #[serde(default)]
     pub arbitration: String,
     #[serde(default)]
-    pub belief_id: String,
-    #[serde(default)]
     pub evidence_type: String,
     #[serde(default)]
     pub capital_score: u8,
@@ -141,7 +139,6 @@ pub async fn analyze(
                             strategic_level: String::new(),
                             blue_rebuttal: String::new(),
                             arbitration: String::new(),
-                            belief_id: String::new(),
                             evidence_type: String::new(),
                             capital_score: 0,
                             policy_score: 0,
@@ -448,42 +445,45 @@ async fn call_deepseek(
 
 /// 多策略 JSON 解析
 fn parse_json_response(content: &str) -> Result<Vec<AnalyzedArticleRaw>> {
+    let val = parse_json_lenient(content)?;
+    let wrapper: ArticlesWrapper = serde_json::from_value(val)?;
+    Ok(wrapper.articles)
+}
+
+/// 多策略 JSON 解析（返回 Value，适合自定义字段提取）
+/// 策略：直接解析 → 抽 ```json 围栏 → 抽 ``` 围栏 → 抓首尾花括号
+pub(crate) fn parse_json_lenient(raw: &str) -> Result<serde_json::Value> {
     // 策略 1：直接解析
-    if let Ok(parsed) = serde_json::from_str::<ArticlesWrapper>(content) {
-        return Ok(parsed.articles);
+    if let Ok(v) = serde_json::from_str(raw) {
+        return Ok(v);
     }
-
     // 策略 2：提取 ```json ... ``` 块
-    if let Some(json_str) = extract_json_block(content, "```json\n") {
-        if let Ok(parsed) = serde_json::from_str::<ArticlesWrapper>(&json_str) {
-            return Ok(parsed.articles);
+    if let Some(inner) = extract_json_block(raw, "```json\n") {
+        if let Ok(v) = serde_json::from_str(&inner) {
+            return Ok(v);
         }
     }
-
     // 策略 3：提取 ``` ... ``` 块
-    if let Some(json_str) = extract_json_block(content, "```\n") {
-        if let Ok(parsed) = serde_json::from_str::<ArticlesWrapper>(&json_str) {
-            return Ok(parsed.articles);
+    if let Some(inner) = extract_json_block(raw, "```\n") {
+        if let Ok(v) = serde_json::from_str(&inner) {
+            return Ok(v);
         }
     }
-
     // 策略 4：从第一个 { 到最后一个 } 裸提取
-    if let Some(start) = content.find('{') {
-        if let Some(end) = content.rfind('}') {
+    if let Some(start) = raw.find('{') {
+        if let Some(end) = raw.rfind('}') {
             if end > start {
-                let sliced = &content[start..=end];
-                if let Ok(parsed) = serde_json::from_str::<ArticlesWrapper>(sliced) {
-                    return Ok(parsed.articles);
+                if let Ok(v) = serde_json::from_str(&raw[start..=end]) {
+                    return Ok(v);
                 }
             }
         }
     }
-
     Err(anyhow::anyhow!("所有 JSON 解析策略均失败"))
 }
 
 /// 从文本中提取指定标记之间的内容
-fn extract_json_block(text: &str, marker: &str) -> Option<String> {
+pub(crate) fn extract_json_block(text: &str, marker: &str) -> Option<String> {
     let start = text.find(marker)?;
     let after = &text[start + marker.len()..];
     let end = after.find("```")?;
@@ -536,7 +536,6 @@ fn enrich_with_urls(
                 strategic_level: String::new(),
                 blue_rebuttal: String::new(),
                 arbitration: String::new(),
-                belief_id: String::new(),
                 evidence_type: String::new(),
                 capital_score: 0,
                 policy_score: 0,
@@ -663,7 +662,6 @@ mod tests {
             published_at: None,
             category: "AI".into(),
             wiki_summary: None,
-            belief_id: String::new(),
             evidence_type: String::new(),
         };
         let a2 = Article {
@@ -676,7 +674,6 @@ mod tests {
             published_at: None,
             category: "创业".into(),
             wiki_summary: None,
-            belief_id: String::new(),
             evidence_type: String::new(),
         };
         let a3 = Article {
@@ -689,12 +686,18 @@ mod tests {
             published_at: None,
             category: "AI".into(),
             wiki_summary: None,
-            belief_id: String::new(),
             evidence_type: String::new(),
         };
         let grouped = group_by_category(&[a1, a2, a3]);
         assert_eq!(grouped.len(), 2);
         assert_eq!(grouped.get("AI").unwrap().len(), 2);
         assert_eq!(grouped.get("创业").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_parse_json_cjk() {
+        let json = r#"{"articles":[{"title":"大模型商品化","importance":8,"relevance":"高","time_horizon":"短期","action":"研究","confidence":"中","judgment":"开源能力接近闭源"}]}"#;
+        let result = parse_json_response(json).unwrap();
+        assert_eq!(result[0].title, "大模型商品化");
     }
 }

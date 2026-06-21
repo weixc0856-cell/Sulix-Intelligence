@@ -25,9 +25,9 @@ pub struct Config {
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
-    /// 当前正在思考的决策问题
+    /// DecisionLedger: 活跃决策问题
     #[serde(default)]
-    pub questions: Option<QuestionConfig>,
+    pub decisions: Option<DecisionLedger>,
 }
 
 /// LLM 配置
@@ -150,28 +150,26 @@ fn default_burial_threshold() -> u8 {
     3
 }
 
-/// 问题配置：当前正在思考的决策问题
+/// DecisionLedger — 追踪活跃决策及其证据状态
 #[derive(Debug, Deserialize, Clone)]
-pub struct QuestionConfig {
+pub struct DecisionLedger {
     #[serde(default)]
-    pub questions: Vec<Question>,
+    pub decisions: Vec<Decision>,
 }
 
-/// 单条决策问题（具体、个人化、可回答）
+/// 单条决策问题（可回答、具体、可操作）
 #[derive(Debug, Deserialize, Clone)]
-pub struct Question {
+pub struct Decision {
     pub id: String,
     pub question: String,
+    #[serde(default = "default_decision_status")]
+    pub status: String,     // "active" | "archived"
+    #[serde(default = "default_decision_position")]
+    pub position: String,   // "pro" | "con" | "neutral"
 }
 
-/// 向后兼容
-#[derive(Debug, Clone)]
-pub struct BeliefStatement {
-    pub id: String,
-    pub statement: String,
-    #[allow(dead_code)]
-    pub base_confidence: u8,
-}
+fn default_decision_status() -> String { "active".into() }
+fn default_decision_position() -> String { "neutral".into() }
 
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）
 #[derive(Debug, Deserialize, Clone)]

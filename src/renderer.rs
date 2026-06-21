@@ -13,7 +13,7 @@
 use anyhow::Result;
 use chrono::Local;
 
-use crate::clusterer::{Theme, ThemeAnalysis, Summary};
+use crate::clusterer::{Assumption, Theme, ThemeAnalysis, Summary};
 use crate::fetcher::Article;
 
 /// 渲染咨询级简报
@@ -72,6 +72,33 @@ pub fn render_daily_report(
             md.push_str("单点事件级\n\n");
         }
         md.push_str(&format!("**影响**: {}\n\n", a.impact));
+
+        // Phase 1: 蓝军 — 承重假设
+        let load_bearing: Vec<&Assumption> = a.assumptions.iter().filter(|a| a.load_bearing).collect();
+        if !load_bearing.is_empty() {
+            md.push_str("**承重假设**:\n");
+            for asm in &load_bearing {
+                md.push_str(&format!("- {}（证据强度: {}）\n", asm.text, asm.evidence_strength));
+            }
+            md.push('\n');
+        }
+
+        // Phase 1: 蓝军 — 逆境情景
+        if let Some(ref adverse) = a.adverse {
+            if !adverse.scenario.is_empty() {
+                md.push_str(&format!("**逆境情景**: {}。\n", adverse.scenario));
+                md.push_str(&format!("**早期预警**: {}\n\n", adverse.early_warning));
+            }
+        }
+
+        // Phase 1: 蓝军 — 待验证
+        if !a.next_tests.is_empty() {
+            md.push_str("**待验证**:\n");
+            for test in &a.next_tests {
+                md.push_str(&format!("- {}\n", test));
+            }
+            md.push('\n');
+        }
 
         // 关联
         if !a.connections.is_empty() {

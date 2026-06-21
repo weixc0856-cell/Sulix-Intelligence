@@ -8,8 +8,4 @@
 
 pub mod calibration;
 pub mod decay;
-pub mod editor;
-pub mod orchestrator;
 pub mod scan;
-pub mod synthesis;
-pub mod verification;
