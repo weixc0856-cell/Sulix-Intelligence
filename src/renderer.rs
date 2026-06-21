@@ -82,9 +82,14 @@ fn render_debate_mode(
             // 🔴 红军立场（从 judgment 取第一句，防崩：太长或为空时整体截断）
             let red_stance = extract_red_stance(&article.judgment);
 
+            let sl = if article.strategic_level.is_empty() {
+                "".into()
+            } else {
+                format!(" | 战略:{}", article.strategic_level)
+            };
             md.push_str(&format!(
-                "**{}** — 重要性:{}/10 | 信心:{}\n\n",
-                article.title, article.importance, article.confidence
+                "**{}** — 重要性:{}/10{}{}\n\n",
+                article.title, article.importance, sl, article.confidence
             ));
             md.push_str(&format!("💬 {}\n\n", summary));
             md.push_str(&format!("🔴 **红军**: {}\n\n", red_stance));
@@ -93,6 +98,12 @@ fn render_debate_mode(
             }
             if !article.arbitration.is_empty() {
                 md.push_str(&format!("⚖️ **仲裁**: {}\n\n", article.arbitration));
+            }
+            if !article.judgment.is_empty() {
+                md.push_str(&format!(
+                    "🎯 **我的判断**: {}\n\n",
+                    truncate_line(&article.judgment, 200)
+                ));
             }
             if !article.url.is_empty() {
                 md.push_str(&format!("🔗 [原文链接]({})\n\n", article.url));
@@ -303,24 +314,32 @@ pub fn render_html_report(
             body.push_str(&format!(r#"<div class="border border-slate-200 bg-white p-5 rounded-lg shadow-sm" id="core-{}">
     <div class="flex items-start justify-between mb-2">
         <h2 class="text-base font-bold text-slate-900 leading-snug">{}</h2>
-        <span class="shrink-0 ml-3 text-xs font-mono font-bold px-2 py-0.5 rounded {}">{}</span>
+        <div class="shrink-0 ml-3 flex gap-1">
+            {}
+            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded {}">{}</span>
+        </div>
     </div>
     <p class="text-sm text-slate-600 mb-3 leading-relaxed">💬 {}</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-slate-100 pt-3 mt-3">
         <div class="bg-red-50 p-3 rounded"><span class="font-bold text-red-700">🔴 红军</span><p class="text-red-900 mt-1 leading-relaxed">{}</p></div>
         <div class="bg-blue-50 p-3 rounded"><span class="font-bold text-blue-700">🔵 蓝军</span><p class="text-blue-900 mt-1 leading-relaxed">{}</p></div>
     </div>
-    <div class="mt-3 text-xs text-slate-500 italic">{}</div>
+    <div class="mt-3 pt-3 border-t border-slate-100">
+        <div class="text-xs text-slate-500 italic mb-1">{}</div>
+        <div class="text-xs text-slate-700 font-medium">🎯 <span class="font-bold">我的判断</span>: {}</div>
+    </div>
 </div>
 "#,
                 safe_id,
                 article.title,
+                strategic_badge(&article.strategic_level),
                 badge_color(&article.confidence),
                 article.confidence,
                 summary,
                 red_stance,
                 if article.blue_rebuttal.is_empty() { "蓝军未就此条提出反驳".to_string() } else { article.blue_rebuttal.clone() },
                 if article.arbitration.is_empty() { format!("重要性: {}/10 | 建议: {} | 信心: {}", article.importance, article.action, article.confidence) } else { article.arbitration.clone() },
+                truncate_line(&article.judgment, 200),
             ));
         }
         body.push_str("</div>\n");
@@ -402,6 +421,16 @@ pub fn render_html_report(
     Ok(html)
 }
 
+/// 战略等级对应的 badge HTML
+fn strategic_badge(level: &str) -> String {
+    match level {
+        "S" => "<span class=\"text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800\">S</span>".into(),
+        "A" => "<span class=\"text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800\">A</span>".into(),
+        "B" => "<span class=\"text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600\">B</span>".into(),
+        _ => String::new(),
+    }
+}
+
 /// 信心等级对应的 badge 颜色
 fn badge_color(confidence: &str) -> &'static str {
     if confidence.contains('1') || confidence.contains('2') || confidence == "高" {
@@ -481,6 +510,7 @@ mod tests {
             confidence: "中".into(),
             judgment: format!("关于{}的分析判断", title),
             summary: String::new(),
+            strategic_level: String::new(),
             blue_rebuttal: String::new(),
             arbitration: String::new(),
         }

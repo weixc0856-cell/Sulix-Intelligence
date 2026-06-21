@@ -88,6 +88,7 @@ pub fn arbitrate(
                 confidence,
                 judgment: narrative.narrative.clone(),
                 summary: String::new(),
+                strategic_level: String::new(),
                 blue_rebuttal: rebuttal_text,
                 arbitration: arbitration_text,
             });

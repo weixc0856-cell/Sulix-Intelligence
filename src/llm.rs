@@ -27,7 +27,7 @@ pub struct VerticalAnalysis {
     pub articles: Vec<AnalyzedArticle>,
 }
 
-/// 分析后的文章（支持红蓝对抗：judgment=红军叙事，blue_rebuttal=蓝军反驳，summary=一句话核心）
+/// 分析后的文章（支持红蓝对抗：strategic_level=S/A/B/C）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzedArticle {
     pub title: String,
@@ -40,6 +40,8 @@ pub struct AnalyzedArticle {
     pub judgment: String,
     #[serde(default)]
     pub summary: String,
+    #[serde(default)]
+    pub strategic_level: String,
     #[serde(default)]
     pub blue_rebuttal: String,
     #[serde(default)]
@@ -126,6 +128,7 @@ pub async fn analyze(
                             confidence: "低".into(),
                             judgment: format!("⚠️ LLM 分析失败，原文: {}", a.url),
                             summary: String::new(),
+                            strategic_level: String::new(),
                             blue_rebuttal: String::new(),
                             arbitration: String::new(),
                         });
@@ -165,6 +168,7 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         {\n      \
         \"id\": \"文章的 ID（从输入原文获取，严格保持原样）\",\n      \
         \"summary\": \"一句话核心摘要（30-50字，大白话，去掉水话）\",\n      \
+        \"strategic_level\": \"S/A/B/C（S=范式转移需重新评估方向，A=影响3个月决策，B=值得关注，C=噪音）\",\n      \
         \"title\": \"文章标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
@@ -177,12 +181,13 @@ fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
         }\n\n\
        注意事项：\n\
         1. summary 必须是一句话（30-50字），用大白话写出核心信息，不要水话和修饰\n\
-        2. importance 必须是 1-10 的整数\n\
-        3. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
-        4. judgment 必须包含判断逻辑和从创业者视角的解读\n\
-        5. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        6. id 字段必须从输入原文中获取并严格保持原样\n\
-        7. 输出纯 JSON，不要在前后加任何说明文字",
+        2. strategic_level 是必填字段，必须精确使用 S/A/B/C 中的一个字母\n\
+        3. importance 必须是 1-10 的整数\n\
+        4. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
+        5. judgment 必须包含判断逻辑和从创业者视角的解读\n\
+        6. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
+        7. id 字段必须从输入原文中获取并严格保持原样\n\
+        8. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
@@ -411,6 +416,7 @@ fn enrich_with_urls(
                 confidence: raw.confidence,
                 judgment: raw.judgment,
                 summary: String::new(),
+                strategic_level: String::new(),
                 blue_rebuttal: String::new(),
                 arbitration: String::new(),
             }

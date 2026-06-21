@@ -212,6 +212,7 @@ async fn main() -> Result<()> {
                             confidence: n.confidence,
                             judgment: n.narrative,
                             summary: String::new(),
+                            strategic_level: String::new(),
                             blue_rebuttal: String::new(),
                             arbitration: String::new(),
                         })

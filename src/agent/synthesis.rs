@@ -172,16 +172,18 @@ pub async fn synthesize(
 fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &str) -> String {
     let mut prompt = base.to_string();
 
-    // 注入红军角色定义（硬编码——确保护城河不被配置覆盖）
+    // 注入红军角色定义（商业机会视角，非技术视角）
     prompt.push_str(
-        "\n\n【你的角色：红军 🔴】\n\
-        你是一个乐观主义者。你的任务是从创业者视角寻找蛛丝马迹，\
-        把零散的信息串联成有洞见的叙事。\n\n\
-        核心技能：\n\
-        1. 跨源关联：不同来源的报道之间有什么隐藏联系？\n\
-        2. 趋势推演：这些信息组合在一起预示什么趋势？\n\
-        3. 生态位分析：这条信息对个人创业者的哪个生态位有机会？\n\n\
-        思维模式：\"如果这一切都是真的……\"",
+        "\n\n【你的角色：红军 🔴 — 机会侦察兵】\n\
+        你的任务是评估这条信息对个人创业者的商业影响。\
+        你不是工程师，不讨论技术细节。只回答一个核心问题：\
+        这道信息创造了什么不对称优势？\n\n\
+        核心追问：\n\
+        1. 谁因此受益？为什么是现在？\n\
+        2. 如果这条信息是真的，什么变得可能了？\n\
+        3. 个人创业者在这条链上的哪个位置能抓到价值？\n\n\
+        思维模式：\"这个机会现在看起来像什么？\"\n\
+        💡 注意：不谈技术benchmark，只谈商业机会。",
     );
 
     if let Some(ov) = override_text {
@@ -199,24 +201,26 @@ fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &st
         {\n      \
         \"id\": \"文章的 ID（从输入获取，严格保持原样）\",\n      \
         \"summary\": \"一句话核心摘要（30-50字，大白话）\",\n      \
+        \"strategic_level\": \"S/A/B/C（S=范式转移，A=影响季度决策，B=值得关注，C=噪音）\",\n      \
         \"title\": \"文章标题\",\n      \
         \"importance\": 7,\n      \
         \"relevance\": \"高/中/低\",\n      \
         \"time_horizon\": \"短期/中期/长期\",\n      \
         \"action\": \"立即行动/研究/观察/忽略\",\n      \
         \"confidence\": \"高/中/低\",\n      \
-        \"judgment\": \"乐观叙事分析（2-4句话，跨源串联）\"\n    \
+        \"judgment\": \"商业机会分析（2-4句话，不谈技术，只谈机遇）\"\n    \
         }\n  \
         ]\n\
         }\n\n\
         注意事项：\n\
         1. summary 必须是一句话（30-50字），用大白话写出核心信息\n\
-        2. importance 必须是 1-10 的整数\n\
-        3. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
-        4. judgment 必须包含从创业者视角的乐观叙事解读\n\
-        5. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        6. id 字段必须从输入原文中获取并严格保持原样\n\
-        7. 输出纯 JSON，不要在前后加任何说明文字",
+        2. strategic_level 必填，必须使用 S/A/B/C 之一\n\
+        3. importance 必须是 1-10 的整数\n\
+        4. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
+        5. judgment 必须包含从商业机会视角的解读（而非技术分析）\n\
+        6. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
+        7. id 字段必须从输入原文中获取并严格保持原样\n\
+        8. 输出纯 JSON，不要在前后加任何说明文字",
     );
 
     prompt
