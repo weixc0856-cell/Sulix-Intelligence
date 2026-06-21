@@ -1,14 +1,7 @@
-//! Editor Agent (🎯 幕僚长) — 信念匹配引擎
+//! Editor Agent (🎯 幕僚长) — 问题匹配引擎
 //!
-//! 在红蓝对抗之前运行，职责：
-//! 1. 将每日信息匹配到信念系统（belief system）
-//! 2. 判断每条信息支持还是挑战哪个信念
-//! 3. 输出信念更新（belief_id + evidence_type + article）
-//!
-//! 设计原则：
-//! - 只收脱水数据（index + title + category + 100字摘要）
-//! - 返回 belief_id 索引，Rust 端按 belief_id 分组
-//! - 单次 LLM 调用，不逐个分析
+//! 判断每条信息回答了你当前正在思考的哪个决策问题。
+//! 允许一条信息同时回答多个问题，每条匹配独立输出。
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -17,7 +10,7 @@ use crate::config::{BeliefStatement, LlmConfig};
 use crate::fetcher::Article;
 use crate::llm;
 
-/// Editor 匹配结果：一篇文章 + 它对应的信念
+/// 匹配结果：一篇文章可以产生多条匹配（回答多个问题）
 #[derive(Debug)]
 pub struct BeliefMatch {
     pub article: Article,
@@ -39,18 +32,16 @@ struct EditorResponse {
 #[derive(Debug, Deserialize)]
 struct EditorItem {
     index: usize,
-    /// 匹配的 belief_id
-    belief_id: String,
-    /// "support" 或 "challenge"
-    evidence_type: String,
+    question_id: String,
+    /// support 或 challenge
+    impact: String,
+    /// high 或 medium
+    strength: String,
     category: String,
-    /// 一句话证据摘要（用高密度黑话）
-    evidence_summary: String,
+    evidence: String,
 }
 
-/// 信念匹配：将 articles 匹配到 belief_statements
-///
-/// world_state: 昨日简报摘要
+/// 问题匹配：将 articles 匹配到当前正在思考的问题
 pub async fn match_to_beliefs(
     articles: &[Article],
     world_state: &str,
@@ -79,25 +70,20 @@ pub async fn match_to_beliefs(
     }
 
     let total = articles.len();
-    log::info!("🎯 Editor Agent: {} 篇待匹配到信念系统", total);
+    log::info!("🎯 Editor Agent: {} 篇待匹配到问题", total);
 
-    // 2. 构建信念列表文本
-    let beliefs_text: String = beliefs
+    // 2. 构建问题列表
+    let questions_text: String = beliefs
         .iter()
-        .map(|b| {
-            format!(
-                "  [{}] {} (置信度: {}/10)",
-                b.id, b.statement, b.base_confidence
-            )
-        })
+        .map(|b| format!("  [{}] {}", b.id, b.statement))
         .collect::<Vec<_>>()
         .join("\n");
 
-    // 3. 系统 Prompt（信念匹配核心）
+    // 3. 系统 Prompt（问题匹配核心）
     let system_prompt = format!(
-        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的职责不是筛选新闻，而是判断今天的每条信息**是否为某个核心信念添加了新的证据**。
+        r#"你是一个个人创业者的 Chief of Staff（幕僚长）。你的职责不是筛选新闻，而是判断每天的每条信息**回答了你当前正在思考的哪个决策问题**。
 
-## 当前信念系统
+## 你当前正在思考的问题
 
 {}
 
@@ -107,32 +93,33 @@ pub async fn match_to_beliefs(
 
 ## 你的任务
 
-对每条信息，判断它属于以下哪一类：
+对每条信息，判断它回答（或影响了）哪个问题。必须严格：
+- 只选**直接相关**的信息，弱关联不匹配
+- 一条信息可以同时影响多个问题（最多2个）
+- 无关信息跳过，不输出
 
-1. **支持信念** = 这条信息为某个信念提供了新的支持证据
-2. **挑战信念** = 这条信息为某个信念提供了反例或挑战
-3. **无关** = 这条信息与所有信念无关（跳过，不输出）
+## 影响类型
 
-## 黄金标尺
+- **support** = 支持/强化对该问题的现有看法
+- **challenge** = 挑战/动摇了对该问题的看法
 
-1. **范式穿透力**：这是常规迭代还是砸碎游戏规则？
-2. **多维共振/背离**：多个维度指向同一方向还是存在背离？
-3. **房间里的大象**：谁指出了致命的执行风险？
+## 强度
 
-## 输出规则
+- **high** = 直接影响，强信号
+- **medium** = 间接影响，弱信号
 
-只输出 evidence_type 为 support 或 challenge 的条目。每篇文章最多匹配一个信念。
+## 输出
 
 JSON 格式：
 {{"matches": [
-  {{"index": 序号, "belief_id": "信念ID", "evidence_type": "support/challenge", "category": "路由分类(AI/技术主线/创业/A股/芯片/政策)", "evidence_summary": "一句话证据（用高密度黑话）"}}
+  {{"index": 序号, "question_id": "问题ID", "impact": "support/challenge", "strength": "high/medium", "category": "路由分类(AI/技术主线/创业/A股/芯片/政策)", "evidence": "一句话证据（30字内，用高密度黑话）"}}
 ]}}
 
 约束：
-- 如果某信息与所有信念无关 → 跳过（不输出）
-- belief_id 必须完全匹配信念系统中的 ID
-- 最多输出 10 条"#,
-        beliefs_text, world_state
+- 同一 index 可以出现多次（同时回答多个问题）
+- question_id 必须完全匹配问题ID
+- 最多输出 15 条"#,
+        questions_text, world_state
     );
 
     // 4. 调用 LLM
@@ -145,30 +132,41 @@ JSON 格式：
     // 5. 解析响应
     let parsed = parse_editor_response(&raw)?;
 
-    // 6. 按 index 匹配原文章
+    // 6. 按 index 匹配原文章，允许一篇文章多条匹配
     let mut matches = Vec::new();
     for item in parsed.matches {
         if let Some(article) = articles.get(item.index) {
             log::info!(
-                "  🎯 [{}] {} → belief:{} ({})",
+                "  🎯 [{}] {} → {} ({}/{})",
                 item.index,
                 article.title,
-                item.belief_id,
-                item.evidence_type
+                item.question_id,
+                item.impact,
+                item.strength
             );
+            let evidence_type = if item.impact == "challenge" {
+                "challenge".into()
+            } else {
+                format!("{}_{}", item.impact, item.strength)
+            };
             matches.push(BeliefMatch {
                 article: article.clone(),
                 routed_category: item.category,
-                belief_id: item.belief_id,
-                evidence_type: item.evidence_type,
-                evidence_summary: item.evidence_summary,
+                belief_id: item.question_id,
+                evidence_type,
+                evidence_summary: item.evidence,
             });
         } else {
             log::warn!("⚠️ Editor 返回了越界 index {}，跳过", item.index);
         }
     }
 
-    log::info!("🎯 Editor Agent: {}/{} 篇匹配到信念", matches.len(), total);
+    log::info!(
+        "🎯 Editor Agent: {} 条匹配（{}/{} 篇）",
+        matches.len(),
+        total,
+        total
+    );
     Ok(matches)
 }
 

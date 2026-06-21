@@ -11,7 +11,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::Decision;
+use crate::config::BeliefStatement;
 
 mod agent;
 mod config;
@@ -155,22 +155,24 @@ async fn main() -> Result<()> {
 
     // 7. Phase Chief of Staff: Editor Agent 决策匹配
     let world_state = build_world_state(&config.output.vault_path)?;
-    let decisions_list: Vec<Decision> = config
-        .decisions
+    let questions_list: Vec<BeliefStatement> = config
+        .questions
         .as_ref()
-        .map(|dc| dc.decisions.clone())
+        .map(|qc| {
+            qc.questions
+                .iter()
+                .map(|q| BeliefStatement {
+                    id: q.id.clone(),
+                    statement: q.question.clone(),
+                    base_confidence: 5,
+                })
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     let editor_matches = agent::editor::match_to_beliefs(
         &keep_articles,
         &world_state,
-        &decisions_list
-            .iter()
-            .map(|d| crate::config::BeliefStatement {
-                id: d.id.clone(),
-                statement: d.statement.clone(),
-                base_confidence: d.confidence,
-            })
-            .collect::<Vec<_>>(),
+        &questions_list,
         &api_key,
         &config.llm,
     )
@@ -301,9 +303,9 @@ async fn main() -> Result<()> {
         &analysis,
         debate_data.as_deref(),
         Some(&calibration_text),
-        &decisions_list
+        &questions_list
             .iter()
-            .map(|d| d.id.clone())
+            .map(|b| b.id.clone())
             .collect::<Vec<_>>(),
     )?;
     log::info!("日报渲染完成 ({} 字符)", report.len());

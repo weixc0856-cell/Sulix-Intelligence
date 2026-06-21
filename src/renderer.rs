@@ -44,7 +44,7 @@ pub fn render_daily_report(
     render_normal_mode(md, analysis, calibration)
 }
 
-/// 红蓝模式：今日决策看板
+/// 红蓝模式：今日问题看板（战略参谋格式）
 fn render_debate_mode(
     mut md: String,
     debate_results: &[ArbitrationResult],
@@ -77,7 +77,7 @@ fn render_debate_mode(
         }
     }
 
-    md.push_str("## 📋 今日决策看板\n\n");
+    md.push_str("## 🎯 今日行动变化\n\n");
 
     // === ✅ 继续坚持（支持证据 ≥ 2 且多于挑战） ===
     let mut has_continue = false;
@@ -160,9 +160,9 @@ fn render_debate_mode(
 
     // === 📋 今日可忽略 ===
     if !unmatched.is_empty() {
-        md.push_str("### 📋 今日可忽略\n\n");
+        md.push_str("### 📋 今日无关信息\n\n");
         for (_, a) in &unmatched {
-            md.push_str(&format!("• {} — 与当前决策无关\n", a.title));
+            md.push_str(&format!("• {} — 未回答任何当前问题\n", a.title));
         }
         md.push('\n');
     }
@@ -659,7 +659,7 @@ mod tests {
             verdict: "仲裁结论".into(),
         };
         let result = render_daily_report(&[analysis], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("决策看板"));
+        assert!(result.contains("行动变化"));
         assert!(result.contains("Core Signal"));
         assert!(result.contains("这是一个重要的核心信号"));
         // Should NOT contain normal-mode sections
@@ -679,7 +679,7 @@ mod tests {
             verdict: "无明确评级".into(),
         };
         let result = render_daily_report(&[analysis2], Some(&[debate]), None, &[]).unwrap();
-        assert!(result.contains("决策看板"));
+        assert!(result.contains("行动变化"));
         assert!(result.contains("Low Signal"));
     }
 

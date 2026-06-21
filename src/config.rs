@@ -25,9 +25,9 @@ pub struct Config {
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
-    /// 决策系统：当前活跃战略赌注
+    /// 当前正在思考的决策问题
     #[serde(default)]
-    pub decisions: Option<DecisionConfig>,
+    pub questions: Option<QuestionConfig>,
 }
 
 /// LLM 配置
@@ -150,38 +150,26 @@ fn default_burial_threshold() -> u8 {
     3
 }
 
-/// 决策配置：当前活跃战略赌注
+/// 问题配置：当前正在思考的决策问题
 #[derive(Debug, Deserialize, Clone)]
-pub struct DecisionConfig {
+pub struct QuestionConfig {
     #[serde(default)]
-    pub decisions: Vec<Decision>,
+    pub questions: Vec<Question>,
 }
 
-/// 单条决策
+/// 单条决策问题（具体、个人化、可回答）
 #[derive(Debug, Deserialize, Clone)]
-pub struct Decision {
+pub struct Question {
     pub id: String,
-    pub statement: String,
-    #[allow(dead_code)]
-    pub status: String,
-    #[serde(default = "default_decision_confidence")]
-    pub confidence: u8,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub beliefs: Vec<String>,
-    #[allow(dead_code)]
-    pub decision_action: Option<String>,
+    pub question: String,
 }
 
-fn default_decision_confidence() -> u8 {
-    50
-}
-
-/// 向后兼容：Editor Agent 使用的信念结构（由 decisions 转换而来）
+/// 向后兼容
 #[derive(Debug, Clone)]
 pub struct BeliefStatement {
     pub id: String,
     pub statement: String,
+    #[allow(dead_code)]
     pub base_confidence: u8,
 }
 
