@@ -74,7 +74,7 @@ pub async fn analyze(
             "🔍 正在分析 [{}] — {} 篇 (分 {} 批)",
             category,
             articles.len(),
-            (articles.len() + BATCH_SIZE - 1) / BATCH_SIZE
+            articles.len().div_ceil(BATCH_SIZE)
         );
 
         let system_prompt = build_system_prompt(prompts, category);
@@ -85,21 +85,15 @@ pub async fn analyze(
                 log::info!(
                     "  ↳ 第 {}/{} 批 ({} 篇)",
                     batch_idx + 1,
-                    (articles.len() + BATCH_SIZE - 1) / BATCH_SIZE,
+                    articles.len().div_ceil(BATCH_SIZE),
                     batch.len()
                 );
             }
 
             let user_prompt = build_user_prompt(category, batch_idx + 1, batch);
 
-            let result = call_with_retry(
-                &client,
-                api_key,
-                llm_config,
-                &system_prompt,
-                &user_prompt,
-            )
-            .await;
+            let result =
+                call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await;
 
             match result {
                 Ok(analyzed) => {
@@ -207,7 +201,8 @@ fn build_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> 
 
         // 截取前 3000 字符（相比原来 800 大幅提升，给 LLM 足够上下文）
         let truncated = if body.len() > 3000 {
-            format!("{}...", &body[..3000])
+            let end = body.floor_char_boundary(3000);
+            format!("{}...", &body[..end])
         } else {
             body.to_string()
         };
@@ -355,7 +350,7 @@ fn parse_json_response(content: &str) -> Result<Vec<AnalyzedArticleRaw>> {
 }
 
 /// 从文本中提取指定标记之间的内容
-fn extract_json_block<'a>(text: &'a str, marker: &str) -> Option<String> {
+fn extract_json_block(text: &str, marker: &str) -> Option<String> {
     let start = text.find(marker)?;
     let after = &text[start + marker.len()..];
     let end = after.find("```")?;
@@ -384,7 +379,7 @@ fn enrich_with_urls(
             AnalyzedArticle {
                 title: raw.title,
                 url,
-                importance: raw.importance.min(10).max(1),
+                importance: raw.importance.clamp(1, 10),
                 relevance: raw.relevance,
                 time_horizon: raw.time_horizon,
                 action: raw.action,
@@ -478,7 +473,10 @@ mod tests {
 
     #[test]
     fn test_extract_json_block_normal() {
-        let result = extract_json_block("before\n```json\n{\"key\":\"val\"}\n```\nafter", "```json\n");
+        let result = extract_json_block(
+            "before\n```json\n{\"key\":\"val\"}\n```\nafter",
+            "```json\n",
+        );
         assert_eq!(result, Some("{\"key\":\"val\"}".into()));
     }
 
@@ -497,9 +495,36 @@ mod tests {
     #[test]
     fn test_group_by_category_multiple() {
         use crate::fetcher::Article;
-        let a1 = Article { id: "1".into(), source: "s".into(), title: "A".into(), url: "u1".into(), content: None, summary: None, published_at: None, category: "AI".into() };
-        let a2 = Article { id: "2".into(), source: "s".into(), title: "B".into(), url: "u2".into(), content: None, summary: None, published_at: None, category: "创业".into() };
-        let a3 = Article { id: "3".into(), source: "s".into(), title: "C".into(), url: "u3".into(), content: None, summary: None, published_at: None, category: "AI".into() };
+        let a1 = Article {
+            id: "1".into(),
+            source: "s".into(),
+            title: "A".into(),
+            url: "u1".into(),
+            content: None,
+            summary: None,
+            published_at: None,
+            category: "AI".into(),
+        };
+        let a2 = Article {
+            id: "2".into(),
+            source: "s".into(),
+            title: "B".into(),
+            url: "u2".into(),
+            content: None,
+            summary: None,
+            published_at: None,
+            category: "创业".into(),
+        };
+        let a3 = Article {
+            id: "3".into(),
+            source: "s".into(),
+            title: "C".into(),
+            url: "u3".into(),
+            content: None,
+            summary: None,
+            published_at: None,
+            category: "AI".into(),
+        };
         let grouped = group_by_category(&[a1, a2, a3]);
         assert_eq!(grouped.len(), 2);
         assert_eq!(grouped.get("AI").unwrap().len(), 2);

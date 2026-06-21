@@ -118,10 +118,7 @@ async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
 
 /// 为内容不足的文章抓取原文并提取正文
 /// 如果 RSS 提供的 content/summary 少于一阈值，去文章 URL 获取完整 HTML 并提取正文
-pub async fn enrich_articles_content(
-    articles: &mut [Article],
-    max_concurrency: usize,
-) -> u32 {
+pub async fn enrich_articles_content(articles: &mut [Article], max_concurrency: usize) -> u32 {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .timeout(std::time::Duration::from_secs(15))
@@ -131,20 +128,15 @@ pub async fn enrich_articles_content(
 
     // 找出需要补充内容的文章
     let mut tasks = Vec::new();
-    for i in 0..articles.len() {
-        let content_len = articles[i]
-            .content
-            .as_ref()
-            .map(|c| c.len())
-            .unwrap_or(0);
+    for (i, article) in articles.iter().enumerate() {
+        let content_len = article.content.as_ref().map(|c| c.len()).unwrap_or(0);
 
         // 内容不足 150 字符 → 去原文抓取
         if content_len < 150 {
-            let url = articles[i].url.clone();
-            let idx = i;
+            let url = article.url.clone();
 
-            // 此时不能直接 move articles，用 index 方式
-            tasks.push((idx, url, client.clone()));
+            // 用 index 方式访问（不能 move articles）
+            tasks.push((i, url, client.clone()));
         }
     }
 
@@ -152,11 +144,7 @@ pub async fn enrich_articles_content(
         return 0;
     }
 
-    log::info!(
-        "📄 需要补充正文: {}/{} 篇文章",
-        tasks.len(),
-        articles.len()
-    );
+    log::info!("📄 需要补充正文: {}/{} 篇文章", tasks.len(), articles.len());
 
     // 用 Semaphore 限制并发
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
@@ -191,10 +179,7 @@ pub async fn enrich_articles_content(
 }
 
 /// 抓取文章 URL 的 HTML 并提取正文
-async fn fetch_article_content(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<String> {
+async fn fetch_article_content(client: &reqwest::Client, url: &str) -> Result<String> {
     let response = client.get(url).send().await?;
 
     if !response.status().is_success() {
@@ -204,8 +189,9 @@ async fn fetch_article_content(
     let html = response.text().await?;
 
     if html.len() > 1_000_000 {
-        // 超过 1MB 的页面截取前 500KB
-        let truncated = &html[..500_000];
+        // 超过 1MB 的页面截取前 500KB（安全处理 UTF-8 边界）
+        let end = html.floor_char_boundary(500_000);
+        let truncated = &html[..end];
         Ok(extract_text_from_html(truncated))
     } else {
         Ok(extract_text_from_html(&html))
@@ -243,13 +229,7 @@ fn extract_text_from_html(html: &str) -> String {
             if let Ok(p_sel) = Selector::parse("p") {
                 let paragraphs: Vec<String> = body
                     .select(&p_sel)
-                    .map(|el| {
-                        el.text()
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                            .trim()
-                            .to_string()
-                    })
+                    .map(|el| el.text().collect::<Vec<_>>().join(" ").trim().to_string())
                     .filter(|t| t.len() > 20) // 过滤短段落
                     .collect();
 
@@ -281,9 +261,12 @@ fn limit_text(text: String, max_len: usize) -> String {
         return text;
     }
 
-    // 在 max_len 附近找最后一个句号
-    let end = text[..max_len].rfind('。').or_else(|| text[..max_len].rfind('.'));
-    let end = end.or_else(|| text[..max_len].rfind('\n'));
+    // 在 max_len 附近找最后一个句号（UTF-8 安全）
+    let search_end = text.floor_char_boundary(max_len);
+    let end = text[..search_end]
+        .rfind('。')
+        .or_else(|| text[..search_end].rfind('.'));
+    let end = end.or_else(|| text[..search_end].rfind('\n'));
 
     match end {
         Some(pos) if pos > max_len / 2 => format!("{}...", &text[..=pos]),

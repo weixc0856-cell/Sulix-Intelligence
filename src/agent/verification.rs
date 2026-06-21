@@ -63,8 +63,7 @@ pub async fn verify(
 
         let mut rebuttals = Vec::new();
 
-        match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt)
-            .await
+        match llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await
         {
             Ok(raw_results) => {
                 for r in raw_results {
@@ -113,11 +112,7 @@ pub async fn verify(
 /// 构建 Verification system prompt
 ///
 /// = base prompt + 蓝军角色注入 + 证据等级 + 六问 + override + JSON 约束
-fn build_verification_prompt(
-    base: &str,
-    override_text: Option<&str>,
-    category: &str,
-) -> String {
+fn build_verification_prompt(base: &str, override_text: Option<&str>, category: &str) -> String {
     let mut prompt = base.to_string();
 
     // 注入蓝军角色定义（不与红军共享——防止复读陷阱）
@@ -178,10 +173,7 @@ fn build_verification_prompt(
 /// 构建 Verification user prompt
 ///
 /// 将红军的叙事分析发给蓝军做反驳
-fn build_verification_user_prompt(
-    category: &str,
-    narratives: &[Narrative],
-) -> String {
+fn build_verification_user_prompt(category: &str, narratives: &[Narrative]) -> String {
     let mut prompt = format!(
         "请对以下 {} 领域的 {} 条红军叙事分析进行反驳，输出 JSON：\n\n",
         category,

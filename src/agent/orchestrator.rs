@@ -82,7 +82,10 @@ pub fn arbitrate(
         }
 
         // 仲裁结论逻辑
-        let verdict = if blue_points.iter().any(|p| p.contains("L4") || p.contains("L5")) {
+        let verdict = if blue_points
+            .iter()
+            .any(|p| p.contains("L4") || p.contains("L5"))
+        {
             format!(
                 "⚠️ 蓝军提出证据等级警告(L4/L5)。保留红军逻辑供参考，建议降低权重。\n---\n🔴 红军: {}\n🔵 蓝军: {}",
                 red_points.join("; "),
@@ -129,25 +132,31 @@ mod tests {
     fn mock_synthesis(category: &str, titles: &[&str]) -> SynthesisOutput {
         SynthesisOutput {
             category: category.into(),
-            narratives: titles.iter().map(|t| Narrative {
-                title: t.to_string(),
-                narrative: format!("乐观分析: {}", t),
-                reasoning: format!("推演: {}", t),
-                signal_strength: 7,
-            }).collect(),
+            narratives: titles
+                .iter()
+                .map(|t| Narrative {
+                    title: t.to_string(),
+                    narrative: format!("乐观分析: {}", t),
+                    reasoning: format!("推演: {}", t),
+                    signal_strength: 7,
+                })
+                .collect(),
         }
     }
 
     fn mock_verification(category: &str, titles: &[(&str, &str)]) -> VerificationOutput {
         VerificationOutput {
             category: category.into(),
-            rebuttals: titles.iter().map(|(t, level)| Rebuttal {
-                title: t.to_string(),
-                counter_narrative: format!("反驳: {}", t),
-                evidence_level: level.to_string(),
-                refutation_strength: 8,
-                ai_myth_flags: vec![],
-            }).collect(),
+            rebuttals: titles
+                .iter()
+                .map(|(t, level)| Rebuttal {
+                    title: t.to_string(),
+                    counter_narrative: format!("反驳: {}", t),
+                    evidence_level: level.to_string(),
+                    refutation_strength: 8,
+                    ai_myth_flags: vec![],
+                })
+                .collect(),
         }
     }
 

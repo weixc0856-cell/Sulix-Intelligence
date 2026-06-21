@@ -185,12 +185,10 @@ impl Database {
              WHERE a.fetched_at < date('now', ?1)
              AND a.id NOT IN (
                  SELECT g.article_id FROM knowledge_graveyard g WHERE g.article_id IS NOT NULL
-             )"
+             )",
         )?;
         let range = format!("-{} days", retention_days);
-        let rows = stmt.query_map(params![range], |row| {
-            row.get::<_, String>(0)
-        })?;
+        let rows = stmt.query_map(params![range], |row| row.get::<_, String>(0))?;
         let mut result = Vec::new();
         for row in rows {
             result.push(row?);
@@ -230,7 +228,7 @@ impl Database {
              FROM knowledge_graveyard
              WHERE title LIKE ?1 AND category = ?2
              ORDER BY buried_at DESC
-             LIMIT 3"
+             LIMIT 3",
         )?;
         let rows = stmt.query_map(params![pattern, category], |row| {
             Ok(GraveyardEntry {
@@ -251,9 +249,9 @@ impl Database {
 
     /// 获取文章详情（用于 Decay Agent 压缩）
     pub fn get_article_by_id(&self, id: &str) -> Result<Option<(String, String, String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT title, category, source, content FROM articles WHERE id = ?1"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT title, category, source, content FROM articles WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -358,11 +356,14 @@ mod tests {
     fn test_record_report() {
         let db = test_db();
         db.record_report("2026-06-21", "# Test Report", 5).unwrap();
-        let count: u32 = db.conn.query_row(
-            "SELECT COUNT(*) FROM daily_reports WHERE id = '2026-06-21'",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        let count: u32 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_reports WHERE id = '2026-06-21'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1);
     }
 }

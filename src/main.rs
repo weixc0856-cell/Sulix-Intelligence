@@ -64,7 +64,10 @@ async fn main() -> Result<()> {
     // 打印新文章概览
     println!("\n📋 === 今日新增 {} 篇 ===\n", new_articles.len());
     for article in &new_articles {
-        println!("  [{}/{}] {}", article.category, article.source, article.title);
+        println!(
+            "  [{}/{}] {}",
+            article.category, article.source, article.title
+        );
     }
 
     // 5. 【P0】正文提取 — RSS 摘要不足时，去原文抓取正文
@@ -82,46 +85,45 @@ async fn main() -> Result<()> {
 
     // === Phase A: Scan Agent 初筛 ===
     let total_new = new_articles.len(); // 在 move 前保存计数
-    let keep_articles: Vec<fetcher::Article> =
-        if let Some(ref scan_config) = config.scan_agent {
-            if scan_config.enabled && !grouped.is_empty() {
-                match agent::scan::scan_and_filter(
-                    &grouped,
-                    scan_config.threshold,
-                    &api_key,
-                    &config.llm,
-                )
-                .await
-                {
-                    Ok(filtered) => {
-                        log::info!(
-                            "Scan Agent 完成: {} 篇保留, {} 篇跳过 (阈值≤{})",
-                            filtered.keep.len(),
-                            filtered.filtered_out.len(),
-                            scan_config.threshold,
-                        );
-                        // debug 日志打印被过滤文章
-                        for a in &filtered.filtered_out {
-                            log::debug!("  ↳ 跳过: [{}] {}", a.category, a.title);
-                        }
-                        filtered.keep
+    let keep_articles: Vec<fetcher::Article> = if let Some(ref scan_config) = config.scan_agent {
+        if scan_config.enabled && !grouped.is_empty() {
+            match agent::scan::scan_and_filter(
+                &grouped,
+                scan_config.threshold,
+                &api_key,
+                &config.llm,
+            )
+            .await
+            {
+                Ok(filtered) => {
+                    log::info!(
+                        "Scan Agent 完成: {} 篇保留, {} 篇跳过 (阈值≤{})",
+                        filtered.keep.len(),
+                        filtered.filtered_out.len(),
+                        scan_config.threshold,
+                    );
+                    // debug 日志打印被过滤文章
+                    for a in &filtered.filtered_out {
+                        log::debug!("  ↳ 跳过: [{}] {}", a.category, a.title);
                     }
-                    Err(e) => {
-                        // 防呆：失败时回退全线分析
-                        log::warn!(
-                            "⚠️ Scan Agent 失败 ({}), 回退到全线分析 ({} 篇)",
-                            e,
-                            new_articles.len()
-                        );
-                        new_articles
-                    }
+                    filtered.keep
                 }
-            } else {
-                new_articles
+                Err(e) => {
+                    // 防呆：失败时回退全线分析
+                    log::warn!(
+                        "⚠️ Scan Agent 失败 ({}), 回退到全线分析 ({} 篇)",
+                        e,
+                        new_articles.len()
+                    );
+                    new_articles
+                }
             }
         } else {
             new_articles
-        };
+        }
+    } else {
+        new_articles
+    };
 
     // 检查是否仍有文章需要分析
     if keep_articles.is_empty() {
@@ -147,30 +149,35 @@ async fn main() -> Result<()> {
     let (analysis, debate_data) = if use_red_blue && !grouped_keep.is_empty() {
         // Phase B: 红蓝对抗管线
         log::info!("🔴 开始 Synthesis (红军) 分析...");
-        let synthesis =
-            agent::synthesis::synthesize(
-                &grouped_keep,
+        let synthesis = agent::synthesis::synthesize(
+            &grouped_keep,
+            &config.prompts.base,
+            config
+                .prompts
+                .vertical_overrides
+                .get("AI")
+                .map(|s| s.as_str()),
+            &api_key,
+            &config.llm,
+        )
+        .await?;
+        log::info!("✅ Synthesis 完成: {} 个 vertical", synthesis.len());
+
+        let use_verification = config
+            .agent
+            .as_ref()
+            .is_some_and(|a| a.verification_enabled);
+
+        let debate = if use_verification && !synthesis.is_empty() {
+            log::info!("🔵 开始 Verification (蓝军) 分析...");
+            let verification = agent::verification::verify(
+                &synthesis,
                 &config.prompts.base,
-                config.prompts.vertical_overrides.get("AI").map(|s| s.as_str()),
+                None,
                 &api_key,
                 &config.llm,
             )
             .await?;
-        log::info!("✅ Synthesis 完成: {} 个 vertical", synthesis.len());
-
-        let use_verification = config.agent.as_ref().is_some_and(|a| a.verification_enabled);
-
-        let debate = if use_verification && !synthesis.is_empty() {
-            log::info!("🔵 开始 Verification (蓝军) 分析...");
-            let verification =
-                agent::verification::verify(
-                    &synthesis,
-                    &config.prompts.base,
-                    None,
-                    &api_key,
-                    &config.llm,
-                )
-                .await?;
             log::info!("✅ Verification 完成: {} 个 vertical", verification.len());
 
             log::info!("⚖️ 开始仲裁...");
@@ -214,8 +221,7 @@ async fn main() -> Result<()> {
             analysis
         };
 
-        let analysis: Vec<VerticalAnalysis> =
-            debate.iter().map(|r| r.analysis.clone()).collect();
+        let analysis: Vec<VerticalAnalysis> = debate.iter().map(|r| r.analysis.clone()).collect();
         (analysis, Some(debate))
     } else {
         // 传统 LLM 分析（向后兼容）
@@ -229,7 +235,8 @@ async fn main() -> Result<()> {
     let calibration_text = agent::calibration::calibrate(&analysis, &api_key, &config.llm).await?;
 
     // 9. 渲染日报（支持辩论痕迹 + 认知校准）
-    let report = renderer::render_daily_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
+    let report =
+        renderer::render_daily_report(&analysis, debate_data.as_deref(), Some(&calibration_text))?;
     log::info!("日报渲染完成 ({} 字符)", report.len());
 
     // 10. 写入 SulixNote Vault

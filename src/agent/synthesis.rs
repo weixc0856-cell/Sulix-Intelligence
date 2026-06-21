@@ -121,11 +121,7 @@ pub async fn synthesize(
 /// 构建 Synthesis system prompt
 ///
 /// = base prompt + 红军角色注入 + vertical override + JSON 格式约束
-fn build_synthesis_prompt(
-    base: &str,
-    override_text: Option<&str>,
-    category: &str,
-) -> String {
+fn build_synthesis_prompt(base: &str, override_text: Option<&str>, category: &str) -> String {
     let mut prompt = base.to_string();
 
     // 注入红军角色定义（硬编码——确保护城河不被配置覆盖）
@@ -174,11 +170,7 @@ fn build_synthesis_prompt(
 }
 
 /// 构建 Synthesis user prompt
-fn build_synthesis_user_prompt(
-    category: &str,
-    batch_idx: usize,
-    articles: &[Article],
-) -> String {
+fn build_synthesis_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> String {
     let mut prompt = format!(
         "请从红军视角分析以下 {} 领域的 {} 条新闻（第 {} 批），输出 JSON：\n\n",
         category,
@@ -202,7 +194,8 @@ fn build_synthesis_user_prompt(
             .unwrap_or("(无全文)");
 
         let truncated = if body.len() > 3000 {
-            format!("{}...", &body[..3000])
+            let end = body.floor_char_boundary(3000);
+            format!("{}...", &body[..end])
         } else {
             body.to_string()
         };

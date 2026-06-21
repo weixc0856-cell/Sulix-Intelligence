@@ -94,8 +94,12 @@ pub struct ScanAgentConfig {
     pub threshold: u8,
 }
 
-fn default_scan_enabled() -> bool { true }
-fn default_scan_threshold() -> u8 { 3 }
+fn default_scan_enabled() -> bool {
+    true
+}
+fn default_scan_threshold() -> u8 {
+    3
+}
 
 /// Phase B: 红蓝对抗 Agent 配置
 #[derive(Debug, Deserialize, Clone)]
@@ -108,7 +112,9 @@ pub struct AgentConfig {
     pub verification_enabled: bool,
 }
 
-fn default_agent_enabled() -> bool { true }
+fn default_agent_enabled() -> bool {
+    true
+}
 
 /// Phase D: 记忆墓地配置
 #[derive(Debug, Deserialize, Clone)]
@@ -128,10 +134,18 @@ pub struct GraveyardConfig {
     pub burial_threshold: u8,
 }
 
-fn default_graveyard_enabled() -> bool { true }
-fn default_retention_days() -> u32 { 90 }
-fn default_compression_enabled() -> bool { true }
-fn default_burial_threshold() -> u8 { 3 }
+fn default_graveyard_enabled() -> bool {
+    true
+}
+fn default_retention_days() -> u32 {
+    90
+}
+fn default_compression_enabled() -> bool {
+    true
+}
+fn default_burial_threshold() -> u8 {
+    3
+}
 
 /// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）
 #[derive(Debug, Deserialize, Clone)]
@@ -148,8 +162,8 @@ impl Config {
     pub fn from_file(path: &str) -> Result<Self> {
         let content = fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("无法读取配置文件 {}: {}", path, e))?;
-        let config: Config = toml::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("TOML 解析错误: {}", e))?;
+        let config: Config =
+            toml::from_str(&content).map_err(|e| anyhow::anyhow!("TOML 解析错误: {}", e))?;
         Ok(config)
     }
 
@@ -184,7 +198,7 @@ mod tests {
     #[test]
     fn test_config_from_example() {
         let config = Config::from_file("config.example.toml").unwrap();
-        assert_eq!(config.llm.model, "deepseek-chat");
+        assert_eq!(config.llm.model, "deepseek-v4-flash");
         assert!(config.sources.len() >= 2);
     }
 

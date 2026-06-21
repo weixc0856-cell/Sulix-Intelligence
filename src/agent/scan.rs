@@ -62,14 +62,9 @@ pub async fn scan_and_filter(
             let user_prompt = build_scan_user_prompt(category, batch_idx + 1, batch);
 
             // 复用 llm.rs 的 call_with_retry（指数退避 + 4xx 不重试）
-            let result = llm::call_with_retry(
-                &client,
-                api_key,
-                llm_config,
-                &system_prompt,
-                &user_prompt,
-            )
-            .await;
+            let result =
+                llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt)
+                    .await;
 
             match result {
                 Ok(raw_results) => {
@@ -92,7 +87,9 @@ pub async fn scan_and_filter(
                     // 该批扫描失败 → 全部保留（安全降级）
                     log::warn!(
                         "⚠️ Scan Agent [{}] 第{}批扫描失败: {}，全部保留",
-                        category, batch_idx + 1, e
+                        category,
+                        batch_idx + 1,
+                        e
                     );
                     keep.extend(batch.iter().cloned());
                 }
@@ -155,11 +152,7 @@ fn build_scan_prompt(
 /// 构建 scan user prompt
 ///
 /// 只传标题和来源，不传全文（Scan Agent 只看标题级信号）
-fn build_scan_user_prompt(
-    category: &str,
-    batch_idx: usize,
-    articles: &[Article],
-) -> String {
+fn build_scan_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> String {
     let mut prompt = format!(
         "请快速扫描以下 {category} 领域的 {n} 篇文章（第 {batch} 批）：\n\n",
         category = category,

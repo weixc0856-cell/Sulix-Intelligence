@@ -145,7 +145,8 @@ async fn compress_article(
         "请压缩以下文章：\n\n标题: {}\n\n正文:\n{}",
         title,
         if content.len() > 3000 {
-            format!("{}...", &content[..3000])
+            let end = content.floor_char_boundary(3000);
+            format!("{}...", &content[..end])
         } else {
             content.to_string()
         }
@@ -157,7 +158,8 @@ async fn compress_article(
             .map(|r| {
                 let compressed = r.judgment.clone();
                 if compressed.len() > 300 {
-                    format!("{}...", &compressed[..300])
+                    let end = compressed.floor_char_boundary(300);
+                    format!("{}...", &compressed[..end])
                 } else {
                     compressed
                 }

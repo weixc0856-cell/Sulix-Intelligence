@@ -5,11 +5,13 @@
 //! 2. 按分类展开各条分析
 //! 3. 今日结论
 
+use std::cmp::Reverse;
+
 use anyhow::Result;
 use chrono::Local;
 
-use crate::llm::{AnalyzedArticle, VerticalAnalysis};
 use crate::agent::orchestrator::ArbitrationResult;
+use crate::llm::{AnalyzedArticle, VerticalAnalysis};
 
 /// 生成最终日报 Markdown
 pub fn render_daily_report(
@@ -59,18 +61,9 @@ pub fn render_daily_report(
                     continue;
                 }
                 md.push_str(&format!("### {}\n\n", category_emoji(&result.category)));
-                md.push_str(&format!(
-                    "**🔴 红军叙事**:\n{}\n\n",
-                    result.red_summary
-                ));
-                md.push_str(&format!(
-                    "**🔵 蓝军反驳**:\n{}\n\n",
-                    result.blue_summary
-                ));
-                md.push_str(&format!(
-                    "**⚖️ 仲裁结论**:\n> {}\n\n",
-                    result.verdict
-                ));
+                md.push_str(&format!("**🔴 红军叙事**:\n{}\n\n", result.red_summary));
+                md.push_str(&format!("**🔵 蓝军反驳**:\n{}\n\n", result.blue_summary));
+                md.push_str(&format!("**⚖️ 仲裁结论**:\n> {}\n\n", result.verdict));
                 md.push_str("---\n\n");
             }
         }
@@ -86,7 +79,7 @@ pub fn render_daily_report(
 
         // 按重要性降序排列
         let mut sorted = va.articles.clone();
-        sorted.sort_by(|a, b| b.importance.cmp(&a.importance));
+        sorted.sort_by_key(|b| Reverse(b.importance));
 
         for article in &sorted {
             md.push_str(&format!("### {}\n\n", article.title));
@@ -156,7 +149,7 @@ fn extract_top3(analysis: &[VerticalAnalysis]) -> Vec<&AnalyzedArticle> {
         .filter(|a| !a.action.contains("忽略") && a.importance >= 4)
         .collect();
 
-    all.sort_by(|a, b| b.importance.cmp(&a.importance));
+    all.sort_by_key(|b| Reverse(b.importance));
     all.into_iter().take(3).collect()
 }
 
@@ -255,14 +248,26 @@ mod tests {
     fn test_calibration_section_present() {
         let a = mock_article("Calib Article", 5, "观察");
         let analysis = mock_analysis("AI", vec![a]);
-        let result = render_daily_report(&[analysis], None, Some("你为什么跳过了所有芯片新闻？")).unwrap();
+        let result =
+            render_daily_report(&[analysis], None, Some("你为什么跳过了所有芯片新闻？")).unwrap();
         assert!(result.contains("认知校准"));
         assert!(result.contains("你为什么跳过了所有芯片新闻？"));
     }
 
     #[test]
     fn test_category_emoji_all() {
-        let categories = ["AI", "Agent", "独立开发", "Indie", "芯片", "政策", "财税", "创业", "出海", "其他"];
+        let categories = [
+            "AI",
+            "Agent",
+            "独立开发",
+            "Indie",
+            "芯片",
+            "政策",
+            "财税",
+            "创业",
+            "出海",
+            "其他",
+        ];
         for cat in &categories {
             let a = mock_article("Test", 5, "观察");
             let analysis = mock_analysis(cat, vec![a]);
@@ -290,7 +295,7 @@ mod tests {
             mock_article("High", 9, "研究"),
         ];
         let analysis = mock_analysis("AI", articles);
-        let analyses = [analysis];  // bind to extend lifetime
+        let analyses = [analysis]; // bind to extend lifetime
         let top3 = extract_top3(&analyses);
         assert_eq!(top3.len(), 1);
         assert_eq!(top3[0].title, "High");
