@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="README.md">🇬🇧 English</a> · <a href="README.zh-CN.md">🇨🇳 中文</a>
+</p>
+
 # Sulix Intelligence
 
 > **面向独立开发者与个人创业者的 AI 战略情报助手。**
