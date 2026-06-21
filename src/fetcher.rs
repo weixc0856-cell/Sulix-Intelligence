@@ -22,6 +22,8 @@ pub struct Article {
     pub summary: Option<String>,
     pub published_at: Option<DateTime<FixedOffset>>,
     pub category: String,
+    #[serde(default)]
+    pub wiki_summary: Option<String>,
 }
 
 /// 并发拉取所有已启用的 RSS 源
@@ -137,6 +139,7 @@ async fn fetch_single_source(source: &SourceConfig) -> Result<Vec<Article>> {
                 summary,
                 published_at: entry.published.map(|d| d.fixed_offset()),
                 category: source.category.clone(),
+                wiki_summary: None,
             })
         })
         .collect();

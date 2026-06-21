@@ -259,6 +259,10 @@ fn build_synthesis_user_prompt(category: &str, batch_idx: usize, articles: &[Art
         };
 
         prompt.push_str(&format!("正文: {}\n\n", truncated));
+
+        if let Some(ref wiki) = article.wiki_summary {
+            prompt.push_str(&format!("Wikipedia 背景: {}\n\n", wiki));
+        }
     }
 
     prompt

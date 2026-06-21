@@ -309,6 +309,7 @@ mod tests {
             summary: None,
             published_at: None,
             category: "AI".into(),
+            wiki_summary: None,
         }
     }
 

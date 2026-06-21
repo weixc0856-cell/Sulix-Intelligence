@@ -58,6 +58,14 @@ layer = 2
 enabled = true
 
 # [[sources]]
+# name = "YT Fireship"
+# type = "rss"
+# url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrdU27mavElYgt108A"
+# category = "AI"
+# layer = 2
+# enabled = false
+
+# [[sources]]
 # name = "Stratechery"
 # type = "rss"
 # url = "https://stratechery.com/feed/"

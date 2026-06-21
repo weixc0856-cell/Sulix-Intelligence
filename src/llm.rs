@@ -227,6 +227,10 @@ fn build_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> 
         };
 
         prompt.push_str(&format!("正文: {}\n\n", truncated));
+
+        if let Some(ref wiki) = article.wiki_summary {
+            prompt.push_str(&format!("Wikipedia 背景: {}\n\n", wiki));
+        }
     }
 
     prompt
@@ -540,6 +544,7 @@ mod tests {
             summary: None,
             published_at: None,
             category: "AI".into(),
+            wiki_summary: None,
         };
         let a2 = Article {
             id: "2".into(),
@@ -550,6 +555,7 @@ mod tests {
             summary: None,
             published_at: None,
             category: "创业".into(),
+            wiki_summary: None,
         };
         let a3 = Article {
             id: "3".into(),
@@ -560,6 +566,7 @@ mod tests {
             summary: None,
             published_at: None,
             category: "AI".into(),
+            wiki_summary: None,
         };
         let grouped = group_by_category(&[a1, a2, a3]);
         assert_eq!(grouped.len(), 2);

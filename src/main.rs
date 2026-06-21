@@ -14,6 +14,7 @@ use std::path::PathBuf;
 mod agent;
 mod config;
 mod db;
+mod enricher;
 mod fetcher;
 mod llm;
 mod renderer;
@@ -82,7 +83,10 @@ async fn main() -> Result<()> {
         );
     }
 
-    // 5. 【P0】正文提取 — RSS 摘要不足时，去原文抓取正文
+    // 5. Wikipedia 上下文注入（为技术词提供背景知识）
+    enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
+
+    // 6. 【P0】正文提取 — RSS 摘要不足时，去原文抓取正文
     log::info!("📄 检查并补充正文...");
     let enriched = fetcher::enrich_articles_content(&mut new_articles, 5).await;
     if enriched > 0 {
