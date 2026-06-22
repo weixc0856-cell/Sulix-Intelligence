@@ -416,9 +416,9 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Lora:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3120b'/><text y='75' x='35' font-family='sans-serif' font-weight='900' font-size='70' fill='white'>i</text></svg>">
-  <style>body{{font-family:'Inter',sans-serif;background-color:#fcfcfc;color:#111;}}.serif-title{{font-family:'Playfair Display',serif;line-height:1.15;}}</style>
+  <style>body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#fcfcfc;color:#111;}}.chronicle-title{{font-family:'Lora','Playfair Display','Georgia',serif;line-height:1.15;}}</style>
 </head>
 <body class="antialiased min-h-screen pb-12">
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
@@ -429,7 +429,7 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
           <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
         </div>
         <div class="flex items-baseline tracking-tight">
-          <span class="text-lg font-bold text-neutral-900" style="font-family: 'Playfair Display'">Sulix</span>
+          <span class="text-lg font-bold text-neutral-900" style="font-family: 'Lora', 'Playfair Display', 'Georgia', serif;">Sulix</span>
           <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
           <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
         </div>
@@ -444,8 +444,8 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
   <main class="max-w-5xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
     <div class="space-y-2">
       <span class="text-[#e3120b] text-xs font-bold uppercase tracking-widest block">{}</span>
-      <h1 class="serif-title text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">{}</h1>
-      <p class="serif-title text-lg sm:text-xl italic text-neutral-500 font-normal">{}</p>
+      <h1 class="chronicle-title text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">{}</h1>
+      <p class="chronicle-title text-lg sm:text-xl italic text-neutral-500 font-normal">{}</p>
     </div>
     <div class="border-t border-neutral-200 mt-6 pt-2 flex justify-between items-center text-xs text-neutral-400 font-medium">
       <span>SULIX INTELLIGENCE REPORT</span><span>{}</span>
@@ -502,7 +502,7 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
                   <span class="text-xs font-mono text-neutral-400 font-semibold w-24 shrink-0">{}</span>
                   <div class="space-y-1">
                     <span class="text-xs font-bold text-[#e3120b] uppercase tracking-wider block text-[10px]">{}</span>
-                    <span class="serif-title text-lg font-bold text-neutral-900 group-hover:text-[#e3120b] transition-colors">{}</span>
+                    <span class="chronicle-title text-lg font-bold text-neutral-900 group-hover:text-[#e3120b] transition-colors">{}</span>
                   </div>
                 </div>
                 <div class="mt-2 md:mt-0 flex gap-1.5">{}</div>
@@ -519,7 +519,7 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
   <title>Geopolitical Tech Chronicle | Sulix</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-  <style>body{{font-family:'Inter',sans-serif;background-color:#fcfcfc;color:#111;}}.serif-title{{font-family:'Playfair Display',serif;}}</style>
+  <style>body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#fcfcfc;color:#111;}}.chronicle-title{{font-family:'Lora','Playfair Display','Georgia',serif;}}</style>
 </head>
 <body>
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
@@ -531,7 +531,7 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
         <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
       </div>
       <div class="flex items-baseline tracking-tight">
-        <span class="text-lg font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
+        <span class="text-lg font-bold text-neutral-900" style="font-family: 'Lora', 'Playfair Display', 'Georgia', serif;">Sulix</span>
         <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
         <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
       </div>
@@ -540,8 +540,8 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 
   <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="border-b-2 border-neutral-950 pb-6">
-      <h1 class="serif-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">Geopolitical Tech Chronicle</h1>
-      <p class="serif-title text-lg italic text-neutral-500 mt-2">A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines.</p>
+      <h1 class="chronicle-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">Geopolitical Tech Chronicle</h1>
+      <p class="chronicle-title text-lg italic text-neutral-500 mt-2">A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines.</p>
       <div class="mt-3 text-xs text-neutral-400">{} entries spanning {} topics</div>
     </div>
     <div class="mt-8 space-y-1">
