@@ -28,6 +28,7 @@ pub struct GraveyardEntry {
     pub article_id: String,
     pub title: String,
     pub category: String,
+    #[allow(dead_code)]
     pub compressed_content: String,
     #[allow(dead_code)]
     pub buried_at: String,
@@ -218,15 +219,15 @@ impl Database {
 
     /// 搜索墓地（唤醒匹配）
     ///
-    /// TODO: 当前使用 `LIKE '%完整标题%'` 几乎不可能触发精准匹配。
-    /// 需要实现语义级别的主题匹配（关键词抽取 / embedding）才能让唤醒功能真正生效。
-    /// 在此之前，唤醒信号的命中率极低，属于"名存实亡"功能。
+    /// 对 LIKE 通配符 `%` 和 `_` 做转义，防止因 RSS 标题中的通配符导致误匹配。
+    /// 使用 ESCAPE '\' 确保转义生效。
     pub fn search_graveyard(&self, keyword: &str, category: &str) -> Result<Vec<GraveyardEntry>> {
-        let pattern = format!("%{}%", keyword);
+        let escaped = keyword.replace('%', "\\%").replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
         let mut stmt = self.conn.prepare(
             "SELECT id, article_id, title, category, compressed_content, buried_at
              FROM knowledge_graveyard
-             WHERE title LIKE ?1 AND category = ?2
+             WHERE title LIKE ?1 ESCAPE '\\' AND category = ?2
              ORDER BY buried_at DESC
              LIMIT 3",
         )?;
@@ -336,7 +337,7 @@ mod tests {
     fn test_dedup_duplicates() {
         let db = test_db();
         let a = test_article("1", "Dup", "https://example.com/dup");
-        let first = db.dedup_and_insert(&[a.clone()]).unwrap();
+        let first = db.dedup_and_insert(std::slice::from_ref(&a)).unwrap();
         assert_eq!(first.len(), 1);
         let second = db.dedup_and_insert(&[a]).unwrap();
         assert_eq!(second.len(), 0);

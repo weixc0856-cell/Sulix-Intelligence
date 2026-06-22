@@ -14,26 +14,6 @@ use crate::config::LlmConfig;
 use crate::fetcher::Article;
 use crate::llm;
 
-/// 信号标签（Layer 1：只分类，不打分）
-#[derive(Debug, Clone, PartialEq)]
-pub enum SignalTag {
-    StructuralShift,   // 结构变化（最重要）
-    CompetitiveSignal, // 竞争动态
-    ContextUpdate,     // 背景补充
-    Noise,             // 明显噪音
-}
-
-impl SignalTag {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SignalTag::StructuralShift => "Structural Shift",
-            SignalTag::CompetitiveSignal => "Competitive Signal",
-            SignalTag::ContextUpdate => "Context Update",
-            SignalTag::Noise => "Noise",
-        }
-    }
-}
-
 /// 三层分流结果（Layer 3）
 #[derive(Debug, Clone, Serialize)]
 pub struct TriageResult {
@@ -74,10 +54,13 @@ pub async fn scan_and_triage(
                 log::debug!("  ↳ 第 {}/{} 批", batch_idx + 1, total_batches);
             }
 
-            let system_prompt = build_scan_prompt_v11(category, batch_idx + 1, total_batches, batch);
+            let system_prompt =
+                build_scan_prompt_v11(category, batch_idx + 1, total_batches, batch);
             let user_prompt = build_scan_user_prompt(category, batch_idx + 1, batch);
 
-            let result = llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await;
+            let result =
+                llm::call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt)
+                    .await;
 
             match result {
                 Ok(raw_results) => {
@@ -85,7 +68,9 @@ pub async fn scan_and_triage(
                         // 找匹配的 LLM 输出
                         let matched = raw_results.iter().find(|r| r.title == article.title);
                         let importance = matched.map(|r| r.importance.clamp(1, 10)).unwrap_or(5);
-                        let tag = matched.map(|r| r.relevance.as_str()).unwrap_or("Context Update");
+                        let tag = matched
+                            .map(|r| r.relevance.as_str())
+                            .unwrap_or("Context Update");
 
                         // 三层分流
                         // 综合评分 = importance * 0.25 + tag 权重
@@ -121,11 +106,18 @@ pub async fn scan_and_triage(
 
         log::info!(
             "✅ Scan v1.1 [{}]: 🟢{} 🟡{} 🔵{}",
-            category, insight.len(), watchlist.len(), signal_memory.len()
+            category,
+            insight.len(),
+            watchlist.len(),
+            signal_memory.len()
         );
     }
 
-    Ok(TriageResult { insight, watchlist, signal_memory })
+    Ok(TriageResult {
+        insight,
+        watchlist,
+        signal_memory,
+    })
 }
 
 /// v1.1 扫描 prompt

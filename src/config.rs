@@ -9,25 +9,15 @@ use std::fs;
 pub struct Config {
     pub llm: LlmConfig,
     pub output: OutputConfig,
-    #[allow(dead_code)]
-    pub dedup: DedupConfig,
     pub storage: Option<StorageConfig>,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
-    #[allow(dead_code)]
-    pub prompts: PromptConfig,
     /// Phase A: Scan Agent 配置
     #[serde(default)]
     pub scan_agent: Option<ScanAgentConfig>,
-    /// Phase B: 红蓝对抗 Agent 配置
-    #[serde(default)]
-    pub agent: Option<AgentConfig>,
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
-    /// DecisionLedger: 活跃决策问题
-    #[serde(default)]
-    pub decisions: Option<DecisionLedger>,
 }
 
 /// LLM 配置
@@ -46,7 +36,9 @@ pub struct LlmConfig {
     pub perplexity_key: Option<String>,
 }
 
-fn default_llm_provider() -> String { "deepseek".into() }
+fn default_llm_provider() -> String {
+    "deepseek".into()
+}
 
 /// 输出配置
 #[derive(Debug, Deserialize, Clone)]
@@ -57,15 +49,8 @@ pub struct OutputConfig {
     pub date_range: String,
 }
 
-fn default_date_range() -> String { "d7".into() }
-
-/// 去重配置（预留，当前在 dedup_and_insert 中使用精确去重）
-#[derive(Debug, Deserialize, Clone)]
-pub struct DedupConfig {
-    #[allow(dead_code)]
-    pub window_hours: u32,
-    #[allow(dead_code)]
-    pub title_similarity_threshold: f32,
+fn default_date_range() -> String {
+    "d7".into()
 }
 
 /// 存储配置
@@ -114,30 +99,9 @@ pub struct ScanAgentConfig {
     /// 是否启用 Scan Agent
     #[serde(default = "default_scan_enabled")]
     pub enabled: bool,
-    /// 重要性阈值，≤此值的文章被跳过（默认 3）
-    #[serde(default = "default_scan_threshold")]
-    pub threshold: u8,
 }
 
 fn default_scan_enabled() -> bool {
-    true
-}
-fn default_scan_threshold() -> u8 {
-    3
-}
-
-/// Phase B: 红蓝对抗 Agent 配置
-#[derive(Debug, Deserialize, Clone)]
-pub struct AgentConfig {
-    /// 是否启用 Synthesis Agent（红军）
-    #[serde(default = "default_agent_enabled")]
-    pub synthesis_enabled: bool,
-    /// 是否启用 Verification Agent（蓝军）
-    #[serde(default = "default_agent_enabled")]
-    pub verification_enabled: bool,
-}
-
-fn default_agent_enabled() -> bool {
     true
 }
 
@@ -153,10 +117,6 @@ pub struct GraveyardConfig {
     /// 是否启用 LLM 压缩
     #[serde(default = "default_compression_enabled")]
     pub compression: bool,
-    /// 埋葬阈值（重要性 ≤ 此值即埋葬）
-    #[allow(dead_code)]
-    #[serde(default = "default_burial_threshold")]
-    pub burial_threshold: u8,
 }
 
 fn default_graveyard_enabled() -> bool {
@@ -167,40 +127,6 @@ fn default_retention_days() -> u32 {
 }
 fn default_compression_enabled() -> bool {
     true
-}
-fn default_burial_threshold() -> u8 {
-    3
-}
-
-/// DecisionLedger — 追踪活跃决策及其证据状态
-#[derive(Debug, Deserialize, Clone)]
-pub struct DecisionLedger {
-    #[serde(default)]
-    pub decisions: Vec<Decision>,
-}
-
-/// 单条决策问题（可回答、具体、可操作）
-#[derive(Debug, Deserialize, Clone)]
-pub struct Decision {
-    pub id: String,
-    pub question: String,
-    #[serde(default = "default_decision_status")]
-    pub status: String,     // "active" | "archived"
-    #[serde(default = "default_decision_position")]
-    pub position: String,   // "pro" | "con" | "neutral"
-}
-
-fn default_decision_status() -> String { "active".into() }
-fn default_decision_position() -> String { "neutral".into() }
-
-/// Prompt 配置（预留，当前 prompt 直接写在 config.toml 中由用户自定义）
-#[derive(Debug, Deserialize, Clone)]
-pub struct PromptConfig {
-    #[allow(dead_code)]
-    pub base: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub vertical_overrides: std::collections::HashMap<String, String>,
 }
 
 impl Config {
@@ -241,7 +167,8 @@ impl Config {
         Err(anyhow::anyhow!(
             "未找到 {} 的 API Key。请在 config.toml 中配置或设置 {} 环境变量。\
              config.toml 已在 .gitignore 中，不会上传 GitHub。",
-            self.llm.provider, env_var
+            self.llm.provider,
+            env_var
         ))
     }
 }

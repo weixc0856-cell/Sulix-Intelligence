@@ -40,7 +40,9 @@ impl ChronicleDb {
     /// 追加当日条目
     pub fn push(&mut self, entry: ChronicleEntry) {
         // 去重：如果同日期同主题已存在，更新而非追加
-        if let Some(existing) = self.entries.iter_mut()
+        if let Some(existing) = self
+            .entries
+            .iter_mut()
             .find(|e| e.date == entry.date && e.topic == entry.topic)
         {
             *existing = entry;
@@ -63,25 +65,12 @@ impl ChronicleDb {
         sorted
     }
 
-    /// 按语言排序
+    /// 按语言过滤并排序
     pub fn sorted_by_lang(&self, lang: &str) -> Vec<ChronicleEntry> {
         let mut filtered: Vec<ChronicleEntry> = self.entries.iter()
             .filter(|e| e.language == lang)
             .cloned().collect();
         filtered.sort_by(|a, b| b.date.cmp(&a.date));
         filtered
-    }
-
-    /// 获取所有独特实体标签
-    pub fn all_entities(&self) -> Vec<String> {
-        let mut ents: Vec<String> = Vec::new();
-        for e in &self.entries {
-            for entity in &e.entities {
-                if !ents.contains(entity) {
-                    ents.push(entity.clone());
-                }
-            }
-        }
-        ents
     }
 }

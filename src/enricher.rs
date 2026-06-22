@@ -38,7 +38,10 @@ pub async fn enrich_with_wikipedia(articles: &mut [Article], max_concurrency: us
         let client = client.clone();
 
         handles.push(tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
+            let _permit = sem
+                .acquire()
+                .await
+                .expect("semaphore closed within pipeline context");
             match fetch_wiki_summary(&client, &title).await {
                 Ok(Some(summary)) => Some((i, summary)),
                 _ => None,

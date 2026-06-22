@@ -30,13 +30,9 @@ env_logger = "0.11"
 
 # 错误处理
 anyhow = "1"
-thiserror = "2"
 
 # 正文提取（P0）
 scraper = "0.22"
-
-# 稳定哈希（替代 std DefaultHasher，跨 Rust 版本稳定）
-sha2 = "0.10"
 
 # A股关键词预过滤（高频源降噪）
 regex = "1.11"

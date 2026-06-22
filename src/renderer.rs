@@ -1,4 +1,9 @@
-﻿//! 渲染模块 — 咨询级简报
+//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
+//!
+//! 字体授权声明（SIL Open Font License，100% 免费商用）:
+//! - Lora (serif, 大标题): SIL OFL, 免费商用
+//! - Inter (sans-serif, 正文): SIL OFL, 免费商用
+//! - JetBrains Mono (monospace, 日期/标签): SIL OFL, 免费商用
 //!
 //! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
 //! 所有输出数据集中到 TemplateData，由 template::render() 渲染
@@ -8,7 +13,32 @@ use std::collections::HashMap;
 use anyhow::Result;
 use chrono::Local;
 
-use crate::clusterer::{Assumption, Theme, ThemeAnalysis, Summary};
+/// HTML 实体转义。顺序严格：& 必须最先转义，防止双重编码。
+fn html_escape(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#x27;"),
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+/// 验证 URL scheme 仅为 http/https
+fn validate_url(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        "#invalid-url".to_string()
+    }
+}
+
+use crate::clusterer::{Assumption, Theme, ThemeAnalysis};
 use crate::fetcher::Article;
 use crate::template::{self, TemplateData};
 
@@ -16,7 +46,6 @@ use crate::template::{self, TemplateData};
 pub fn render_analysis_report(
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
-    summary: &Summary,
     calibration: Option<&str>,
     watchlist: Option<&[Article]>,
     source_statuses: &[(String, bool, usize)],
@@ -27,7 +56,7 @@ pub fn render_analysis_report(
 
     // 构建各内容块
     let executive_summary = build_executive_summary(analyses);
-    let topic_sections = build_topic_sections(themes, analyses);
+    let topic_sections = build_topic_sections(analyses);
     let synthesis = build_synthesis(analyses);
     let decision_required = build_decision_required(analyses);
     let watchlist_block = build_watchlist_block(watchlist);
@@ -42,13 +71,31 @@ pub fn render_analysis_report(
     let total_articles: usize = themes.iter().map(|t| t.articles.len()).sum();
     metrics.insert("total_articles".into(), total_articles.to_string());
     metrics.insert("total_topics".into(), analyses.len().to_string());
-    metrics.insert("total_watchlist".into(), watchlist.map(|w| w.len()).unwrap_or(0).to_string());
+    metrics.insert(
+        "total_watchlist".into(),
+        watchlist.map(|w| w.len()).unwrap_or(0).to_string(),
+    );
     if let Some(highest) = analyses.iter().max_by_key(|a| a.signal_strength) {
-        metrics.insert("max_signal_strength".into(), highest.signal_strength.to_string());
+        metrics.insert(
+            "max_signal_strength".into(),
+            highest.signal_strength.to_string(),
+        );
     }
     // 蓝军风险审计信号
-    let has_adverse = analyses.iter().any(|a| a.adverse.as_ref().map(|x| !x.scenario.is_empty()).unwrap_or(false));
-    metrics.insert("risk_audit_passed".into(), if has_adverse { "false".into() } else { "true".into() });
+    let has_adverse = analyses.iter().any(|a| {
+        a.adverse
+            .as_ref()
+            .map(|x| !x.scenario.is_empty())
+            .unwrap_or(false)
+    });
+    metrics.insert(
+        "risk_audit_passed".into(),
+        if has_adverse {
+            "false".into()
+        } else {
+            "true".into()
+        },
+    );
 
     let data = TemplateData {
         date,
@@ -85,18 +132,31 @@ pub fn render_signal_aggregation(
 
     let mut topic_sections = String::new();
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
-        if theme.articles.is_empty() { continue; }
+        if theme.articles.is_empty() {
+            continue;
+        }
 
         topic_sections.push_str(&format!("## {}\n\n### 关键动态\n\n", theme.title));
 
-        let best_url = theme.articles.iter().find(|a| !a.url.is_empty()).map(|a| a.url.as_str()).unwrap_or("");
+        let best_url = theme
+            .articles
+            .iter()
+            .find(|a| !a.url.is_empty())
+            .map(|a| a.url.as_str())
+            .unwrap_or("");
         for article in &theme.articles {
-            let summary = article.summary.as_deref()
+            let summary = article
+                .summary
+                .as_deref()
                 .or(article.content.as_deref())
                 .unwrap_or("");
             let end = summary.floor_char_boundary(120);
             let snippet = &summary[..end];
-            let url = if !article.url.is_empty() { &article.url } else { best_url };
+            let url = if !article.url.is_empty() {
+                &article.url
+            } else {
+                best_url
+            };
             topic_sections.push_str(&format!("- **{}**: {}", article.title, snippet));
             if !url.is_empty() {
                 topic_sections.push_str(&format!(" [{}]({})", article.source, url));
@@ -118,13 +178,27 @@ pub fn render_signal_aggregation(
     let watchlist_block = build_watchlist_block(watchlist);
 
     // TOC
-    let toc: String = themes.iter()
-        .map(|t| format!("- [{}](#{})", t.title, t.title.to_lowercase().replace(' ', "-")))
+    let toc: String = themes
+        .iter()
+        .map(|t| {
+            format!(
+                "- [{}](#{})",
+                t.title,
+                t.title.to_lowercase().replace(' ', "-")
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
     let mut metrics = HashMap::new();
-    metrics.insert("total_articles".into(), themes.iter().map(|t| t.articles.len()).sum::<usize>().to_string());
+    metrics.insert(
+        "total_articles".into(),
+        themes
+            .iter()
+            .map(|t| t.articles.len())
+            .sum::<usize>()
+            .to_string(),
+    );
 
     let data = TemplateData {
         date,
@@ -157,14 +231,17 @@ fn build_executive_summary(analyses: &[ThemeAnalysis]) -> String {
     for (i, a) in analyses.iter().enumerate() {
         md.push_str(&format!(
             "{}. **{}** — {}（{} 条证据）\n",
-            i + 1, a.bluf, a.impact, a.fact_base.len(),
+            i + 1,
+            a.bluf,
+            a.impact,
+            a.fact_base.len(),
         ));
     }
     md.push('\n');
     md
 }
 
-fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String {
+fn build_topic_sections(analyses: &[ThemeAnalysis]) -> String {
     let mut md = String::new();
     for a in analyses {
         md.push_str(&format!("## 主题: {}\n\n", a.theme_title));
@@ -173,7 +250,10 @@ fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String 
         if !a.fact_base.is_empty() {
             md.push_str("| 证据 | 解读 | 置信度 |\n|------|------|--------|\n");
             for fb in &a.fact_base {
-                md.push_str(&format!("| {} | {} | {} |\n", fb.evidence, fb.interpretation, fb.confidence));
+                md.push_str(&format!(
+                    "| {} | {} | {} |\n",
+                    fb.evidence, fb.interpretation, fb.confidence
+                ));
             }
             md.push('\n');
         }
@@ -196,11 +276,15 @@ fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String 
         }
 
         // 承重假设
-        let load_bearing: Vec<&Assumption> = a.assumptions.iter().filter(|a| a.load_bearing).collect();
+        let load_bearing: Vec<&Assumption> =
+            a.assumptions.iter().filter(|a| a.load_bearing).collect();
         if !load_bearing.is_empty() {
             md.push_str("**承重假设**:\n");
             for asm in &load_bearing {
-                md.push_str(&format!("- {}（证据强度: {}）\n", asm.text, asm.evidence_strength));
+                md.push_str(&format!(
+                    "- {}（证据强度: {}）\n",
+                    asm.text, asm.evidence_strength
+                ));
             }
             md.push('\n');
         }
@@ -216,14 +300,18 @@ fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String 
         // 待验证
         if !a.next_tests.is_empty() {
             md.push_str("**待验证**:\n");
-            for t in &a.next_tests { md.push_str(&format!("- {}\n", t)); }
+            for t in &a.next_tests {
+                md.push_str(&format!("- {}\n", t));
+            }
             md.push('\n');
         }
 
         // 待回答的问题
         if !a.open_questions.is_empty() {
             md.push_str("**待回答的问题**:\n");
-            for q in &a.open_questions { md.push_str(&format!("- {}\n", q)); }
+            for q in &a.open_questions {
+                md.push_str(&format!("- {}\n", q));
+            }
             md.push('\n');
         }
 
@@ -235,18 +323,29 @@ fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String 
         // 溯源
         if !a.source_urls.is_empty() {
             md.push_str("**溯源**:\n");
-            for url in &a.source_urls { md.push_str(&format!("- {}\n", url)); }
+            for url in &a.source_urls {
+                md.push_str(&format!("- {}\n", url));
+            }
             md.push('\n');
         }
 
         // 质量
         let source_count = a.source_urls.len();
         let assumption_count = a.assumptions.len();
-        let has_adverse = a.adverse.as_ref().map(|x| !x.scenario.is_empty()).unwrap_or(false);
+        let has_adverse = a
+            .adverse
+            .as_ref()
+            .map(|x| !x.scenario.is_empty())
+            .unwrap_or(false);
         md.push_str(&format!(
             "**质量**: {} 来源 | {} 条承重假设 | {} | {} 项待验证\n",
-            source_count, assumption_count,
-            if has_adverse { "1 个逆境情景" } else { "无逆境情景" },
+            source_count,
+            assumption_count,
+            if has_adverse {
+                "1 个逆境情景"
+            } else {
+                "无逆境情景"
+            },
             a.next_tests.len(),
         ));
 
@@ -267,7 +366,8 @@ fn build_synthesis(analyses: &[ThemeAnalysis]) -> String {
     }
 
     // 关键证据
-    let key_evidence: Vec<String> = analyses.iter()
+    let key_evidence: Vec<String> = analyses
+        .iter()
         .flat_map(|a| a.fact_base.iter())
         .filter(|fb| fb.confidence.starts_with("确立"))
         .take(3)
@@ -275,15 +375,21 @@ fn build_synthesis(analyses: &[ThemeAnalysis]) -> String {
         .collect();
     if !key_evidence.is_empty() {
         md.push_str("**关键证据**:\n");
-        for e in &key_evidence { md.push_str(e); md.push('\n'); }
+        for e in &key_evidence {
+            md.push_str(e);
+            md.push('\n');
+        }
         md.push('\n');
     }
 
     // 风险提示
     md.push_str("**风险提示**: ");
     let risky = analyses.iter().any(|a| a.signal_strength < 5);
-    if risky { md.push_str("单一信号来源，需更多交叉验证。\n\n"); }
-    else { md.push_str("多源交叉验证充分，置信度较高。\n\n"); }
+    if risky {
+        md.push_str("单一信号来源，需更多交叉验证。\n\n");
+    } else {
+        md.push_str("多源交叉验证充分，置信度较高。\n\n");
+    }
 
     md
 }
@@ -292,20 +398,33 @@ fn build_decision_required(analyses: &[ThemeAnalysis]) -> String {
     if analyses.is_empty() {
         return "## 需要你决定\n\n今日无足够信号触发决策。继续执行当前计划。\n\n".into();
     }
-    let mut md = String::from("## 需要你决定\n\n| 决策 | 建议 | 关键前提 | 截止 |\n|------|------|---------|------|\n");
+    let mut md = String::from(
+        "## 需要你决定\n\n| 决策 | 建议 | 关键前提 | 截止 |\n|------|------|---------|------|\n",
+    );
 
-    let has_commod = analyses.iter().any(|a|
-        a.theme_title.contains("商品") || a.theme_title.contains("模型") || a.theme_title.contains("价格"));
-    let has_reliability = analyses.iter().any(|a|
-        a.theme_title.contains("可靠") || a.theme_title.contains("Agent"));
-    let has_policy = analyses.iter().any(|a|
-        a.theme_title.contains("政策") || a.theme_title.contains("风险") || a.theme_title.contains("芯片"));
+    let has_commod = analyses.iter().any(|a| {
+        a.theme_title.contains("商品")
+            || a.theme_title.contains("模型")
+            || a.theme_title.contains("价格")
+    });
+    let has_reliability = analyses
+        .iter()
+        .any(|a| a.theme_title.contains("可靠") || a.theme_title.contains("Agent"));
+    let has_policy = analyses.iter().any(|a| {
+        a.theme_title.contains("政策")
+            || a.theme_title.contains("风险")
+            || a.theme_title.contains("芯片")
+    });
 
     if has_commod || has_reliability {
-        md.push_str("| 主攻应用层？ | 是 — 模型商品化窗口打开 | 价格战不压缩利润空间 | 本周评估 |\n");
+        md.push_str(
+            "| 主攻应用层？ | 是 — 模型商品化窗口打开 | 价格战不压缩利润空间 | 本周评估 |\n",
+        );
     }
     if has_policy {
-        md.push_str("| 增加多模型适配？ | 否 — 政策紧迫性不足 | 多模型维护成本可控 | 下季度重审 |\n");
+        md.push_str(
+            "| 增加多模型适配？ | 否 — 政策紧迫性不足 | 多模型维护成本可控 | 下季度重审 |\n",
+        );
     }
     md.push_str("| 调整当前计划？ | 暂不调整 — 信号尚不支持转向 | 窗口期不会关闭 | 下期简报 |\n");
     md.push('\n');
@@ -313,18 +432,31 @@ fn build_decision_required(analyses: &[ThemeAnalysis]) -> String {
 }
 
 fn build_watchlist_block(watchlist: Option<&[Article]>) -> String {
-    let Some(watch) = watchlist else { return String::new(); };
-    if watch.is_empty() { return String::new(); }
+    let Some(watch) = watchlist else {
+        return String::new();
+    };
+    if watch.is_empty() {
+        return String::new();
+    }
 
     let mut md = String::from("## 🟡 正在跟踪（Watchlist）\n\n以下信号不足以进入关键主题，但保留观察，多源交叉后将升级：\n\n");
     for article in watch {
-        let raw = article.summary.as_deref()
+        let raw = article
+            .summary
+            .as_deref()
             .or(article.content.as_deref())
             .unwrap_or("");
         let end = raw.floor_char_boundary(100);
         let snippet = &raw[..end];
-        let desc = if snippet.len() > 10 { snippet } else { &article.title };
-        md.push_str(&format!("- **{}**: {} [{}]({})\n", article.title, desc, article.source, article.url));
+        let desc = if snippet.len() > 10 {
+            snippet
+        } else {
+            &article.title
+        };
+        md.push_str(&format!(
+            "- **{}**: {} [{}]({})\n",
+            article.title, desc, article.source, article.url
+        ));
     }
     md.push('\n');
     md.push_str("---\n\n");
@@ -346,8 +478,12 @@ fn build_processing_status(statuses: &[(String, bool, usize)]) -> String {
 }
 
 fn build_calibration_block(calibration: Option<&str>) -> String {
-    let Some(text) = calibration else { return String::new(); };
-    if text.is_empty() { return String::new(); }
+    let Some(text) = calibration else {
+        return String::new();
+    };
+    if text.is_empty() {
+        return String::new();
+    }
     format!(
         "────────────────────────────────────────\n\n🤖 **认知校准**\n\n> {}\n\n（不回答也没事，看到就行）\n\n────────────────────────────────────────\n\n",
         text
@@ -371,7 +507,11 @@ fn build_source_index(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String {
 // ===== HTML 渲染（Economist Graphic Detail 版式）=====
 
 /// 渲染 Economist 风格的 HTML 简报
-pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &str) -> Result<String> {
+pub fn render_html_report(
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    date: &str,
+) -> Result<String> {
     let top = analyses.iter().max_by_key(|a| a.signal_strength);
 
     // Build data as owned Strings to avoid lifetime issues
@@ -379,31 +519,59 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
         let cat = t.theme_title.clone();
         let hd = t.bluf.clone();
         let sb = t.impact.clone();
-        let ft = if t.geopolitical_fact.is_empty() { t.bluf.clone() } else { t.geopolitical_fact.clone() };
-        let it = if t.supply_chain_impact.is_empty() { t.impact.clone() } else { t.supply_chain_impact.clone() };
+        let ft = if t.geopolitical_fact.is_empty() {
+            t.bluf.clone()
+        } else {
+            t.geopolitical_fact.clone()
+        };
+        let it = if t.supply_chain_impact.is_empty() {
+            t.impact.clone()
+        } else {
+            t.supply_chain_impact.clone()
+        };
 
         let mut ents: Vec<String> = Vec::new();
         for a in analyses {
-            if a.signal_strength >= 5 { ents.push(a.theme_title.clone()); }
+            if a.signal_strength >= 5 {
+                ents.push(a.theme_title.clone());
+            }
         }
         let mut urls: Vec<(String, String)> = Vec::new();
         if let Some(theme) = themes.iter().find(|th| th.id == t.theme_id) {
             for art in &theme.articles {
-                if !art.url.is_empty() { urls.push((art.source.clone(), art.url.clone())); }
+                if !art.url.is_empty() {
+                    urls.push((art.source.clone(), art.url.clone()));
+                }
             }
         }
-        (cat, hd, sb, ft, it, ents, urls)
+        (
+            html_escape(&cat),
+            html_escape(&hd),
+            html_escape(&sb),
+            html_escape(&ft),
+            html_escape(&it),
+            ents,
+            urls,
+        )
     } else {
-        ("Analysis".into(), "No significant signals today.".into(), String::new(), String::new(), String::new(), vec![], vec![])
+        (
+            "Analysis".into(),
+            "No significant signals today.".into(),
+            String::new(),
+            String::new(),
+            String::new(),
+            vec![],
+            vec![],
+        )
     };
 
     let entities_html: String = entities.iter()
-        .map(|e| format!("<span class='inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-sm border border-slate-200'>{}</span>", e))
+        .map(|e| format!("<span class='inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-sm border border-slate-200'>{}</span>", html_escape(e)))
         .collect::<Vec<_>>()
         .join("\n");
 
     let sources_html: String = sources.iter()
-        .map(|(name, url)| format!("<li><a href='{}' target='_blank' class='text-sm text-sky-800 hover:text-red-600 underline font-medium transition-colors break-all'>{} ↗</a></li>", url, name))
+        .map(|(name, url)| format!("<li><a href='{}' target='_blank' class='text-sm text-sky-800 hover:text-red-600 underline font-medium transition-colors break-all'>{} ↗</a></li>", validate_url(url), html_escape(name)))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -478,8 +646,10 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
     </div>
   </main>
 <script>
-function toggleLang(t){{var n=window.location.pathname;if('zh'==t&&!n.startsWith('/zh/')){{window.location.pathname='/zh'+n}}else if('en'==t&&n.startsWith('/zh/')){{var r=n.replace('/zh','');window.location.pathname=r===''?'/':r}}}}
-(function(){{var n=window.location.pathname.startsWith('/zh/');document.getElementById('l-zh').className=n?'font-bold border-b-2 border-neutral-900 pb-0.5':'text-neutral-400 hover:text-neutral-900';document.getElementById('l-en').className=n?'text-neutral-400 hover:text-neutral-900':'font-bold border-b-2 border-neutral-900 pb-0.5'}})()
+function toggleLang(t){{var p=window.location.pathname;if(p.endsWith('index.html')){{p=p.substring(0,p.lastIndexOf('index.html'))}}
+if(t==='zh'){{if(!p.startsWith('/zh/')){{var ce=p.startsWith('/en/')?p.substring(3):p;window.location.pathname='/zh'+(ce.startsWith('/')?ce:'/'+ce)}}}}
+else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.location.pathname=(cz==='/'||cz==='')?'/':'/en'+cz}}else if(p==='/'||p===''){{window.location.pathname='/en/'}}}}}}
+(function(){{var pp=window.location.pathname,zh=pp.startsWith('/zh/');var el=document.getElementById('l-zh');var ee=document.getElementById('l-en');if(el&&ee){{el.className=zh?'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900':'text-neutral-400 hover:text-neutral-900 cursor-pointer';ee.className=zh?'text-neutral-400 hover:text-neutral-900 cursor-pointer':'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900'}}}}}})()
 </script>
 </body>
 </html>"#,
@@ -493,7 +663,7 @@ function toggleLang(t){{var n=window.location.pathname;if('zh'==t&&!n.startsWith
 pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> Result<String> {
     let list_html: String = entries.iter().map(|item| {
         let entities_badges: String = item.entities.iter()
-            .map(|e| format!("<span class='text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded-sm'>{}</span>", e))
+            .map(|e| format!("<span class='text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded-sm'>{}</span>", html_escape(e)))
             .collect::<Vec<_>>().join(" ");
 
         format!(
@@ -507,7 +677,10 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
                 </div>
                 <div class="mt-2 md:mt-0 flex gap-1.5">{}</div>
               </div>"#,
-            item.date, item.topic, item.headline, entities_badges
+            item.date,
+            html_escape(&item.topic),
+            html_escape(&item.headline),
+            entities_badges
         )
     }).collect::<Vec<_>>().join("\n");
 
@@ -523,20 +696,25 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 </head>
 <body>
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
-
-  <!-- Logo -->
-  <div class="max-w-4xl mx-auto px-4 pt-6">
-    <a href="/" class="flex items-center gap-2.5 no-underline group select-none">
-      <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-        <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
-      </div>
-      <div class="flex items-baseline tracking-tight">
-        <span class="text-lg font-bold text-neutral-900" style="font-family: 'Lora', 'Playfair Display', 'Georgia', serif;">Sulix</span>
-        <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
-        <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
-      </div>
-    </a>
-  </div>
+  <header class="border-b border-neutral-100 bg-white">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between sm:px-6 lg:px-8">
+      <a href="/" class="flex items-center gap-2.5 no-underline group select-none">
+        <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
+        </div>
+        <div class="flex items-baseline tracking-tight">
+          <span class="text-lg font-bold text-neutral-900" style="font-family: 'Lora', 'Playfair Display', 'Georgia', serif;">Sulix</span>
+          <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
+          <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
+        </div>
+      </a>
+      <nav class="flex items-center gap-3 text-[11px] font-semibold tracking-wider text-neutral-400" style="font-family: Inter">
+        <button onclick="toggleLang('en')" id="l-en" class="font-bold border-b-2 border-neutral-900 pb-0.5 cursor-pointer">EN</button>
+        <span class="text-neutral-300">|</span>
+        <button onclick="toggleLang('zh')" id="l-zh" class="text-neutral-400 hover:text-neutral-900 cursor-pointer">繁中</button>
+      </nav>
+    </div>
+  </header>
 
   <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="border-b-2 border-neutral-950 pb-6">
@@ -549,12 +727,55 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
       {}
     </div>
   </div>
+<script>
+function toggleLang(t){{var p=window.location.pathname;if(p.endsWith('index.html')){{p=p.substring(0,p.lastIndexOf('index.html'))}}
+if(t==='zh'){{if(!p.startsWith('/zh/')){{var ce=p.startsWith('/en/')?p.substring(3):p;window.location.pathname='/zh'+(ce.startsWith('/')?ce:'/'+ce)}}}}
+else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.location.pathname=(cz==='/'||cz==='')?'/':'/en'+cz}}else if(p==='/'||p===''){{window.location.pathname='/en/'}}}}}}
+(function(){{var pp=window.location.pathname,zh=pp.startsWith('/zh/');var el=document.getElementById('l-zh');var ee=document.getElementById('l-en');if(el&&ee){{el.className=zh?'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900':'text-neutral-400 hover:text-neutral-900 cursor-pointer';ee.className=zh?'text-neutral-400 hover:text-neutral-900 cursor-pointer':'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900'}}}}}})()
+</script>
 </body>
 </html>"#,
         entries.len(),
-        entries.iter().map(|e| e.topic.as_str()).collect::<std::collections::HashSet<&str>>().len(),
+        entries
+            .iter()
+            .map(|e| e.topic.as_str())
+            .collect::<std::collections::HashSet<&str>>()
+            .len(),
         list_html,
     );
 
     Ok(html)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_html_escape_ampersand_first() {
+        assert_eq!(html_escape("&lt;"), "&amp;lt;");
+        assert_eq!(html_escape("<script>"), "&lt;script&gt;");
+        assert_eq!(html_escape("\"quote\""), "&quot;quote&quot;");
+        assert_eq!(html_escape("'it's'"), "&#x27;it&#x27;s&#x27;");
+        assert_eq!(html_escape("safe text"), "safe text");
+        assert_eq!(html_escape(""), "");
+    }
+
+    #[test]
+    fn test_html_escape_edge_cases() {
+        assert_eq!(
+            html_escape("a&b<c>d\"e'f"),
+            "a&amp;b&lt;c&gt;d&quot;e&#x27;f"
+        );
+        assert_eq!(html_escape("&&&"), "&amp;&amp;&amp;");
+    }
+
+    #[test]
+    fn test_validate_url() {
+        assert_eq!(validate_url("https://example.com"), "https://example.com");
+        assert_eq!(validate_url("http://test.org/page"), "http://test.org/page");
+        assert_eq!(validate_url(""), "#invalid-url");
+        assert_eq!(validate_url("javascript:alert(1)"), "#invalid-url");
+        assert_eq!(validate_url("data:text/html,<script>"), "#invalid-url");
+    }
 }

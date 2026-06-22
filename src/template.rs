@@ -16,7 +16,7 @@ pub struct TemplateData {
 
     // 内容区（调用方已渲染好的块）
     pub executive_summary: String,
-    pub topic_sections: String,  // 所有主题块拼接
+    pub topic_sections: String, // 所有主题块拼接
     pub synthesis: String,
     pub decision_required: String,
     pub watchlist: String,

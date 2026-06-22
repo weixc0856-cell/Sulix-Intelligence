@@ -31,7 +31,10 @@ impl DataCatalog {
         let path = self.step_dir.join(format!("{:02}_{}.json", index, name));
         let json = serde_json::to_string_pretty(data)?;
         fs::write(&path, &json)?;
-        log::debug!("  🪵 已落盘: {}", path.file_name().unwrap().to_string_lossy());
+        log::debug!(
+            "  🪵 已落盘: {}",
+            path.file_name().unwrap().to_string_lossy()
+        );
         Ok(())
     }
 

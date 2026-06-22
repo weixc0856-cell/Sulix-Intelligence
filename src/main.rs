@@ -9,6 +9,7 @@ use std::path::PathBuf;
 mod agent;
 mod archive;
 mod catalog;
+mod client;
 mod clusterer;
 mod config;
 mod db;
@@ -33,7 +34,11 @@ async fn main() -> Result<()> {
         config.output.vault_path = ci_path;
     }
     let api_key = config.get_api_key()?;
-    log::info!("配置加载完成: {} 个数据源, LLM 模型: {}", config.sources.len(), config.llm.model);
+    log::info!(
+        "配置加载完成: {} 个数据源, LLM 模型: {}",
+        config.sources.len(),
+        config.llm.model
+    );
 
     // 2. 初始化数据库
     let db_path = get_db_path(&config);
@@ -41,14 +46,19 @@ async fn main() -> Result<()> {
     log::info!("数据库已连接: {}", db_path.display());
 
     // 3. 初始化认知审计链
-    let data_dir = config.storage.as_ref().and_then(|s| s.data_dir.as_deref())
-        .map(PathBuf::from).unwrap_or_else(|| PathBuf::from("data"));
+    let data_dir = config
+        .storage
+        .as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("data"));
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let catalog = catalog::DataCatalog::new(&data_dir, &today);
 
     // 4. Source Adapter: 遍历所有源，用对应适配器抓取
     log::info!("开始拉取信号源...");
-    let enabled_sources: Vec<&config::SourceConfig> = config.sources.iter().filter(|s| s.enabled).collect();
+    let enabled_sources: Vec<&config::SourceConfig> =
+        config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
     let mut source_statuses: Vec<(String, bool, usize)> = Vec::new(); // (name, success, count)
     let date_range = &config.output.date_range;
@@ -70,22 +80,29 @@ async fn main() -> Result<()> {
     // 5. Pipeline: 清洗 → 合规过滤 → 去重
     let before_pipeline = all_signals.len();
     pipeline::run_pipeline(&mut all_signals)?;
-    log::info!("Pipeline: {} → {} 条（清洗/合规/去重）", before_pipeline, all_signals.len());
+    log::info!(
+        "Pipeline: {} → {} 条（清洗/合规/去重）",
+        before_pipeline,
+        all_signals.len()
+    );
     catalog.save_step(1, "raw_signals", &all_signals)?;
 
     // 6. RawSignal → Article 转换 + SQLite 去重
-    let articles: Vec<fetcher::Article> = all_signals.into_iter().map(|s| fetcher::Article {
-        id: s.id,
-        source: s.source,
-        title: s.title,
-        url: s.url,
-        content: s.content,
-        summary: s.summary,
-        published_at: s.published_at,
-        category: s.category,
-        wiki_summary: None,
-        evidence_type: String::new(),
-    }).collect();
+    let articles: Vec<fetcher::Article> = all_signals
+        .into_iter()
+        .map(|s| fetcher::Article {
+            id: s.id,
+            source: s.source,
+            title: s.title,
+            url: s.url,
+            content: s.content,
+            summary: s.summary,
+            published_at: s.published_at,
+            category: s.category,
+            wiki_summary: None,
+            evidence_type: String::new(),
+        })
+        .collect();
     let mut new_articles = db.dedup_and_insert(&articles)?;
     drop(articles);
     catalog.save_step(2, "unique_signals", &new_articles)?;
@@ -112,8 +129,12 @@ async fn main() -> Result<()> {
         if sc.enabled && !grouped.is_empty() {
             match agent::scan::scan_and_triage(&grouped, &api_key, &config.llm).await {
                 Ok(t) => {
-                    log::info!("Scan v1.1: 🟢Insight:{} 🟡Watchlist:{} 🔵Memory:{}",
-                        t.insight.len(), t.watchlist.len(), t.signal_memory.len());
+                    log::info!(
+                        "Scan v1.1: 🟢Insight:{} 🟡Watchlist:{} 🔵Memory:{}",
+                        t.insight.len(),
+                        t.watchlist.len(),
+                        t.signal_memory.len()
+                    );
                     t
                 }
                 Err(e) => {
@@ -159,16 +180,24 @@ async fn main() -> Result<()> {
 
     let mut analyses = Vec::new();
     for theme in &themes {
-        log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
+        log::info!(
+            "🔍 分析主题: {} ({} 条证据)",
+            theme.title,
+            theme.articles.len()
+        );
         let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm, "en").await?;
         // Phase 1: 蓝军挑战
-        let (assumptions, adverse, next_tests, open_questions) = clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
+        let (assumptions, adverse, next_tests, open_questions) =
+            clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
         analysis.assumptions = assumptions;
         analysis.adverse = adverse;
         analysis.next_tests = next_tests;
         analysis.open_questions = open_questions;
         // 如果蓝军发现承重假设证据弱，降级信号强度
-        let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
+        let weak_bearing = analysis
+            .assumptions
+            .iter()
+            .any(|a| a.load_bearing && a.evidence_strength == "weak");
         if weak_bearing && analysis.signal_strength >= 3 {
             analysis.signal_strength -= 2;
             log::info!("🔵 蓝军降级: {} (承重假设证据弱)", theme.title);
@@ -185,11 +214,18 @@ async fn main() -> Result<()> {
                 if let Ok((assumptions, adverse, next_tests, open_questions)) =
                     clusterer::challenge_theme(&a, &api_key, &config.llm).await
                 {
-                    a.assumptions = assumptions; a.adverse = adverse;
-                    a.next_tests = next_tests; a.open_questions = open_questions;
+                    a.assumptions = assumptions;
+                    a.adverse = adverse;
+                    a.next_tests = next_tests;
+                    a.open_questions = open_questions;
                 }
-                let weak = a.assumptions.iter().any(|x| x.load_bearing && x.evidence_strength == "weak");
-                if weak && a.signal_strength >= 3 { a.signal_strength -= 2; }
+                let weak = a
+                    .assumptions
+                    .iter()
+                    .any(|x| x.load_bearing && x.evidence_strength == "weak");
+                if weak && a.signal_strength >= 3 {
+                    a.signal_strength -= 2;
+                }
                 analyses_zh.push(a);
             }
             Err(e) => log::warn!("⚠️ 中文分析失败 [{}]: {}", theme.title, e),
@@ -198,75 +234,64 @@ async fn main() -> Result<()> {
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
     let summary = clusterer::synthesize(&themes, &analyses);
-    log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
+    log::info!(
+        "✅ 聚类完成: {} 个主题, {} 篇文章",
+        summary.theme_count,
+        summary.total_articles
+    );
     catalog.save_step(7, "summary", &summary)?;
 
     // 认知校准（传入真数据，非空 vec；跳过校准不中断管线）
     let calibration_text = if !analyses.is_empty() {
-        let calibration_input: Vec<llm::VerticalAnalysis> = analyses.iter().map(|ta| {
-            llm::VerticalAnalysis {
+        let calibration_input: Vec<llm::VerticalAnalysis> = analyses
+            .iter()
+            .map(|ta| llm::VerticalAnalysis {
                 category: ta.theme_title.clone(),
                 articles: vec![],
-            }
-        }).collect();
+            })
+            .collect();
         agent::calibration::calibrate(&calibration_input, &api_key, &config.llm).await?
     } else {
         String::new()
     };
     catalog.save_step(8, "calibration", &calibration_text)?;
 
-    // 渲染战略分析报告
-    let analysis_report = renderer::render_analysis_report(
-        &themes, &analyses, &summary,
-        Some(&calibration_text),
-        if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
-        &source_statuses,
-    )?;
-    log::info!("📝 分析报告渲染完成 ({} 字符)", analysis_report.len());
+    // Markdown 渲染已停用（仅作计数日志）
+    log::info!(
+        "📝 分析主题: {} 个, 信号: {} 条",
+        analyses.len(),
+        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len()
+    );
 
-    // 渲染每日信号聚合
-    let aggregation = renderer::render_signal_aggregation(
-        &themes, &analyses,
-        if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
-    )?;
-    log::info!("📋 信号聚合渲染完成 ({} 条信号)",
-        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len());
-
-    // 写入 Vault（双文件 + HTML）
-    // 按月归档（抄 Daily-News-Briefing: {archive}/{YYYY-MM}/{filename}）
+    // === 目录路由写入（/en/ = 英文, /zh/ = 繁体中文）===
     let report_dir = PathBuf::from(&config.output.vault_path);
-    let month_dir = report_dir.join(&today[..7]); // YYYY-MM
-    fs::create_dir_all(&month_dir)?;
-    let analysis_path = month_dir.join(format!("{}-分析.md", today));
-    fs::write(&analysis_path, &analysis_report)?;
-    let aggregation_path = month_dir.join(format!("{}-聚合.md", today));
-    fs::write(&aggregation_path, &aggregation)?;
+    let en_root = report_dir.join("en");
+    let zh_root = report_dir.join("zh");
+    let month_dir = en_root.join(&today[..7]);
 
-    // HTML 简报（Economist Graphic Detail 版式 + Tailwind CDN）
-    let html = renderer::render_html_report(&themes, &analyses, &today)?;
-    let html_path = month_dir.join("index.html");
-    fs::write(&html_path, &html)?;
+    // 英文日详情
+    if let Ok(html) = renderer::render_html_report(&themes, &analyses, &today) {
+        fs::create_dir_all(&month_dir)?;
+        let _ = fs::write(month_dir.join("index.html"), &html);
+        log::info!("📄 EN 简报写入: {}", month_dir.join("index.html").display());
+    }
     // === 编年史看板初始化（在双语写入之前） ===
     let db_dir = data_dir.join(&today[..7]);
-    fs::create_dir_all(&db_dir).ok();
+    fs::create_dir_all(&db_dir)
+        .unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
     let chronicle_path = data_dir.join("database.json");
     let mut chronicle = archive::ChronicleDb::load(&chronicle_path)?;
 
     // === 繁体中文版 ===
     if !analyses_zh.is_empty() {
         let zh_dir = report_dir.join("zh").join(&today[..7]);
-        fs::create_dir_all(&zh_dir).ok();
+        fs::create_dir_all(&zh_dir)
+            .unwrap_or_else(|e| log::warn!("无法创建中文目录 {:?}: {}", zh_dir, e));
 
-        let zh_calibration = if !analyses_zh.is_empty() {
-            let input: Vec<llm::VerticalAnalysis> = analyses_zh.iter().map(|ta| {
-                llm::VerticalAnalysis { category: ta.theme_title.clone(), articles: vec![] }
-            }).collect();
-            agent::calibration::calibrate(&input, &api_key, &config.llm).await.unwrap_or_default()
-        } else { String::new() };
-
-        let zh_summary = clusterer::synthesize(&themes, &analyses_zh);
         if let Ok(zh_html) = renderer::render_html_report(&themes, &analyses_zh, &today) {
-            fs::write(zh_dir.join("index.html"), &zh_html).ok();
+            if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
+                log::warn!("写入中文 HTML 失败 {:?}: {}", zh_dir.join("index.html"), e);
+            }
             log::info!("🌏 中文简报已生成");
         }
         // 中文 Chronicle 条目
@@ -275,8 +300,24 @@ async fn main() -> Result<()> {
             for fb in &a.fact_base {
                 for word in fb.evidence.split_whitespace() {
                     let upper = word.to_uppercase();
-                    if ["TSMC","ASML","NVIDIA","OPENAI","ANTHROPIC","GOOGLE","META","MICROSOFT","INTEL","AMD","ARM","HBM"].contains(&upper.as_str()) {
-                        if !entities.contains(&upper) { entities.push(upper); }
+                    if [
+                        "TSMC",
+                        "ASML",
+                        "NVIDIA",
+                        "OPENAI",
+                        "ANTHROPIC",
+                        "GOOGLE",
+                        "META",
+                        "MICROSOFT",
+                        "INTEL",
+                        "AMD",
+                        "ARM",
+                        "HBM",
+                    ]
+                    .contains(&upper.as_str())
+                        && !entities.contains(&upper)
+                    {
+                        entities.push(upper);
                     }
                 }
             }
@@ -291,22 +332,33 @@ async fn main() -> Result<()> {
         }
     }
 
-    // 同时写入 vault 根目录一份最新版（方便快速打开）
-    let latest_analysis = report_dir.join(format!("{}-分析.md", today));
-    let latest_aggregation = report_dir.join(format!("{}-聚合.md", today));
-    let _ = fs::write(&latest_analysis, &analysis_report);
-    let _ = fs::write(&latest_aggregation, &aggregation);
-
-    // 记录到数据库
-    db.record_report(&today, &analysis_report, total_new)?;
+    // 记录到数据库（只记计数，不存 Markdown 全文）
+    db.record_report(&today, &format!("Daily brief - {} topics", analyses.len()), total_new)?;
 
     // Decay Agent 记忆墓地
     if let Some(ref grave_config) = config.graveyard {
         if grave_config.enabled {
-            let all_articles: Vec<fetcher::Article> = triage.insight.iter().chain(triage.watchlist.iter()).cloned().collect();
-            if let Ok(decay_report) = agent::decay::run_maintenance(&db, &all_articles, &api_key, &config.llm, grave_config).await {
+            let all_articles: Vec<fetcher::Article> = triage
+                .insight
+                .iter()
+                .chain(triage.watchlist.iter())
+                .cloned()
+                .collect();
+            if let Ok(decay_report) = agent::decay::run_maintenance(
+                &db,
+                &all_articles,
+                &api_key,
+                &config.llm,
+                grave_config,
+            )
+            .await
+            {
                 if decay_report.buried > 0 || !decay_report.wakeups.is_empty() {
-                    log::info!("🪦 Decay: {} 埋葬, {} 唤醒", decay_report.buried, decay_report.wakeups.len());
+                    log::info!(
+                        "🪦 Decay: {} 埋葬, {} 唤醒",
+                        decay_report.buried,
+                        decay_report.wakeups.len()
+                    );
                 }
             }
         }
@@ -318,8 +370,24 @@ async fn main() -> Result<()> {
         for fb in &analysis.fact_base {
             for word in fb.evidence.split_whitespace() {
                 let upper = word.to_uppercase();
-                if ["TSMC", "ASML", "NVIDIA", "INTEL", "AMD", "ARM", "HBM", "OPENAI", "ANTHROPIC", "GOOGLE", "META", "MICROSOFT"].contains(&upper.as_str()) {
-                    if !entities.contains(&upper) { entities.push(upper); }
+                if [
+                    "TSMC",
+                    "ASML",
+                    "NVIDIA",
+                    "INTEL",
+                    "AMD",
+                    "ARM",
+                    "HBM",
+                    "OPENAI",
+                    "ANTHROPIC",
+                    "GOOGLE",
+                    "META",
+                    "MICROSOFT",
+                ]
+                .contains(&upper.as_str())
+                    && !entities.contains(&upper)
+                {
+                    entities.push(upper);
                 }
             }
         }
@@ -335,24 +403,41 @@ async fn main() -> Result<()> {
     chronicle.save(&chronicle_path)?;
 
     // 重写总索引页
+    // 编年史看板：写入 /en/ + 复制到 root（默认英文）
     let sorted = chronicle.sorted();
     let archive_html = renderer::render_archive_dashboard(&sorted)?;
-    let archive_path = report_dir.join("index.html");
-    fs::write(&archive_path, &archive_html)?;
-    // 同时写入中文根目录（JS 切换需要 /zh/ 存在）
-    let zh_root = report_dir.join("zh");
-    fs::create_dir_all(&zh_root).ok();
-    fs::write(zh_root.join("index.html"), &archive_html)?;
-    log::info!("📚 编年史看板: {} 条记录 → {}", sorted.len(), archive_path.display());
 
-    println!("\n✅ 分析报告: {}", analysis_path.display());
-    println!("✅ 信号聚合: {}", aggregation_path.display());
-    println!("✅ HTML 简报: {}", month_dir.join("index.html").display());
+    let en_root = report_dir.join("en");
+    fs::create_dir_all(&en_root)?;
+    let en_archive = en_root.join("index.html");
+    fs::write(&en_archive, &archive_html)?;
+    // 复制到根目录（intel.getsulix.com/ 默认显示英文）
+    fs::write(report_dir.join("index.html"), &archive_html)?;
+    log::info!("📚 编年史看板: {} 条 → EN + root", sorted.len());
+
+    // 中文看板（已由上方 ZH 区块写入 zh/{month}/index.html）
+    // 再写入 /zh/index.html
+    let zh_root = report_dir.join("zh");
+    fs::create_dir_all(&zh_root)?;
+    let zh_entries = chronicle.sorted_by_lang("zh");
+    if !zh_entries.is_empty() {
+        if let Ok(zh_archive) = renderer::render_archive_dashboard(&zh_entries) {
+            fs::write(zh_root.join("index.html"), &zh_archive)?;
+            log::info!("📚 中文看板: {} 条 → {}", zh_entries.len(), zh_root.join("index.html").display());
+        }
+    }
+
+    println!("\n✅ EN 简报: {}", month_dir.join("index.html").display());
+    println!("✅ 看板: {}", en_root.join("index.html").display());
     log::info!("✅ Sulix Intelligence 执行完成");
     Ok(())
 }
 
 fn get_db_path(config: &config::Config) -> PathBuf {
-    let data_dir = config.storage.as_ref().and_then(|s| s.data_dir.as_deref()).unwrap_or("data");
+    let data_dir = config
+        .storage
+        .as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .unwrap_or("data");
     PathBuf::from(data_dir).join("intel.db")
 }

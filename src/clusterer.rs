@@ -1,4 +1,4 @@
-﻿//! Clusterer — 主题聚类
+//! Clusterer — 主题聚类
 //!
 //! 将 N 篇文章聚类为 ≤5 个主题，每个主题包含关联的文章和综合影响分析。
 //! 参考 McKinsey Tech Trends 的分类分层结构。
@@ -17,7 +17,7 @@ pub struct Theme {
     pub title: String,
     pub summary: String,
     pub articles: Vec<Article>,
-    pub sources: Vec<String>,  // 来源列表，用于溯源
+    pub sources: Vec<String>, // 来源列表，用于溯源
 }
 
 /// Fact Base 条目（抄 situation-assessment: Evidence | Interpretation | Confidence）
@@ -58,16 +58,16 @@ pub struct CausalChain {
 pub struct ThemeAnalysis {
     pub theme_id: String,
     pub theme_title: String,
-    pub bluf: String,              // 一句话结论
-    pub impact: String,            // 战略影响
-    pub geopolitical_fact: String,  // Layer 2: 客观事实复述（海外版）
-    pub supply_chain_impact: String,// Layer 2: 供应链传导分析
-    pub analysis_paragraph: String, // 分析与背景（用于聚合输出）
-    pub evidence_level: String,    // SCL: 确立-事实
-    pub signal_strength: u8,       // 1-10 信号强度
-    pub fact_base: Vec<FactBaseEntry>,  // 抄 McKinsey: 事实-解读-置信度表格
-    pub connections: Vec<String>,  // 关联的其他主题
-    pub source_urls: Vec<String>,  // 原文链接
+    pub bluf: String,                  // 一句话结论
+    pub impact: String,                // 战略影响
+    pub geopolitical_fact: String,     // Layer 2: 客观事实复述（海外版）
+    pub supply_chain_impact: String,   // Layer 2: 供应链传导分析
+    pub analysis_paragraph: String,    // 分析与背景（用于聚合输出）
+    pub evidence_level: String,        // SCL: 确立-事实
+    pub signal_strength: u8,           // 1-10 信号强度
+    pub fact_base: Vec<FactBaseEntry>, // 抄 McKinsey: 事实-解读-置信度表格
+    pub connections: Vec<String>,      // 关联的其他主题
+    pub source_urls: Vec<String>,      // 原文链接
     // Phase 1: 蓝军输出
     pub assumptions: Vec<Assumption>,
     pub adverse: Option<AdverseScenario>,
@@ -123,7 +123,8 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
         ));
     }
 
-    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &system_prompt, &user_prompt).await?;
+    let raw =
+        llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let mut themes = Vec::new();
@@ -149,7 +150,13 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
             }
             // 只保留有 ≥2 篇文章的主题
             if theme_articles.len() >= 2 {
-                themes.push(Theme { id, title, summary, articles: theme_articles, sources });
+                themes.push(Theme {
+                    id,
+                    title,
+                    summary,
+                    articles: theme_articles,
+                    sources,
+                });
             }
         }
     }
@@ -166,7 +173,11 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
         });
     }
 
-    log::info!("📊 聚类完成: {} 篇文章 → {} 个主题", articles.len(), themes.len());
+    log::info!(
+        "📊 聚类完成: {} 篇文章 → {} 个主题",
+        articles.len(),
+        themes.len()
+    );
     Ok(themes)
 }
 
@@ -230,35 +241,60 @@ signal_strength (GS three-scenario framework):
     let mut user_prompt = format!("## 主题: {}\n{}\n\n", theme.title, theme.summary);
     user_prompt.push_str(&format!("共 {} 条证据：\n\n", theme.articles.len()));
     for (i, a) in theme.articles.iter().enumerate() {
-        let body = a.content.as_deref()
+        let body = a
+            .content
+            .as_deref()
             .or(a.summary.as_deref())
             .unwrap_or("(无全文)");
         let truncated = if body.len() > 1500 {
             let end = body.floor_char_boundary(1500);
             &body[..end]
-        } else { body };
+        } else {
+            body
+        };
         // 只传干净的描述，不传内部字段名
-        let description = if truncated.len() > 10 { truncated } else { &a.title };
-        user_prompt.push_str(&format!("证据 {}: 「{}」——来自 {}\n\n", i + 1, description, a.source));
+        let description = if truncated.len() > 10 {
+            truncated
+        } else {
+            &a.title
+        };
+        user_prompt.push_str(&format!(
+            "证据 {}: 「{}」——来自 {}\n\n",
+            i + 1,
+            description,
+            a.source
+        ));
     }
 
-    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &system_prompt, &user_prompt).await?;
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &system_prompt, &user_prompt)
+        .await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let source_urls: Vec<String> = theme.articles.iter().map(|a| a.url.clone()).collect();
-    let connections = parsed["connections"].as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    let connections = parsed["connections"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
-    let fact_base = parsed["fact_base"].as_array()
+    let fact_base = parsed["fact_base"]
+        .as_array()
         .map(|arr| {
-            arr.iter().filter_map(|v| {
-                Some(FactBaseEntry {
-                    evidence: v["evidence"].as_str()?.to_string(),
-                    interpretation: v["interpretation"].as_str()?.to_string(),
-                    confidence: v["confidence"].as_str().unwrap_or("发展中-推断").to_string(),
+            arr.iter()
+                .filter_map(|v| {
+                    Some(FactBaseEntry {
+                        evidence: v["evidence"].as_str()?.to_string(),
+                        interpretation: v["interpretation"].as_str()?.to_string(),
+                        confidence: v["confidence"]
+                            .as_str()
+                            .unwrap_or("发展中-推断")
+                            .to_string(),
+                    })
                 })
-            }).collect::<Vec<_>>()
+                .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
@@ -269,9 +305,37 @@ signal_strength (GS three-scenario framework):
     for fb in &mut fact_base {
         fb.confidence = map_to_scl(&fb.confidence);
     }
-    let analysis_paragraph = parsed["analysis_paragraph"].as_str().unwrap_or("").to_string();
-    let geopolitical_fact = parsed["geopolitical_fact"].as_str().unwrap_or("").to_string();
-    let supply_chain_impact = parsed["supply_chain_impact"].as_str().unwrap_or("").to_string();
+    let theme_id_str = &theme.id;
+    let analysis_paragraph = parsed["analysis_paragraph"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            log::warn!(
+                "analysis_paragraph missing in LLM output for theme {}",
+                theme_id_str
+            );
+            String::new()
+        });
+    let geopolitical_fact = parsed["geopolitical_fact"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            log::warn!(
+                "geopolitical_fact missing in LLM output for theme {}",
+                theme_id_str
+            );
+            String::new()
+        });
+    let supply_chain_impact = parsed["supply_chain_impact"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            log::warn!(
+                "supply_chain_impact missing in LLM output for theme {}",
+                theme_id_str
+            );
+            String::new()
+        });
 
     Ok(ThemeAnalysis {
         theme_id: theme.id.clone(),
@@ -279,7 +343,13 @@ signal_strength (GS three-scenario framework):
         bluf: parsed["bluf"].as_str().unwrap_or("待分析").to_string(),
         impact: parsed["impact"].as_str().unwrap_or("待分析").to_string(),
         evidence_level,
-        signal_strength: parsed["signal_strength"].as_u64().unwrap_or(5) as u8,
+        signal_strength: parsed["signal_strength"].as_u64().unwrap_or_else(|| {
+            log::warn!(
+                "signal_strength missing in LLM output for theme {}",
+                theme_id_str
+            );
+            5
+        }) as u8,
         fact_base,
         connections,
         source_urls,
@@ -299,7 +369,12 @@ pub async fn challenge_theme(
     analysis: &ThemeAnalysis,
     api_key: &str,
     llm_config: &LlmConfig,
-) -> Result<(Vec<Assumption>, Option<AdverseScenario>, Vec<String>, Vec<String>)> {
+) -> Result<(
+    Vec<Assumption>,
+    Option<AdverseScenario>,
+    Vec<String>,
+    Vec<String>,
+)> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
@@ -326,34 +401,66 @@ pub async fn challenge_theme(
 
     let user_prompt = format!(
         "请挑战以下判断：\n\n标题: {}\n\n结论: {}\n\n影响: {}\n\n证据等级: {}\n\n信号强度: {}/10",
-        analysis.theme_title, analysis.bluf, analysis.impact, analysis.evidence_level, analysis.signal_strength,
+        analysis.theme_title,
+        analysis.bluf,
+        analysis.impact,
+        analysis.evidence_level,
+        analysis.signal_strength,
     );
 
-    match llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await {
+    match llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await
+    {
         Ok(raw) => {
             if let Ok(parsed) = llm::parse_json_lenient(&raw) {
-                let assumptions = parsed["assumptions"].as_array()
-                    .map(|arr| arr.iter().filter_map(|v| {
-                        Some(Assumption {
-                            text: v["text"].as_str()?.to_string(),
-                            load_bearing: v["load_bearing"].as_bool().unwrap_or(false),
-                            evidence_strength: v["evidence_strength"].as_str().unwrap_or("weak").to_string(),
-                        })
-                    }).collect())
+                let assumptions = parsed["assumptions"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| {
+                                Some(Assumption {
+                                    text: v["text"].as_str()?.to_string(),
+                                    load_bearing: v["load_bearing"].as_bool().unwrap_or(false),
+                                    evidence_strength: v["evidence_strength"]
+                                        .as_str()
+                                        .unwrap_or("weak")
+                                        .to_string(),
+                                })
+                            })
+                            .collect()
+                    })
                     .unwrap_or_default();
 
                 let adverse = parsed["adverse"].as_object().map(|_| AdverseScenario {
-                    scenario: parsed["adverse"]["scenario"].as_str().unwrap_or("").to_string(),
-                    early_warning: parsed["adverse"]["early_warning"].as_str().unwrap_or("").to_string(),
-                    severity: parsed["adverse"]["severity"].as_str().unwrap_or("med").to_string(),
+                    scenario: parsed["adverse"]["scenario"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                    early_warning: parsed["adverse"]["early_warning"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                    severity: parsed["adverse"]["severity"]
+                        .as_str()
+                        .unwrap_or("med")
+                        .to_string(),
                 });
 
-                let next_tests = parsed["next_tests"].as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                let next_tests = parsed["next_tests"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
 
-                let open_questions = parsed["open_questions"].as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                let open_questions = parsed["open_questions"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
 
                 Ok((assumptions, adverse, next_tests, open_questions))
@@ -369,10 +476,7 @@ pub async fn challenge_theme(
 }
 
 /// 整合所有主题分析，输出综合判断
-pub fn synthesize(
-    themes: &[Theme],
-    analyses: &[ThemeAnalysis],
-) -> Summary {
+pub fn synthesize(themes: &[Theme], analyses: &[ThemeAnalysis]) -> Summary {
     let mut narrative = String::new();
 
     // 找主题之间的关联

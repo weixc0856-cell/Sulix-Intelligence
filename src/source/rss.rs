@@ -110,7 +110,11 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
                 .or_else(|| summary.clone());
 
             // YouTube RSS 平稳退化：content 为空时用 title 代替，防止被误判为噪音
-            let content = if content.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+            let content = if content
+                .as_deref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true)
+            {
                 log::debug!("🎬 YouTube RSS 退化: '{}' → 用标题填充 content", title);
                 Some(title.clone())
             } else {

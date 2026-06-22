@@ -19,7 +19,7 @@ pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
     Ok(())
 }
 
-fn sanitize_all(signals: &mut Vec<RawSignal>) {
+fn sanitize_all(signals: &mut [RawSignal]) {
     let url_re = Regex::new(r"https?://\S+").unwrap();
     let email_re = Regex::new(r"\S+@\S+\.\S+").unwrap();
 
@@ -27,11 +27,19 @@ fn sanitize_all(signals: &mut Vec<RawSignal>) {
         signal.title = sanitize_text(&signal.title, &url_re, &email_re);
         if let Some(content) = &signal.content {
             let cleaned = sanitize_text(content, &url_re, &email_re);
-            signal.content = if cleaned.is_empty() { None } else { Some(cleaned) };
+            signal.content = if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            };
         }
         if let Some(summary) = &signal.summary {
             let cleaned = sanitize_text(summary, &url_re, &email_re);
-            signal.summary = if cleaned.is_empty() { None } else { Some(cleaned) };
+            signal.summary = if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            };
         }
     }
 }
@@ -57,17 +65,45 @@ fn sanitize_text(text: &str, url_re: &Regex, email_re: &Regex) -> String {
 /// 使用正则保留 a/p/blockquote/li/strong/em/code/pre，剥离 script/style/iframe 等
 fn sanitize_html_structure(html: &str) -> String {
     // 1. 剥离有害标签及其内容
-    let strip_tags = Regex::new(r"</?(?:script|style|iframe|form|input|button|nav|footer|header|aside|noscript)[^>]*>").unwrap();
+    let strip_tags = Regex::new(
+        r"</?(?:script|style|iframe|form|input|button|nav|footer|header|aside|noscript)[^>]*>",
+    )
+    .unwrap();
     let no_strip = strip_tags.replace_all(html, "");
     // 2. 保留的标签只保留标签本身，不剥离内部文本
     // 移除不在保留列表中的所有其他标签
     let all_tag = Regex::new(r"</?(\w+)[^>]*>").unwrap();
     let result = all_tag.replace_all(&no_strip, |caps: &regex::Captures| {
         let tag = caps.get(1).unwrap().as_str();
-        let is_keep = matches!(tag, "a" | "p" | "blockquote" | "h1" | "h2" | "h3"
-            | "h4" | "h5" | "h6" | "ul" | "ol" | "li" | "strong" | "em"
-            | "b" | "i" | "code" | "pre" | "br" | "div" | "span" | "img");
-        if is_keep { caps.get(0).unwrap().as_str().to_string() } else { String::new() }
+        let is_keep = matches!(
+            tag,
+            "a" | "p"
+                | "blockquote"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "ul"
+                | "ol"
+                | "li"
+                | "strong"
+                | "em"
+                | "b"
+                | "i"
+                | "code"
+                | "pre"
+                | "br"
+                | "div"
+                | "span"
+                | "img"
+        );
+        if is_keep {
+            caps.get(0).unwrap().as_str().to_string()
+        } else {
+            String::new()
+        }
     });
     result.trim().to_string()
 }
@@ -76,10 +112,14 @@ fn dedup(signals: &mut Vec<RawSignal>) {
     let mut seen_urls: HashSet<String> = HashSet::new();
     let mut seen_titles: Vec<String> = Vec::new();
     signals.retain(|signal| {
-        if !seen_urls.insert(signal.id.clone()) { return false; }
+        if !seen_urls.insert(signal.id.clone()) {
+            return false;
+        }
         let title_lower = signal.title.to_lowercase();
         for existing in &seen_titles {
-            if title_similarity(existing, &title_lower) > 0.75 { return false; }
+            if title_similarity(existing, &title_lower) > 0.75 {
+                return false;
+            }
         }
         seen_titles.push(signal.title.clone());
         true
@@ -89,20 +129,30 @@ fn dedup(signals: &mut Vec<RawSignal>) {
 fn title_similarity(a: &str, b: &str) -> f64 {
     let words_a: HashSet<&str> = a.split_whitespace().collect();
     let words_b: HashSet<&str> = b.split_whitespace().collect();
-    if words_a.is_empty() && words_b.is_empty() { return 1.0; }
+    if words_a.is_empty() && words_b.is_empty() {
+        return 1.0;
+    }
     let intersection = words_a.intersection(&words_b).count();
     let union = words_a.union(&words_b).count();
     intersection as f64 / union as f64
 }
 
-fn post_process(signals: &mut Vec<RawSignal>) {
+fn post_process(signals: &mut [RawSignal]) {
     signals.sort_by(|a, b| {
-        let a_naive = a.published_at.map(|d| d.naive_utc()).unwrap_or(chrono::NaiveDateTime::MIN);
-        let b_naive = b.published_at.map(|d| d.naive_utc()).unwrap_or(chrono::NaiveDateTime::MIN);
+        let a_naive = a
+            .published_at
+            .map(|d| d.naive_utc())
+            .unwrap_or_else(|| chrono::Utc::now().naive_utc());
+        let b_naive = b
+            .published_at
+            .map(|d| d.naive_utc())
+            .unwrap_or_else(|| chrono::Utc::now().naive_utc());
         b_naive.cmp(&a_naive)
     });
     for signal in signals.iter_mut() {
-        if signal.url.starts_with("//") { signal.url = format!("https:{}", signal.url); }
+        if signal.url.starts_with("//") {
+            signal.url = format!("https:{}", signal.url);
+        }
     }
 }
 
@@ -131,8 +181,32 @@ mod tests {
     #[test]
     fn test_dedup_by_url() {
         let mut signals = vec![
-            RawSignal { id: "abc".into(), title: "A".into(), url: "".into(), content: None, summary: None, published_at: None, source: "a".into(), source_id: "a".into(), category: "AI".into(), metrics: None, requires_sanitization: false },
-            RawSignal { id: "abc".into(), title: "A".into(), url: "".into(), content: None, summary: None, published_at: None, source: "a".into(), source_id: "a".into(), category: "AI".into(), metrics: None, requires_sanitization: false },
+            RawSignal {
+                id: "abc".into(),
+                title: "A".into(),
+                url: "".into(),
+                content: None,
+                summary: None,
+                published_at: None,
+                source: "a".into(),
+                source_id: "a".into(),
+                category: "AI".into(),
+                metrics: None,
+                requires_sanitization: false,
+            },
+            RawSignal {
+                id: "abc".into(),
+                title: "A".into(),
+                url: "".into(),
+                content: None,
+                summary: None,
+                published_at: None,
+                source: "a".into(),
+                source_id: "a".into(),
+                category: "AI".into(),
+                metrics: None,
+                requires_sanitization: false,
+            },
         ];
         dedup(&mut signals);
         assert_eq!(signals.len(), 1);

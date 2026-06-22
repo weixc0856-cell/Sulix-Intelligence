@@ -11,11 +11,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::config::{LlmConfig, PromptConfig};
+use crate::config::LlmConfig;
 use crate::fetcher::Article;
-
-/// 每批最多 8 篇文章（控制 token 消耗 + 保证每篇的 attention）
-const BATCH_SIZE: usize = 8;
 
 /// 最大重试次数
 const MAX_RETRIES: u32 = 3;
@@ -66,190 +63,6 @@ pub fn group_by_category(articles: &[Article]) -> HashMap<String, Vec<Article>> 
             .push(article.clone());
     }
     grouped
-}
-
-/// 分析所有 vertical 的文章（支持分批 + 重试）
-pub async fn analyze(
-    grouped: &HashMap<String, Vec<Article>>,
-    prompts: &PromptConfig,
-    api_key: &str,
-    llm_config: &LlmConfig,
-) -> Result<Vec<VerticalAnalysis>> {
-    if grouped.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
-
-    let mut all_analyses = Vec::new();
-
-    for (category, articles) in grouped {
-        log::info!(
-            "🔍 正在分析 [{}] — {} 篇 (分 {} 批)",
-            category,
-            articles.len(),
-            articles.len().div_ceil(BATCH_SIZE)
-        );
-
-        let system_prompt = build_system_prompt(prompts, category);
-        let mut batch_results = Vec::new();
-
-        for (batch_idx, batch) in articles.chunks(BATCH_SIZE).enumerate() {
-            if articles.len() > BATCH_SIZE {
-                log::info!(
-                    "  ↳ 第 {}/{} 批 ({} 篇)",
-                    batch_idx + 1,
-                    articles.len().div_ceil(BATCH_SIZE),
-                    batch.len()
-                );
-            }
-
-            let user_prompt = build_user_prompt(category, batch_idx + 1, batch);
-
-            let result =
-                call_with_retry(&client, api_key, llm_config, &system_prompt, &user_prompt).await;
-
-            match result {
-                Ok(analyzed) => {
-                    let enriched = enrich_with_urls(analyzed, batch);
-                    batch_results.extend(enriched);
-                }
-                Err(e) => {
-                    log::warn!(
-                        "⚠️ [{}] 第{}批分析失败 ({} 次重试后): {}",
-                        category,
-                        batch_idx + 1,
-                        MAX_RETRIES,
-                        e
-                    );
-                    // 该批降级：生成原始条目
-                    for a in batch {
-                        batch_results.push(AnalyzedArticle {
-                            title: a.title.clone(),
-                            url: a.url.clone(),
-                            importance: 5,
-                            relevance: "未分析".into(),
-                            time_horizon: "未分析".into(),
-                            action: "未分析".into(),
-                            confidence: "低".into(),
-                            judgment: format!("⚠️ LLM 分析失败，原文: {}", a.url),
-                            summary: String::new(),
-                            strategic_level: String::new(),
-                            blue_rebuttal: String::new(),
-                            arbitration: String::new(),
-                            evidence_type: String::new(),
-                            capital_score: 0,
-                            policy_score: 0,
-                            risk_score: 0,
-                        });
-                    }
-                }
-            }
-
-            // 批间间隔
-            if articles.len() > BATCH_SIZE {
-                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            }
-        }
-
-        log::info!("✅ [{}] 分析完成: {} 条判断", category, batch_results.len());
-        all_analyses.push(VerticalAnalysis {
-            category: category.clone(),
-            articles: batch_results,
-        });
-    }
-
-    Ok(all_analyses)
-}
-
-/// 构建 system prompt：base + vertical override + JSON 格式约束
-fn build_system_prompt(prompts: &PromptConfig, category: &str) -> String {
-    let mut prompt = prompts.base.clone();
-
-    if let Some(override_text) = prompts.vertical_overrides.get(category) {
-        prompt.push_str("\n\n");
-        prompt.push_str(override_text);
-    }
-
-    prompt.push_str(
-        "\n\n你必须以 JSON 格式输出。格式如下（严格遵循，不要加 markdown 代码块标记）：\n\
-        {\n  \
-        \"articles\": [\n    \
-        {\n      \
-        \"id\": \"文章的 ID（从输入原文获取，严格保持原样）\",\n      \
-        \"summary\": \"一句话核心摘要（30-50字，大白话，去掉水话）\",\n      \
-        \"strategic_level\": \"S/A/B/C（S=范式转移需重新评估方向，A=影响3个月决策，B=值得关注，C=噪音）\",\n      \
-        \"title\": \"文章标题\",\n      \
-        \"importance\": 7,\n      \
-        \"relevance\": \"高/中/低\",\n      \
-        \"time_horizon\": \"短期/中期/长期\",\n      \
-        \"action\": \"立即行动/研究/观察/忽略\",\n      \
-        \"confidence\": \"高/中/低\",\n      \
-        \"capital_score\": 85,\n      \
-        \"policy_score\": 70,\n      \
-        \"risk_score\": 45,\n      \
-        \"judgment\": \"核心解读（2-4 句话）\"\n    \
-        }\n  \
-        ]\n\
-        }\n\n\
-       注意事项：\n\
-        1. summary 必须是一句话（30-50字），用大白话写出核心信息，不要水话和修饰\n\
-        2. strategic_level 是必填字段，必须精确使用 S/A/B/C 中的一个字母\n\
-        3. importance 必须是 1-10 的整数\n\
-        4. relevance、time_horizon、action、confidence 必须使用指定的枚举值\n\
-        5. capital_score/policy_score/risk_score 必须是 0-100 的整数\n\
-        6. judgment 必须包含判断逻辑和从创业者视角的解读\n\
-        7. 为每篇输入文章都生成一条分析结果，数量严格对应\n\
-        8. id 字段必须从输入原文中获取并严格保持原样\n\
-        9. 输出纯 JSON，不要在前后加任何说明文字",
-    );
-
-    prompt
-}
-
-/// 构建 user prompt：将所有文章格式化发给 LLM
-fn build_user_prompt(category: &str, batch_idx: usize, articles: &[Article]) -> String {
-    let mut prompt = format!(
-        "请分析以下 {} 领域的 {} 条新闻（第 {} 批），输出 JSON：\n\n",
-        category,
-        articles.len(),
-        batch_idx,
-    );
-
-    for (i, article) in articles.iter().enumerate() {
-        prompt.push_str(&format!(
-            "--- 文章 {} ---\nID: {}\n标题: {}\n链接: {}\n来源: {}\n",
-            i + 1,
-            article.id,
-            article.title,
-            article.url,
-            article.source,
-        ));
-
-        let body = article
-            .content
-            .as_deref()
-            .or(article.summary.as_deref())
-            .unwrap_or("(无全文)");
-
-        // 截取前 3000 字符（相比原来 800 大幅提升，给 LLM 足够上下文）
-        let truncated = if body.len() > 3000 {
-            let end = body.floor_char_boundary(3000);
-            format!("{}...", &body[..end])
-        } else {
-            body.to_string()
-        };
-
-        prompt.push_str(&format!("正文: {}\n\n", truncated));
-
-        if let Some(ref wiki) = article.wiki_summary {
-            prompt.push_str(&format!("Wikipedia 背景: {}\n\n", wiki));
-        }
-    }
-
-    prompt
 }
 
 // ===== P1: 重试机制 =====
@@ -320,18 +133,7 @@ pub(crate) async fn call_with_retry_raw(
     Err(last_error.unwrap())
 }
 
-/// 调用 DeepSeek API 返回原始文本（供 Editor Agent 使用，无重试）
-pub(crate) async fn call_raw(
-    client: &reqwest::Client,
-    api_key: &str,
-    llm_config: &LlmConfig,
-    system_prompt: &str,
-    user_prompt: &str,
-) -> Result<String> {
-    call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt).await
-}
-
-/// 不带重试的原始 API 调用（供 call_raw 和 call_with_retry_raw 共用）
+/// 不带重试的原始 API 调用（供 call_with_retry_raw 使用）
 async fn call_raw_inner(
     client: &reqwest::Client,
     api_key: &str,
@@ -365,7 +167,10 @@ async fn call_raw_inner(
 
     let status = response.status();
     if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<body read failed: {}>", e));
         return Err(anyhow::anyhow!(
             "DeepSeek API 返回错误 ({}): {}",
             status,
@@ -420,7 +225,10 @@ async fn call_completion(
 
     let status = response.status();
     if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<body read failed: {}>", e));
         return Err(anyhow::anyhow!(
             "DeepSeek API 返回错误 ({}): {}",
             status,
@@ -490,61 +298,6 @@ pub(crate) fn extract_json_block(text: &str, marker: &str) -> Option<String> {
     Some(after[..end].trim().to_string())
 }
 
-/// 将 LLM 返回的分析结果与原文章关联（补全 url）
-/// 优先按 id 匹配，其次是 title（向后兼容）
-fn enrich_with_urls(
-    analyzed: Vec<AnalyzedArticleRaw>,
-    original_articles: &[Article],
-) -> Vec<AnalyzedArticle> {
-    let id_url_map: HashMap<&str, &str> = original_articles
-        .iter()
-        .map(|a| (a.id.as_str(), a.url.as_str()))
-        .collect();
-    let title_url_map: HashMap<&str, &str> = original_articles
-        .iter()
-        .map(|a| (a.title.as_str(), a.url.as_str()))
-        .collect();
-
-    analyzed
-        .into_iter()
-        .map(|raw| {
-            // 先按 id 匹配，失败则按 title 匹配（LLM 改标题时仍能工作）
-            let url = if !raw.id.is_empty() {
-                id_url_map
-                    .get(raw.id.as_str())
-                    .copied()
-                    .unwrap_or("")
-                    .to_string()
-            } else {
-                title_url_map
-                    .get(raw.title.as_str())
-                    .copied()
-                    .unwrap_or("")
-                    .to_string()
-            };
-
-            AnalyzedArticle {
-                title: raw.title,
-                url,
-                importance: raw.importance.clamp(1, 10),
-                relevance: raw.relevance,
-                time_horizon: raw.time_horizon,
-                action: raw.action,
-                confidence: raw.confidence,
-                judgment: raw.judgment,
-                summary: String::new(),
-                strategic_level: String::new(),
-                blue_rebuttal: String::new(),
-                arbitration: String::new(),
-                evidence_type: String::new(),
-                capital_score: 0,
-                policy_score: 0,
-                risk_score: 0,
-            }
-        })
-        .collect()
-}
-
 // ========== 内部数据结构 ==========
 
 #[derive(Debug, Deserialize)]
@@ -568,6 +321,7 @@ struct ArticlesWrapper {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct AnalyzedArticleRaw {
     #[serde(default)]
     pub(crate) id: String,

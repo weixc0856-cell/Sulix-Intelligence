@@ -30,10 +30,7 @@ pub struct Article {
 // ===== 正文提取（P0） =====
 
 /// 为内容不足的文章抓取原文并提取正文
-pub async fn enrich_articles_content(
-    articles: &mut [Article],
-    max_concurrency: usize,
-) -> u32 {
+pub async fn enrich_articles_content(articles: &mut [Article], max_concurrency: usize) -> u32 {
     use std::sync::Arc;
 
     let client = reqwest::Client::builder()
@@ -44,14 +41,10 @@ pub async fn enrich_articles_content(
         .unwrap_or_default();
 
     let mut tasks = Vec::new();
-    for i in 0..articles.len() {
-        let content_len = articles[i]
-            .content
-            .as_ref()
-            .map(|c| c.len())
-            .unwrap_or(0);
+    for (i, article) in articles.iter().enumerate() {
+        let content_len = article.content.as_ref().map(|c| c.len()).unwrap_or(0);
         if content_len < 150 {
-            tasks.push((i, articles[i].url.clone(), client.clone()));
+            tasks.push((i, article.url.clone(), client.clone()));
         }
     }
 
@@ -66,7 +59,10 @@ pub async fn enrich_articles_content(
     for (idx, url, client) in tasks {
         let sem = semaphore.clone();
         handles.push(tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
+            let _permit = sem
+                .acquire()
+                .await
+                .expect("semaphore closed within pipeline context");
             match fetch_article_content(&client, &url).await {
                 Ok(text) => Some((idx, text)),
                 Err(e) => {
@@ -91,10 +87,7 @@ pub async fn enrich_articles_content(
     enriched_count
 }
 
-async fn fetch_article_content(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<String> {
+async fn fetch_article_content(client: &reqwest::Client, url: &str) -> Result<String> {
     let response = client.get(url).send().await?;
     if !response.status().is_success() {
         return Err(anyhow::anyhow!("HTTP {}", response.status()));
