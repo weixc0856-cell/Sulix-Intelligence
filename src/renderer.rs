@@ -421,7 +421,22 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
 </head>
 <body class="antialiased min-h-screen pb-12">
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
-  <main class="max-w-5xl mx-auto px-4 pt-10 sm:px-6 lg:px-8">
+
+  <!-- Logo: 红印章 + Sulix.Intel 字标 -->
+  <div class="max-w-5xl mx-auto px-4 pt-6 sm:px-6 lg:px-8">
+    <div class="flex items-center gap-3 select-none">
+      <div class="w-7 h-7 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+        <span class="font-sans font-black text-white text-lg leading-none tracking-tighter" style="font-family: 'Inter', sans-serif;">i</span>
+      </div>
+      <div class="flex items-baseline tracking-tight">
+        <span class="text-xl font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
+        <span class="text-xl font-light text-neutral-400 mx-1">.</span>
+        <span class="text-sm font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: 'Inter', sans-serif;">Intel</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="max-w-5xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
     <div class="space-y-2">
       <span class="text-[#e3120b] text-xs font-bold uppercase tracking-widest block">{}</span>
       <h1 class="serif-title text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">{}</h1>
@@ -499,7 +514,22 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 </head>
 <body>
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
-  <div class="max-w-4xl mx-auto px-4 py-12">
+
+  <!-- Logo -->
+  <div class="max-w-4xl mx-auto px-4 pt-6">
+    <div class="flex items-center gap-3 select-none">
+      <div class="w-7 h-7 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+        <span class="font-sans font-black text-white text-lg leading-none tracking-tighter" style="font-family: 'Inter', sans-serif;">i</span>
+      </div>
+      <div class="flex items-baseline tracking-tight">
+        <span class="text-xl font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
+        <span class="text-xl font-light text-neutral-400 mx-1">.</span>
+        <span class="text-sm font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: 'Inter', sans-serif;">Intel</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="border-b-2 border-neutral-950 pb-6">
       <h1 class="serif-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">Geopolitical Tech Chronicle</h1>
       <p class="serif-title text-lg italic text-neutral-500 mt-2">A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines.</p>
