@@ -218,7 +218,9 @@ signal_strength (GS three-scenario framework):
 - Base Scenario: 5-6
 - Adverse Scenario: 7-8
 - Aggressive Scenario: 9-10
-- 1-4: noise or single-point event"#;
+- 1-4: noise or single-point event
+
+[OUTPUT RULE] Output ONLY valid JSON. Do NOT include any reasoning steps, assumptions, warnings, scenarios, or verification logic in the JSON fields. The fields `geopolitical_fact` and `supply_chain_impact` must be concise editorial analysis (2-3 sentences), not bullet lists or numbered steps."#;
     let system_prompt = if is_zh {
         format!("{}\n\n[CRITICAL COMPLIANCE]: All structural JSON values (strings) MUST be translated into high-density, editorial Traditional Chinese (繁體中文). Do NOT translate JSON keys. Ensure JSON structure remains unmodified.\nExport controls → 出口管制, supply chain → 供應鏈, semiconductor → 半導體, chip → 晶片, tariff → 關稅.", base_prompt)
     } else {
