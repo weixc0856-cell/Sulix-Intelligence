@@ -33,6 +33,37 @@ fn matches_keywords(text: &str, keywords: &[String]) -> bool {
     keywords.iter().any(|kw| lower.contains(&kw.to_lowercase()))
 }
 
+/// 带指数退避重试的 HTTP 抓取（抄 RSSHub 重试策略）
+async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
+    let mut last_error = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            let delay = std::time::Duration::from_secs(2u64.pow(attempt));
+            tokio::time::sleep(delay).await;
+        }
+        match client.get(url).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    return Ok(resp.bytes().await?.to_vec());
+                }
+                // 429/503/502 可重试
+                if status.as_u16() == 429 || status.as_u16() == 502 || status.as_u16() == 503 {
+                    last_error = Some(anyhow::anyhow!("HTTP {}", status));
+                    continue;
+                }
+                // 4xx 其他不重试
+                return Err(anyhow::anyhow!("HTTP {}", status));
+            }
+            Err(e) => {
+                last_error = Some(e.into());
+                // 网络错误重试
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("请求失败")))
+}
+
 /// 抓取单个 RSS 源并输出标准化 RawSignal
 pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
     let client = reqwest::Client::builder()
@@ -42,8 +73,7 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
 
     log::debug!("抓取 RSS [{}] → {}", config.name, config.url);
 
-    let response = client.get(&config.url).send().await?;
-    let bytes = response.bytes().await?;
+    let bytes = fetch_with_retry(&client, &config.url).await?;
     let feed = feed_rs::parser::parse(Cursor::new(&bytes))?;
 
     let cutoff = Utc::now() - parse_date_range(date_range);

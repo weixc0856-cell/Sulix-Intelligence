@@ -37,9 +37,12 @@ fn sanitize_all(signals: &mut Vec<RawSignal>) {
 }
 
 fn sanitize_text(text: &str, url_re: &Regex, email_re: &Regex) -> String {
-    let no_html = strip_html_tags(text);
-    let no_urls = url_re.replace_all(&no_html, "");
+    // Step 1: 保留 HTML 结构，只剥离有害标签（抄 RSSHub parameter.ts 的链接保留策略）
+    let safe_html = sanitize_html_structure(text);
+    // Step 2: 移除裸露的 URL（非 href 中的）
+    let no_urls = url_re.replace_all(&safe_html, "");
     let no_emails = email_re.replace_all(&no_urls, "");
+    // Step 3: 折叠空白
     let collapsed: Vec<&str> = no_emails.split_whitespace().collect();
     let joined = collapsed.join(" ");
     if joined.len() > 3000 {
@@ -50,12 +53,22 @@ fn sanitize_text(text: &str, url_re: &Regex, email_re: &Regex) -> String {
     }
 }
 
-fn strip_html_tags(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut in_tag = false;
-    for ch in text.chars() {
-        match ch { '<' => in_tag = true, '>' if in_tag => in_tag = false, _ if !in_tag => result.push(ch), _ => {} }
-    }
+/// 清除 HTML 中有害标签，保留对 LLM 有用的结构（抄 RSSHub parameter.ts）
+/// 使用正则保留 a/p/blockquote/li/strong/em/code/pre，剥离 script/style/iframe 等
+fn sanitize_html_structure(html: &str) -> String {
+    // 1. 剥离有害标签及其内容
+    let strip_tags = Regex::new(r"</?(?:script|style|iframe|form|input|button|nav|footer|header|aside|noscript)[^>]*>").unwrap();
+    let no_strip = strip_tags.replace_all(html, "");
+    // 2. 保留的标签只保留标签本身，不剥离内部文本
+    // 移除不在保留列表中的所有其他标签
+    let all_tag = Regex::new(r"</?(\w+)[^>]*>").unwrap();
+    let result = all_tag.replace_all(&no_strip, |caps: &regex::Captures| {
+        let tag = caps.get(1).unwrap().as_str();
+        let is_keep = matches!(tag, "a" | "p" | "blockquote" | "h1" | "h2" | "h3"
+            | "h4" | "h5" | "h6" | "ul" | "ol" | "li" | "strong" | "em"
+            | "b" | "i" | "code" | "pre" | "br" | "div" | "span" | "img");
+        if is_keep { caps.get(0).unwrap().as_str().to_string() } else { String::new() }
+    });
     result.trim().to_string()
 }
 
@@ -98,8 +111,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_strip_html() {
-        assert_eq!(strip_html_tags("<p>Hello <b>world</b></p>"), "Hello world");
+    fn test_sanitize_html_preserves_structure() {
+        let html = "<p>Hello <b>world</b></p><script>alert('x')</script>";
+        let result = sanitize_html_structure(html);
+        assert!(result.contains("<p>"));
+        assert!(result.contains("Hello"));
+        assert!(!result.contains("<script>"));
+    }
+
+    #[test]
+    fn test_sanitize_html_strips_harmful() {
+        let html = "<p>Normal text</p><iframe src='bad'></iframe><style>.cls{}</style>";
+        let result = sanitize_html_structure(html);
+        assert!(result.contains("<p>"));
+        assert!(!result.contains("<iframe"));
+        assert!(!result.contains("<style>"));
     }
 
     #[test]
