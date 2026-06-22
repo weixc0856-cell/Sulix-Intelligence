@@ -1,0 +1,36 @@
+name: Sulix Intel Daily
+
+on:
+  schedule:
+    # UTC 00:15 = 北京 08:15（提前 15 分钟对冲 GitHub 排队延迟）
+    - cron: '15 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Run Sulix Intel Pipeline
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          VAULT_PATH: "./DailyBrief"
+        run: |
+          cargo build --release
+          cargo run --release
+
+      - name: Commit and Push
+        run: |
+          git config user.name "Sulix-Bot"
+          git config user.email "bot@sulix.com"
+          git add DailyBrief/
+          git diff --quiet && git diff --staged --quiet || \
+            (git commit -m "chore(data): daily brief $(date +%Y-%m-%d)" && git push)

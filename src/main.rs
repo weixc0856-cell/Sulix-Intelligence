@@ -26,7 +26,12 @@ async fn main() -> Result<()> {
     log::info!("🚀 Sulix Intelligence — 启动");
 
     // 1. 加载配置
-    let config = config::Config::from_file("config.toml")?;
+    let mut config = config::Config::from_file("config.toml")?;
+    // CI 环境变量覆盖：VAULT_PATH → config.output.vault_path
+    if let Ok(ci_path) = std::env::var("VAULT_PATH") {
+        log::info!("⚙️ CI 覆盖 vault_path: {}", ci_path);
+        config.output.vault_path = ci_path;
+    }
     let api_key = config.get_api_key()?;
     log::info!("配置加载完成: {} 个数据源, LLM 模型: {}", config.sources.len(), config.llm.model);
 
