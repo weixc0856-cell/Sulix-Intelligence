@@ -82,11 +82,15 @@ cargo run --release
 ```
 src/
 ├── main.rs              # 管线编排
+├── pipeline.rs          # 中间件链（清洗、合规、去重）
 ├── config.rs            # TOML 配置加载 + DecisionLedger
 ├── catalog.rs           # DataCatalog — 每步 JSON 审计落盘
 ├── clusterer.rs         # 主题聚类 + Fact Base 分析
 ├── db.rs                # SQLite 去重、存储与墓地
-├── fetcher.rs           # RSS/YouTube 抓取 + 全文提取 + Delta 去重
+├── source/              # 源适配器（RSSHub 风格分发）
+│   ├── mod.rs           # 源路由 + RawSignal 结构体
+│   └── rss.rs           # RSS 源适配器
+├── fetcher.rs           # 旧版抓取（迁移至 source/ 中）
 ├── enricher.rs          # Wikipedia 上下文注入
 ├── llm.rs               # DeepSeek API 调用（分批+重试）
 ├── renderer.rs          # 咨询级 Markdown + HTML 简报渲染

@@ -84,11 +84,15 @@ cargo run --release
 ```
 src/
 ├── main.rs              # Pipeline orchestration
+├── pipeline.rs          # Middleware chain (sanitize, compliance, dedup)
 ├── config.rs            # TOML config loader + DecisionLedger
 ├── catalog.rs           # DataCatalog — JSON audit trail per step
 ├── clusterer.rs         # Theme clustering + Fact Base analysis
 ├── db.rs                # SQLite dedup, storage & graveyard
-├── fetcher.rs           # RSS/YouTube fetching + full-text + delta dedup
+├── source/              # Source adapters (RSSHub-style dispatch)
+│   ├── mod.rs           # Source routing + RawSignal struct
+│   └── rss.rs           # RSS feed adapter
+├── fetcher.rs           # Legacy fetch (being migrated to source/)
 ├── enricher.rs          # Wikipedia API context injection
 ├── llm.rs               # DeepSeek API calling with batching & retry
 ├── renderer.rs          # Consulting-grade Markdown + HTML briefing
