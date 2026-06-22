@@ -1,4 +1,4 @@
-//! 渲染模块 — 咨询级简报
+﻿//! 渲染模块 — 咨询级简报
 //!
 //! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
 //! 所有输出数据集中到 TemplateData，由 template::render() 渲染
@@ -421,21 +421,25 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
 </head>
 <body class="antialiased min-h-screen pb-12">
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
-
-  <!-- Logo: 红印章 + Sulix.Intel 字标 -->
-  <div class="max-w-5xl mx-auto px-4 pt-6 sm:px-6 lg:px-8">
-    <div class="flex items-center gap-3 select-none">
-      <div class="w-7 h-7 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-        <span class="font-sans font-black text-white text-lg leading-none tracking-tighter" style="font-family: 'Inter', sans-serif;">i</span>
-      </div>
-      <div class="flex items-baseline tracking-tight">
-        <span class="text-xl font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
-        <span class="text-xl font-light text-neutral-400 mx-1">.</span>
-        <span class="text-sm font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: 'Inter', sans-serif;">Intel</span>
-      </div>
+  <header class="border-b border-neutral-100 bg-white">
+    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between sm:px-6 lg:px-8">
+      <a href="/" class="flex items-center gap-3 no-underline">
+        <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
+          <span class="text-white font-black text-base leading-none" style="font-family: Inter">i</span>
+        </div>
+        <div class="flex items-baseline tracking-tight">
+          <span class="text-lg font-bold text-neutral-900" style="font-family: 'Playfair Display'">Sulix</span>
+          <span class="text-lg font-light text-neutral-400 mx-0.5">.</span>
+          <span class="text-xs font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: Inter">Intel</span>
+        </div>
+      </a>
+      <nav class="flex items-center gap-3 text-xs font-medium" style="font-family: Inter">
+        <button onclick="toggleLang('en')" id="l-en" class="font-bold border-b-2 border-neutral-900 pb-0.5 cursor-pointer">EN</button>
+        <span class="text-neutral-300">|</span>
+        <button onclick="toggleLang('zh')" id="l-zh" class="text-neutral-400 hover:text-neutral-900 cursor-pointer">繁中</button>
+      </nav>
     </div>
-  </div>
-
+  </header>
   <main class="max-w-5xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
     <div class="space-y-2">
       <span class="text-[#e3120b] text-xs font-bold uppercase tracking-widest block">{}</span>
@@ -472,6 +476,10 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
       </div>
     </div>
   </main>
+<script>
+function toggleLang(t){{var n=window.location.pathname;if('zh'==t&&!n.startsWith('/zh/')){{window.location.pathname='/zh'+n}}else if('en'==t&&n.startsWith('/zh/')){{var r=n.replace('/zh','');window.location.pathname=r===''?'/':r}}}}
+(function(){{var n=window.location.pathname.startsWith('/zh/');document.getElementById('l-zh').className=n?'font-bold border-b-2 border-neutral-900 pb-0.5':'text-neutral-400 hover:text-neutral-900';document.getElementById('l-en').className=n?'text-neutral-400 hover:text-neutral-900':'font-bold border-b-2 border-neutral-900 pb-0.5'}})()
+</script>
 </body>
 </html>"#,
         headline, category, headline, sub, date, fact, impact_text, entities_html, sources_html,

@@ -17,6 +17,7 @@ pub struct ChronicleEntry {
     pub headline: String,
     pub entities: Vec<String>,
     pub signal_strength: u8,
+    pub language: String, // "en" | "zh"
 }
 
 /// 历史数据库
@@ -60,6 +61,15 @@ impl ChronicleDb {
         let mut sorted = self.entries.clone();
         sorted.sort_by(|a, b| b.date.cmp(&a.date));
         sorted
+    }
+
+    /// 按语言排序
+    pub fn sorted_by_lang(&self, lang: &str) -> Vec<ChronicleEntry> {
+        let mut filtered: Vec<ChronicleEntry> = self.entries.iter()
+            .filter(|e| e.language == lang)
+            .cloned().collect();
+        filtered.sort_by(|a, b| b.date.cmp(&a.date));
+        filtered
     }
 
     /// 获取所有独特实体标签

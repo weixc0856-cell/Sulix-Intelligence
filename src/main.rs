@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
     let mut analyses = Vec::new();
     for theme in &themes {
         log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
-        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm).await?;
+        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm, "en").await?;
         // Phase 1: 蓝军挑战
         let (assumptions, adverse, next_tests, open_questions) = clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
         analysis.assumptions = assumptions;
@@ -171,6 +171,26 @@ async fn main() -> Result<()> {
         analyses.push(analysis);
     }
     catalog.save_step(6, "theme_analyses", &analyses)?;
+
+    // 双轨：生成繁体中文版分析
+    let mut analyses_zh = Vec::new();
+    for theme in &themes {
+        match clusterer::analyze_theme(theme, &api_key, &config.llm, "zh").await {
+            Ok(mut a) => {
+                if let Ok((assumptions, adverse, next_tests, open_questions)) =
+                    clusterer::challenge_theme(&a, &api_key, &config.llm).await
+                {
+                    a.assumptions = assumptions; a.adverse = adverse;
+                    a.next_tests = next_tests; a.open_questions = open_questions;
+                }
+                let weak = a.assumptions.iter().any(|x| x.load_bearing && x.evidence_strength == "weak");
+                if weak && a.signal_strength >= 3 { a.signal_strength -= 2; }
+                analyses_zh.push(a);
+            }
+            Err(e) => log::warn!("⚠️ 中文分析失败 [{}]: {}", theme.title, e),
+        }
+    }
+    log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
     let summary = clusterer::synthesize(&themes, &analyses);
     log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
@@ -221,6 +241,51 @@ async fn main() -> Result<()> {
     let html = renderer::render_html_report(&themes, &analyses, &today)?;
     let html_path = month_dir.join("index.html");
     fs::write(&html_path, &html)?;
+    // === 编年史看板初始化（在双语写入之前） ===
+    let db_dir = data_dir.join(&today[..7]);
+    fs::create_dir_all(&db_dir).ok();
+    let chronicle_path = data_dir.join("database.json");
+    let mut chronicle = archive::ChronicleDb::load(&chronicle_path)?;
+
+    // === 繁体中文版 ===
+    if !analyses_zh.is_empty() {
+        let zh_dir = report_dir.join("zh").join(&today[..7]);
+        fs::create_dir_all(&zh_dir).ok();
+
+        let zh_calibration = if !analyses_zh.is_empty() {
+            let input: Vec<llm::VerticalAnalysis> = analyses_zh.iter().map(|ta| {
+                llm::VerticalAnalysis { category: ta.theme_title.clone(), articles: vec![] }
+            }).collect();
+            agent::calibration::calibrate(&input, &api_key, &config.llm).await.unwrap_or_default()
+        } else { String::new() };
+
+        let zh_summary = clusterer::synthesize(&themes, &analyses_zh);
+        if let Ok(zh_html) = renderer::render_html_report(&themes, &analyses_zh, &today) {
+            fs::write(zh_dir.join("index.html"), &zh_html).ok();
+            log::info!("🌏 中文简报已生成");
+        }
+        // 中文 Chronicle 条目
+        for a in &analyses_zh {
+            let mut entities: Vec<String> = Vec::new();
+            for fb in &a.fact_base {
+                for word in fb.evidence.split_whitespace() {
+                    let upper = word.to_uppercase();
+                    if ["TSMC","ASML","NVIDIA","OPENAI","ANTHROPIC","GOOGLE","META","MICROSOFT","INTEL","AMD","ARM","HBM"].contains(&upper.as_str()) {
+                        if !entities.contains(&upper) { entities.push(upper); }
+                    }
+                }
+            }
+            chronicle.push(archive::ChronicleEntry {
+                date: today.clone(),
+                topic: a.theme_title.clone(),
+                headline: a.bluf.clone(),
+                entities,
+                signal_strength: a.signal_strength,
+                language: "zh".into(),
+            });
+        }
+    }
+
     // 同时写入 vault 根目录一份最新版（方便快速打开）
     let latest_analysis = report_dir.join(format!("{}-分析.md", today));
     let latest_aggregation = report_dir.join(format!("{}-聚合.md", today));
@@ -242,12 +307,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // === 编年史看板：更新 database.json + 重写总索引页 ===
-    let db_dir = data_dir.join(&today[..7]);
-    fs::create_dir_all(&db_dir).ok();
-    let chronicle_path = data_dir.join("database.json");
-    let mut chronicle = archive::ChronicleDb::load(&chronicle_path)?;
-
+    // EN 条目
     for analysis in &analyses {
         let mut entities: Vec<String> = Vec::new();
         for fb in &analysis.fact_base {
@@ -264,6 +324,7 @@ async fn main() -> Result<()> {
             headline: analysis.bluf.clone(),
             entities,
             signal_strength: analysis.signal_strength,
+            language: "en".into(),
         });
     }
     chronicle.save(&chronicle_path)?;
@@ -273,6 +334,10 @@ async fn main() -> Result<()> {
     let archive_html = renderer::render_archive_dashboard(&sorted)?;
     let archive_path = report_dir.join("index.html");
     fs::write(&archive_path, &archive_html)?;
+    // 同时写入中文根目录（JS 切换需要 /zh/ 存在）
+    let zh_root = report_dir.join("zh");
+    fs::create_dir_all(&zh_root).ok();
+    fs::write(zh_root.join("index.html"), &archive_html)?;
     log::info!("📚 编年史看板: {} 条记录 → {}", sorted.len(), archive_path.display());
 
     println!("\n✅ 分析报告: {}", analysis_path.display());

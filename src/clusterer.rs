@@ -123,7 +123,7 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
         ));
     }
 
-    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &system_prompt, &user_prompt).await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let mut themes = Vec::new();
@@ -186,12 +186,14 @@ pub async fn analyze_theme(
     theme: &Theme,
     api_key: &str,
     llm_config: &LlmConfig,
+    language: &str,
 ) -> Result<ThemeAnalysis> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()?;
 
-    let system_prompt = r#"You are a senior geopolitical technology strategist for a publication like The Economist.
+    let is_zh = language == "zh";
+    let base_prompt = r#"You are a senior geopolitical technology strategist for a publication like The Economist.
 
 Analyze the provided inputs and generate a structured JSON report.
 Maintain an objective, authoritative, analytical tone.
@@ -217,6 +219,11 @@ signal_strength (GS three-scenario framework):
 - Adverse Scenario: 7-8
 - Aggressive Scenario: 9-10
 - 1-4: noise or single-point event"#;
+    let system_prompt = if is_zh {
+        format!("{}\n\n[CRITICAL COMPLIANCE]: All structural JSON values (strings) MUST be translated into high-density, editorial Traditional Chinese (繁體中文). Do NOT translate JSON keys. Ensure JSON structure remains unmodified.\nExport controls → 出口管制, supply chain → 供應鏈, semiconductor → 半導體, chip → 晶片, tariff → 關稅.", base_prompt)
+    } else {
+        base_prompt.to_string()
+    };
 
     let mut user_prompt = format!("## 主题: {}\n{}\n\n", theme.title, theme.summary);
     user_prompt.push_str(&format!("共 {} 条证据：\n\n", theme.articles.len()));
@@ -233,7 +240,7 @@ signal_strength (GS three-scenario framework):
         user_prompt.push_str(&format!("证据 {}: 「{}」——来自 {}\n\n", i + 1, description, a.source));
     }
 
-    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt).await?;
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &system_prompt, &user_prompt).await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let source_urls: Vec<String> = theme.articles.iter().map(|a| a.url.clone()).collect();
