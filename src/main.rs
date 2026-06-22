@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 mod agent;
+mod archive;
 mod catalog;
 mod clusterer;
 mod config;
@@ -206,7 +207,7 @@ async fn main() -> Result<()> {
     log::info!("📋 信号聚合渲染完成 ({} 条信号)",
         themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len());
 
-    // 写入 Vault（双文件）
+    // 写入 Vault（双文件 + HTML）
     // 按月归档（抄 Daily-News-Briefing: {archive}/{YYYY-MM}/{filename}）
     let report_dir = PathBuf::from(&config.output.vault_path);
     let month_dir = report_dir.join(&today[..7]); // YYYY-MM
@@ -215,6 +216,11 @@ async fn main() -> Result<()> {
     fs::write(&analysis_path, &analysis_report)?;
     let aggregation_path = month_dir.join(format!("{}-聚合.md", today));
     fs::write(&aggregation_path, &aggregation)?;
+
+    // HTML 简报（Economist Graphic Detail 版式 + Tailwind CDN）
+    let html = renderer::render_html_report(&themes, &analyses, &today)?;
+    let html_path = month_dir.join("index.html");
+    fs::write(&html_path, &html)?;
     // 同时写入 vault 根目录一份最新版（方便快速打开）
     let latest_analysis = report_dir.join(format!("{}-分析.md", today));
     let latest_aggregation = report_dir.join(format!("{}-聚合.md", today));
@@ -236,8 +242,42 @@ async fn main() -> Result<()> {
         }
     }
 
+    // === 编年史看板：更新 database.json + 重写总索引页 ===
+    let db_dir = data_dir.join(&today[..7]);
+    fs::create_dir_all(&db_dir).ok();
+    let chronicle_path = data_dir.join("database.json");
+    let mut chronicle = archive::ChronicleDb::load(&chronicle_path)?;
+
+    for analysis in &analyses {
+        let mut entities: Vec<String> = Vec::new();
+        for fb in &analysis.fact_base {
+            for word in fb.evidence.split_whitespace() {
+                let upper = word.to_uppercase();
+                if ["TSMC", "ASML", "NVIDIA", "INTEL", "AMD", "ARM", "HBM", "OPENAI", "ANTHROPIC", "GOOGLE", "META", "MICROSOFT"].contains(&upper.as_str()) {
+                    if !entities.contains(&upper) { entities.push(upper); }
+                }
+            }
+        }
+        chronicle.push(archive::ChronicleEntry {
+            date: today.clone(),
+            topic: analysis.theme_title.clone(),
+            headline: analysis.bluf.clone(),
+            entities,
+            signal_strength: analysis.signal_strength,
+        });
+    }
+    chronicle.save(&chronicle_path)?;
+
+    // 重写总索引页
+    let sorted = chronicle.sorted();
+    let archive_html = renderer::render_archive_dashboard(&sorted)?;
+    let archive_path = report_dir.join("index.html");
+    fs::write(&archive_path, &archive_html)?;
+    log::info!("📚 编年史看板: {} 条记录 → {}", sorted.len(), archive_path.display());
+
     println!("\n✅ 分析报告: {}", analysis_path.display());
     println!("✅ 信号聚合: {}", aggregation_path.display());
+    println!("✅ HTML 简报: {}", month_dir.join("index.html").display());
     log::info!("✅ Sulix Intelligence 执行完成");
     Ok(())
 }

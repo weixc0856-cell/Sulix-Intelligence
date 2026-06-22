@@ -27,6 +27,9 @@ pub struct RawSignal {
     pub category: String,
     /// 数字指标（A 股换手率/主力流向等硬数据）
     pub metrics: Option<HashMap<String, String>>,
+    /// Layer 2 敏感标记：true = 需要翻译车间洗白
+    #[serde(default)]
+    pub requires_sanitization: bool,
 }
 
 /// 分发到对应适配器并执行抓取

@@ -23,6 +23,7 @@ pub struct TemplateData {
     pub calibration: String,
     pub source_index: String,
     pub processing_status: String,
+    pub transparency_disclaimer: String,
 
     // YAML frontmatter 扩展字段
     pub metrics: HashMap<String, String>,
@@ -49,6 +50,7 @@ pub fn render(template: &str, data: &TemplateData) -> String {
     result = result.replace("{{CALIBRATION}}", &data.calibration);
     result = result.replace("{{SOURCE_INDEX}}", &data.source_index);
     result = result.replace("{{PROCESSING_STATUS}}", &data.processing_status);
+    result = result.replace("{{TRANSPARENCY_DISCLAIMER}}", &data.transparency_disclaimer);
 
     result
 }
@@ -107,6 +109,7 @@ pub const ANALYSIS_TEMPLATE: &str = "\
 
 *本期简报覆盖 {{TOPIC_COUNT}} 个主题，{{ARTICLE_COUNT}} 条证据。生成于 {{TIME}}.*
 *质量标准: 决策导向 | 假设显性 | 证据感知 | 可操作*
+{{TRANSPARENCY_DISCLAIMER}}
 ";
 
 /// 信号聚合模板（简洁格式）

@@ -64,6 +64,9 @@ pub fn render_analysis_report(
         calibration: calibration_block,
         source_index,
         processing_status,
+        transparency_disclaimer: String::from(
+            "*This brief is aggregated by Sulix Intelligence from primary sources. Geopolitical facts are preserved for operational tracking.*"
+        ),
         metrics,
     };
 
@@ -137,6 +140,7 @@ pub fn render_signal_aggregation(
         calibration: String::new(),
         source_index: String::new(),
         processing_status: String::new(),
+        transparency_disclaimer: String::new(),
         metrics,
     };
 
@@ -182,6 +186,14 @@ fn build_topic_sections(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String 
             _ => "单点事件级\n\n",
         });
         md.push_str(&format!("**影响**: {}\n\n", a.impact));
+
+        // Layer 2: 双轨制 — 地缘事实 + 供应链影响
+        if !a.geopolitical_fact.is_empty() {
+            md.push_str(&format!("**地缘事实**: {}\n\n", a.geopolitical_fact));
+        }
+        if !a.supply_chain_impact.is_empty() {
+            md.push_str(&format!("**供应链影响**: {}\n\n", a.supply_chain_impact));
+        }
 
         // 承重假设
         let load_bearing: Vec<&Assumption> = a.assumptions.iter().filter(|a| a.load_bearing).collect();
@@ -354,4 +366,156 @@ fn build_source_index(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String {
     }
     md.push('\n');
     md
+}
+
+// ===== HTML 渲染（Economist Graphic Detail 版式）=====
+
+/// 渲染 Economist 风格的 HTML 简报
+pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &str) -> Result<String> {
+    let top = analyses.iter().max_by_key(|a| a.signal_strength);
+
+    // Build data as owned Strings to avoid lifetime issues
+    let (category, headline, sub, fact, impact_text, entities, sources) = if let Some(t) = top {
+        let cat = t.theme_title.clone();
+        let hd = t.bluf.clone();
+        let sb = t.impact.clone();
+        let ft = if t.geopolitical_fact.is_empty() { t.bluf.clone() } else { t.geopolitical_fact.clone() };
+        let it = if t.supply_chain_impact.is_empty() { t.impact.clone() } else { t.supply_chain_impact.clone() };
+
+        let mut ents: Vec<String> = Vec::new();
+        for a in analyses {
+            if a.signal_strength >= 5 { ents.push(a.theme_title.clone()); }
+        }
+        let mut urls: Vec<(String, String)> = Vec::new();
+        if let Some(theme) = themes.iter().find(|th| th.id == t.theme_id) {
+            for art in &theme.articles {
+                if !art.url.is_empty() { urls.push((art.source.clone(), art.url.clone())); }
+            }
+        }
+        (cat, hd, sb, ft, it, ents, urls)
+    } else {
+        ("Analysis".into(), "No significant signals today.".into(), String::new(), String::new(), String::new(), vec![], vec![])
+    };
+
+    let entities_html: String = entities.iter()
+        .map(|e| format!("<span class='inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-sm border border-slate-200'>{}</span>", e))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let sources_html: String = sources.iter()
+        .map(|(name, url)| format!("<li><a href='{}' target='_blank' class='text-sm text-sky-800 hover:text-red-600 underline font-medium transition-colors break-all'>{} ↗</a></li>", url, name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{} | Sulix Intelligence</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+  <style>body{{font-family:'Inter',sans-serif;background-color:#fcfcfc;color:#111;}}.serif-title{{font-family:'Playfair Display',serif;line-height:1.15;}}</style>
+</head>
+<body class="antialiased min-h-screen pb-12">
+  <div class="h-[4px] w-full bg-[#e3120b]"></div>
+  <main class="max-w-5xl mx-auto px-4 pt-10 sm:px-6 lg:px-8">
+    <div class="space-y-2">
+      <span class="text-[#e3120b] text-xs font-bold uppercase tracking-widest block">{}</span>
+      <h1 class="serif-title text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">{}</h1>
+      <p class="serif-title text-lg sm:text-xl italic text-neutral-500 font-normal">{}</p>
+    </div>
+    <div class="border-t border-neutral-200 mt-6 pt-2 flex justify-between items-center text-xs text-neutral-400 font-medium">
+      <span>SULIX INTELLIGENCE REPORT</span><span>{}</span>
+    </div>
+    <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-lg p-6 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3"><span class="w-1.5 h-1.5 bg-neutral-400 rounded-full inline-block mr-1.5"></span>Geopolitical Fact</h2>
+          <div class="text-neutral-800 text-[15px] leading-relaxed">{}</div>
+        </div>
+        <div class="bg-white rounded-lg p-6 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-[#e3120b] mb-3"><span class="w-1.5 h-1.5 bg-[#e3120b] rounded-full inline-block mr-1.5"></span>Supply Chain Impact</h2>
+          <div class="text-neutral-800 text-[15px] leading-relaxed">{}</div>
+        </div>
+      </div>
+      <div class="space-y-6">
+        <div class="bg-white rounded-lg p-5 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-4">Watchlist Entities</h3>
+          <div class="flex flex-wrap gap-2">{}</div>
+        </div>
+        <div class="bg-white rounded-lg p-5 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3">Primary Sources</h3>
+          <ul class="space-y-2.5">{}</ul>
+        </div>
+        <div class="rounded-lg bg-neutral-50 p-4 border border-neutral-200/60 text-center">
+          <span class="text-[11px] font-semibold text-neutral-400 tracking-wider uppercase">Pipeline Integrity</span>
+          <p class="text-xs text-neutral-500 mt-1">Aggregated with zero filters. Focused on technology-macro convergence.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>"#,
+        headline, category, headline, sub, date, fact, impact_text, entities_html, sources_html,
+    );
+
+    Ok(html)
+}
+
+/// 渲染编年史看板总页面（Economist Graphic Detail 版式）
+pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> Result<String> {
+    let list_html: String = entries.iter().map(|item| {
+        let entities_badges: String = item.entities.iter()
+            .map(|e| format!("<span class='text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded-sm'>{}</span>", e))
+            .collect::<Vec<_>>().join(" ");
+
+        format!(
+            r#"<div class="group border-b border-neutral-100 py-4 flex flex-col md:flex-row md:items-baseline md:justify-between hover:bg-neutral-50/50 px-2 transition-colors">
+                <div class="flex items-baseline gap-4">
+                  <span class="text-xs font-mono text-neutral-400 font-semibold w-24 shrink-0">{}</span>
+                  <div class="space-y-1">
+                    <span class="text-xs font-bold text-[#e3120b] uppercase tracking-wider block text-[10px]">{}</span>
+                    <span class="serif-title text-lg font-bold text-neutral-900 group-hover:text-[#e3120b] transition-colors">{}</span>
+                  </div>
+                </div>
+                <div class="mt-2 md:mt-0 flex gap-1.5">{}</div>
+              </div>"#,
+            item.date, item.topic, item.headline, entities_badges
+        )
+    }).collect::<Vec<_>>().join("\n");
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geopolitical Tech Chronicle | Sulix</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <style>body{{font-family:'Inter',sans-serif;background-color:#fcfcfc;color:#111;}}.serif-title{{font-family:'Playfair Display',serif;}}</style>
+</head>
+<body>
+  <div class="h-[4px] w-full bg-[#e3120b]"></div>
+  <div class="max-w-4xl mx-auto px-4 py-12">
+    <div class="border-b-2 border-neutral-950 pb-6">
+      <h1 class="serif-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">Geopolitical Tech Chronicle</h1>
+      <p class="serif-title text-lg italic text-neutral-500 mt-2">A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines.</p>
+      <div class="mt-3 text-xs text-neutral-400">{} entries spanning {} topics</div>
+    </div>
+    <div class="mt-8 space-y-1">
+      <div class="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-200 pb-2 px-2">Historical Event Feed</div>
+      {}
+    </div>
+  </div>
+</body>
+</html>"#,
+        entries.len(),
+        entries.iter().map(|e| e.topic.as_str()).collect::<std::collections::HashSet<&str>>().len(),
+        list_html,
+    );
+
+    Ok(html)
 }

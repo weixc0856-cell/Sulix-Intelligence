@@ -60,6 +60,8 @@ pub struct ThemeAnalysis {
     pub theme_title: String,
     pub bluf: String,              // 一句话结论
     pub impact: String,            // 战略影响
+    pub geopolitical_fact: String,  // Layer 2: 客观事实复述（海外版）
+    pub supply_chain_impact: String,// Layer 2: 供应链传导分析
     pub analysis_paragraph: String, // 分析与背景（用于聚合输出）
     pub evidence_level: String,    // SCL: 确立-事实
     pub signal_strength: u8,       // 1-10 信号强度
@@ -189,53 +191,32 @@ pub async fn analyze_theme(
         .timeout(std::time::Duration::from_secs(120))
         .build()?;
 
-    let system_prompt = r#"你是一个行业分析师。针对一个主题的多条证据，输出综合判断。
+    let system_prompt = r#"You are a senior geopolitical technology strategist for a publication like The Economist.
 
-严格遵循以下咨询级输出结构：
+Analyze the provided inputs and generate a structured JSON report.
+Maintain an objective, authoritative, analytical tone.
+Never censor, omit, or sugarcoat hard political facts (e.g. sanctions, tariffs, elections).
+Contextualize them into tangible industry metrics.
 
-1. 先用 Fact Base 表格列出所有证据
-2. 再给出综合判断
-3. 最后写一段 analysis_paragraph（分析与背景，3-5句话总结趋势）
-
-置信度使用 SCL（Sulix Confidence Level）：
-- 确立-事实: 多源交叉确认的公开事实（≥2独立源一致）
-- 确立-推断: 多源确认的逻辑推演
-- 发展中-推断: 多源信号但未完全验证的推论
-- 建立-传闻: 单源未证实消息
-- 噪音: PR稿/广告/标题党
-
-输出严格 JSON：
+Output JSON Schema:
 {
   "fact_base": [
-    {"evidence": "GLM-5.2 跑分接近 GPT-4o", "interpretation": "开源能力追平闭源", "confidence": "确立-事实"},
-    {"evidence": "Claude 降价 50%", "interpretation": "价格战开打", "confidence": "确立-事实"}
+    {"evidence": "GLM-5.2 scores close to GPT-4o", "interpretation": "Open-source catching up to closed-source", "confidence": "Established-Fact"},
+    {"evidence": "Export controls restrict ASML shipments", "interpretation": "Semiconductor supply chain faces new constraints", "confidence": "Established-Fact"}
   ],
   "signal_strength": 7,
-  "bluf": "一句话结论（15字以内）",
-  "impact": "战略影响（50字以内）",
-  "evidence_level": "发展中-推断",
-  "analysis_paragraph": "本周该领域有多个信号指向同一方向...",
-  "connections": ["关联主题1", "关联主题2"]
+  "bluf": "One-sentence conclusion (15 words max)",
+  "geopolitical_fact": "Objective summary of the political/regulatory event, including specific actors and countries involved.",
+  "supply_chain_impact": "Data-driven synthesis: how this event affects physical supply, compliance costs, or logistics damping.",
+  "analysis_paragraph": "This week multiple signals point in the same direction...",
+  "connections": ["Related theme 1", "Related theme 2"]
 }
 
-signal_strength 评分标准（锚定 GS 三情景分析法）：
-- Base Scenario（基准）: 5-6 — 当前趋势延续
-- Adverse Scenario（逆境）: 7-8 — 趋势加速/断裂，需提前布局
-- Aggressive Scenario（超预期）: 9-10 — 结构性拐点，改变游戏规则
-- 1-4 为噪音或单点事件
-
-重要合规指令：
-如果任何证据涉及地缘政治、军事冲突、国际制裁等非科技内容，
-你必须将其翻译为对应的"工业供应链/技术生态影响"再输出，
-不得以原始地缘新闻的形式复述。
-
-示例：
-  "乌克兰袭击油库" → "全球基础能源供应链核心节点录得物理不确定性溢价"
-  "美伊谈判" → "中东枢纽区域地缘风险溢价传导至科技硬件供应链成本预期"
-
-如果证据无法在不提及任何政治人物、军事行动的前提下转化为工业/供应链指标，
-你必须直接在 JSON 返回中将该条 fact_base 设置为 null，后端将自动丢弃。
-严禁包含任何和稀泥的非科技叙事。"#;
+signal_strength (GS three-scenario framework):
+- Base Scenario: 5-6
+- Adverse Scenario: 7-8
+- Aggressive Scenario: 9-10
+- 1-4: noise or single-point event"#;
 
     let mut user_prompt = format!("## 主题: {}\n{}\n\n", theme.title, theme.summary);
     user_prompt.push_str(&format!("共 {} 条证据：\n\n", theme.articles.len()));
@@ -280,6 +261,8 @@ signal_strength 评分标准（锚定 GS 三情景分析法）：
         fb.confidence = map_to_scl(&fb.confidence);
     }
     let analysis_paragraph = parsed["analysis_paragraph"].as_str().unwrap_or("").to_string();
+    let geopolitical_fact = parsed["geopolitical_fact"].as_str().unwrap_or("").to_string();
+    let supply_chain_impact = parsed["supply_chain_impact"].as_str().unwrap_or("").to_string();
 
     Ok(ThemeAnalysis {
         theme_id: theme.id.clone(),
@@ -297,6 +280,8 @@ signal_strength 评分标准（锚定 GS 三情景分析法）：
         open_questions: vec![],
         chains: vec![],
         analysis_paragraph,
+        geopolitical_fact,
+        supply_chain_impact,
     })
 }
 

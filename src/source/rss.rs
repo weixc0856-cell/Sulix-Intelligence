@@ -116,6 +116,7 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
                 source_id: source_id.clone(),
                 category: config.category.clone(),
                 metrics: None,
+                requires_sanitization: false,
             })
         })
         .collect();
