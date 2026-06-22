@@ -417,23 +417,24 @@ pub fn render_html_report(themes: &[Theme], analyses: &[ThemeAnalysis], date: &s
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3120b'/><text y='75' x='35' font-family='sans-serif' font-weight='900' font-size='70' fill='white'>i</text></svg>">
   <style>body{{font-family:'Inter',sans-serif;background-color:#fcfcfc;color:#111;}}.serif-title{{font-family:'Playfair Display',serif;line-height:1.15;}}</style>
 </head>
 <body class="antialiased min-h-screen pb-12">
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
   <header class="border-b border-neutral-100 bg-white">
     <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between sm:px-6 lg:px-8">
-      <a href="/" class="flex items-center gap-3 no-underline">
-        <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
-          <span class="text-white font-black text-base leading-none" style="font-family: Inter">i</span>
+      <a href="/" class="flex items-center gap-2.5 no-underline group select-none">
+        <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
         </div>
         <div class="flex items-baseline tracking-tight">
           <span class="text-lg font-bold text-neutral-900" style="font-family: 'Playfair Display'">Sulix</span>
-          <span class="text-lg font-light text-neutral-400 mx-0.5">.</span>
-          <span class="text-xs font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: Inter">Intel</span>
+          <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
+          <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
         </div>
       </a>
-      <nav class="flex items-center gap-3 text-xs font-medium" style="font-family: Inter">
+      <nav class="flex items-center gap-3 text-[11px] font-semibold tracking-wider text-neutral-400" style="font-family: Inter">
         <button onclick="toggleLang('en')" id="l-en" class="font-bold border-b-2 border-neutral-900 pb-0.5 cursor-pointer">EN</button>
         <span class="text-neutral-300">|</span>
         <button onclick="toggleLang('zh')" id="l-zh" class="text-neutral-400 hover:text-neutral-900 cursor-pointer">繁中</button>
@@ -525,16 +526,16 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 
   <!-- Logo -->
   <div class="max-w-4xl mx-auto px-4 pt-6">
-    <div class="flex items-center gap-3 select-none">
-      <div class="w-7 h-7 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-        <span class="font-sans font-black text-white text-lg leading-none tracking-tighter" style="font-family: 'Inter', sans-serif;">i</span>
+    <a href="/" class="flex items-center gap-2.5 no-underline group select-none">
+      <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
       </div>
       <div class="flex items-baseline tracking-tight">
-        <span class="text-xl font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
-        <span class="text-xl font-light text-neutral-400 mx-1">.</span>
-        <span class="text-sm font-semibold tracking-widest text-neutral-500 uppercase" style="font-family: 'Inter', sans-serif;">Intel</span>
+        <span class="text-lg font-bold text-neutral-900" style="font-family: 'Playfair Display', serif;">Sulix</span>
+        <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
+        <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
       </div>
-    </div>
+    </a>
   </div>
 
   <div class="max-w-4xl mx-auto px-4 py-8">
