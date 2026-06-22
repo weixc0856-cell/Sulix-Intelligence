@@ -30,9 +30,9 @@ pub struct RawSignal {
 }
 
 /// 分发到对应适配器并执行抓取
-pub async fn fetch_source(config: &SourceConfig) -> Result<Vec<RawSignal>> {
+pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
     match config.source_type.as_str() {
-        "rss" => rss::fetch_rss(config).await,
+        "rss" => rss::fetch_rss(config, date_range).await,
         other => Err(anyhow::anyhow!("未知源类型: {}", other)),
     }
 }

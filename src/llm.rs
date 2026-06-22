@@ -1,6 +1,6 @@
-//! LLM 分析模块 — DeepSeek API 调用
+//! LLM 分析模块 — 多 Provider 调用
 //!
-//! 将新增文章按 vertical 分组，每组调用 DeepSeek 做结构化分析，
+//! 将新增文章按 vertical 分组，每组调用 LLM 做结构化分析，
 //! 返回解析后的 AnalyzedArticle 列表。
 //!
 //! 核心升级（P1）：
@@ -271,7 +271,7 @@ pub(crate) async fn call_with_retry(
             tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
         }
 
-        match call_deepseek(client, api_key, llm_config, system_prompt, user_prompt).await {
+        match call_completion(client, api_key, llm_config, system_prompt, user_prompt).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let err_str = e.to_string();
@@ -384,8 +384,8 @@ async fn call_raw_inner(
     Ok(content)
 }
 
-/// 实际调用 DeepSeek API
-async fn call_deepseek(
+/// 实际调用 LLM API（OpenAI 兼容格式，由 config.base_url 决定 provider）
+async fn call_completion(
     client: &reqwest::Client,
     api_key: &str,
     llm_config: &LlmConfig,

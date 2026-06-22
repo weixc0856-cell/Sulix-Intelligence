@@ -17,6 +17,7 @@ mod llm;
 mod pipeline;
 mod renderer;
 mod source;
+mod template;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,13 +44,19 @@ async fn main() -> Result<()> {
     log::info!("开始拉取信号源...");
     let enabled_sources: Vec<&config::SourceConfig> = config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
+    let mut source_statuses: Vec<(String, bool, usize)> = Vec::new(); // (name, success, count)
+    let date_range = &config.output.date_range;
     for sc in &enabled_sources {
-        match source::fetch_source(sc).await {
+        match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
+                source_statuses.push((sc.name.clone(), true, signals.len()));
                 all_signals.append(&mut signals);
             }
-            Err(e) => log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e),
+            Err(e) => {
+                log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e);
+                source_statuses.push((sc.name.clone(), false, 0));
+            }
         }
     }
     log::info!("拉取完成: 共 {} 条原始信号", all_signals.len());
@@ -187,6 +194,7 @@ async fn main() -> Result<()> {
         &themes, &analyses, &summary,
         Some(&calibration_text),
         if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
+        &source_statuses,
     )?;
     log::info!("📝 分析报告渲染完成 ({} 字符)", analysis_report.len());
 
@@ -199,12 +207,19 @@ async fn main() -> Result<()> {
         themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len());
 
     // 写入 Vault（双文件）
+    // 按月归档（抄 Daily-News-Briefing: {archive}/{YYYY-MM}/{filename}）
     let report_dir = PathBuf::from(&config.output.vault_path);
-    fs::create_dir_all(&report_dir)?;
-    let analysis_path = report_dir.join(format!("{}-分析.md", today));
+    let month_dir = report_dir.join(&today[..7]); // YYYY-MM
+    fs::create_dir_all(&month_dir)?;
+    let analysis_path = month_dir.join(format!("{}-分析.md", today));
     fs::write(&analysis_path, &analysis_report)?;
-    let aggregation_path = report_dir.join(format!("{}-聚合.md", today));
+    let aggregation_path = month_dir.join(format!("{}-聚合.md", today));
     fs::write(&aggregation_path, &aggregation)?;
+    // 同时写入 vault 根目录一份最新版（方便快速打开）
+    let latest_analysis = report_dir.join(format!("{}-分析.md", today));
+    let latest_aggregation = report_dir.join(format!("{}-聚合.md", today));
+    let _ = fs::write(&latest_analysis, &analysis_report);
+    let _ = fs::write(&latest_aggregation, &aggregation);
 
     // 记录到数据库
     db.record_report(&today, &analysis_report, total_new)?;

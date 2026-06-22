@@ -34,17 +34,30 @@ pub struct Config {
 #[derive(Debug, Deserialize, Clone)]
 pub struct LlmConfig {
     pub api_key: Option<String>,
+    /// Provider 名称: "deepseek" | "openai" | "perplexity"（默认 deepseek）
+    #[serde(default = "default_llm_provider")]
+    pub provider: String,
     pub model: String,
     pub base_url: String,
     pub max_tokens: u32,
     pub temperature: f32,
+    /// Perplexity 专用 API Key（默认走 api_key）
+    #[serde(default)]
+    pub perplexity_key: Option<String>,
 }
+
+fn default_llm_provider() -> String { "deepseek".into() }
 
 /// 输出配置
 #[derive(Debug, Deserialize, Clone)]
 pub struct OutputConfig {
     pub vault_path: String,
+    /// 日期范围过滤: "d1"/"d3"/"w1"/"w2"/"m1"（默认 "d7" = 7天）
+    #[serde(default = "default_date_range")]
+    pub date_range: String,
 }
+
+fn default_date_range() -> String { "d7".into() }
 
 /// 去重配置（预留，当前在 dedup_and_insert 中使用精确去重）
 #[derive(Debug, Deserialize, Clone)]
@@ -73,6 +86,12 @@ pub struct SourceConfig {
     pub source_type: String,
     pub url: String,
     pub category: String,
+    /// 正向关键词过滤（可选）：标题/摘要匹配任一即保留
+    #[serde(default)]
+    pub keywords: Option<Vec<String>>,
+    /// 反向黑名单（可选）：标题/摘要匹配任一即熔断丢弃
+    #[serde(default)]
+    pub exclude_keywords: Option<Vec<String>>,
     /// 信息源层级：1=Signal, 2=Curated, 3=Community, 4=Market（预留）
     #[serde(default = "default_layer")]
     #[allow(dead_code)]
@@ -194,26 +213,35 @@ impl Config {
         Ok(config)
     }
 
-    /// 获取 DeepSeek API Key
+    /// 获取当前 provider 的 API Key
     ///
-    /// 从 config.toml 读取（已在 .gitignore 中，不会上传 GitHub）。
-    /// 环境变量 DEEPSEEK_API_KEY 可作为替代。
+    /// 按 provider 自动选择对应的 key 来源：
+    /// - deepseek: config key → DEEPSEEK_API_KEY env
+    /// - perplexity: perplexity_key → PERPLEXITY_API_KEY env
+    /// - openai: config key → OPENAI_API_KEY env
     pub fn get_api_key(&self) -> Result<String> {
-        // config.toml 优先（推荐使用方式——Key 只在本地）
-        if let Some(key) = &self.llm.api_key {
-            if !key.is_empty() {
-                return Ok(key.clone());
-            }
-        }
-        // 环境变量作为替代方案
-        if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+        let (env_var, config_fallback) = match self.llm.provider.as_str() {
+            "perplexity" => ("PERPLEXITY_API_KEY", self.llm.perplexity_key.as_deref()),
+            "openai" => ("OPENAI_API_KEY", self.llm.api_key.as_deref()),
+            _ => ("DEEPSEEK_API_KEY", self.llm.api_key.as_deref()),
+        };
+
+        // 环境变量优先
+        if let Ok(key) = std::env::var(env_var) {
             if !key.is_empty() {
                 return Ok(key);
             }
         }
+        // config.toml 兜底
+        if let Some(key) = config_fallback {
+            if !key.is_empty() {
+                return Ok(key.to_string());
+            }
+        }
         Err(anyhow::anyhow!(
-            "请在 config.toml 中填写 api_key，或设置 DEEPSEEK_API_KEY 环境变量。\
-             config.toml 已在 .gitignore 中，不会上传 GitHub。"
+            "未找到 {} 的 API Key。请在 config.toml 中配置或设置 {} 环境变量。\
+             config.toml 已在 .gitignore 中，不会上传 GitHub。",
+            self.llm.provider, env_var
         ))
     }
 }

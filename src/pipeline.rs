@@ -14,12 +14,13 @@ use regex::Regex;
 
 use crate::source::RawSignal;
 
-/// 运行完整 Pipeline：清洗 → 合规 → 去重
+/// 运行完整 Pipeline：清洗 → 合规 → 去重 → 后处理
 /// 使用 &mut 就地修改，避免 clone
 pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
     sanitize_all(signals);
     compliance_filter(signals);
     dedup(signals);
+    post_process(signals);
     Ok(())
 }
 
@@ -90,25 +91,57 @@ fn strip_html_tags(text: &str) -> String {
     result.trim().to_string()
 }
 
-/// Step 2: 合规过滤 — A 股个股代码拦截熔断
-/// 匹配 6 位数字（以 0/3/6/8/9 开头且前面不是数字），硬丢弃
+/// Step 2: 合规过滤 — A 股个股熔断 + 荐股词过滤 + 地缘政治过滤
 fn compliance_filter(signals: &mut Vec<RawSignal>) {
-    // A 股个股代码模式：6 位数字（以 0/3/6/9 开头），使用 \b 边界匹配
     let stock_re = Regex::new(r"\b[0369]\d{5}\b").unwrap();
+    const A_STOCK_BLACKLIST: &[&str] = &[
+        "荐股", "牛股", "妖股", "涨停板", "打板", "拉升", "出货",
+        "内幕", "主力拉升", "庄家", "跟庄", "抄底", "逃顶",
+        "代客理财", "配资", "实盘指导", "收益",
+    ];
+
+    const GEOPOLITICAL_BLACKLIST: &[&str] = &[
+        "war", "conflict", "military", "troop", "missile",
+        "drone attack", "strike", "bomb", "invasion",
+        "zelensky", "putin", "biden", "trump",
+        "sanctions", "election", "nuclear weapon",
+        "taiwan", "taiwanese",
+        "俄乌", "冲突", "袭击", "制裁", "伊朗", "导弹",
+        "军事", "战争", "选举", "核武",
+    ];
 
     signals.retain(|signal| {
-        // 检查标题
+        let title_lower = signal.title.to_lowercase();
+        let content_lower = signal.content.as_deref().unwrap_or("").to_lowercase();
+        let summary_lower = signal.summary.as_deref().unwrap_or("").to_lowercase();
+
         if stock_re.is_match(&signal.title) {
             log::warn!("🔴 合规熔断: 标题含个股代码 [{}] {}", signal.source, signal.title);
             return false;
         }
-        // 检查 content
-        if let Some(ref content) = signal.content {
-            if stock_re.is_match(content) {
-                log::warn!("🔴 合规熔断: 正文含个股代码 [{}] {}", signal.source, signal.title);
+        if stock_re.is_match(&content_lower) {
+            log::warn!("🔴 合规熔断: 正文含个股代码 [{}] {}", signal.source, signal.title);
+            return false;
+        }
+
+        for &word in A_STOCK_BLACKLIST {
+            if title_lower.contains(word) || content_lower.contains(word) || summary_lower.contains(word) {
+                log::warn!("🔴 A股熔断: 含违规词 [{}] \"{}\": {}", word, signal.source, signal.title);
                 return false;
             }
         }
+
+        for &keyword in GEOPOLITICAL_BLACKLIST {
+            if title_lower.contains(keyword) {
+                log::warn!("🔴 地缘熔断: 标题含敏感词 [{}] \"{}\": {}", keyword, signal.source, signal.title);
+                return false;
+            }
+            if content_lower.contains(keyword) {
+                log::warn!("🔴 地缘熔断: 正文含敏感词 [{}] \"{}\": {}", keyword, signal.source, signal.title);
+                return false;
+            }
+        }
+
         true
     });
 }
@@ -147,6 +180,25 @@ fn title_similarity(a: &str, b: &str) -> f64 {
     let intersection: usize = words_a.intersection(&words_b).count();
     let union: usize = words_a.union(&words_b).count();
     intersection as f64 / union as f64
+}
+
+/// Step 4: 后处理（抄 RSSHub parameter.ts 模式）
+/// - 按 published_at 降序排列
+/// - 修复相对 URL（//xxx → https:xxx）
+fn post_process(signals: &mut Vec<RawSignal>) {
+    // 1. 按发布时间降序（最新的在前）
+    signals.sort_by(|a, b| {
+        let a_naive = a.published_at.map(|d| d.naive_utc()).unwrap_or(chrono::NaiveDateTime::MIN);
+        let b_naive = b.published_at.map(|d| d.naive_utc()).unwrap_or(chrono::NaiveDateTime::MIN);
+        b_naive.cmp(&a_naive)
+    });
+
+    // 2. 修复相对 URL（//xxx → https:xxx）
+    for signal in signals.iter_mut() {
+        if signal.url.starts_with("//") {
+            signal.url = format!("https:{}", signal.url);
+        }
+    }
 }
 
 #[cfg(test)]
