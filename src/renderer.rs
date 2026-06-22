@@ -16,8 +16,8 @@ use chrono::Local;
 use crate::clusterer::{Assumption, Theme, ThemeAnalysis, Summary};
 use crate::fetcher::Article;
 
-/// 渲染咨询级简报
-pub fn render_daily_report(
+/// 渲染战略分析报告（咨询级，有深度分析）
+pub fn render_analysis_report(
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
     summary: &Summary,
@@ -100,9 +100,37 @@ pub fn render_daily_report(
             md.push('\n');
         }
 
+        // 抄 strategy-skills situation-assessment: 待回答的问题
+        if !a.open_questions.is_empty() {
+            md.push_str("**待回答的问题**:\n");
+            for q in &a.open_questions {
+                md.push_str(&format!("- {}\n", q));
+            }
+            md.push('\n');
+        }
+
         // 关联
         if !a.connections.is_empty() {
             md.push_str(&format!("**关联**: {}\n\n", a.connections.join(" → ")));
+        }
+
+        // 跨域因果链（代码级分析框架）
+        if !a.chains.is_empty() {
+            md.push_str("**因果链**:\n");
+            for chain in &a.chains {
+                md.push_str(&format!("🔹 {} → {}", chain.trigger, chain.direct_effect));
+                for reaction in &chain.chain_reaction {
+                    md.push_str(&format!(" → {}", reaction));
+                }
+                md.push('\n');
+                if !chain.second_order.is_empty() {
+                    md.push_str("  **二阶效应**:\n");
+                    for so in &chain.second_order {
+                        md.push_str(&format!("  - {}\n", so));
+                    }
+                }
+            }
+            md.push('\n');
         }
 
         // 溯源
@@ -113,6 +141,18 @@ pub fn render_daily_report(
             }
             md.push('\n');
         }
+
+        // 抄 strategy-skills Quality Bar: 每主题的质量行
+        let source_count = a.source_urls.len();
+        let assumption_count = a.assumptions.len();
+        let has_adverse = a.adverse.as_ref().map(|x| !x.scenario.is_empty()).unwrap_or(false);
+        md.push_str(&format!(
+            "**质量**: {} 来源 | {} 条承重假设 | {} | {} 项待验证\n",
+            source_count,
+            assumption_count,
+            if has_adverse { "1 个逆境情景" } else { "无逆境情景" },
+            a.next_tests.len(),
+        ));
 
         md.push_str("---\n\n");
     }
@@ -130,7 +170,7 @@ pub fn render_daily_report(
         // 关键证据（列 top evidence）
         let key_evidence: Vec<String> = analyses.iter()
             .flat_map(|a| a.fact_base.iter())
-            .filter(|fb| fb.confidence == "L1" || fb.confidence == "L2")
+            .filter(|fb| fb.confidence.starts_with("确立"))
             .take(3)
             .map(|fb| format!("- {}（{}）", fb.interpretation, fb.confidence))
             .collect();
@@ -160,14 +200,12 @@ pub fn render_daily_report(
     }
     md.push_str("---\n\n");
 
-    // ── 4. 战略建议（抄 strategic-options: 选项评估 + Kill List）──
-    md.push_str("## 战略建议\n\n");
+    // ── 4. Decision Required（抄 decision-memo: 需要你决定）──
+    md.push_str("## 需要你决定\n\n");
 
     if !analyses.is_empty() {
-        // 选项评估表
-        md.push_str("### 选项评估\n\n");
-        md.push_str("| 选项 | 逻辑 | 必须为真的前提 | 风险 | 信心 |\n");
-        md.push_str("|------|------|--------------|------|------|\n");
+        md.push_str("| 决策 | 建议 | 关键前提 | 截止 |\n");
+        md.push_str("|------|------|---------|------|\n");
 
         let has_commoditization = analyses.iter().any(|a|
             a.theme_title.contains("商品") || a.theme_title.contains("模型") || a.theme_title.contains("价格"));
@@ -177,39 +215,15 @@ pub fn render_daily_report(
             a.theme_title.contains("政策") || a.theme_title.contains("风险") || a.theme_title.contains("芯片"));
 
         if has_commoditization || has_reliability {
-            md.push_str("| 继续应用层深挖 | 模型商品化加速，窗口打开 | 价格战不压缩利润空间 | 模型厂商向下整合 | L3 |\n");
+            md.push_str("| 主攻应用层？ | 是 — 模型商品化窗口打开 | 价格战不压缩利润空间 | 本周评估 |\n");
         }
         if has_policy {
-            md.push_str("| 增加多模型适配 | 政策风险上升 | 多模型维护成本可控 | 复杂度拖慢迭代 | L3 |\n");
+            md.push_str("| 增加多模型适配？ | 否 — 政策紧迫性不足 | 多模型维护成本可控 | 下季度重审 |\n");
         }
-        md.push_str("| 暂不调整 | 信号不足以改变路线 | 窗口期不会关闭 | 错过先发优势 | L4 |\n");
+        md.push_str("| 调整当前计划？ | 暂不调整 — 信号尚不支持转向 | 窗口期不会关闭 | 下期简报 |\n");
         md.push('\n');
-
-        // Kill List（抄 initiative-prioritizer: 明确不做什么）
-        md.push_str("### 不做什么（Kill List）\n\n");
-        md.push_str("| 事项 | 原因 | 重回条件 |\n");
-        md.push_str("|------|------|---------|\n");
-        md.push_str("| Agent 框架对比研究 | 已商品化，差异化空间小 | Agent 协议层出现根本性变革 |\n");
-        md.push_str("| 模型能力深度评测 | 决策价值递减 | 模型代际差距重新拉大 |\n");
-        if !has_policy {
-            md.push_str("| 多模型适配改造 | 当前无政策紧迫性 | 主要供应商受限或被限制 |\n");
-        }
-        md.push('\n');
-
-        // 建议
-        md.push_str("### 下一步\n\n");
-        if has_commoditization {
-            md.push_str("- **应用层深挖**: 本周选择一个垂直行业，做 3 个用户访谈\n");
-        }
-        if has_reliability {
-            md.push_str("- **Agent 交付**: 用现有工具链跑通一个端到端场景\n");
-        }
-        if has_policy {
-            md.push_str("- **政策追踪**: 关注 Fable 出口限制进展\n");
-        }
-        md.push_str("- **每周复盘**: 检查假设是否成立\n\n");
     } else {
-        md.push_str("今日不建议做任何策略调整。继续执行当前计划。\n\n");
+        md.push_str("今日无足够信号触发决策。继续执行当前计划。\n\n");
     }
 
     md.push_str("---\n\n");
@@ -259,6 +273,88 @@ pub fn render_daily_report(
     ));
     md.push_str("*审计链: data/2026-06-21/*\n");
     md.push_str("*质量标准: 决策导向 | 假设显性 | 证据感知 | 可操作*\n");
+
+    Ok(md)
+}
+
+/// 渲染每日信号聚合（抄参考格式：关键动态 + 分析与背景）
+pub fn render_signal_aggregation(
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    watchlist: Option<&[Article]>,
+) -> Result<String> {
+    let mut md = String::new();
+
+    md.push_str(&format!("*生成时间 {}*\n\n", Local::now().format("%H:%M:%S")));
+    md.push_str("---\n\n");
+    md.push_str("## Table of Contents\n\n");
+    for theme in themes {
+        md.push_str(&format!("- [{}](#{})\n", theme.title, theme.title.to_lowercase().replace(' ', "-")));
+    }
+    md.push('\n');
+    md.push_str("---\n\n");
+
+    // 每个主题作为一个大类
+    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        if theme.articles.is_empty() {
+            continue;
+        }
+
+        md.push_str(&format!("## {}\n\n", theme.title));
+
+        // 关键动态（抄参考格式：bullet list + bold header + summary + source link）
+        md.push_str("### 关键动态\n\n");
+        // 取 SCL 最高的来源作为主来源
+        let best_url = theme.articles.iter()
+            .find(|a| !a.url.is_empty())
+            .map(|a| a.url.as_str())
+            .unwrap_or("");
+        for article in &theme.articles {
+            let summary = article.summary.as_deref()
+                .or(article.content.as_deref())
+                .unwrap_or("");
+            let end = summary.floor_char_boundary(120);
+            let snippet = &summary[..end];
+            let url = if !article.url.is_empty() { &article.url } else { best_url };
+            md.push_str(&format!("- **{}**: {}", article.title, snippet));
+            if !url.is_empty() {
+                md.push_str(&format!(" [{}]({})", article.source, url));
+            }
+            md.push('\n');
+        }
+        md.push('\n');
+
+        // 分析与背景
+        md.push_str("### 分析与背景\n\n");
+        if !analysis.analysis_paragraph.is_empty() {
+            md.push_str(&format!("{}\n\n", analysis.analysis_paragraph));
+        } else {
+            md.push_str(&format!("{}\n\n", analysis.impact));
+        }
+
+        md.push_str("---\n\n");
+    }
+
+    // Watchlist
+    if let Some(watch) = watchlist {
+        if !watch.is_empty() {
+            md.push_str("## 其他信号\n\n");
+            md.push_str("### 关键动态\n\n");
+            for article in watch {
+                let raw = article.summary.as_deref()
+                    .or(article.content.as_deref())
+                    .unwrap_or("");
+                let end = raw.floor_char_boundary(100);
+                let snippet = &raw[..end];
+                let desc = if snippet.len() > 10 { snippet } else { &article.title };
+                md.push_str(&format!("- **{}**: {} [{}]({})\n", article.title, desc, article.source, article.url));
+            }
+            md.push('\n');
+            md.push_str("---\n\n");
+        }
+    }
+
+    md.push_str(&format!("*生成时间 {}*\n", Local::now().format("%H:%M:%S")));
 
     Ok(md)
 }

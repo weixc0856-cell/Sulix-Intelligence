@@ -14,7 +14,9 @@ mod db;
 mod enricher;
 mod fetcher;
 mod llm;
+mod pipeline;
 mod renderer;
+mod source;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,18 +39,40 @@ async fn main() -> Result<()> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let catalog = catalog::DataCatalog::new(&data_dir, &today);
 
-    // 4. 拉取 RSS 源
-    log::info!("开始拉取 RSS 源...");
-    let mut articles = fetcher::fetch_all_sources(&config.sources).await?;
-    log::info!("拉取完成: {} 篇文章", articles.len());
-    catalog.save_step(1, "raw_signals", &articles)?;
-
-    // 5. Delta 去重 + SQLite 去重
-    let before_dedup = articles.len();
-    fetcher::dedup_by_title(&mut articles, 0.75);
-    if articles.len() < before_dedup {
-        log::info!("🔀 Delta 去重: {} → {} 篇", before_dedup, articles.len());
+    // 4. Source Adapter: 遍历所有源，用对应适配器抓取
+    log::info!("开始拉取信号源...");
+    let enabled_sources: Vec<&config::SourceConfig> = config.sources.iter().filter(|s| s.enabled).collect();
+    let mut all_signals = Vec::new();
+    for sc in &enabled_sources {
+        match source::fetch_source(sc).await {
+            Ok(mut signals) => {
+                log::info!("  [{}] → {} 条信号", sc.name, signals.len());
+                all_signals.append(&mut signals);
+            }
+            Err(e) => log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e),
+        }
     }
+    log::info!("拉取完成: 共 {} 条原始信号", all_signals.len());
+
+    // 5. Pipeline: 清洗 → 合规过滤 → 去重
+    let before_pipeline = all_signals.len();
+    pipeline::run_pipeline(&mut all_signals)?;
+    log::info!("Pipeline: {} → {} 条（清洗/合规/去重）", before_pipeline, all_signals.len());
+    catalog.save_step(1, "raw_signals", &all_signals)?;
+
+    // 6. RawSignal → Article 转换 + SQLite 去重
+    let articles: Vec<fetcher::Article> = all_signals.into_iter().map(|s| fetcher::Article {
+        id: s.id,
+        source: s.source,
+        title: s.title,
+        url: s.url,
+        content: s.content,
+        summary: s.summary,
+        published_at: s.published_at,
+        category: s.category,
+        wiki_summary: None,
+        evidence_type: String::new(),
+    }).collect();
     let mut new_articles = db.dedup_and_insert(&articles)?;
     drop(articles);
     catalog.save_step(2, "unique_signals", &new_articles)?;
@@ -63,7 +87,7 @@ async fn main() -> Result<()> {
         println!("  [{}/{}] {}", a.category, a.source, a.title);
     }
 
-    // 6. Wikipedia 上下文注入 + 正文提取
+    // 7. Wikipedia 上下文注入 + 正文提取
     enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
     catalog.save_step(3, "enriched_signals", &new_articles)?;
     fetcher::enrich_articles_content(&mut new_articles, 5).await;
@@ -125,10 +149,11 @@ async fn main() -> Result<()> {
         log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
         let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm).await?;
         // Phase 1: 蓝军挑战
-        let (assumptions, adverse, next_tests) = clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
+        let (assumptions, adverse, next_tests, open_questions) = clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
         analysis.assumptions = assumptions;
         analysis.adverse = adverse;
         analysis.next_tests = next_tests;
+        analysis.open_questions = open_questions;
         // 如果蓝军发现承重假设证据弱，降级信号强度
         let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
         if weak_bearing && analysis.signal_strength >= 3 {
@@ -157,22 +182,32 @@ async fn main() -> Result<()> {
     };
     catalog.save_step(8, "calibration", &calibration_text)?;
 
-    // 渲染咨询简报
-    let report = renderer::render_daily_report(
+    // 渲染战略分析报告
+    let analysis_report = renderer::render_analysis_report(
         &themes, &analyses, &summary,
         Some(&calibration_text),
         if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
     )?;
-    log::info!("📝 简报渲染完成 ({} 字符)", report.len());
+    log::info!("📝 分析报告渲染完成 ({} 字符)", analysis_report.len());
 
-    // 写入 Vault
+    // 渲染每日信号聚合
+    let aggregation = renderer::render_signal_aggregation(
+        &themes, &analyses,
+        if triage.watchlist.is_empty() { None } else { Some(&triage.watchlist) },
+    )?;
+    log::info!("📋 信号聚合渲染完成 ({} 条信号)",
+        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len());
+
+    // 写入 Vault（双文件）
     let report_dir = PathBuf::from(&config.output.vault_path);
     fs::create_dir_all(&report_dir)?;
-    let report_path = report_dir.join(format!("{}.md", today));
-    fs::write(&report_path, &report)?;
+    let analysis_path = report_dir.join(format!("{}-分析.md", today));
+    fs::write(&analysis_path, &analysis_report)?;
+    let aggregation_path = report_dir.join(format!("{}-聚合.md", today));
+    fs::write(&aggregation_path, &aggregation)?;
 
     // 记录到数据库
-    db.record_report(&today, &report, total_new)?;
+    db.record_report(&today, &analysis_report, total_new)?;
 
     // Decay Agent 记忆墓地
     if let Some(ref grave_config) = config.graveyard {
@@ -186,7 +221,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("\n✅ 简报已生成: {}", report_path.display());
+    println!("\n✅ 分析报告: {}", analysis_path.display());
+    println!("✅ 信号聚合: {}", aggregation_path.display());
     log::info!("✅ Sulix Intelligence 执行完成");
     Ok(())
 }

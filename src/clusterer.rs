@@ -1,4 +1,4 @@
-//! Clusterer — 主题聚类
+﻿//! Clusterer — 主题聚类
 //!
 //! 将 N 篇文章聚类为 ≤5 个主题，每个主题包含关联的文章和综合影响分析。
 //! 参考 McKinsey Tech Trends 的分类分层结构。
@@ -44,6 +44,15 @@ pub struct AdverseScenario {
     pub severity: String,
 }
 
+/// 因果链（跨域分析框架）
+#[derive(Debug, Clone, Serialize)]
+pub struct CausalChain {
+    pub trigger: String,
+    pub direct_effect: String,
+    pub chain_reaction: Vec<String>,
+    pub second_order: Vec<String>,
+}
+
 /// 主题分析结果
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemeAnalysis {
@@ -51,7 +60,8 @@ pub struct ThemeAnalysis {
     pub theme_title: String,
     pub bluf: String,              // 一句话结论
     pub impact: String,            // 战略影响
-    pub evidence_level: String,    // L1-L5
+    pub analysis_paragraph: String, // 分析与背景（用于聚合输出）
+    pub evidence_level: String,    // SCL: 确立-事实
     pub signal_strength: u8,       // 1-10 信号强度
     pub fact_base: Vec<FactBaseEntry>,  // 抄 McKinsey: 事实-解读-置信度表格
     pub connections: Vec<String>,  // 关联的其他主题
@@ -60,6 +70,8 @@ pub struct ThemeAnalysis {
     pub assumptions: Vec<Assumption>,
     pub adverse: Option<AdverseScenario>,
     pub next_tests: Vec<String>,
+    pub open_questions: Vec<String>,
+    pub chains: Vec<CausalChain>,
 }
 
 /// 将文章聚类为主题
@@ -156,6 +168,17 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
     Ok(themes)
 }
 
+/// 将 L1-L5 旧置信等级映射为 SCL（Sulix Confidence Level）
+fn map_to_scl(value: &str) -> String {
+    match value.trim() {
+        "L1" | "L2" | "确立" => "确立-事实".into(),
+        "L3" | "发展中" => "发展中-推断".into(),
+        "L4" | "建立" => "建立-传闻".into(),
+        "L5" | "噪音" => "噪音".into(),
+        other => other.to_string(), // 已经是 SCL 格式则原样返回
+    }
+}
+
 /// 分析单个主题：综合所有文章，输出影响判断
 pub async fn analyze_theme(
     theme: &Theme,
@@ -170,36 +193,36 @@ pub async fn analyze_theme(
 
 严格遵循以下咨询级输出结构：
 
-1. 先用 Fact Base 表格列出所有证据（抄战略咨询的"事实-解读-置信度"框架）
+1. 先用 Fact Base 表格列出所有证据
 2. 再给出综合判断
+3. 最后写一段 analysis_paragraph（分析与背景，3-5句话总结趋势）
 
-Fact Base 表格格式：
-| 证据 | 解读 | 置信度 |
-|------|------|--------|
-| 具体事实1 | 这意味着什么 | L1-L5 |
-| 具体事实2 | 这意味着什么 | L1-L5 |
-
-L1=确凿事实 L2=可靠一手 L3=合理推断 L4=单源传言 L5=噪音
+置信度使用 SCL（Sulix Confidence Level）：
+- 确立-事实: 多源交叉确认的公开事实（≥2独立源一致）
+- 确立-推断: 多源确认的逻辑推演
+- 发展中-推断: 多源信号但未完全验证的推论
+- 建立-传闻: 单源未证实消息
+- 噪音: PR稿/广告/标题党
 
 输出严格 JSON：
 {
   "fact_base": [
-    {"evidence": "GLM-5.2 跑分接近 GPT-4o", "interpretation": "开源能力追平闭源", "confidence": "L2"},
-    {"evidence": "Claude 降价 50%", "interpretation": "价格战开打", "confidence": "L1"}
+    {"evidence": "GLM-5.2 跑分接近 GPT-4o", "interpretation": "开源能力追平闭源", "confidence": "确立-事实"},
+    {"evidence": "Claude 降价 50%", "interpretation": "价格战开打", "confidence": "确立-事实"}
   ],
   "signal_strength": 7,
   "bluf": "一句话结论（15字以内）",
   "impact": "战略影响（50字以内）",
-  "evidence_level": "L1/L2/L3/L4/L5",
+  "evidence_level": "发展中-推断",
+  "analysis_paragraph": "本周该领域有多个信号指向同一方向...",
   "connections": ["关联主题1", "关联主题2"]
 }
 
-signal_strength 评分标准：
-- 9-10：结构拐点（新范式/新约束）
-- 7-8：行业机制变化
-- 5-6：竞争格局变化
-- 3-4：单点事件
-- 1-2：噪音"#;
+signal_strength 评分标准（锚定 GS 三情景分析法）：
+- Base Scenario（基准）: 5-6 — 当前趋势延续
+- Adverse Scenario（逆境）: 7-8 — 趋势加速/断裂，需提前布局
+- Aggressive Scenario（超预期）: 9-10 — 结构性拐点，改变游戏规则
+- 1-4 为噪音或单点事件"#;
 
     let mut user_prompt = format!("## 主题: {}\n{}\n\n", theme.title, theme.summary);
     user_prompt.push_str(&format!("共 {} 条证据：\n\n", theme.articles.len()));
@@ -230,25 +253,37 @@ signal_strength 评分标准：
                 Some(FactBaseEntry {
                     evidence: v["evidence"].as_str()?.to_string(),
                     interpretation: v["interpretation"].as_str()?.to_string(),
-                    confidence: v["confidence"].as_str().unwrap_or("L3").to_string(),
+                    confidence: v["confidence"].as_str().unwrap_or("发展中-推断").to_string(),
                 })
             }).collect::<Vec<_>>()
         })
         .unwrap_or_default();
+
+    // 强制映射 L1-L5 → SCL
+    let mut fact_base = fact_base; // make mutable for SCL mapping
+    let evidence_level_raw = parsed["evidence_level"].as_str().unwrap_or("发展中-推断");
+    let evidence_level = map_to_scl(evidence_level_raw);
+    for fb in &mut fact_base {
+        fb.confidence = map_to_scl(&fb.confidence);
+    }
+    let analysis_paragraph = parsed["analysis_paragraph"].as_str().unwrap_or("").to_string();
 
     Ok(ThemeAnalysis {
         theme_id: theme.id.clone(),
         theme_title: theme.title.clone(),
         bluf: parsed["bluf"].as_str().unwrap_or("待分析").to_string(),
         impact: parsed["impact"].as_str().unwrap_or("待分析").to_string(),
-        evidence_level: parsed["evidence_level"].as_str().unwrap_or("L3").to_string(),
+        evidence_level,
         signal_strength: parsed["signal_strength"].as_u64().unwrap_or(5) as u8,
         fact_base,
         connections,
         source_urls,
-        assumptions: vec![],  // 由蓝军填充
-        adverse: None,         // 由蓝军填充
-        next_tests: vec![],    // 由蓝军填充
+        assumptions: vec![],
+        adverse: None,
+        next_tests: vec![],
+        open_questions: vec![],
+        chains: vec![],
+        analysis_paragraph,
     })
 }
 
@@ -257,7 +292,7 @@ pub async fn challenge_theme(
     analysis: &ThemeAnalysis,
     api_key: &str,
     llm_config: &LlmConfig,
-) -> Result<(Vec<Assumption>, Option<AdverseScenario>, Vec<String>)> {
+) -> Result<(Vec<Assumption>, Option<AdverseScenario>, Vec<String>, Vec<String>)> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
@@ -310,14 +345,18 @@ pub async fn challenge_theme(
                     .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                     .unwrap_or_default();
 
-                Ok((assumptions, adverse, next_tests))
+                let open_questions = parsed["open_questions"].as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                Ok((assumptions, adverse, next_tests, open_questions))
             } else {
-                Ok((vec![], None, vec![]))
+                Ok((vec![], None, vec![], vec![]))
             }
         }
         Err(e) => {
             log::warn!("⚠️ 蓝军挑战失败: {}", e);
-            Ok((vec![], None, vec![]))
+            Ok((vec![], None, vec![], vec![]))
         }
     }
 }

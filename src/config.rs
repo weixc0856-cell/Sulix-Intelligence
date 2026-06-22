@@ -65,6 +65,9 @@ pub struct StorageConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct SourceConfig {
     pub name: String,
+    /// 唯一的系统标识（ASCII only，不可用中文；不设置则自动从 name hash）
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(rename = "type")]
     #[allow(dead_code)]
     pub source_type: String,
