@@ -2,43 +2,65 @@
   <a href="README.md">🇬🇧 English</a> · <a href="README.zh-CN.md">🇨🇳 中文</a>
 </p>
 
+<p align="center">
+  <img src="assets/logo.svg" width="120" alt="Sulix Intelligence" />
+</p>
+
 # Sulix Intelligence
 
 > **Personal AI strategic intelligence assistant for indie founders and solo developers.**
 
-Daily automatically generated intelligence briefings in McKinsey/BCG consulting format. Written to your Obsidian vault or deployed as static HTML.
+Daily automatically generated intelligence briefings in McKinsey/BCG/Goldman consulting format. Written to your Obsidian vault and deployed as static HTML via Cloudflare Pages.
 
 ## Pipeline
 
 ```
-RSS / YouTube / Wikipedia → Concurrent fetch → Delta dedup → SQLite dedup
-                                    │
-                                    ▼
-                            [Phase A] Scan Agent
-                            (lightweight LLM filter)
-                                    │
-                                    ▼
-                            Theme Clustering
-                            (LLM groups into ≤5 themes)
-                                    │
-                                    ▼
-                            Theme Analysis
-                            (Fact Base table, signal strength, evidence level)
-                                    │
-                                    ▼
-                        Consulting-Grade Briefing
-                        (Exec Summary → Theme Analysis → Synthesis → Options → Kill List)
-                                    │
-                                    ▼
-              ┌──────────────────────┴──────────────────────┐
-              ▼                                             ▼
-    Markdown → Obsidian vault             HTML → Cloudflare Pages
-    (DailyBrief/YYYY-MM-DD.md)            (DailyBrief/index.html)
+RSS / YouTube → Source Adapters → Pipeline Middleware → Concurrent fetch → Delta dedup
+                                   (sanitize + HTTP        (feed-rs)
+                                    retry + dedup)
+                                         │
+                                         ▼
+                                    Scan Agent
+                                    (lightweight LLM filter)
+                                         │
+                                         ▼
+                              ┌── Theme Clustering ──┐
+                              │  (LLM groups into     │
+                              │   ≤5 strategic themes)│
+                              └──────────────────────┘
+                                         │
+                                         ▼
+                              Theme Analysis
+                              (Fact Base table,
+                               signal strength,
+                               evidence level)
+                                         │
+                                         ▼
+                    ┌─── Chronicle Dashboard ───┐
+                    │  (append to JSON history   │
+                    │   DB for long-term tracking)│
+                    └────────────────────────────┘
+                                         │
+                                         ▼
+                         Consulting-Grade Briefing
+                    (Exec Summary → Theme Analysis →
+                     Synthesis → Options → Kill List)
+                                         │
+                    ┌────────────────────┴────────────────────┐
+                    ▼                                         ▼
+          Template Engine                              Template Engine
+          (Markdown output)                             (HTML output)
+                    │                                         │
+                    ▼                                         ▼
+          DailyBrief/YYYY-MM-DD.md                  index.html → Cloudflare
+          (Obsidian vault)                                        │
+                                                              🌐 Global CDN
+                                                              ⚡ Zero-cost
 ```
 
 ## Tech Stack
 
-`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Wikipedia API` + `Tailwind CSS` + `Cloudflare Pages`
+`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Tailwind CSS` + `Cloudflare Pages` + `GitHub Actions`
 
 ## Quick Start
 
@@ -52,10 +74,14 @@ cargo build --release
 cp config.example.toml config.toml
 # Edit config.toml — set your DeepSeek API key and RSS sources
 
-# 3. Run
+# 3. Run (output to default vault)
 cargo run --release
-# Output: DailyBrief/YYYY-MM-DD.md (Markdown)
-#         DailyBrief/index.html (Tailwind HTML)
+
+# Or run with custom vault path:
+VAULT_PATH=/path/to/your/vault cargo run --release
+
+# Output: DailyBrief/YYYY-MM-DD.md (Markdown for vault)
+#         DailyBrief/index.html (Tailwind HTML for Cloudflare)
 ```
 
 ## Features
@@ -63,35 +89,42 @@ cargo run --release
 | Feature | Status |
 |---------|--------|
 | RSS/Atom/JSON Feed + YouTube RSS fetching | ✅ |
-| Full-text extraction (scraper) | ✅ |
+| **HTTP retry** — exponential backoff for RSS fetch failures | ✅ |
+| **HTML sanitization** — preserves LLM-useful tags, strips harmful | ✅ |
 | **Delta dedup** — Jaccard bigram similarity merge | ✅ |
-| Wikipedia context injection (zh → en fallback) | ✅ |
 | **Scan Agent** — pre-filter noise/ads | ✅ |
 | **Theme Clustering** — LLM groups articles into ≤5 strategic themes | ✅ |
 | **Fact Base Analysis** — Evidence | Interpretation | Confidence table per theme | ✅ |
 | **Consulting-grade Report** — McKinsey/BCG/Goldman format | ✅ |
 | **Option Evaluation** — multi-choice with "must be true" preconditions | ✅ |
 | **Kill List** — explicit "what we are NOT doing" | ✅ |
+| **Chronicle Dashboard** — JSON history DB for long-term topic tracking | ✅ |
+| **Template Engine** — pure Rust placeholder substitution (zero deps) | ✅ |
 | **DataCatalog** — JSON audit trail per pipeline step | ✅ |
-| **DecisionLedger** — track active decisions with evidence state | ✅ |
-| **Calibration Agent** — cognitive bias probing | ✅ |
-| **Keyword pre-filter** — regex whitelist for high-throughput sources | ✅ |
+| **Bilingual EN/ZH** — both English and Chinese output | ✅ |
+| **Economist-style branding** — red seal logo, SVG favicon | ✅ |
+| **GitHub Actions CI/CD** — automated daily runs + Cloudflare deploy | ✅ |
+| **VAULT_PATH env var** — override output directory at runtime | ✅ |
 | **HTML static page** — Tailwind CSS, Cloudflare-ready | ✅ |
-| Markdown daily briefing generation | ✅ |
+| Support for traditional Chinese, Korean, Japanese (via template.rs) | 🟡 |
+| Wikipedia API context injection | 🟡 Legacy |
+| Keyword pre-filter for high-throughput sources | 🟡 Legacy |
 
 ## Architecture
 
 ```
 src/
 ├── main.rs              # Pipeline orchestration
-├── pipeline.rs          # Middleware chain (sanitize, compliance, dedup)
+├── archive.rs           # Chronicle Dashboard — JSON history DB for long-term tracking
+├── template.rs          # Template engine — pure Rust placeholder substitution
+├── pipeline.rs          # Middleware chain (sanitize, HTML preservation, dedup)
 ├── config.rs            # TOML config loader + DecisionLedger
 ├── catalog.rs           # DataCatalog — JSON audit trail per step
 ├── clusterer.rs         # Theme clustering + Fact Base analysis
 ├── db.rs                # SQLite dedup, storage & graveyard
 ├── source/              # Source adapters (RSSHub-style dispatch)
 │   ├── mod.rs           # Source routing + RawSignal struct
-│   └── rss.rs           # RSS feed adapter
+│   └── rss.rs           # RSS feed adapter with HTTP retry
 ├── fetcher.rs           # Legacy fetch (being migrated to source/)
 ├── enricher.rs          # Wikipedia API context injection
 ├── llm.rs               # DeepSeek API calling with batching & retry
@@ -121,7 +154,7 @@ When theme clustering is active, the briefing follows McKinsey/BCG/Goldman struc
 
 | 证据 | 解读 | 置信度 |
 |------|------|--------|
-| GLM-5.2成本降幅超预期 | 差旅门槛进一步降低 | L3 |
+| GLM-5.2成本降幅超预期 | 创业门槛进一步降低 | L3 |
 | OpenAI跟进行业定价 | 头部竞争加剧 | L2 |
 
 信号强度: 7/10 — 行业机制级
@@ -146,21 +179,42 @@ When theme clustering is active, the briefing follows McKinsey/BCG/Goldman struc
 `config.toml` sections:
 
 - `[llm]` — API key, model, endpoint
-- `[[sources]]` — RSS feeds with name, URL, category, layer
+- `[[sources]]` — RSS feeds with name, URL, category, type, layer, keywords, exclude_keywords
 - `[prompts]` — system prompts
 - `[prompts.vertical_overrides]` — domain-specific frameworks
 - `[decisions]` — DecisionLedger (active decisions being tracked)
 - `[scan_agent]` — Scan Agent settings
 - `[graveyard]` — Decay Agent settings
 
+Source adapter config supports:
+- `keywords` — positive keyword whitelist (article must match at least one)
+- `exclude_keywords` — negative keyword blacklist (article dropped on match)
+- `date_range` — "d7" = last 7 days, "h24" = last 24 hours, etc.
+
 ### Source Layers
 
 | Layer | Name | Description |
 |-------|------|-------------|
-| 1 | Signal Source | Official blogs, Wikipedia API, YouTube tech channels |
+| 1 | Signal Source | Official blogs, YouTube tech channels |
 | 2 | Curated Source | Pre-filtered by humans |
 | 3 | Community Source | HN, Reddit |
 | 4 | Market Source | GitHub Trending, funding data |
+
+## Deployment
+
+### GitHub Actions (recommended)
+
+The included `.github/workflows/daily.yml` runs the pipeline daily via cron.
+Push to GitHub, configure secrets (DEEPSEEK_API_KEY), and Cloudflare Pages
+auto-deploys the resulting `index.html`.
+
+### Manual
+
+```bash
+cargo run --release
+# Output: DailyBrief/index.html → CF Pages
+# Zero server cost, global CDN, no ICP备案 needed
+```
 
 ## License
 
