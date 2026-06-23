@@ -44,6 +44,12 @@ pub struct GraphContext {
     pub loop_counters: HashMap<String, usize>,
     pub is_flash_mode: bool,
     pub api_key: String,
+    /// 蓝队回退轮次（组 3 死锁保护）
+    pub loop_counter: u8,
+    /// 最大允许回退轮次
+    pub max_loops: u8,
+    /// 置信度历史（用于停滞检测）
+    pub confidence_history: Vec<f64>,
 }
 
 impl GraphContext {
@@ -60,6 +66,9 @@ impl GraphContext {
             decisions: Vec::new(),
             loop_counters: HashMap::new(),
             is_flash_mode: false,
+            loop_counter: 0,
+            max_loops: 3,
+            confidence_history: Vec::new(),
         }
     }
 
@@ -173,6 +182,14 @@ impl DiGraph {
             node.execute(ctx)?;
             self.executed.insert(current.clone());
 
+            // 记录置信度历史（组 3 死锁保护）
+            if !ctx.current_analyses.is_empty() {
+                let avg: f64 = ctx.current_analyses.iter()
+                    .map(|a| a.signal_strength as f64)
+                    .sum::<f64>() / ctx.current_analyses.len() as f64;
+                ctx.confidence_history.push(avg);
+            }
+
             // 路由决策
             if let Some(edge_list) = self.edges.get(&current) {
                 if let Some((_target, condition)) = edge_list.iter().next() {
@@ -183,6 +200,22 @@ impl DiGraph {
                             // 只走第一条匹配的条件边
                         }
                         RouteResult::LoopBack(target) => {
+                            // 组 3 死锁保护：轮次限制
+                            ctx.loop_counter += 1;
+                            if ctx.loop_counter > ctx.max_loops {
+                                log::warn!("🛑 GraphFlow: 蓝队回退超限 ({}/{})", ctx.loop_counter, ctx.max_loops);
+                                return Ok(());
+                            }
+                            // 组 3 死锁保护：置信度停滞检测
+                            if ctx.confidence_history.len() >= 2 {
+                                let len = ctx.confidence_history.len();
+                                let last = ctx.confidence_history[len - 1];
+                                let prev = ctx.confidence_history[len - 2];
+                                if (last - prev).abs() < 0.05_f64 {
+                                    log::warn!("🛑 GraphFlow: 置信度停滞 ({} -> {})，触发熔断", prev, last);
+                                    return Ok(());
+                                }
+                            }
                             log::info!("🔄 GraphFlow: 蓝军 veto，回滚到 {}", target);
                             // 清除 target 的 executed 标记，允许重跑
                             self.executed.remove(&target);
