@@ -1,0 +1,19 @@
+# Auto detect text files and normalize to LF on commit
+* text=auto
+
+# Rust source
+*.rs text diff=rust
+
+# Config files
+*.toml text
+*.json text
+*.md text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+
+# Lock files
+Cargo.lock -text
+*.lock -text

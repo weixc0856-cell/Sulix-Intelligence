@@ -96,7 +96,10 @@ async fn main() -> Result<()> {
     // 写入设计令牌 CSS（在抓取前，确保 HTML 引用的 design.css 存在）
     let vault_base = PathBuf::from(&config.output.vault_path);
     fs::create_dir_all(&vault_base)?;
-    fs::write(vault_base.join("design.css"), sulix_intel::design::generate_full_css())?;
+    fs::write(
+        vault_base.join("design.css"),
+        sulix_intel::design::generate_full_css(),
+    )?;
     log::info!("🎨 design.css 已生成");
 
     // 4. Source Adapter: 遍历所有源，用对应适配器抓取
@@ -172,7 +175,14 @@ async fn main() -> Result<()> {
     let total_new = new_articles.len();
     let triage = if let Some(ref sc) = config.scan_agent {
         if sc.enabled && !grouped.is_empty() {
-            match agent::scan::scan_and_triage(&grouped, &api_key, &config.llm, config.prompts.as_ref()).await {
+            match agent::scan::scan_and_triage(
+                &grouped,
+                &api_key,
+                &config.llm,
+                config.prompts.as_ref(),
+            )
+            .await
+            {
                 Ok(t) => {
                     log::info!(
                         "Scan v1.1: 🟢Insight:{} 🟡Watchlist:{} 🔵Memory:{}",
@@ -230,10 +240,13 @@ async fn main() -> Result<()> {
             theme.title,
             theme.articles.len()
         );
-        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm, "en", config.prompts.as_ref()).await?;
+        let mut analysis =
+            clusterer::analyze_theme(theme, &api_key, &config.llm, "en", config.prompts.as_ref())
+                .await?;
         // Phase 1: 蓝军挑战
         let (assumptions, adverse, next_tests, open_questions) =
-            clusterer::challenge_theme(&analysis, &api_key, &config.llm, config.prompts.as_ref()).await?;
+            clusterer::challenge_theme(&analysis, &api_key, &config.llm, config.prompts.as_ref())
+                .await?;
         analysis.assumptions = assumptions;
         analysis.adverse = adverse;
         analysis.next_tests = next_tests;
@@ -254,10 +267,13 @@ async fn main() -> Result<()> {
     // 双轨：生成繁体中文版分析
     let mut analyses_zh = Vec::new();
     for theme in &themes {
-        match clusterer::analyze_theme(theme, &api_key, &config.llm, "zh", config.prompts.as_ref()).await {
+        match clusterer::analyze_theme(theme, &api_key, &config.llm, "zh", config.prompts.as_ref())
+            .await
+        {
             Ok(mut a) => {
                 if let Ok((assumptions, adverse, next_tests, open_questions)) =
-                    clusterer::challenge_theme(&a, &api_key, &config.llm, config.prompts.as_ref()).await
+                    clusterer::challenge_theme(&a, &api_key, &config.llm, config.prompts.as_ref())
+                        .await
                 {
                     a.assumptions = assumptions;
                     a.adverse = adverse;
@@ -280,11 +296,11 @@ async fn main() -> Result<()> {
 
     // === Phase 3: DiGraph 认知引擎管线 ===
     // Cluster -> BlueTeam(veto -> 回Cluster) -> QE -> BE -> DE
-    let mut decisions;
+    let decisions;
     {
         use crate::orchestrator::{
-            DiGraph, ClusterNode, BlueTeamNode, QENode, BENode, DENode, blue_team_edge,
-            RouteResult, GraphContext,
+            blue_team_edge, BENode, BlueTeamNode, ClusterNode, DENode, DiGraph, GraphContext,
+            QENode, RouteResult,
         };
 
         let mut ctx = GraphContext::new(config.clone(), api_key.clone());
@@ -299,10 +315,22 @@ async fn main() -> Result<()> {
         graph.add_node(Box::new(DENode { name: "DE" }));
 
         // 蓝军条件边：blue team 检查 + veto 回滚
-        graph.add_edge("Cluster", "BlueTeam", Arc::new(|_| RouteResult::ProceedTo("BlueTeam".into())));
+        graph.add_edge(
+            "Cluster",
+            "BlueTeam",
+            Arc::new(|_| RouteResult::ProceedTo("BlueTeam".into())),
+        );
         graph.add_edge("BlueTeam", "QE", blue_team_edge("QE"));
-        graph.add_edge("QE", "BE", Arc::new(|_| RouteResult::ProceedTo("BE".into())));
-        graph.add_edge("BE", "DE", Arc::new(|_| RouteResult::ProceedTo("DE".into())));
+        graph.add_edge(
+            "QE",
+            "BE",
+            Arc::new(|_| RouteResult::ProceedTo("BE".into())),
+        );
+        graph.add_edge(
+            "BE",
+            "DE",
+            Arc::new(|_| RouteResult::ProceedTo("DE".into())),
+        );
 
         graph.set_entry("Cluster");
         if let Err(e) = graph.run(&mut ctx) {
@@ -329,11 +357,28 @@ async fn main() -> Result<()> {
         if is_flash {
             flash_headlines.push(theme.title.clone());
         }
-        let theme_context: String = theme.articles.iter()
-            .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
+        let theme_context: String = theme
+            .articles
+            .iter()
+            .map(|a| {
+                format!(
+                    "- [{}] {}: {}",
+                    a.source,
+                    a.title,
+                    a.summary.as_deref().unwrap_or("")
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
-        match premium::generate_premium_report(theme, &theme_context, &api_key, &config.llm, config.prompts.as_ref()).await {
+        match premium::generate_premium_report(
+            theme,
+            &theme_context,
+            &api_key,
+            &config.llm,
+            config.prompts.as_ref(),
+        )
+        .await
+        {
             Ok(report) => {
                 if let Ok(html) = renderer::render_premium_report(&report) {
                     let slug = theme.title.to_lowercase().replace(' ', "-");
@@ -344,9 +389,10 @@ async fn main() -> Result<()> {
                 // Phase 2: Substack 自动推送（失败不阻塞管线）
                 if let Some(sub) = &config.substack {
                     if sub.enabled {
-                        if let Err(e) = premium::push_to_substack(
-                            &report, &sub.api_key, &sub.publication_url
-                        ).await {
+                        if let Err(e) =
+                            premium::push_to_substack(&report, &sub.api_key, &sub.publication_url)
+                                .await
+                        {
                             log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
                         } else {
                             log::info!("📬 Substack draft created: {}", theme.title);
@@ -386,7 +432,13 @@ async fn main() -> Result<()> {
                 articles: vec![],
             })
             .collect();
-        agent::calibration::calibrate(&calibration_input, &api_key, &config.llm, config.prompts.as_ref()).await?
+        agent::calibration::calibrate(
+            &calibration_input,
+            &api_key,
+            &config.llm,
+            config.prompts.as_ref(),
+        )
+        .await?
     } else {
         String::new()
     };
@@ -405,7 +457,15 @@ async fn main() -> Result<()> {
 
     // 英文日详情
     let flash = flash_headlines.first().map(String::as_str);
-    if let Ok(html) = renderer::render_html_report(&themes, &analyses, &today, Some(&calibration_text), &config.sources, flash, "en") {
+    if let Ok(html) = renderer::render_html_report(
+        &themes,
+        &analyses,
+        &today,
+        Some(&calibration_text),
+        &config.sources,
+        flash,
+        "en",
+    ) {
         fs::create_dir_all(&month_dir)?;
         fs::write(month_dir.join("index.html"), &html)?;
         log::info!("📄 EN 简报写入: {}", month_dir.join("index.html").display());
@@ -433,7 +493,15 @@ async fn main() -> Result<()> {
         fs::create_dir_all(&zh_dir)
             .unwrap_or_else(|e| log::warn!("无法创建中文目录 {:?}: {}", zh_dir, e));
 
-        if let Ok(zh_html) = renderer::render_html_report(&themes, &analyses_zh, &today, Some(&calibration_text), &config.sources, flash, "zh") {
+        if let Ok(zh_html) = renderer::render_html_report(
+            &themes,
+            &analyses_zh,
+            &today,
+            Some(&calibration_text),
+            &config.sources,
+            flash,
+            "zh",
+        ) {
             if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
                 log::warn!("写入中文 HTML 失败 {:?}: {}", zh_dir.join("index.html"), e);
             }
