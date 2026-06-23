@@ -9,7 +9,7 @@ use std::path::PathBuf;
 mod agent;
 mod archive;
 mod catalog;
-mod client;
+mod premium;
 mod clusterer;
 mod config;
 mod db;
@@ -233,6 +233,31 @@ async fn main() -> Result<()> {
         }
     }
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
+
+    // === Premium: 多 Agent 深度研报（信号强度 ≥5 的主题）===
+    let vault_base = PathBuf::from(&config.output.vault_path);
+    let premium_dir = vault_base.join("premium");
+    fs::create_dir_all(&premium_dir).ok();
+    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        if analysis.signal_strength < 5 {
+            continue;
+        }
+        let theme_context: String = theme.articles.iter()
+            .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        match premium::generate_premium_report(theme, &theme_context, &api_key, &config.llm).await {
+            Ok(report) => {
+                if let Ok(html) = renderer::render_premium_report(&report) {
+                    let slug = theme.title.to_lowercase().replace(' ', "-");
+                    let path = premium_dir.join(format!("{}.html", slug));
+                    let _ = fs::write(&path, &html);
+                    log::info!("📖 Premium: {} → {}", theme.title, path.display());
+                }
+            }
+            Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
+        }
+    }
 
     let summary = clusterer::synthesize(&themes, &analyses);
     log::info!(

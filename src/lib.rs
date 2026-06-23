@@ -13,6 +13,7 @@ pub mod enricher;
 pub mod fetcher;
 pub mod llm;
 pub mod pipeline;
+pub mod premium;
 pub mod renderer;
 pub mod source;
 pub mod template;
