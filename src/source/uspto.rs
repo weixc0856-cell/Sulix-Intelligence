@@ -34,13 +34,14 @@ struct UsptoItem {
 
 /// 从 USPTO API 拉取并过滤专利信号
 pub async fn fetch_patents(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
-    use chrono::Utc;
     use crate::source::rss::parse_date_range;
+    use chrono::Utc;
 
     let client = crate::client::global_client().clone();
 
     let url = "https://developer.uspto.gov/ibd-api/v1/patent/application/publications";
-    let resp: UsptoResponse = client.get(url)
+    let resp: UsptoResponse = client
+        .get(url)
         .header("Accept", "application/json")
         .send()
         .await?
@@ -55,8 +56,7 @@ pub async fn fetch_patents(config: &SourceConfig, date_range: &str) -> Result<Ve
         // 日期过滤
         // USPTO 日期格式 YYYY-MM-DD
         if let Ok(pub_date) = chrono::NaiveDate::parse_from_str(&item.pub_date, "%Y-%m-%d") {
-            let pub_utc = pub_date.and_hms_opt(0, 0, 0).unwrap_or_default()
-                .and_utc();
+            let pub_utc = pub_date.and_hms_opt(0, 0, 0).unwrap_or_default().and_utc();
             if pub_utc < cutoff {
                 continue;
             }

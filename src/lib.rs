@@ -4,16 +4,24 @@
 
 pub mod agent;
 pub mod archive;
+pub mod belief_engine;
 pub mod catalog;
 pub mod client;
 pub mod clusterer;
 pub mod config;
 pub mod db;
+pub mod decision_engine;
+pub mod design;
 pub mod enricher;
+pub mod entity;
 pub mod fetcher;
 pub mod llm;
+pub mod orchestrator;
 pub mod pipeline;
 pub mod premium;
+pub mod question_engine;
 pub mod renderer;
 pub mod source;
 pub mod template;
+pub mod termination;
+pub mod versioned;

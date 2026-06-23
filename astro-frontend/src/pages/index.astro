@@ -1,0 +1,38 @@
+---
+import BaseLayout from '../layouts/base.astro';
+import SignalRow from '../components/SignalRow.astro';
+import { getCollection } from 'astro:content';
+
+const allPosts = await getCollection('posts');
+const published = allPosts
+  .filter(p => p.data.status === 'published')
+  .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
+---
+
+<BaseLayout title="Dashboard | Sulix.Intel" description="Daily Geopolitical Tech Intelligence Briefing">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid #171717">
+    <h1 class="font-mono" style="font-size:1.25rem;font-weight:700;color:#171717;margin:0">今日信号</h1>
+    <span class="font-mono" style="font-size:0.6875rem;color:#a3a3a3">{published.length} 条</span>
+  </div>
+
+  {published.length > 0 ? (
+    <div>
+      {published.map(post => (
+        <SignalRow
+          title={post.data.title}
+          date={post.data.date}
+          svi={post.data.svi}
+          colorTag={post.data.color_tag}
+          isPremium={post.data.is_premium}
+          slug={post.data.slug}
+          summary={post.data.summary}
+          tags={post.data.tags}
+        />
+      ))}
+    </div>
+  ) : (
+    <div class="font-mono" style="text-align:center;padding:3rem 0;color:#a3a3a3;font-size:0.875rem">
+      No significant signals today.
+    </div>
+  )}
+</BaseLayout>

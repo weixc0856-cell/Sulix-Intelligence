@@ -189,7 +189,10 @@ impl EntitySanctionDb {
     pub fn promote(&mut self, id: &str) -> Option<()> {
         if let Some(mut entity) = self.unsanctioned.remove(id) {
             entity.sanctioned = true;
-            entity.relationships.iter_mut().for_each(|r| r.inferred = false);
+            entity
+                .relationships
+                .iter_mut()
+                .for_each(|r| r.inferred = false);
             self.sanctioned.insert(id.to_string(), entity);
             Some(())
         } else {
@@ -242,11 +245,7 @@ impl EntitySanctionDb {
     }
 
     /// 为实体增加关系
-    pub fn add_relationship(
-        &mut self,
-        entity_id: &str,
-        relationship: Relationship,
-    ) -> Option<()> {
+    pub fn add_relationship(&mut self, entity_id: &str, relationship: Relationship) -> Option<()> {
         if let Some(entity) = self.sanctioned.get_mut(entity_id) {
             entity.relationships.push(relationship);
             Some(())
@@ -286,7 +285,10 @@ pub fn extract_entities_from_text(text: &str) -> Vec<String> {
 
     let patterns: Vec<(&str, &[&str])> = vec![
         ("TSMC", &["tsmc", "taiwan semiconductor", "台积电"]),
-        ("ASML", &["asml", "advanced semiconductor materials lithography"]),
+        (
+            "ASML",
+            &["asml", "advanced semiconductor materials lithography"],
+        ),
         ("NVIDIA", &["nvidia", "nvidia corporation", "英伟达"]),
         ("Intel", &["intel", "intel corporation", "英特尔"]),
         ("AMD", &["amd", "advanced micro devices"]),
@@ -299,11 +301,28 @@ pub fn extract_entities_from_text(text: &str) -> Vec<String> {
         ("TSA", &["tsa", "taiwan semiconductor", "先进制程"]),
         ("EUV", &["euv", "extreme ultraviolet", "high-na"]),
         ("HBM", &["hbm", "high-bandwidth memory", "hbm3", "hbm4"]),
-        ("Chiplet", &["chiplet", "advanced packaging", "heterogeneous integration", "3d packaging", "fan-out"]),
+        (
+            "Chiplet",
+            &[
+                "chiplet",
+                "advanced packaging",
+                "heterogeneous integration",
+                "3d packaging",
+                "fan-out",
+            ],
+        ),
         ("RISC-V", &["risc-v", "riscv", "open source isa"]),
         ("CUDA", &["cuda", "nvidia cuda", "cuda ecosystem"]),
         ("ARM", &["arm", "arm architecture", "arm holdings"]),
-        ("BIS", &["bis", "bureau industry security", "entity list", "export control"]),
+        (
+            "BIS",
+            &[
+                "bis",
+                "bureau industry security",
+                "entity list",
+                "export control",
+            ],
+        ),
         ("CHIPS", &["chips act", "chips and science"]),
         ("SEC", &["sec", "securities exchange commission", "edgar"]),
         ("USPTO", &["uspto", "patent trademark", "patent office"]),
@@ -396,16 +415,19 @@ mod tests {
             external_refs: vec![],
             relationships: vec![],
         });
-        db.add_relationship("e4", Relationship {
-            id: "r1".into(),
-            relationship_type: RelationshipType::SupplyChain,
-            target_id: "e5".into(),
-            target_name: "ASML".into(),
-            confidence: 0.9,
-            inferred: true,
-            inference_rule: Some("supply-chain-from-patent".into()),
-            created_at: "2026-06-23".into(),
-        });
+        db.add_relationship(
+            "e4",
+            Relationship {
+                id: "r1".into(),
+                relationship_type: RelationshipType::SupplyChain,
+                target_id: "e5".into(),
+                target_name: "ASML".into(),
+                confidence: 0.9,
+                inferred: true,
+                inference_rule: Some("supply-chain-from-patent".into()),
+                created_at: "2026-06-23".into(),
+            },
+        );
         let rels = db.get_relationships("e4");
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].target_name, "ASML");
@@ -442,6 +464,9 @@ mod tests {
         let loaded: EntitySanctionDb = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.sanctioned.len(), 1);
         assert_eq!(loaded.sanctioned.get("e6").unwrap().name, "TSMC");
-        assert_eq!(loaded.sanctioned.get("e6").unwrap().external_refs[0].source, "USPTO");
+        assert_eq!(
+            loaded.sanctioned.get("e6").unwrap().external_refs[0].source,
+            "USPTO"
+        );
     }
 }

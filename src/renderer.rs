@@ -1,4 +1,4 @@
-﻿//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
+//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
 //!
 //! 字体授权声明（SIL Open Font License，100% 免费商用）:
 //! - Lora (serif, 大标题): SIL OFL, 免费商用
@@ -64,7 +64,11 @@ pub fn render_seo_meta(title: &str, description: &str, relative_path: &str) -> S
 
 /// 渲染 JSON-LD 结构化数据（对标 Google 高价值 TechArticle）
 pub fn render_json_ld(title: &str, date: &str, text_snippet: &str) -> String {
-    let description = text_snippet.chars().take(150).collect::<String>().replace('"', "\\\"");
+    let description = text_snippet
+        .chars()
+        .take(150)
+        .collect::<String>()
+        .replace('"', "\\\"");
     format!(
         r#"<script type="application/ld+json">
 {{
@@ -570,12 +574,24 @@ use std::collections::BTreeSet;
 
 /// SVI 颜色色值
 fn svi_color(svi: u8) -> &'static str {
-    match svi { 9..=10 => "#dc2626", 7..=8 => "#ea580c", 5..=6 => "#ca8a04", 3..=4 => "#16a34a", _ => "#2563eb" }
+    match svi {
+        9..=10 => "#dc2626",
+        7..=8 => "#ea580c",
+        5..=6 => "#ca8a04",
+        3..=4 => "#16a34a",
+        _ => "#2563eb",
+    }
 }
 
 /// SVI 颜色表情
 fn svi_emoji(svi: u8) -> &'static str {
-    match svi { 9..=10 => "🔴", 7..=8 => "🟠", 5..=6 => "🟡", 3..=4 => "🟢", _ => "🔵" }
+    match svi {
+        9..=10 => "🔴",
+        7..=8 => "🟠",
+        5..=6 => "🟡",
+        3..=4 => "🟢",
+        _ => "🔵",
+    }
 }
 
 /// 渲染 Bloomberg Terminal 风格的 HTML 简报
@@ -591,7 +607,11 @@ pub fn render_html_report(
     let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
     // 按 SVI 降序排列
-    let mut indexed: Vec<(&Theme, &ThemeAnalysis)> = themes.iter().zip(analyses.iter()).filter(|(_, a)| a.signal_strength > 0).collect();
+    let mut indexed: Vec<(&Theme, &ThemeAnalysis)> = themes
+        .iter()
+        .zip(analyses.iter())
+        .filter(|(_, a)| a.signal_strength > 0)
+        .collect();
     indexed.sort_by(|(_, a), (_, b)| b.signal_strength.cmp(&a.signal_strength));
 
     let mut signals_html = String::new();
@@ -603,15 +623,35 @@ pub fn render_html_report(
         let is_premium = svi >= 7;
 
         let mut srcs: Vec<String> = Vec::new();
-        for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
-        for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
+        for art in &theme.articles {
+            if !srcs.contains(&art.source) {
+                srcs.push(art.source.clone());
+            }
+        }
+        for s in &srcs {
+            if attributable_names.contains(s) {
+                explicit_set.insert(s.clone());
+            } else {
+                implicit_set.insert(s.clone());
+            }
+        }
 
-        let summary = if analysis.bluf.len() > 80 { let end = analysis.bluf.floor_char_boundary(80); format!("{}...", &analysis.bluf[..end]) } else { analysis.bluf.clone() };
+        let summary = if analysis.bluf.len() > 80 {
+            let end = analysis.bluf.floor_char_boundary(80);
+            format!("{}...", &analysis.bluf[..end])
+        } else {
+            analysis.bluf.clone()
+        };
 
         let prem = if is_premium {
             let slug = theme.title.to_lowercase().replace(' ', "-");
-            format!(r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#, html_escape(&slug))
-        } else { String::new() };
+            format!(
+                r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#,
+                html_escape(&slug)
+            )
+        } else {
+            String::new()
+        };
 
         let line = format!(
             r#"<div style="display:flex;flex-direction:column;padding:0.5rem 0;border-bottom:1px solid #e5e5e5">
@@ -624,7 +664,14 @@ pub fn render_html_report(
   <div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#525252;margin-top:0.125rem;padding-left:4.5rem">{}</div>
   <div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;margin-top:0.125rem;padding-left:4.5rem">├─ 来源: {}</div>
 </div>"#,
-            svi_color(svi), svi_emoji(svi), svi_color(svi), svi as f64, html_escape(&theme.title), prem, html_escape(&summary), html_escape(&srcs.join(" · "))
+            svi_color(svi),
+            svi_emoji(svi),
+            svi_color(svi),
+            svi as f64,
+            html_escape(&theme.title),
+            prem,
+            html_escape(&summary),
+            html_escape(&srcs.join(" · "))
         );
         signals_html.push_str(&line);
     }
@@ -633,24 +680,49 @@ pub fn render_html_report(
     let implicit_links: Vec<String> = implicit_set.iter().map(|s| format!(r#"<span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3">{} </span>"#, html_escape(s))).collect();
 
     let cal_html = match calibration {
-        Some(cal) if !cal.is_empty() => format!(r#"<div style="border-top:1px solid #e5e5e5;margin-top:1.5rem;padding-top:0.75rem"><span style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase">Cognitive Calibration</span><p style="font-family:'Inter',sans-serif;font-size:0.8125rem;color:#737373;font-style:italic;margin:0.25rem 0 0">{}</p></div>"#, html_escape(cal)),
+        Some(cal) if !cal.is_empty() => format!(
+            r#"<div style="border-top:1px solid #e5e5e5;margin-top:1.5rem;padding-top:0.75rem"><span style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase">Cognitive Calibration</span><p style="font-family:'Inter',sans-serif;font-size:0.8125rem;color:#737373;font-style:italic;margin:0.25rem 0 0">{}</p></div>"#,
+            html_escape(cal)
+        ),
         _ => String::new(),
     };
 
     let flash = flash_headline.map(|fh| format!(r#"<div style="background-color:#dc2626;color:#fff;text-align:center;padding:0.375rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:600">⚡ FLASH: {}</div>"#, html_escape(fh))).unwrap_or_default();
 
     let top = analyses.iter().max_by_key(|a| a.signal_strength);
-    let seo_title = top.map(|a| a.theme_title.as_str()).unwrap_or("Daily Briefing");
+    let seo_title = top
+        .map(|a| a.theme_title.as_str())
+        .unwrap_or("Daily Briefing");
     let seo_desc = top.map(|a| a.bluf.as_str()).unwrap_or("Sulix Intelligence");
     let lang_attr = if language == "zh" { "zh-Hant" } else { "en" };
     let seo_meta = render_seo_meta(seo_title, seo_desc, &format!("en/{}/", date));
     let json_ld = render_json_ld(seo_title, date, seo_desc);
-    let d = if date.len() >= 10 { format!("{}-{}-{}", &date[0..4], &date[5..7], &date[8..10]) } else { date.to_string() };
+    let d = if date.len() >= 10 {
+        format!("{}-{}-{}", &date[0..4], &date[5..7], &date[8..10])
+    } else {
+        date.to_string()
+    };
     let is_zh = language == "zh";
-    let en_href = if is_zh { format!("../en/{}/index.html", date) } else { "#".into() };
-    let zh_href = if !is_zh { format!("../zh/{}/index.html", date) } else { "#".into() };
-    let en_s = if !is_zh { "color:#171717;font-weight:700" } else { "color:#a3a3a3" };
-    let zh_s = if is_zh { "color:#171717;font-weight:700" } else { "color:#a3a3a3" };
+    let en_href = if is_zh {
+        format!("../en/{}/index.html", date)
+    } else {
+        "#".into()
+    };
+    let zh_href = if !is_zh {
+        format!("../zh/{}/index.html", date)
+    } else {
+        "#".into()
+    };
+    let en_s = if !is_zh {
+        "color:#171717;font-weight:700"
+    } else {
+        "color:#a3a3a3"
+    };
+    let zh_s = if is_zh {
+        "color:#171717;font-weight:700"
+    } else {
+        "color:#a3a3a3"
+    };
 
     let html = format!(
         r#"<!DOCTYPE html>
@@ -796,8 +868,15 @@ else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.locati
 
 /// 渲染 Premium 深度研报（长格式，多 Agent 合成）
 pub fn render_premium_report(report: &PremiumReport) -> Result<String> {
-    let risk_lines: String = report.risk_scenarios.iter()
-        .map(|s| format!("<li class='text-neutral-700 text-sm mb-1'>{}</li>", html_escape(s)))
+    let risk_lines: String = report
+        .risk_scenarios
+        .iter()
+        .map(|s| {
+            format!(
+                "<li class='text-neutral-700 text-sm mb-1'>{}</li>",
+                html_escape(s)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -888,11 +967,7 @@ pub fn render_premium_report(report: &PremiumReport) -> Result<String> {
 /// 渲染信号为 Markdown + YAML frontmatter（用于 Astro Content Collections）
 ///
 /// Code Review: sources/entities 使用 serde_json 序列化防止 YAML 注入撕裂。
-pub fn render_signal_markdown(
-    theme: &Theme,
-    analysis: &ThemeAnalysis,
-    date: &str,
-) -> String {
+pub fn render_signal_markdown(theme: &Theme, analysis: &ThemeAnalysis, date: &str) -> String {
     let svi_emoji_str = match analysis.signal_strength {
         9..=10 => "🔴",
         7..=8 => "🟠",
@@ -903,7 +978,8 @@ pub fn render_signal_markdown(
 
     let source_names: Vec<&str> = theme.articles.iter().map(|a| a.source.as_str()).collect();
     let json_sources = serde_json::to_string(&source_names).unwrap_or_else(|_| "[]".to_string());
-    let json_entities = serde_json::to_string(&analysis.connections).unwrap_or_else(|_| "[]".to_string());
+    let json_entities =
+        serde_json::to_string(&analysis.connections).unwrap_or_else(|_| "[]".to_string());
 
     let tags: Vec<&str> = std::iter::once(analysis.theme_title.as_str()).collect();
     let json_tags = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
@@ -946,7 +1022,11 @@ author: "Diplomat · Architect · Quant"
         date = date,
         svi = analysis.signal_strength,
         emoji = svi_emoji_str,
-        premium = if analysis.signal_strength >= 7 { "true" } else { "false" },
+        premium = if analysis.signal_strength >= 7 {
+            "true"
+        } else {
+            "false"
+        },
         slug = slug,
         summary = analysis.bluf,
         sources = json_sources,

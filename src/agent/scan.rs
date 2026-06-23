@@ -25,11 +25,26 @@ pub struct TriageResult {
     pub signal_memory: Vec<Article>,
 }
 
+/// 矛盾追踪记录（Phase 2 完整实现，Phase 1 仅结构体定义）
+///
+/// 当新文章与已有信念冲突时，强制保留而非过滤。
+/// 待 Phase B (Belief Engine) 接入后启用完整逻辑。
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ContradictionRecord {
+    pub article_id: String,
+    pub belief_key: String,
+    pub contradicts: bool,
+    pub retained: bool,
+    pub created_at: String,
+}
+
 /// 对分组后的文章执行信号标记和三层分流（v1.1）
 pub async fn scan_and_triage(
     grouped: &HashMap<String, Vec<Article>>,
     api_key: &str,
     llm_config: &LlmConfig,
+    prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<TriageResult> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -54,8 +69,12 @@ pub async fn scan_and_triage(
                 log::debug!("  ↳ 第 {}/{} 批", batch_idx + 1, total_batches);
             }
 
-            let system_prompt =
+            let base_prompt_str =
                 build_scan_prompt_v11(category, batch_idx + 1, total_batches, batch);
+            let system_prompt = match prompts {
+                Some(p) => p.get_scan_agent(&base_prompt_str).to_string(),
+                None => base_prompt_str,
+            };
             let user_prompt = build_scan_user_prompt(category, batch_idx + 1, batch);
 
             let result =
@@ -83,7 +102,10 @@ pub async fn scan_and_triage(
                         if composite >= 7 {
                             insight.push(article.clone());
                         } else if composite >= 3 {
-                            // Contradiction Tracker: 如果与现有信念冲突，强制保留
+                            // TODO(Phase 2): 接入 Belief Engine 后启用 ContradictionTracker
+                            // 当前逻辑为纯分数路由 (composite >= 3 → watchlist)，信念冲突检测
+                            // 依赖不存在的 Editor Agent/Belief Engine。
+                            // ContradictionRecord struct 已定义，留待 Phase B 接入。
                             watchlist.push(article.clone());
                         } else if tag == "Noise" {
                             signal_memory.push(article.clone());

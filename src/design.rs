@@ -15,17 +15,20 @@ pub const BG: &str = "#fcfcfc";
 pub const WHITE: &str = "#ffffff";
 
 // ===== 原子令牌：字体 =====
-pub const FONT_BODY: &str = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+pub const FONT_BODY: &str =
+    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 pub const FONT_SERIF: &str = "'Lora', 'Playfair Display', 'Georgia', serif";
 pub const FONT_MONO: &str = "'JetBrains Mono', 'Courier New', monospace";
 
 // ===== 复合令牌：排版（font-size / line-height / letter-spacing / weight）=====
 // 参考 Wayne's blog: display-xl / headline-lg / body-md / label-sm 体系
 pub const CSS_DISPLAY: &str = "font-size:1.875rem;line-height:1.25;font-weight:700;letter-spacing:-0.02em;font-family:'Lora','Georgia',serif;";
-pub const CSS_HEADLINE: &str = "font-size:1.25rem;line-height:1.3;font-weight:700;font-family:'Lora','Georgia',serif;";
+pub const CSS_HEADLINE: &str =
+    "font-size:1.25rem;line-height:1.3;font-weight:700;font-family:'Lora','Georgia',serif;";
 pub const CSS_BODY: &str = "font-size:0.9375rem;line-height:1.6;font-family:'Inter',sans-serif;";
 pub const CSS_LABEL: &str = "font-size:0.75rem;line-height:1.2;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;font-family:'Inter',sans-serif;";
-pub const CSS_META: &str = "font-size:0.625rem;line-height:1.2;font-family:'JetBrains Mono',monospace;";
+pub const CSS_META: &str =
+    "font-size:0.625rem;line-height:1.2;font-family:'JetBrains Mono',monospace;";
 
 // ===== 间距韵律（8px 基准）=====
 pub const SPACING_XS: &str = "4px";

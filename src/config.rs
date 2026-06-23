@@ -237,7 +237,7 @@ pub struct SubstackConfig {
 }
 
 fn default_substack_enabled() -> bool {
-    false  // 默认不启用，避免意外推送测试数据
+    false // 默认不启用，避免意外推送测试数据
 }
 
 /// Phase 2: 用户关切问题系统

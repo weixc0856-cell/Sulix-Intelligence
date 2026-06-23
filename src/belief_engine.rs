@@ -60,9 +60,14 @@ pub fn update_beliefs(
         let related: Vec<&crate::question_engine::QuestionMatch> = question_matches
             .iter()
             .filter(|qm| {
-                qm.question_text
-                    .to_lowercase()
-                    .contains(&belief.text.chars().take(20).collect::<String>().to_lowercase())
+                qm.question_text.to_lowercase().contains(
+                    &belief
+                        .text
+                        .chars()
+                        .take(20)
+                        .collect::<String>()
+                        .to_lowercase(),
+                )
             })
             .collect();
 
@@ -71,8 +76,14 @@ pub fn update_beliefs(
         }
 
         // 综合评估证据类型
-        let support_count = related.iter().filter(|r| r.evidence_type == "Support").count();
-        let challenge_count = related.iter().filter(|r| r.evidence_type == "Challenge").count();
+        let support_count = related
+            .iter()
+            .filter(|r| r.evidence_type == "Support")
+            .count();
+        let challenge_count = related
+            .iter()
+            .filter(|r| r.evidence_type == "Challenge")
+            .count();
 
         let (evidence_type, delta, is_contradiction) = if challenge_count > support_count {
             let d = -(challenge_count as i8).min(5);
@@ -106,16 +117,109 @@ pub fn update_beliefs(
 /// 物理相同但 Jaccard=0 的同义词灾难。
 #[allow(dead_code)]
 const ENTITY_NORMALIZATION: &[(&str, &[&str])] = &[
-    ("advanced-packaging", &["advanced packaging", "heterogeneous integration", "chiplet", "3d packaging", "fan-out", "interposer"]),
-    ("euv-lithography", &["euv lithography", "extreme ultraviolet", "nxe", "high-na euv", "0.33na"]),
-    ("gaa-transistor", &["gaa", "gate-all-around", "nanosheet", "forksheet", "cfet", "complementary fet"]),
-    ("ai-accelerator", &["ai accelerator", "ai chip", "npu", "tpu", "inference chip", "neural processor", "deep learning accelerator"]),
-    ("hbm-memory", &["hbm", "high-bandwidth memory", "hbm2", "hbm3", "hbm4", "stacked memory", "3d dram"]),
-    ("silicon-photonics", &["silicon photonics", "photonic interconnect", "optical interconnect", "silicon photonic", "integrated photonics"]),
-    ("cuda-ecosystem", &["cuda", "nvidia cuda", "cuda ecosystem", "cuda platform", "cuda gpu"]),
-    ("risc-v", &["risc-v", "riscv", "open-source isa", "open instruction set"]),
-    ("export-control", &["export control", "entity list", "bis", "commerce control", "license requirement", "technology denial", "export restriction"]),
-    ("supply-chain-relocation", &["supply chain relocation", "reshoring", "nearshoring", "friend-shoring", "china+1", "supply chain diversification"]),
+    (
+        "advanced-packaging",
+        &[
+            "advanced packaging",
+            "heterogeneous integration",
+            "chiplet",
+            "3d packaging",
+            "fan-out",
+            "interposer",
+        ],
+    ),
+    (
+        "euv-lithography",
+        &[
+            "euv lithography",
+            "extreme ultraviolet",
+            "nxe",
+            "high-na euv",
+            "0.33na",
+        ],
+    ),
+    (
+        "gaa-transistor",
+        &[
+            "gaa",
+            "gate-all-around",
+            "nanosheet",
+            "forksheet",
+            "cfet",
+            "complementary fet",
+        ],
+    ),
+    (
+        "ai-accelerator",
+        &[
+            "ai accelerator",
+            "ai chip",
+            "npu",
+            "tpu",
+            "inference chip",
+            "neural processor",
+            "deep learning accelerator",
+        ],
+    ),
+    (
+        "hbm-memory",
+        &[
+            "hbm",
+            "high-bandwidth memory",
+            "hbm2",
+            "hbm3",
+            "hbm4",
+            "stacked memory",
+            "3d dram",
+        ],
+    ),
+    (
+        "silicon-photonics",
+        &[
+            "silicon photonics",
+            "photonic interconnect",
+            "optical interconnect",
+            "silicon photonic",
+            "integrated photonics",
+        ],
+    ),
+    (
+        "cuda-ecosystem",
+        &[
+            "cuda",
+            "nvidia cuda",
+            "cuda ecosystem",
+            "cuda platform",
+            "cuda gpu",
+        ],
+    ),
+    (
+        "risc-v",
+        &["risc-v", "riscv", "open-source isa", "open instruction set"],
+    ),
+    (
+        "export-control",
+        &[
+            "export control",
+            "entity list",
+            "bis",
+            "commerce control",
+            "license requirement",
+            "technology denial",
+            "export restriction",
+        ],
+    ),
+    (
+        "supply-chain-relocation",
+        &[
+            "supply chain relocation",
+            "reshoring",
+            "nearshoring",
+            "friend-shoring",
+            "china+1",
+            "supply chain diversification",
+        ],
+    ),
 ];
 
 /// 将技术实体归一化为标准行业 Term ID
@@ -144,7 +248,11 @@ fn entity_jaccard(entities_a: &[String], entities_b: &[String]) -> f64 {
     let b_set: std::collections::HashSet<&str> = entities_b.iter().map(|s| s.as_str()).collect();
     let intersection = a_set.intersection(&b_set).count();
     let union = a_set.union(&b_set).count();
-    if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }
 
 /// 计算 contradiction score
@@ -161,15 +269,17 @@ pub fn calculate_contradiction_score(
     entities_b: &[String],
 ) -> f64 {
     let entity_overlap = entity_jaccard(entities_a, entities_b);
-    if entity_overlap < 0.2 { return 0.0; } // 实体都不重叠就不用比了
+    if entity_overlap < 0.2 {
+        return 0.0;
+    } // 实体都不重叠就不用比了
 
     // content_similarity: 简单关键词重叠
     let a_lower = text_a.to_lowercase();
     let b_lower = text_b.to_lowercase();
-    let words_a: std::collections::HashSet<&str> = a_lower
-        .split_whitespace().filter(|w| w.len() > 3).collect();
-    let words_b: std::collections::HashSet<&str> = b_lower
-        .split_whitespace().filter(|w| w.len() > 3).collect();
+    let words_a: std::collections::HashSet<&str> =
+        a_lower.split_whitespace().filter(|w| w.len() > 3).collect();
+    let words_b: std::collections::HashSet<&str> =
+        b_lower.split_whitespace().filter(|w| w.len() > 3).collect();
     let common = words_a.intersection(&words_b).count();
     let content_similarity = if words_a.is_empty() || words_b.is_empty() {
         0.0
@@ -202,8 +312,10 @@ pub fn check_contradiction(
 
         // 使用归一化后的实体计算 contradiction_score
         let score = calculate_contradiction_score(
-            &combined, &combined_normalized,
-            &belief.text, &belief_normalized,
+            &combined,
+            &combined_normalized,
+            &belief.text,
+            &belief_normalized,
         );
 
         // 阈值门控 >= 0.3，且实体必须重叠
@@ -252,7 +364,8 @@ mod tests {
     fn test_check_contradiction_triggers() {
         let beliefs = vec![BeliefStatement {
             id: "b2".into(),
-            text: "US semiconductor export controls are tightening — BIS entity list sanctions".into(),
+            text: "US semiconductor export controls are tightening — BIS entity list sanctions"
+                .into(),
             confidence: 8,
             category: "Tech".into(),
             evidence_ids: vec![],
@@ -262,7 +375,10 @@ mod tests {
             "Dutch government approves ASML to continue servicing Chinese customers despite US export controls",
             &beliefs,
         );
-        assert!(result.is_some(), "Contradiction should be detected: sanction vs exemption");
+        assert!(
+            result.is_some(),
+            "Contradiction should be detected: sanction vs exemption"
+        );
     }
 
     #[test]
@@ -280,21 +396,29 @@ mod tests {
             "US Commerce Dept expands export controls on semiconductor equipment to China",
             &beliefs,
         );
-        assert!(result.is_none(), "Unrelated topics should not trigger contradiction");
+        assert!(
+            result.is_none(),
+            "Unrelated topics should not trigger contradiction"
+        );
     }
 
     #[test]
     fn test_entity_normalization_resolves_synonym_crisis() {
         // "Advanced Packaging" vs "Heterogeneous Integration" — 物理相同实体
         let text_a = "TSMC's advanced packaging capacity expansion for 3D chiplet integration";
-        let text_b = "Intel's heterogeneous integration roadmap using fan-out interposer technology";
+        let text_b =
+            "Intel's heterogeneous integration roadmap using fan-out interposer technology";
         let ent_a = normalize_entities(text_a);
         let ent_b = normalize_entities(text_b);
         assert!(ent_a.contains(&"advanced-packaging".to_string()));
         assert!(ent_b.contains(&"advanced-packaging".to_string()));
         // 归一化后 Jaccard 应该 > 0
         let jaccard = entity_jaccard(&ent_a, &ent_b);
-        assert!(jaccard > 0.0, "Synonyms should match after normalization: Jaccard={}", jaccard);
+        assert!(
+            jaccard > 0.0,
+            "Synonyms should match after normalization: Jaccard={}",
+            jaccard
+        );
     }
 
     #[test]

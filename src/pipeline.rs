@@ -49,11 +49,7 @@ pub struct EvidenceSnapshot {
 /// 当 SVI >= 7，将原始信号作为不可变 JSONL 证据日志写入 evidence/ 目录。
 /// 即使现实世界源被删/改，付费会员仍可在后台调用离线铁证。
 #[allow(dead_code)]
-pub fn capture_evidence_snapshot(
-    signal: &RawSignal,
-    svi: u8,
-    vault_path: &str,
-) -> Result<()> {
+pub fn capture_evidence_snapshot(signal: &RawSignal, svi: u8, vault_path: &str) -> Result<()> {
     let evidence_dir = std::path::Path::new(vault_path).join("evidence");
     std::fs::create_dir_all(&evidence_dir)?;
 
@@ -132,9 +128,9 @@ fn compliance_filter(text: &str) -> String {
     // 使用 \b 词边界替代不支持的 look-around 断言
     let stock_code_re = Regex::new(r"\b([6]\d{5}|[0]\d{5}|[3]\d{5})\b").unwrap();
     // 荐股词匹配
-    let promo_re = Regex::new(
-        r"(?i)(建仓|加仓|全仓|清仓|买入|卖出|推荐买入|强烈推荐|必涨|翻倍|稳赚)"
-    ).unwrap();
+    let promo_re =
+        Regex::new(r"(?i)(建仓|加仓|全仓|清仓|买入|卖出|推荐买入|强烈推荐|必涨|翻倍|稳赚)")
+            .unwrap();
 
     let step1 = stock_code_re.replace_all(text, "[REDACTED]");
     let step2 = promo_re.replace_all(&step1, "[REDACTED]");

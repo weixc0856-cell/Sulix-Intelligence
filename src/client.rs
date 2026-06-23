@@ -64,12 +64,19 @@ impl LayeredCache {
     /// 写入缓存
     pub fn set(&self, key: String, data: String) {
         if let Ok(mut store) = self.store.write() {
-            let ttl = if key.starts_with("llm:") { 300 } else { self.default_ttl };
-            store.insert(key, CachedEntry {
-                data,
-                created_at: Instant::now(),
-                ttl_secs: ttl,
-            });
+            let ttl = if key.starts_with("llm:") {
+                300
+            } else {
+                self.default_ttl
+            };
+            store.insert(
+                key,
+                CachedEntry {
+                    data,
+                    created_at: Instant::now(),
+                    ttl_secs: ttl,
+                },
+            );
         }
     }
 
@@ -100,7 +107,12 @@ pub struct CircuitBreaker {
 
 impl CircuitBreaker {
     pub fn new(max_failures: u32, cooldown_secs: u64) -> Self {
-        Self { max_failures, cooldown_secs, failures: 0, last_failure: None }
+        Self {
+            max_failures,
+            cooldown_secs,
+            failures: 0,
+            last_failure: None,
+        }
     }
 
     /// 检查是否熔断
@@ -114,7 +126,9 @@ impl CircuitBreaker {
     }
 
     /// 记录成功（重置计数）
-    pub fn record_success(&mut self) { self.failures = 0; }
+    pub fn record_success(&mut self) {
+        self.failures = 0;
+    }
 
     /// 记录失败
     pub fn record_failure(&mut self) {
@@ -177,8 +191,12 @@ impl Default for RetryConfig {
 impl RetryConfig {
     /// 是否应该跳过重试
     pub fn should_skip_retry(&self, status: u16, is_llm: bool) -> bool {
-        if self.no_retry_codes.contains(&status) { return true; }
-        if is_llm && self.llm_no_retry_codes.contains(&status) { return true; }
+        if self.no_retry_codes.contains(&status) {
+            return true;
+        }
+        if is_llm && self.llm_no_retry_codes.contains(&status) {
+            return true;
+        }
         false
     }
 }
@@ -357,7 +375,7 @@ mod tests {
         let cfg = RetryConfig::default();
         assert!(cfg.should_skip_retry(401, false));
         assert!(cfg.should_skip_retry(403, false));
-        assert!(cfg.should_skip_retry(429, true));  // LLM only
+        assert!(cfg.should_skip_retry(429, true)); // LLM only
         assert!(!cfg.should_skip_retry(429, false)); // non-LLM passes
         assert!(!cfg.should_skip_retry(500, false)); // server error -> retry
     }

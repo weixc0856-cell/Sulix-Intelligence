@@ -42,6 +42,10 @@ enabled = true
 #   2 = 官方权威源（Public Domain，可公开引用）
 #   3 = 极客社区（群体智慧筛选）
 #   4 = 市场数据
+#
+# public 字段（默认 true）：
+#   false = 前端不显示该源的 attribution 链接，但 LLM 仍完全吸收
+#   内参学习源（layer=1）通常设为 false
 
 # 主权公共数据源示例
 [[sources]]
@@ -50,6 +54,7 @@ type = "rss"
 url = "https://www.federalregister.gov/api/v1/documents.rss?conditions[agencies][]=commerce-department&conditions[term]=semiconductor"
 category = "Regulatory Compliance"
 layer = 2
+public = true
 enabled = true
 
 [[sources]]
@@ -58,6 +63,7 @@ type = "rss"
 url = "https://hnrss.org/frontpage"
 category = "AI Competition"
 layer = 3
+public = true
 enabled = true
 
 [prompts]

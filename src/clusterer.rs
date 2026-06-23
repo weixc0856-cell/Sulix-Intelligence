@@ -198,6 +198,7 @@ pub async fn analyze_theme(
     api_key: &str,
     llm_config: &LlmConfig,
     language: &str,
+    prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<ThemeAnalysis> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
@@ -211,19 +212,31 @@ Maintain an objective, authoritative, analytical tone.
 Never censor, omit, or sugarcoat hard political facts (e.g. sanctions, tariffs, elections).
 Contextualize them into tangible industry metrics.
 
+[WRITING DISCIPLINE -- McKinsey Pyramid Principle]
+Apply the Pyramid Principle to every analytical field:
+1. BLUF (Bottom Line Up Front): The first sentence of each field (geopolitical_fact, supply_chain_impact, analysis_paragraph) MUST state the core conclusion directly.
+2. Support: After the conclusion, lay out supporting logic in descending order of importance.
+3. Forbidden: Do NOT open with "In a significant development...", "This week...", "As tensions escalate..." Open cold with the judgment.
+
 Output JSON Schema:
 {
   "fact_base": [
     {"evidence": "GLM-5.2 scores close to GPT-4o", "interpretation": "Open-source catching up to closed-source", "confidence": "Established-Fact"},
-    {"evidence": "Export controls restrict ASML shipments", "interpretation": "Semiconductor supply chain faces new constraints", "confidence": "Established-Fact"}
+    {"evidence": "SiO2 < 1nm => direct tunneling current > 100 A/cm2 by physics", "interpretation": "2nm node requires high-k dielectrics", "confidence": "First-Principles"}
   ],
   "signal_strength": 7,
   "bluf": "One-sentence conclusion (15 words max)",
-  "geopolitical_fact": "Objective summary of the political/regulatory event, including specific actors and countries involved.",
-  "supply_chain_impact": "Data-driven synthesis: how this event affects physical supply, compliance costs, or logistics damping.",
-  "analysis_paragraph": "This week multiple signals point in the same direction...",
+  "geopolitical_fact": "Situation-Complication-Resolution (exactly 3 sentences)",
+  "supply_chain_impact": "Situation-Complication-Resolution (exactly 3 sentences)",
+  "analysis_paragraph": "Conclusion-first paragraph with supporting evidence...",
   "connections": ["Related theme 1", "Related theme 2"]
 }
+
+[SITUATION-COMPLICATION-RESOLUTION] -- Required for geopolitical_fact and supply_chain_impact
+Each MUST be exactly 3 sentences:
+- Sentence 1 (Situation): The established baseline condition or prior state.
+- Sentence 2 (Complication): The disruptive event, policy shift, or tension that breaks the baseline.
+- Sentence 3 (Resolution): The resulting constraint, opportunity, or trajectory for the industry.
 
 signal_strength (GS three-scenario framework):
 - Base Scenario: 5-6
@@ -231,7 +244,16 @@ signal_strength (GS three-scenario framework):
 - Aggressive Scenario: 9-10
 - 1-4: noise or single-point event
 
-[OUTPUT RULE] Output ONLY valid JSON. Do NOT include any reasoning steps, assumptions, warnings, scenarios, or verification logic in the JSON fields. The fields `geopolitical_fact` and `supply_chain_impact` must be concise editorial analysis (2-3 sentences), not bullet lists or numbered steps."#;
+Evidence Level (Sulix Confidence Level -- 4 levels):
+- Established-Fact: Direct, verifiable evidence from authoritative sources.
+- First-Principles: No direct evidence required; conclusion flows from physical law, mathematical certainty, or economic necessity. Must cite the specific first principle.
+- Developing-Inference: Emerging but incomplete evidence.
+- Assertion-Rumor: Unverified claim, treat as hypothesis.
+
+[OUTPUT RULE] Output ONLY valid JSON."#;
+    let base_prompt = prompts
+        .and_then(|p| Some(p.get_analyze_theme(base_prompt)))
+        .unwrap_or(base_prompt);
     let system_prompt = if is_zh {
         format!("{}\n\n[CRITICAL COMPLIANCE]: All structural JSON values (strings) MUST be translated into high-density, editorial Traditional Chinese (繁體中文). Do NOT translate JSON keys. Ensure JSON structure remains unmodified.\nExport controls → 出口管制, supply chain → 供應鏈, semiconductor → 半導體, chip → 晶片, tariff → 關稅.", base_prompt)
     } else {
@@ -369,6 +391,7 @@ pub async fn challenge_theme(
     analysis: &ThemeAnalysis,
     api_key: &str,
     llm_config: &LlmConfig,
+    prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<(
     Vec<Assumption>,
     Option<AdverseScenario>,
@@ -379,25 +402,61 @@ pub async fn challenge_theme(
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
 
-    let system_prompt = r#"你是一个多疑的审查员（蓝军）。你的任务是挑战给定的判断，输出：
+    let system_prompt = r#"你是一个多疑的审查员（蓝军）。你的任务是挑战给定的判断，输出分析。
 
-1. 承重假设（load-bearing assumptions）：该判断依赖哪些前提？标注是否承重、证据强度
-2. 逆境情景（adverse scenario）：如果前提不成立，最坏的合理情景是什么？可观测的早期预警信号是什么？
-3. 待验证项（next tests）：要证伪/证实这个判断，需要看到什么具体数据？
+你运用以下三个强制框架进行审查：
 
-输出严格 JSON：
+### 框架1 — 老子《道德经》"反者道之动"辩证法
+任何技术趋势推至极端必然产生反向阻尼力：合规代价攀升、生态反弹力倍增。
+- 在逆境情景中必须识别"对立面反动特征"：某项技术普及 -> 同时导致另一材料供应链断裂
+- 评分当前趋势的"物极必反临界度"(1-10)，10分表示反向力已可观测
+
+### 框架2 — 亚马逊飞轮控制论
+识别该领域数据->收入->数据的正反馈飞轮结构：
+- 正反馈加速：什么因素在推动飞轮加速？
+- 负反馈减速：什么因素可能使飞轮减速或逆转？
+- 临界点：正反馈转为负反馈的转折点在哪？
+
+### 框架3 — MECE 金字塔结构强制
+- 承重假设必须 MECE，不得重叠或遗漏逻辑分支
+- 逆境情景必须包含半定量概率区间(Probability Range)和对冲边界(Hedging Boundary)
+- 待验证项必须包含具体数据源或指标及建议时间窗口
+
+输出严格 JSON，必须包含以下全部字段：
 {
   "assumptions": [
-    {"text": "假设内容", "load_bearing": true, "evidence_strength": "weak|moderate|strong"}
+    {"text": "假设内容", "load_bearing": true, "evidence_strength": "weak|moderate|strong", "category": "技术|政策|市场|供应链|金融"}
   ],
-  "adverse": {"scenario": "如果...则...", "early_warning": "可观测信号", "severity": "high|med|low"},
-  "next_tests": ["测试1", "测试2"]
+  "adverse": {
+    "scenario": "如果...则...（必须包含对立面反动特征描述）",
+    "opposite_reaction": "该趋势推向极致的反向反作用力是什么？",
+    "flywheel_risk": "飞轮在此情景下如何减速或逆转？",
+    "early_warning": "可观测的早期预警信号",
+    "severity": "high|med|low",
+    "probability_range": "例如 10-25%",
+    "hedging_boundary": "什么可观测阈值触发重新评估？"
+  },
+  "next_tests": [
+    {"test": "要证伪/证实的具体测试", "data_source": "建议数据源或指标", "time_window": "建议观察时间窗口"}
+  ],
+  "open_questions": ["当前无法回答但影响判断的关键问题"],
+  "flywheel_analysis": {
+    "positive_loop": "当前正反馈加速因素",
+    "negative_loop": "潜在负反馈减速因素",
+    "tipping_point": "正反馈转为负反馈的临界阈值"
+  },
+  "reversal_proximity": 7
 }
 
 证据强度标准：
 - strong: 多方确认的事实
 - moderate: 有依据但非确凿
-- weak: 推测或无证据"#;
+- weak: 推测或无证据
+
+MECE 原则：各假设之间不得有逻辑重叠或遗漏。禁止输出"待进一步分析"等模糊表述。"#;
+    let system_prompt = prompts
+        .and_then(|p| Some(p.get_challenge_theme(&system_prompt)))
+        .unwrap_or(system_prompt);
 
     let user_prompt = format!(
         "请挑战以下判断：\n\n标题: {}\n\n结论: {}\n\n影响: {}\n\n证据等级: {}\n\n信号强度: {}/10",
@@ -521,4 +580,75 @@ pub struct Summary {
     pub narrative: String,
     pub total_articles: usize,
     pub theme_count: usize,
+}
+
+/// 战略异动指数 (SVI) 权重
+const SVI_ENTITY_SURGE: f64 = 0.25;
+const SVI_SANCTION_SENSITIVITY: f64 = 0.25;
+const SVI_PATENT_MUTATION: f64 = 0.20;
+const SVI_SOURCE_CREDIBILITY: f64 = 0.15;
+const SVI_TEMPORAL_URGENCY: f64 = 0.15;
+
+/// 计算战略异动指数 (SVI)
+///
+/// 五维综合评分 0-10，取代粗糙的 single_strength >= 5 单维度触发。
+/// SVI >= 7 → 标准 Premium 触发，SVI >= 9 → Flash 紧急加更模式。
+///
+/// 当前实现使用 `signal_strength` 作为 SanctionSensitivity 和 PatentMutation 的代理。
+/// Phase 2 将接入 `EntitySanctionDb` 和 USPTO 专利突变检测以精确化这两个维度。
+pub fn calculate_svi(
+    analysis: &ThemeAnalysis,
+    theme: &Theme,
+    sources: &[crate::config::SourceConfig],
+) -> u8 {
+    // 1. EntitySurge: 同一 source 在主题 articles 中的出现密度
+    let article_count = theme.articles.len() as f64;
+    let mut source_counts: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for art in &theme.articles {
+        *source_counts.entry(art.source.as_str()).or_insert(0) += 1;
+    }
+    let max_repeats = source_counts.values().copied().max().unwrap_or(1) as f64;
+    let entity_surge = if article_count >= 3.0 {
+        (max_repeats / article_count).min(1.0)
+    } else {
+        0.3
+    };
+
+    // 2. SourceCredibility: 取 articles 中最低 layer 值（layer 越低越权威）
+    let best_layer = theme
+        .articles
+        .iter()
+        .map(|a| {
+            sources
+                .iter()
+                .find(|s| s.name == a.source)
+                .map(|s| s.layer)
+                .unwrap_or(3)
+        })
+        .min()
+        .unwrap_or(3);
+    let source_credibility = match best_layer {
+        1 => 1.0,
+        2 => 0.7,
+        3 => 0.4,
+        _ => 0.2,
+    };
+
+    // 3. TemporalUrgency: signal_strength 已包含 LLM 对时效性的评估
+    let temporal_urgency = (analysis.signal_strength as f64) / 10.0;
+
+    // 4. SanctionSensitivity: Phase 1 用 signal_strength 代理，Phase 2 接入 EntitySanctionDb
+    let sanction_sensitivity = temporal_urgency;
+
+    // 5. PatentMutation: Phase 1 用 signal_strength 代理，Phase 2 接入 USPTO 突变检测
+    let patent_mutation = (analysis.signal_strength as f64) / 10.0;
+
+    let score = entity_surge * SVI_ENTITY_SURGE
+        + sanction_sensitivity * SVI_SANCTION_SENSITIVITY
+        + patent_mutation * SVI_PATENT_MUTATION
+        + source_credibility * SVI_SOURCE_CREDIBILITY
+        + temporal_urgency * SVI_TEMPORAL_URGENCY;
+
+    ((score * 10.0).round() as u8).min(10).max(0)
 }

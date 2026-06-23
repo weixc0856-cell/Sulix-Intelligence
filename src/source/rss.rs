@@ -1,4 +1,4 @@
-﻿//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
+//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
 //!
 //! 支持：
 //! - 正向关键词过滤（keywords）
@@ -66,22 +66,45 @@ async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>
 
 /// 抓取单个 RSS 源并输出标准化 RawSignal
 pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
-    // SEC 需要含联系邮箱的 User-Agent，否则返回 403
-    let sec_ua = if config.url.contains("sec.gov") {
-        "SulixIntel/2.0 (weixc0856@gmail.com)".to_string()
+    // 使用全局 HTTP Client（复用连接池，统一 User-Agent）
+    // SEC 需要含联系邮箱的 User-Agent
+    let client = if config.url.contains("sec.gov") {
+        reqwest::Client::builder()
+            .user_agent("SulixIntel/3.0 (weixc0856@gmail.com)")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?
     } else {
-        "SulixIntel/2.0 (Global Pipeline)".to_string()
+        crate::client::global_client().clone()
     };
-    let client = reqwest::Client::builder()
-        .user_agent(&sec_ua)
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+
+    // Phase 3: 尝试从缓存读取
+    let cache = crate::client::global_cache();
+    let cache_key = format!("rss:{}", config.url);
+    if let Some(cached) = cache.get(&cache_key) {
+        log::debug!("📦 RSS 缓存命中 [{}]", config.name);
+        // 缓存命中，直接解析
+        let bytes = cached.into_bytes();
+        return parse_feed_bytes(&bytes, config, date_range);
+    }
 
     log::debug!("抓取 RSS [{}] → {}", config.name, config.url);
 
     let bytes = fetch_with_retry(&client, &config.url).await?;
-    let feed = feed_rs::parser::parse(Cursor::new(&bytes))?;
+    // 写入缓存（RSS 的 TTL 由 LayeredCache 默认 60s 控制）
+    if let Ok(text) = String::from_utf8(bytes.clone()) {
+        cache.set(cache_key, text);
+    }
 
+    parse_feed_bytes(&bytes, config, date_range)
+}
+
+/// 解析 RSS feed 字节为 RawSignal 列表
+fn parse_feed_bytes(
+    bytes: &[u8],
+    config: &SourceConfig,
+    date_range: &str,
+) -> Result<Vec<RawSignal>> {
+    let feed = feed_rs::parser::parse(Cursor::new(bytes))?;
     let cutoff = Utc::now() - parse_date_range(date_range);
     let source_id = get_source_id(config);
 

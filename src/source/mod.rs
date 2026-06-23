@@ -3,7 +3,8 @@
 //! dispatch_source() 根据配置路由到对应的适配器。
 //! 不使用 trait（避免 async_trait 依赖），直接用函数分发。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset};
@@ -43,4 +44,45 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
         "uspto" => uspto::fetch_patents(config, date_range).await,
         other => Err(anyhow::anyhow!("未知源类型: {}", other)),
     }
+}
+
+/// 构建可展示 attribution 链接的源名称集合
+///
+/// 仅包含 `show_attribution() == true` 的源（public == true 且 layer != 1）。
+/// 用于前端渲染时过滤内参源和私有源。
+pub fn attributable_source_names(sources: &[SourceConfig]) -> HashSet<String> {
+    sources
+        .iter()
+        .filter(|s| s.show_attribution())
+        .map(|s| s.name.clone())
+        .collect()
+}
+
+/// 从 Vault 的 .flash/ 目录加载人工注入的特殊专题
+///
+/// Code Review 防御性设计:
+/// - 只读取 .json 文件，过滤 .DS_Store/.trash 等临时文件
+/// - 解析失败的文件被跳过而非崩溃
+/// - start_date/end_date 用于控制专题有效期（Phase 3 实现日期过滤）
+pub fn load_special_topics(vault_path: &str) -> Vec<crate::premium::SpecialTopic> {
+    let flash_path = Path::new(vault_path).join(".flash");
+    if !flash_path.exists() {
+        return vec![];
+    }
+    let mut topics = vec![];
+    if let Ok(entries) = std::fs::read_dir(&flash_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // 只读取 .json 文件，防止 Obsidian 临时文件导致反序列化崩溃
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(topic) = serde_json::from_str::<crate::premium::SpecialTopic>(&content) {
+                    topics.push(topic);
+                }
+            }
+        }
+    }
+    topics
 }

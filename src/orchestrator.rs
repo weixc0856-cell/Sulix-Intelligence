@@ -16,12 +16,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::belief_engine::BeliefUpdate;
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
+use crate::decision_engine::Decision;
 use crate::premium::PremiumReport;
 use crate::question_engine::QuestionMatch;
-use crate::belief_engine::BeliefUpdate;
-use crate::decision_engine::Decision;
 use crate::source::RawSignal;
 
 // ===== 全局图执行上下文（黑板模式）=====
@@ -177,18 +177,22 @@ impl DiGraph {
             }
 
             // 执行当前节点
-            let node = self.nodes.get(&current).ok_or_else(|| {
-                anyhow::anyhow!("GraphFlow: node '{}' not found", current)
-            })?;
+            let node = self
+                .nodes
+                .get(&current)
+                .ok_or_else(|| anyhow::anyhow!("GraphFlow: node '{}' not found", current))?;
             log::info!("🧩 GraphFlow: 执行节点 {}", node.name());
             node.execute(ctx)?;
             self.executed.insert(current.clone());
 
             // 记录置信度历史（组 3 死锁保护）
             if !ctx.current_analyses.is_empty() {
-                let avg: f64 = ctx.current_analyses.iter()
+                let avg: f64 = ctx
+                    .current_analyses
+                    .iter()
                     .map(|a| a.signal_strength as f64)
-                    .sum::<f64>() / ctx.current_analyses.len() as f64;
+                    .sum::<f64>()
+                    / ctx.current_analyses.len() as f64;
                 ctx.confidence_history.push(avg);
             }
 
@@ -205,7 +209,11 @@ impl DiGraph {
                             // 组 3 死锁保护：轮次限制
                             ctx.loop_counter += 1;
                             if ctx.loop_counter > ctx.max_loops {
-                                log::warn!("🛑 GraphFlow: 蓝队回退超限 ({}/{})", ctx.loop_counter, ctx.max_loops);
+                                log::warn!(
+                                    "🛑 GraphFlow: 蓝队回退超限 ({}/{})",
+                                    ctx.loop_counter,
+                                    ctx.max_loops
+                                );
                                 return Ok(());
                             }
                             // 组 3 死锁保护：置信度停滞检测
@@ -214,7 +222,11 @@ impl DiGraph {
                                 let last = ctx.confidence_history[len - 1];
                                 let prev = ctx.confidence_history[len - 2];
                                 if (last - prev).abs() < 0.05_f64 {
-                                    log::warn!("🛑 GraphFlow: 置信度停滞 ({} -> {})，触发熔断", prev, last);
+                                    log::warn!(
+                                        "🛑 GraphFlow: 置信度停滞 ({} -> {})，触发熔断",
+                                        prev,
+                                        last
+                                    );
                                     return Ok(());
                                 }
                             }
@@ -242,7 +254,9 @@ pub struct ClusterNode {
     pub name: &'static str,
 }
 impl GraphNode for ClusterNode {
-    fn name(&self) -> &'static str { self.name }
+    fn name(&self) -> &'static str {
+        self.name
+    }
     fn execute(&self, _ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 Cluster: 主题聚类与分析（由 main.rs 外部驱动）");
         Ok(())
@@ -254,7 +268,9 @@ pub struct BlueTeamNode {
     pub name: &'static str,
 }
 impl GraphNode for BlueTeamNode {
-    fn name(&self) -> &'static str { self.name }
+    fn name(&self) -> &'static str {
+        self.name
+    }
     fn execute(&self, _ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 BlueTeam: 蓝军验证（条件路由由 Edge condition 驱动）");
         Ok(())
@@ -266,7 +282,9 @@ pub struct QENode {
     pub name: &'static str,
 }
 impl GraphNode for QENode {
-    fn name(&self) -> &'static str { self.name }
+    fn name(&self) -> &'static str {
+        self.name
+    }
     fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 QE: Question Engine");
         if let Some(questions) = &ctx.config.questions {
@@ -275,7 +293,11 @@ impl GraphNode for QENode {
                 .build()?;
             for analysis in &ctx.current_analyses {
                 if let Ok(matches) = crate::question_engine::match_questions(
-                    analysis, &questions.questions, &client, &ctx.api_key, &ctx.config.llm
+                    analysis,
+                    &questions.questions,
+                    &client,
+                    &ctx.api_key,
+                    &ctx.config.llm,
                 ) {
                     ctx.question_matches.push(matches);
                 }
@@ -290,7 +312,9 @@ pub struct BENode {
     pub name: &'static str,
 }
 impl GraphNode for BENode {
-    fn name(&self) -> &'static str { self.name }
+    fn name(&self) -> &'static str {
+        self.name
+    }
     fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 BE: Belief Engine");
         for matches in &ctx.question_matches {
@@ -306,7 +330,9 @@ pub struct DENode {
     pub name: &'static str,
 }
 impl GraphNode for DENode {
-    fn name(&self) -> &'static str { self.name }
+    fn name(&self) -> &'static str {
+        self.name
+    }
     fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 DE: Decision Engine");
         let decisions = crate::decision_engine::evaluate_decisions(&ctx.belief_updates, &[]);
@@ -326,7 +352,9 @@ pub fn blue_team_edge(next: &str) -> ConditionEdgeFn {
     let next = next.to_string();
     Arc::new(move |ctx: &GraphContext| {
         let any_weak = ctx.current_analyses.iter().any(|a| {
-            a.assumptions.iter().any(|ass| ass.load_bearing && ass.evidence_strength == "weak")
+            a.assumptions
+                .iter()
+                .any(|ass| ass.load_bearing && ass.evidence_strength == "weak")
         });
         if any_weak {
             let cluster_loops = ctx.loop_counters.get("ClusterNode").copied().unwrap_or(0);
@@ -344,9 +372,7 @@ mod tests {
     use crate::config::Config;
 
     fn make_test_config() -> Config {
-        Config::from_file("config.toml").unwrap_or_else(|_| {
-            panic!("config.toml 不存在或不合法")
-        })
+        Config::from_file("config.toml").unwrap_or_else(|_| panic!("config.toml 不存在或不合法"))
     }
 
     #[test]
@@ -371,8 +397,16 @@ mod tests {
         graph.add_node(Box::new(QENode { name: "QE" }));
         graph.add_node(Box::new(DENode { name: "DE" }));
 
-        graph.add_edge("Cluster", "QE", Arc::new(|_| RouteResult::ProceedTo("QE".into())));
-        graph.add_edge("QE", "DE", Arc::new(|_| RouteResult::ProceedTo("DE".into())));
+        graph.add_edge(
+            "Cluster",
+            "QE",
+            Arc::new(|_| RouteResult::ProceedTo("QE".into())),
+        );
+        graph.add_edge(
+            "QE",
+            "DE",
+            Arc::new(|_| RouteResult::ProceedTo("DE".into())),
+        );
 
         graph.set_entry("Cluster");
         graph.run(&mut ctx).unwrap();

@@ -45,12 +45,6 @@ pub struct AnalyzedArticle {
     pub arbitration: String,
     #[serde(default)]
     pub evidence_type: String,
-    #[serde(default)]
-    pub capital_score: u8,
-    #[serde(default)]
-    pub policy_score: u8,
-    #[serde(default)]
-    pub risk_score: u8,
 }
 
 /// 按 category 将文章分组
