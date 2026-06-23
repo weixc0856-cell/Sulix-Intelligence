@@ -25,6 +25,9 @@ pub struct Article {
     pub wiki_summary: Option<String>,
     #[serde(default)]
     pub evidence_type: String,
+    /// 是否为内参学习源，前端不展示溯源链接
+    #[serde(default)]
+    pub is_internal: bool,
 }
 
 // ===== 正文提取（P0） =====

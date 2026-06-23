@@ -26,85 +26,39 @@ temperature = 0.3
 # 日报输出目录
 vault_path = "./DailyBrief"
 
-[dedup]
-window_hours = 48
-title_similarity_threshold = 0.85
-
 [storage]
 data_dir = "./data"
 
 # ===== Phase A: Scan Agent =====
 [scan_agent]
-# 启用后，LLM 分析前先做轻量初筛，噪音/广告/PR 稿直接跳过
+# 启用后，LLM 分析前先做轻量初筛
 enabled = true
-# 重要性阈值：≤此值的文章跳过（1-3 噪音，4+ 保留）
-threshold = 3
 
 # ===== RSS 源 =====
 # 在此添加你关注的 RSS 源。每项一个 [[sources]] 块。
 #
-# layer 字段（预留）：
-#   1 = Signal Source（信号源）— 官方博客，信息最准最难读
-#   2 = Curated Source（筛选源）— 已有人替你过滤，质量最高
-#   3 = Community Source（社区源）— 先于媒体爆发
-#   4 = Market Source（市场源）— 比新闻更真实
+# layer 字段：
+#   1 = 内参学习（仅后台 LLM 认知校准，前端不展示溯源链接）
+#   2 = 官方权威源（Public Domain，可公开引用）
+#   3 = 极客社区（群体智慧筛选）
+#   4 = 市场数据
+
+# 主权公共数据源示例
+[[sources]]
+name = "US Federal Register - Technology Controls"
+type = "rss"
+url = "https://www.federalregister.gov/api/v1/documents.rss?conditions[agencies][]=commerce-department&conditions[term]=semiconductor"
+category = "Regulatory Compliance"
+layer = 2
+enabled = true
 
 [[sources]]
-name = "Hacker News"
+name = "Hacker News - Front Page"
 type = "rss"
 url = "https://hnrss.org/frontpage"
-category = "AI"
-layer = 2
+category = "AI Competition"
+layer = 3
 enabled = true
-
-[[sources]]
-name = "Simon Willison"
-type = "rss"
-url = "https://simonwillison.net/atom/everything/"
-category = "AI"
-layer = 2
-enabled = true
-
-# [[sources]]
-# name = "YT Fireship"
-# type = "rss"
-# url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrdU27mavElYgt108A"
-# category = "AI"
-# layer = 2
-# enabled = false
-
-# [[sources]]
-# name = "Stratechery"
-# type = "rss"
-# url = "https://stratechery.com/feed/"
-# category = "创业"
-# layer = 2
-# enabled = false
-
-# [[sources]]
-# name = "东方财富-要闻"
-# type = "rss"
-# url = "https://rsshub.app/eastmoney/news"
-# category = "A股"
-# layer = 2
-# enabled = false
-
-# [[sources]]
-# name = "财联社-电报"
-# type = "rss"
-# url = "https://rsshub.app/cls/telegraph"
-# category = "A股"
-# layer = 3
-# enabled = false
-# # 警告：此源单日数百条，必须搭配 fetcher.rs 的关键词预过滤使用
-
-# [[sources]]
-# name = "财联社-政策频道"
-# type = "rss"
-# url = "https://rsshub.app/cls/channels/1075"
-# category = "政策"
-# layer = 1
-# enabled = false
 
 [prompts]
 # 自定义你的分析 prompt

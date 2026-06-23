@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::config::SourceConfig;
 
 pub mod rss;
+pub mod uspto;
 
 /// 统一信号结构（RSSHub DataItem 对应，含可选的数字指标字段）
 #[derive(Debug, Clone, Serialize)]
@@ -30,12 +31,16 @@ pub struct RawSignal {
     /// Layer 2 敏感标记：true = 需要翻译车间洗白
     #[serde(default)]
     pub requires_sanitization: bool,
+    /// 是否为内参学习源（layer == 1）
+    /// 内参源仅用于后台 LLM 认知校准，前端不展示溯源链接
+    pub is_internal: bool,
 }
 
 /// 分发到对应适配器并执行抓取
 pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
     match config.source_type.as_str() {
         "rss" => rss::fetch_rss(config, date_range).await,
+        "uspto" => uspto::fetch_patents(config, date_range).await,
         other => Err(anyhow::anyhow!("未知源类型: {}", other)),
     }
 }

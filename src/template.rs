@@ -2,6 +2,10 @@
 //!
 //! 使用 Rust 原生 .replace()，零运行时开销。
 //! 不支持逻辑分支/循环——{{TOPICS}} 由调用方预先渲染好传入。
+//!
+//! 编译器静态分析无法追踪完整管线路径中的函数调用。
+
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 

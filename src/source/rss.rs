@@ -1,4 +1,4 @@
-//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
+﻿//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
 //!
 //! 支持：
 //! - 正向关键词过滤（keywords）
@@ -66,8 +66,14 @@ async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>
 
 /// 抓取单个 RSS 源并输出标准化 RawSignal
 pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
+    // SEC 需要含联系邮箱的 User-Agent，否则返回 403
+    let sec_ua = if config.url.contains("sec.gov") {
+        "SulixIntel/2.0 (weixc0856@gmail.com)".to_string()
+    } else {
+        "SulixIntel/2.0 (Global Pipeline)".to_string()
+    };
     let client = reqwest::Client::builder()
-        .user_agent("Sulix-Intel/0.1")
+        .user_agent(&sec_ua)
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
@@ -151,6 +157,7 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
                 category: config.category.clone(),
                 metrics: None,
                 requires_sanitization: false,
+                is_internal: config.is_internal(),
             })
         })
         .collect();

@@ -101,6 +101,7 @@ async fn main() -> Result<()> {
             category: s.category,
             wiki_summary: None,
             evidence_type: String::new(),
+            is_internal: s.is_internal,
         })
         .collect();
     let mut new_articles = db.dedup_and_insert(&articles)?;
@@ -266,7 +267,6 @@ async fn main() -> Result<()> {
     // === 目录路由写入（/en/ = 英文, /zh/ = 繁体中文）===
     let report_dir = PathBuf::from(&config.output.vault_path);
     let en_root = report_dir.join("en");
-    let zh_root = report_dir.join("zh");
     let month_dir = en_root.join(&today[..7]);
 
     // 英文日详情
@@ -333,7 +333,11 @@ async fn main() -> Result<()> {
     }
 
     // 记录到数据库（只记计数，不存 Markdown 全文）
-    db.record_report(&today, &format!("Daily brief - {} topics", analyses.len()), total_new)?;
+    db.record_report(
+        &today,
+        &format!("Daily brief - {} topics", analyses.len()),
+        total_new,
+    )?;
 
     // Decay Agent 记忆墓地
     if let Some(ref grave_config) = config.graveyard {
@@ -423,7 +427,11 @@ async fn main() -> Result<()> {
     if !zh_entries.is_empty() {
         if let Ok(zh_archive) = renderer::render_archive_dashboard(&zh_entries) {
             fs::write(zh_root.join("index.html"), &zh_archive)?;
-            log::info!("📚 中文看板: {} 条 → {}", zh_entries.len(), zh_root.join("index.html").display());
+            log::info!(
+                "📚 中文看板: {} 条 → {}",
+                zh_entries.len(),
+                zh_root.join("index.html").display()
+            );
         }
     }
 

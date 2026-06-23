@@ -312,6 +312,7 @@ mod tests {
             category: "AI".into(),
             wiki_summary: None,
             evidence_type: String::new(),
+            is_internal: false,
         }
     }
 

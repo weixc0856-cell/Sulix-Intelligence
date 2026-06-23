@@ -67,7 +67,6 @@ pub struct SourceConfig {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(rename = "type")]
-    #[allow(dead_code)]
     pub source_type: String,
     pub url: String,
     pub category: String,
@@ -77,12 +76,19 @@ pub struct SourceConfig {
     /// 反向黑名单（可选）：标题/摘要匹配任一即熔断丢弃
     #[serde(default)]
     pub exclude_keywords: Option<Vec<String>>,
-    /// 信息源层级：1=Signal, 2=Curated, 3=Community, 4=Market（预留）
+    /// 信息源层级：1=内参学习（不挂公开链接）, 2=官方权威源, 3=极客社区, 4=市场数据
     #[serde(default = "default_layer")]
-    #[allow(dead_code)]
     pub layer: u8,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+}
+
+impl SourceConfig {
+    /// 是否为内参学习源（layer == 1）
+    /// 内参源仅用于后台 LLM 认知校准，前端不展示溯源链接
+    pub fn is_internal(&self) -> bool {
+        self.layer == 1
+    }
 }
 
 fn default_layer() -> u8 {

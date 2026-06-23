@@ -193,6 +193,7 @@ mod tests {
                 category: "AI".into(),
                 metrics: None,
                 requires_sanitization: false,
+                is_internal: false,
             },
             RawSignal {
                 id: "abc".into(),
@@ -206,6 +207,7 @@ mod tests {
                 category: "AI".into(),
                 metrics: None,
                 requires_sanitization: false,
+                is_internal: false,
             },
         ];
         dedup(&mut signals);

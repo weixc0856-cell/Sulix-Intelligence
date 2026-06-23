@@ -7,6 +7,11 @@
 //!
 //! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
 //! 所有输出数据集中到 TemplateData，由 template::render() 渲染
+//!
+//! 编译器静态分析无法追踪完整管线路径中的函数调用，
+//! 这些函数在 main.rs 的非短路路径中被调用。
+
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 
