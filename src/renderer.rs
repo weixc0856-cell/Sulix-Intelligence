@@ -603,6 +603,8 @@ pub fn render_html_report(
     attributable_sources: &[crate::config::SourceConfig],
     flash_headline: Option<&str>,
     language: &str,
+    source_statuses: &[(String, bool, usize)],
+    change_summary: Option<&crate::clusterer::ChangeSummary>,
 ) -> Result<String> {
     let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
@@ -724,6 +726,82 @@ pub fn render_html_report(
         "color:#a3a3a3"
     };
 
+    // Change Summary 区块
+    let change_html = match change_summary {
+        Some(cs) => {
+            let mut h = String::from(
+                r#"<div style="border-left:3px solid #2563eb;padding:0.5rem 0.75rem;margin-bottom:0.75rem;background:#fafafa;font-family:'JetBrains Mono',monospace;font-size:0.75rem">"#,
+            );
+            if cs.conflicts.is_empty() && cs.new_signals.is_empty() {
+                h.push_str(&format!(
+                    r#"<span style="color:#16a34a">✓ 无异动 — {} 条信号强化既有判断</span>"#,
+                    cs.no_change_count
+                ));
+            } else {
+                if !cs.conflicts.is_empty() {
+                    h.push_str(&format!(r#"<div style="color:#dc2626;margin-bottom:0.25rem">⚡ {} 条信号与既有判断冲突</div>"#, cs.conflicts.len()));
+                    for c in &cs.conflicts {
+                        h.push_str(&format!(r#"<div style="padding-left:0.75rem;font-size:0.6875rem;color:#525252">✗ <strong>{}</strong>: {}</div>"#, html_escape(&c.topic), html_escape(&c.today_signal)));
+                    }
+                }
+                if !cs.new_signals.is_empty() {
+                    h.push_str(&format!(
+                        r#"<div style="color:#2563eb;margin-top:0.25rem">★ {} 条新信号: {}</div>"#,
+                        cs.new_signals.len(),
+                        cs.new_signals
+                            .iter()
+                            .map(|s| html_escape(s))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if cs.no_change_count > 0 {
+                    h.push_str(&format!(r#"<div style="color:#a3a3a3;margin-top:0.25rem">○ {} 条不改变当前判断</div>"#, cs.no_change_count));
+                }
+            }
+            h.push_str("</div>");
+            h
+        }
+        None => String::new(),
+    };
+
+    // Source Health 区块
+    let source_health_html = if source_statuses.is_empty() {
+        String::new()
+    } else {
+        let (mut healthy, mut degraded, mut dead): (Vec<&str>, Vec<&str>, Vec<&str>) =
+            (vec![], vec![], vec![]);
+        for (name, ok, count) in source_statuses {
+            if !ok {
+                dead.push(name);
+            } else if *count == 0 {
+                dead.push(name);
+            } else if *count <= 2 {
+                degraded.push(name);
+            } else {
+                healthy.push(name);
+            }
+        }
+        let mut html = String::from(
+            r#"<div style="margin-top:0.75rem;padding-top:0.375rem;border-top:1px solid #e5e5e5;font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3">▸ SOURCE HEALTH "#,
+        );
+        if !dead.is_empty() {
+            html.push_str(&format!(
+                r#"<span style="color:#dc2626">✗ {}无数据</span> "#,
+                dead.join("·")
+            ));
+        }
+        if !degraded.is_empty() {
+            html.push_str(&format!(
+                r#"<span style="color:#ca8a04">△ {}低流量</span> "#,
+                degraded.join("·")
+            ));
+        }
+        html.push_str(&format!("✓ {}源正常", healthy.len()));
+        html.push_str("</div>");
+        html
+    };
+
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="{}">
@@ -749,6 +827,7 @@ pub fn render_html_report(
 <h1 style="font-family:'JetBrains Mono',monospace;font-size:1.25rem;font-weight:700;color:#171717;margin:0">今日信号</h1>
 <span style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;color:#a3a3a3">{} · {} 条</span>
 </div>
+{}
 <div>{}</div>
 {}
 {}
@@ -761,6 +840,8 @@ pub fn render_html_report(
 <div style="display:flex;flex-wrap:wrap;gap:0.375rem;margin-bottom:0.75rem">{}</div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3;line-height:1.5;margin:0">* Sulix operates under Fair Use. Data from publicly available primary documents.</p>
 </div>
+{}
+
 <div style="margin-top:1rem;padding-top:0.5rem;border-top:1px solid #e5e5e5;font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3">Sulix.Intel · intel.getsulix.com · Substack · GitHub · MIT · Generated {}</div>
 </footer>
 </body>
@@ -769,11 +850,13 @@ pub fn render_html_report(
         flash,
         en_href, en_s, zh_href, zh_s,
         d, indexed.len(),
+        change_html,
         signals_html,
         flash_headline.map(|_| format!(r#"<div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #e5e5e5;display:flex;gap:1rem;font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3"><span>{} 条信号</span><span style="color:#dc2626">🔴 Flash</span></div>"#, indexed.len())).unwrap_or_default(),
         cal_html,
         if explicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No explicit citations</span>".into() } else { explicit_links.join("") },
         if implicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No implicit sources</span>".into() } else { implicit_links.join("") },
+        source_health_html,
         chrono::Local::now().format("%Y-%m-%d %H:%M UTC"),
     );
 

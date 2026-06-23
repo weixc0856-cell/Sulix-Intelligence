@@ -13,10 +13,26 @@ use serde::Serialize;
 
 use crate::source::RawSignal;
 
+/// 运行管线（使用默认去重阈值 0.75）
 pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
     sanitize_all(signals);
     compliance_filter_all(signals);
-    dedup(signals);
+    dedup(signals, 0.75);
+    post_process(signals);
+    Ok(())
+}
+
+/// 运行管线（使用配置的去重阈值）
+pub fn run_pipeline_with_config(
+    signals: &mut Vec<RawSignal>,
+    dedup_config: Option<&crate::config::DedupConfig>,
+) -> Result<()> {
+    let threshold = dedup_config
+        .map(|c| c.title_similarity_threshold)
+        .unwrap_or(0.75);
+    sanitize_all(signals);
+    compliance_filter_all(signals);
+    dedup(signals, threshold);
     post_process(signals);
     Ok(())
 }
@@ -194,7 +210,7 @@ fn sanitize_html_structure(html: &str) -> String {
     result.trim().to_string()
 }
 
-fn dedup(signals: &mut Vec<RawSignal>) {
+fn dedup(signals: &mut Vec<RawSignal>, threshold: f64) {
     let mut seen_urls: HashSet<String> = HashSet::new();
     let mut seen_titles: Vec<String> = Vec::new();
     signals.retain(|signal| {
@@ -203,7 +219,7 @@ fn dedup(signals: &mut Vec<RawSignal>) {
         }
         let title_lower = signal.title.to_lowercase();
         for existing in &seen_titles {
-            if title_similarity(existing, &title_lower) > 0.75 {
+            if title_similarity(existing, &title_lower) > threshold {
                 return false;
             }
         }
@@ -296,7 +312,7 @@ mod tests {
                 is_internal: false,
             },
         ];
-        dedup(&mut signals);
+        dedup(&mut signals, 0.75);
         assert_eq!(signals.len(), 1);
     }
 }

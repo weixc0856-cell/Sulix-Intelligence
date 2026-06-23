@@ -259,7 +259,7 @@ Output json. 输出严格 JSON 数组，每项格式：
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clusterer::{ThemeAnalysis, AdverseScenario};
+    use crate::clusterer::{AdverseScenario, ThemeAnalysis};
 
     #[test]
     fn test_semantic_relation_deserialization() {

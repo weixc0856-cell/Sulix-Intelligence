@@ -169,7 +169,7 @@ fn build_scan_prompt_v11(
 
 当前领域: {category}（第 {batch}/{total} 批，共 {n} 篇）
 
-输出严格 JSON：
+Output json only. 输出严格 JSON 格式：
 {{"articles":[
   {{"title":"原文标题","importance":7,"relevance":"Structural Shift","time_horizon":"短期","action":"观察","confidence":"低","judgment":"一句话判断（10-20字）"}}
 ]}}

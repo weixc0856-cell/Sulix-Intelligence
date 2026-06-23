@@ -14,9 +14,10 @@ const { title = 'Sulix.Intel', description = 'Geopolitical Tech Intelligence Bri
   <meta name="description" content={description} />
   <meta property="og:site_name" content="Sulix Intelligence" />
   <meta name="twitter:card" content="summary_large_image" />
+  <link rel="stylesheet" href="/design.css">
   <style>
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fcfcfc; color: #111; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; }
+    *. { box-sizing: border-box; }
     a { text-decoration: none; color: inherit; }
     a:hover { text-decoration: underline; }
     .font-mono { font-family: 'JetBrains Mono', 'Courier New', monospace; }
@@ -25,14 +26,16 @@ const { title = 'Sulix.Intel', description = 'Geopolitical Tech Intelligence Bri
 </head>
 <body>
   <!-- Block A: 顶栏导航 -->
-  <header style="border-bottom:1px solid #e5e5e5;background:#fff">
-    <div class="container" style="height:3rem;display:flex;align-items:center;justify-content:space-between">
-      <a href="/" style="display:flex;align-items:center;gap:0.5rem">
-        <span style="background-color:#e3120b;color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.75rem;padding:0.125rem 0.375rem;border-radius:0.125rem">i</span>
-        <span class="font-mono" style="font-weight:700;font-size:0.9375rem;color:#171717">Sulix.Intel</span>
+  <header class="border-b border-neutral-100 bg-white">
+    <div class="container flex items-center justify-between" style="height:3rem">
+      <a href="/" class="flex items-center gap-2">
+        <span class="bg-[#e3120b] text-white font-mono font-bold text-xs px-1 py-0.5 rounded-sm">i</span>
+        <span class="font-mono font-bold text-neutral-900" style="font-size:0.9375rem">Sulix.Intel</span>
       </a>
-      <nav style="display:flex;align-items:center;gap:0.75rem">
-        <a href="https://sulix.substack.com/subscribe" target="_blank" style="background-color:#e3120b;color:#fff;font-family:'JetBrains Mono',monospace;font-size:0.625rem;font-weight:600;padding:0.25rem 0.5rem;border-radius:0.125rem;text-transform:uppercase;letter-spacing:0.05em">Subscribe →</a>
+      <nav class="flex items-center gap-3">
+        <a href="/research" class="font-mono text-xs text-neutral-400 uppercase tracking-wider">Research</a>
+        <a href="/memory" class="font-mono text-xs text-neutral-400 uppercase tracking-wider">Memory</a>
+        <a href="https://sulix.substack.com/subscribe" target="_blank" class="bg-[#e3120b] text-white font-mono text-xs font-semibold px-2 py-1 rounded-sm uppercase tracking-wider">Subscribe →</a>
       </nav>
     </div>
   </header>
@@ -40,11 +43,11 @@ const { title = 'Sulix.Intel', description = 'Geopolitical Tech Intelligence Bri
     <slot />
   </main>
   <!-- Block C: 底座溯源 -->
-  <footer class="container" style="padding-bottom:2rem;border-top:1px solid #e5e5e5;padding-top:1rem">
-    <p class="font-mono" style="font-size:0.5625rem;color:#a3a3a3;line-height:1.5;margin:0">
+  <footer class="container" style="padding:1rem 1rem 2rem;border-top:1px solid #e5e5e5;margin-top:1rem">
+    <p class="font-mono text-xs text-neutral-400" style="line-height:1.5;margin:0">
       * Sulix operates under Fair Use for independent research. Data sourced from publicly available primary documents.
     </p>
-    <p class="font-mono" style="font-size:0.5625rem;color:#a3a3a3;margin-top:0.5rem">
+    <p class="font-mono text-xs text-neutral-400 mt-2">
       Sulix.Intel · intel.getsulix.com · Substack · GitHub · MIT
     </p>
   </footer>

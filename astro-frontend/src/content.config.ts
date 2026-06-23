@@ -20,4 +20,25 @@ const posts = defineCollection({
   }),
 });
 
-export const collections = { posts };
+const reports = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: '../content/reports' }),
+  schema: z.object({
+    title: z.string(),
+    subtitle: z.string().optional(),
+    date: z.string(),
+    status: z.enum(['published', 'draft']),
+    tier: z.enum(['free', 'premium', 'enterprise']),
+    price_usd: z.number(),
+    slug: z.string(),
+    summary: z.string(),
+    tags: z.array(z.string()).optional(),
+    pages: z.number().optional(),
+    word_count: z.number().optional(),
+    has_sample: z.boolean().optional(),
+    buy_url: z.string().optional(),
+    author: z.string().optional(),
+    sources: z.array(z.string()).optional(),
+  }),
+});
+
+export const collections = { posts, reports };

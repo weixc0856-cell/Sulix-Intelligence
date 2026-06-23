@@ -176,11 +176,13 @@ body {{
 
 #[allow(dead_code)]
 pub const LAYOUT_CONTAINER: &str = "\
+.container { max-width: 72rem; margin: 0 auto; padding: 0 1rem; } \
 .max-w-5xl { max-width: 64rem; } \
 .max-w-4xl { max-width: 56rem; } \
 .max-w-3xl { max-width: 48rem; } \
 .mx-auto { margin-left: auto; margin-right: auto; } \
 .px-4 { padding-left: 1rem; padding-right: 1rem; } \
+.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; } \
 .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; } \
 .py-12 { padding-top: 3rem; padding-bottom: 3rem; } \
 .pt-8 { padding-top: 2rem; } \
@@ -251,6 +253,7 @@ pub const TEXT_UTILITIES: &str = "\
 .font-semibold { font-weight: 600; } \
 .font-normal { font-weight: 400; } \
 .font-light { font-weight: 300; } \
+.font-mono { font-family: 'JetBrains Mono', 'Courier New', monospace; } \
 .uppercase { text-transform: uppercase; } \
 .italic { font-style: italic; } \
 .tracking-tight { letter-spacing: -0.025em; } \

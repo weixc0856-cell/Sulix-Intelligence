@@ -139,7 +139,7 @@ async fn compress_article(
     let system_prompt = "你是一个信息压缩师。将以下文章压缩为 3-5 句话，\
         保留关键信号、数字、结论和行动建议。\
         不要加自己的评论，只做压缩。\
-        输出严格JSON：{\"articles\":[{\"title\":\"原文标题\",\"importance\":5,\"relevance\":\"高\",\"time_horizon\":\"短期\",\"action\":\"观察\",\"confidence\":\"中\",\"judgment\":\"压缩后的 3-5 句话\"}]}";
+        Output json. 输出严格JSON：{\"articles\":[{\"title\":\"原文标题\",\"importance\":5,\"relevance\":\"高\",\"time_horizon\":\"短期\",\"action\":\"观察\",\"confidence\":\"中\",\"judgment\":\"压缩后的 3-5 句话\"}]}";
 
     let user_prompt = format!(
         "请压缩以下文章：\n\n标题: {}\n\n正文:\n{}",

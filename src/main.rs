@@ -92,8 +92,6 @@ async fn main() -> Result<()> {
         entity::EntitySanctionDb::new()
     };
 
-
-
     // 写入设计令牌 CSS（在抓取前，确保 HTML 引用的 design.css 存在）
     let vault_base = PathBuf::from(&config.output.vault_path);
     fs::create_dir_all(&vault_base)?;
@@ -197,7 +195,11 @@ async fn main() -> Result<()> {
 
     // Phase 3: 实体提取 — 从丰富后的文章内容中提取实体
     for article in &new_articles {
-        let combined = format!("{} {}", article.title, article.summary.as_deref().unwrap_or(""));
+        let combined = format!(
+            "{} {}",
+            article.title,
+            article.summary.as_deref().unwrap_or("")
+        );
         let names = entity::extract_entities_from_text(&combined);
         for name in &names {
             // 检查是否已存在同名实体
@@ -205,7 +207,11 @@ async fn main() -> Result<()> {
                 || entity_db.unsanctioned.values().any(|e| e.name == *name);
             if !exists {
                 let entity = entity::Entity {
-                    id: format!("ent-{}-{}", chrono::Utc::now().timestamp(), entity_db.unsanctioned.len()),
+                    id: format!(
+                        "ent-{}-{}",
+                        chrono::Utc::now().timestamp(),
+                        entity_db.unsanctioned.len()
+                    ),
                     entity_type: entity::EntityType::Unknown,
                     name: name.clone(),
                     aliases: vec![],
@@ -222,8 +228,12 @@ async fn main() -> Result<()> {
         }
     }
     let entity_count = entity_db.sanctioned.len() + entity_db.unsanctioned.len();
-    log::info!("🗃️ EntitySanctionDb: {} 实体 (sanctioned: {}, unsanctioned: {})",
-        entity_count, entity_db.sanctioned.len(), entity_db.unsanctioned.len());
+    log::info!(
+        "🗃️ EntitySanctionDb: {} 实体 (sanctioned: {}, unsanctioned: {})",
+        entity_count,
+        entity_db.sanctioned.len(),
+        entity_db.unsanctioned.len()
+    );
 
     // 7. 分组 + Scan Agent v1.1 信号标记 + 三层分流
     let grouped = llm::group_by_category(&new_articles);

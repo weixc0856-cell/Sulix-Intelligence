@@ -36,7 +36,7 @@ pub async fn calibrate(
 - 要扎心但不要阴阳怪气
 - 不要问已知答案的问题
 
-输出严格 JSON：
+Output json. 输出严格 JSON：
 {"articles": [{"title": "认知校准", "importance": 1, "relevance": "高", "time_horizon": "短期", "action": "研究", "confidence": "中", "judgment": "你的问题在这里"}]}"#;
 
     let system_prompt = match prompts {

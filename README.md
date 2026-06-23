@@ -8,59 +8,66 @@
 
 # Sulix Intelligence
 
-> **Personal AI strategic intelligence assistant for indie founders and solo developers.**
+> **Fully Automated AI Think Tank — Personal Strategy OS for solo entrepreneurs.**
 
-Daily automatically generated intelligence briefings in McKinsey/BCG/Goldman consulting format. Written to your Obsidian vault and deployed as static HTML via Cloudflare Pages.
-
-## Pipeline
+Sulix Intelligence is a three-layer product built on a single Rust pipeline:
 
 ```
-RSS / YouTube → Source Adapters → Pipeline Middleware → Concurrent fetch → Delta dedup
-                                   (sanitize + HTTP        (feed-rs)
-                                    retry + dedup)
-                                         │
-                                         ▼
-                                    Scan Agent
-                                    (lightweight LLM filter)
-                                         │
-                                         ▼
-                              ┌── Theme Clustering ──┐
-                              │  (LLM groups into     │
-                              │   ≤5 strategic themes)│
-                              └──────────────────────┘
-                                         │
-                                         ▼
-                              Theme Analysis
-                              (Fact Base table,
-                               signal strength,
-                               evidence level)
-                                         │
-                                         ▼
-                    ┌─── Chronicle Dashboard ───┐
-                    │  (append to JSON history   │
-                    │   DB for long-term tracking)│
-                    └────────────────────────────┘
-                                         │
-                                         ▼
-                         Consulting-Grade Briefing
-                    (Exec Summary → Theme Analysis →
-                     Synthesis → Options → Kill List)
-                                         │
-                    ┌────────────────────┴────────────────────┐
-                    ▼                                         ▼
-          Template Engine                              Template Engine
-          (Markdown output)                             (HTML output)
-                    │                                         │
-                    ▼                                         ▼
-          DailyBrief/YYYY-MM-DD.md                  index.html → Cloudflare
-          (Obsidian vault)                                        │
-                                                              🌐 Global CDN
-                                                              ⚡ Zero-cost
+                 Source Layer (21+ data sources)
+                      │
+               Signal Layer (SVI + Compliance + Clustering)
+                      │
+          ┌───────────┼────────────┐
+          │           │            │
+    News Layer  Research Layer  Memory Layer
+    (free)      (paid reports)  (private)
 ```
 
-## Tech Stack
+- **News Layer** → Bloomberg Terminal-style dashboard. Daily signal aggregation. Free.
+- **Research Layer** → Multi-agent deep research reports. $99-$4999. Paid.
+- **Memory Layer** → Belief tracking, contradiction detection, decision history. Private.
 
-`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Tailwind CSS` + `Cloudflare Pages` + `GitHub Actions`
+**Answer:** Not "what happened" — but "does this change my decision for the next 6 months."
+
+## Architecture
+
+```
+                               Rust Pipeline
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+               Track 1:        Track 2:         Track 3:
+                 HTML          Markdown +       BeliefDb JSON
+                 (Obsidian)    Frontmatter      (Memory Layer)
+                    │               │               │
+                    ▼               ▼               │
+              DailyBrief/    Astro Frontend          │
+              Local view     intel.getsulix.com      │
+                                    │               │
+                                    ▼               ▼
+                              CF Pages          /memory/
+                              (public)         Dashboard
+```
+
+### Tech Stack
+
+| Layer | Stack |
+|-------|-------|
+| Backend | Rust + feed-rs + scraper + reqwest + tokio + rusqlite |
+| LLM | DeepSeek / OpenAI API (BYOK) |
+| Frontend | Astro + TypeScript + JetBrains Mono + Inter |
+| Cache | LayeredCache (memory HashMap + TTL) + CircuitBreaker |
+| Auth | Substack (Newsletter) + Stripe/LemonSqueezy (Research) |
+| Deploy | Cloudflare Pages + GitHub Actions |
+| Cost | ~$0/mo infrastructure + LLM API (~$3/mo) |
+
+### Three Products
+
+| Product | Purpose | Format | Price |
+|---------|---------|--------|-------|
+| **News Layer** | User acquisition | Terminal Dashboard · Daily email | $0 |
+| **Research Layer** | Revenue | Multi-agent reports · PDF | $99-$4999 |
+| **Memory Layer** | Moat | Belief tracking · Decision history | Private |
 
 ## Quick Start
 
@@ -72,148 +79,124 @@ cargo build --release
 
 # 2. Configure
 cp config.example.toml config.toml
-# Edit config.toml — set your DeepSeek API key and RSS sources
+# Set your DeepSeek API key and data sources
 
-# 3. Run (output to default vault)
+# 3. Run
 cargo run --release
 
-# Or run with custom vault path:
-VAULT_PATH=/path/to/your/vault cargo run --release
+# Output:
+#   DailyBrief/en/YYYY-MM/index.html  → News Layer (local view)
+#   content/posts/                    → Astro Markdown
+#   data/belief_db.json              → Memory Layer
 
-# Output: DailyBrief/YYYY-MM-DD.md (Markdown for vault)
-#         DailyBrief/index.html (Tailwind HTML for Cloudflare)
+# 4. Build frontend
+cd astro-frontend
+npm install && npm run build
+
+# 5. Start frontend dev server
+npm run dev        # → http://localhost:4321
+```
+
+## Pipeline
+
+```
+RSS Sources → RawSignal → Pipeline (sanitize + compliance + dedup)
+  ↓
+Scan Agent v1.1 (4-class tags, 3-tier triage: Insight/Watchlist/Memory)
+  ↓
+LLM Pre-dedup (semantic dedup before clustering)
+  ↓
+Theme Clustering (≤5 themes, ≥2 articles each)
+  ↓
+Theme Analysis (BLUF + Geopolitical Fact + Supply Chain Impact)
+  ↓
+Blue Team Verification (load-bearing assumptions, SVI downgrade)
+  ↓
+3-Agent Council (Diplomat → Architect → Quant)
+  ↓
+Dual-Track Emission: HTML (Obsidian) + Markdown (Astro)
 ```
 
 ## Features
 
-| Feature | Status |
-|---------|--------|
-| RSS/Atom/JSON Feed + YouTube RSS fetching | ✅ |
-| **HTTP retry** — exponential backoff for RSS fetch failures | ✅ |
-| **HTML sanitization** — preserves LLM-useful tags, strips harmful | ✅ |
-| **Delta dedup** — Jaccard bigram similarity merge | ✅ |
-| **Scan Agent** — pre-filter noise/ads | ✅ |
-| **Theme Clustering** — LLM groups articles into ≤5 strategic themes | ✅ |
-| **Fact Base Analysis** — Evidence | Interpretation | Confidence table per theme | ✅ |
-| **Consulting-grade Report** — McKinsey/BCG/Goldman format | ✅ |
-| **Option Evaluation** — multi-choice with "must be true" preconditions | ✅ |
-| **Kill List** — explicit "what we are NOT doing" | ✅ |
-| **Chronicle Dashboard** — JSON history DB for long-term topic tracking | ✅ |
-| **Template Engine** — pure Rust placeholder substitution (zero deps) | ✅ |
-| **DataCatalog** — JSON audit trail per pipeline step | ✅ |
-| **Bilingual EN/ZH** — both English and Chinese output | ✅ |
-| **Economist-style branding** — red seal logo, SVG favicon | ✅ |
-| **GitHub Actions CI/CD** — automated daily runs + Cloudflare deploy | ✅ |
-| **VAULT_PATH env var** — override output directory at runtime | ✅ |
-| **HTML static page** — Tailwind CSS, Cloudflare-ready | ✅ |
-| Support for traditional Chinese, Korean, Japanese (via template.rs) | 🟡 |
-| Wikipedia API context injection | 🟡 Legacy |
-| Keyword pre-filter for high-throughput sources | 🟡 Legacy |
-
-## Architecture
-
-```
-src/
-├── main.rs              # Pipeline orchestration
-├── archive.rs           # Chronicle Dashboard — JSON history DB for long-term tracking
-├── template.rs          # Template engine — pure Rust placeholder substitution
-├── pipeline.rs          # Middleware chain (sanitize, HTML preservation, dedup)
-├── config.rs            # TOML config loader + DecisionLedger
-├── catalog.rs           # DataCatalog — JSON audit trail per step
-├── clusterer.rs         # Theme clustering + Fact Base analysis
-├── db.rs                # SQLite dedup, storage & graveyard
-├── source/              # Source adapters (RSSHub-style dispatch)
-│   ├── mod.rs           # Source routing + RawSignal struct
-│   └── rss.rs           # RSS feed adapter with HTTP retry
-├── fetcher.rs           # Legacy fetch (being migrated to source/)
-├── enricher.rs          # Wikipedia API context injection
-├── llm.rs               # DeepSeek API calling with batching & retry
-├── renderer.rs          # Consulting-grade Markdown + HTML briefing
-└── agent/
-    ├── scan.rs          # [Phase A] Scan Agent
-    ├── editor.rs        # DecisionLens — article→decision matching
-    ├── synthesis.rs     # [Phase B] Red team (business opportunity)
-    ├── verification.rs  # [Phase B] Blue team (risk audit)
-    ├── orchestrator.rs  # [Phase B] Arbitration
-    ├── calibration.rs   # [Phase C] Cognitive bias probing
-    └── decay.rs         # [Phase D] Memory graveyard
-```
-
-## Output Format
-
-When theme clustering is active, the briefing follows McKinsey/BCG/Goldman structure:
-
-```
-# Sulix Intelligence — 2026-06-22
-
-## 执行摘要
-1. **模型商品化加速** — 开源能力接近闭锁（3 条证据）
-2. **Agent可靠性成为焦点** — 工程化标准确立（2 条证据）
-
-## 主题: 模型商品化
-
-| 证据 | 解读 | 置信度 |
-|------|------|--------|
-| GLM-5.2成本降幅超预期 | 创业门槛进一步降低 | L3 |
-| OpenAI跟进行业定价 | 头部竞争加剧 | L2 |
-
-信号强度: 7/10 — 行业机制级
-
-## 综合判断
-**结论**: 模型差异化缩小，应用层窗口打开。
-
-## 战略建议
-| 选项 | 必须为真的前提 | 风险 | 信心 |
-|------|--------------|------|------|
-| 继续应用层深挖 | 价格战不压缩利润空间 | L3 |
-
-### Kill List (明确不做)
-- Agent 框架对比研究 — 已商品化，差异化空间小
-- 模型能力深度评测 — 决策价值递减
-
-🤖 认知校准
-```
+| Feature | Layer | Status |
+|---------|-------|--------|
+| 21+ data sources (Federal Register / SEC / arXiv / FT / Economist / HN / etc.) | 0 | ✅ |
+| Compliance filter (A-stock codes + stock promotion) | 1 | ✅ |
+| SVI Strategic Volatility Index (5-dimension scoring) | 1 | ✅ |
+| LLM pre-dedup (semantic dedup before clustering) | 1 | ✅ |
+| 3-Agent Council (Diplomat + Architect + Quant) | 2 | ✅ |
+| Blue Team verification (load-bearing assumption challenge) | 2 | ✅ |
+| TerminationCondition combinators (.and()/.or()) | 2 | ✅ |
+| DiGraph orchestration engine (GraphFlow-style) | 2 | ✅ |
+| Question Engine (signal-to-question matching) | 3-5 | ✅ |
+| Belief Engine (contradiction_score formula) | 3-5 | ✅ |
+| Decision Engine (4-tier: NoChange/CourseCorrect/Urgent/StrategicPivot) | 3-5 | ✅ |
+| EntitySanctionDb (dual ID + inferred/declared isolation) | 3-5 | ✅ |
+| Terminal Dashboard (Bloomberg Terminal style) | News | ✅ |
+| Change Detection (LLM semantic conflict detection) | News | ✅ |
+| Source Health monitor | News | ✅ |
+| Astro frontend (Content Collections v6, Zod schema) | News | ✅ |
+| Research report system (priced tiers, Stripe-ready) | Research | ✅ |
+| Memory Dashboard (BeliefDb + contradiction tracking) | Memory | ✅ |
+| Versioned pipeline (uuid_v7 + atomic write + resume) | Infra | ✅ |
+| LayeredCache + CircuitBreaker + RetryConfig | Infra | ✅ |
+| RSSHub URL rewrite (env var RSSHUB_BASE_URL) | Infra | ✅ |
+| Substack API integration (Markdown → Draft API) | Biz | ✅ |
+| Flash Mode (SVI ≥ 9 → red banner + alert) | News | ✅ |
+| SpecialTopic injection (.flash/*.json files) | News | ✅ |
+| Bilingual EN/ZH (language-specific routing) | All | ✅ |
+| Philosophical prompt injection (Three Easies / First-Principles / Daoist dialectics) | 2 | ✅ |
+| Social science paradigms (Coase / Beck / K-Waves) | 2 | ✅ |
 
 ## Configuration
 
-`config.toml` sections:
+`config.toml` key sections:
 
-- `[llm]` — API key, model, endpoint
-- `[[sources]]` — RSS feeds with name, URL, category, type, layer, keywords, exclude_keywords
-- `[prompts]` — system prompts
-- `[prompts.vertical_overrides]` — domain-specific frameworks
-- `[decisions]` — DecisionLedger (active decisions being tracked)
-- `[scan_agent]` — Scan Agent settings
-- `[graveyard]` — Decay Agent settings
-
-Source adapter config supports:
-- `keywords` — positive keyword whitelist (article must match at least one)
-- `exclude_keywords` — negative keyword blacklist (article dropped on match)
-- `date_range` — "d7" = last 7 days, "h24" = last 24 hours, etc.
+| Section | Purpose |
+|---------|---------|
+| `[llm]` | API key, model, endpoint |
+| `[[sources]]` | RSS feeds with name, URL, category, layer, public |
+| `[prompts]` | Base + domain-specific system prompts |
+| `[prompts.vertical_overrides]` | Domain-specific analytical frameworks |
+| `[news_layer]` | LLM pre-dedup, Change Detection, RSSHub base URL |
+| `[questions]` | Active decision questions for Question Engine |
+| `[graveyard]` | Decay Agent settings (retention, compression) |
 
 ### Source Layers
 
-| Layer | Name | Description |
-|-------|------|-------------|
-| 1 | Signal Source | Official blogs, YouTube tech channels |
-| 2 | Curated Source | Pre-filtered by humans |
-| 3 | Community Source | HN, Reddit |
-| 4 | Market Source | GitHub Trending, funding data |
+| Layer | Name | Frontend Display |
+|-------|------|-----------------|
+| 1 | Internal intelligence (FT, Economist, Stratechery) | ❌ Hidden (LLM only) |
+| 2 | Official sources (Federal Register, SEC, arXiv) | ✅ Full attribution links |
+| 3 | Community (HN, GitHub) | ✅ Attribution links |
+| 4 | Market (A-stock) | ✅ Attribution links |
 
 ## Deployment
 
-### GitHub Actions (recommended)
-
-The included `.github/workflows/daily.yml` runs the pipeline daily via cron.
-Push to GitHub, configure secrets (DEEPSEEK_API_KEY), and Cloudflare Pages
-auto-deploys the resulting `index.html`.
-
-### Manual
+### Self-host RSSHub (optional, for Chinese sources)
 
 ```bash
+docker run -d --name rsshub -p 1200:1200 diygod/rsshub
+export RSSHUB_BASE_URL=http://localhost:1200
+```
+
+### Frontend
+
+```bash
+cd astro-frontend
+npm run build
+# Output: dist/ → deploy to Cloudflare Pages
+```
+
+### Pipeline
+
+```bash
+# Daily cron (Linux/macOS)
+0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release >> data/pipeline.log 2>&1
+
+# Daily cron (Windows Task Scheduler)
 cargo run --release
-# Output: DailyBrief/index.html → CF Pages
-# Zero server cost, global CDN, no ICP备案 needed
 ```
 
 ## License

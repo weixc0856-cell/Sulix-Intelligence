@@ -8,59 +8,66 @@
 
 # Sulix Intelligence
 
-> **面向独立开发者与个人创业者的 AI 战略情报助手。**
+> **全自动数字 AI 智库 — 个人创业者的认知操作系统。**
 
-每日自动生成麦肯锡/BCG/高盛格式的战略情报简报，写入 Obsidian 知识库并通过 Cloudflare Pages 部署为静态 HTML。
-
-## 管线
+Sulix Intelligence 是三个独立产品共享同一套底层 Rust 管线的三层架构：
 
 ```
-RSS / YouTube → 源适配器 → Pipeline 中间件 → 并发抓取 → Delta 去重
-                           (清洗 + HTTP       (feed-rs)
-                            重试 + 去重)
-                                │
-                                ▼
-                           Scan Agent
-                           （轻量 LLM 初筛）
-                                │
-                                ▼
-                         ┌─── 主题聚类 ───┐
-                         │  (LLM 聚合为    │
-                         │  ≤5 个战略主题) │
-                         └────────────────┘
-                                │
-                                ▼
-                           主题分析
-                           (Fact Base 表,
-                            信号强度,
-                            证据等级)
-                                │
-                                ▼
-                    ┌─── Chronicle Dashboard ───┐
-                    │  （追加到 JSON 历史数据库， │
-                    │   用于长线主题追踪）        │
-                    └────────────────────────────┘
-                                │
-                                ▼
-                        咨询级简报
-                    （执行摘要 → 主题分析 →
-                     综合判断 → 选项评估 → Kill List）
-                                │
-              ┌─────────────────┴─────────────────┐
-              ▼                                   ▼
-      模板引擎渲染                            模板引擎渲染
-      （Markdown）                            （HTML）
-              │                                   │
-              ▼                                   ▼
-  DailyBrief/YYYY-MM-DD.md              index.html → Cloudflare
-  （Obsidian 知识库）                                   │
-                                                     🌐 全球 CDN
-                                                     ⚡ 零成本
+                 Source Layer（21+ 数据源）
+                      │
+               Signal Layer（SVI + 合规 + 聚类）
+                      │
+          ┌───────────┼────────────┐
+          │           │            │
+    News Layer  Research Layer  Memory Layer
+    （免费）     （付费报告）    （私有认知资产）
 ```
 
-## 技术栈
+- **News Layer** → Bloomberg Terminal 风格看板。每日信号聚合。免费。
+- **Research Layer** → 多 Agent 深度研报。$99-$4999。付费。
+- **Memory Layer** → 信念追踪、矛盾检测、决策历史。私有。
 
-`Rust` + `feed-rs` + `scraper` + `reqwest` + `tokio` + `rusqlite` + `DeepSeek API` + `Tailwind CSS` + `Cloudflare Pages` + `GitHub Actions`
+**回答的问题不是"发生了什么"，而是"这件事是否改变我未来 6 个月的决策"。**
+
+## 架构
+
+```
+                               Rust Pipeline
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+               Track 1:        Track 2:         Track 3:
+                 HTML          Markdown +       BeliefDb JSON
+                 (Obsidian)    Frontmatter      (Memory Layer)
+                    │               │               │
+                    ▼               ▼               │
+              DailyBrief/    Astro Frontend          │
+              Local view     intel.getsulix.com      │
+                                    │               │
+                                    ▼               ▼
+                              CF Pages          /memory/
+                              (公开)            Dashboard
+```
+
+### 技术栈
+
+| 层 | 技术 |
+|-------|-------|
+| 后端 | Rust + feed-rs + scraper + reqwest + tokio + rusqlite |
+| LLM | DeepSeek / OpenAI API（自带 Key） |
+| 前端 | Astro + TypeScript + JetBrains Mono + Inter |
+| 缓存 | LayeredCache（内存 HashMap + TTL）+ CircuitBreaker |
+| 认证 | Substack（邮件订阅）+ Stripe/LemonSqueezy（报告） |
+| 部署 | Cloudflare Pages + GitHub Actions |
+| 成本 | ~$0/月 基础设施 + LLM API（~$3/月） |
+
+### 三个产品
+
+| 产品 | 目的 | 形式 | 价格 |
+|--------|---------|--------|-------|
+| **News Layer** | 获客 | Terminal Dashboard · 每日邮件 | $0 |
+| **Research Layer** | 收入 | 多 Agent 研报 · PDF 下载 | $99-$4999 |
+| **Memory Layer** | 护城河 | 信念追踪 · 决策历史 | 私有 |
 
 ## 快速开始
 
@@ -72,147 +79,124 @@ cargo build --release
 
 # 2. 配置
 cp config.example.toml config.toml
-# 编辑 config.toml —— 填写你的 DeepSeek API Key 和 RSS 源
+# 填写 DeepSeek API Key 和数据源
 
-# 3. 运行（输出到默认目录）
+# 3. 运行
 cargo run --release
 
-# 或指定自定义输出目录：
-VAULT_PATH=/path/to/your/vault cargo run --release
+# 输出：
+#   DailyBrief/en/YYYY-MM/index.html  → News Layer（本地看板）
+#   content/posts/                    → Astro Markdown
+#   data/belief_db.json              → Memory Layer
 
-# 输出: DailyBrief/YYYY-MM-DD.md (Markdown)
-#       DailyBrief/index.html (Tailwind HTML)
+# 4. 构建前端
+cd astro-frontend
+npm install && npm run build
+
+# 5. 启动前端开发服务器
+npm run dev        # → http://localhost:4321
+```
+
+## 管线
+
+```
+RSS 源 → RawSignal → Pipeline（清洗 + 合规 + 去重）
+  ↓
+Scan Agent v1.1（4 类标签，Insight/Watchlist/Memory 三层分流）
+  ↓
+LLM 预去重（语义去重，聚类前合并同一事件的文章）
+  ↓
+主题聚类（最多 5 个主题，每个 ≥2 篇文章）
+  ↓
+主题分析（BLUF + 地缘事实 + 供应链影响）
+  ↓
+蓝军验证（承重假设检测，SVI 降级）
+  ↓
+三 Agent 委员会（Diplomat → Architect → Quant）
+  ↓
+双轨产出：HTML（本地看板）+ Markdown（Astro 前端）
 ```
 
 ## 功能
 
-| 功能 | 状态 |
-|------|------|
-| RSS/Atom/JSON Feed + YouTube RSS 抓取 | ✅ |
-| **HTTP 重试** — 指数退避重试 RSS 抓取失败 | ✅ |
-| **HTML 清洗** — 保留 LLM 有用标签，剥离有害标签 | ✅ |
-| **Delta 去重** — Jaccard 标题相似度合并 | ✅ |
-| **Scan Agent** — 初筛过滤噪音/广告 | ✅ |
-| **主题聚类** — LLM 聚合为 ≤5 个战略主题 | ✅ |
-| **Fact Base 分析** — 证据|解读|置信度 三栏表 | ✅ |
-| **咨询级简报** — 麦肯锡/BCG/高盛格式 | ✅ |
-| **选项评估** — 多选项对比/"必须为真"前提检查 | ✅ |
-| **Kill List** — 明确"不做什么" | ✅ |
-| **Chronicle Dashboard** — JSON 历史数据库，长线主题追踪 | ✅ |
-| **模板引擎** — 纯 Rust 占位符替换（零依赖） | ✅ |
-| **DataCatalog** — 每步 JSON 审计落盘 | ✅ |
-| **中英双语** — 支持英文和中文双输出 | ✅ |
-| **经济学人风格品牌** — 红色印章 Logo、SVG Favicon | ✅ |
-| **GitHub Actions CI/CD** — 每日自动运行 + Cloudflare 部署 | ✅ |
-| **VAULT_PATH 环境变量** — 运行时指定输出目录 | ✅ |
-| **HTML 静态内参** — Tailwind CSS，Cloudflare 就绪 | ✅ |
-| 支持繁体中文、韩文、日文（通过 template.rs） | 🟡 |
-| Wikipedia API 上下文注入 | 🟡 旧版 |
-| 关键词预过滤（高吞吐源降噪） | 🟡 旧版 |
+| 功能 | 产品层 | 状态 |
+|---------|-------|--------|
+| 21+ 数据源（Federal Register / SEC / arXiv / FT / Economist / HN 等） | 0 | ✅ |
+| 合规熔断（A 股代码 + 荐股词过滤） | 1 | ✅ |
+| SVI 战略异动指数（五维评分） | 1 | ✅ |
+| LLM 预去重（聚类前语义去重） | 1 | ✅ |
+| 三 Agent 委员会（Diplomat + Architect + Quant） | 2 | ✅ |
+| 蓝军验证（承重假设挑战） | 2 | ✅ |
+| TerminationCondition 组合子（.and()/.or()） | 2 | ✅ |
+| DiGraph 编排引擎（GraphFlow 风格） | 2 | ✅ |
+| Question Engine（信号-问题匹配） | 3-5 | ✅ |
+| Belief Engine（contradiction_score 公式） | 3-5 | ✅ |
+| Decision Engine（四层决策模型） | 3-5 | ✅ |
+| EntitySanctionDb（双 ID + 推断/声明隔离） | 3-5 | ✅ |
+| Terminal Dashboard（Bloomberg Terminal 风格） | News | ✅ |
+| Change Detection（LLM 语义冲突检测） | News | ✅ |
+| 源健康监控 | News | ✅ |
+| Astro 前端（Content Collections v6） | News | ✅ |
+| 研究报告系统（定价分层，Stripe 就绪） | Research | ✅ |
+| 记忆仪表盘（BeliefDb + 矛盾追踪） | Memory | ✅ |
+| 版本化管线（uuid_v7 + 原子写入 + 断点恢复） | 基建 | ✅ |
+| LayeredCache + CircuitBreaker + RetryConfig | 基建 | ✅ |
+| RSSHub URL 重写（环境变量 RSSHUB_BASE_URL） | 基建 | ✅ |
+| Substack API 集成 | 商业 | ✅ |
+| Flash Mode 紧急加更（SVI ≥ 9） | News | ✅ |
+| 特殊专题人工注入（.flash/*.json） | News | ✅ |
+| 中英双语 | 全部 | ✅ |
+| 哲学注入（三易/第一性原理/道家/飞轮/金字塔） | 2 | ✅ |
+| 社会科学范式（科斯/贝克/康波周期） | 2 | ✅ |
 
-## 架构
+## 配置
 
-```
-src/
-├── main.rs              # 管线编排
-├── archive.rs           # Chronicle Dashboard — JSON 历史数据库
-├── template.rs          # 模板引擎 — 纯 Rust 占位符替换
-├── pipeline.rs          # Pipeline 中间件（清洗、HTML 保留、去重）
-├── config.rs            # TOML 配置加载 + DecisionLedger
-├── catalog.rs           # DataCatalog — 每步 JSON 审计落盘
-├── clusterer.rs         # 主题聚类 + Fact Base 分析
-├── db.rs                # SQLite 去重、存储与墓地
-├── source/              # 源适配器（RSSHub 风格分发）
-│   ├── mod.rs           # 源路由 + RawSignal 结构体
-│   └── rss.rs           # RSS 源适配器（含 HTTP 重试）
-├── fetcher.rs           # 旧版抓取（迁移至 source/ 中）
-├── enricher.rs          # Wikipedia 上下文注入
-├── llm.rs               # DeepSeek API 调用（分批+重试）
-├── renderer.rs          # 咨询级 Markdown + HTML 简报渲染
-└── agent/
-    ├── scan.rs          # [Phase A] Scan Agent — 初筛
-    ├── editor.rs        # DecisionLens — 文章→决策匹配
-    ├── synthesis.rs     # [Phase B] 红军（商业机会分析）
-    ├── verification.rs  # [Phase B] 蓝军（风险审计）
-    ├── orchestrator.rs  # [Phase B] 仲裁
-    ├── calibration.rs   # [Phase C] 认知校准
-    └── decay.rs         # [Phase D] 记忆墓地
-```
+`config.toml` 主要配置段：
 
-## 输出格式
+| 配置段 | 用途 |
+|---------|---------|
+| `[llm]` | API Key、模型、接口地址 |
+| `[[sources]]` | RSS 源（名称、URL、分类、层级、公开性） |
+| `[prompts]` | 基础 + 领域专用系统提示词 |
+| `[prompts.vertical_overrides]` | 垂直领域分析框架 |
+| `[news_layer]` | LLM 预去重、Change Detection、RSSHub 地址 |
+| `[questions]` | Question Engine 的活跃决策问题 |
+| `[graveyard]` | Decay Agent 设置（保留期限、压缩） |
 
-主题聚类模式下，简报遵循麦肯锡/BCG/高盛结构：
+### 数据源层级
 
-```
-# Sulix Intelligence — 2026-06-22
-
-## 执行摘要
-1. **模型商品化加速** — 开源能力接近闭锁（3 条证据）
-2. **Agent可靠性成为焦点** — 工程化标准确立（2 条证据）
-
-## 主题: 模型商品化
-
-| 证据 | 解读 | 置信度 |
-|------|------|--------|
-| GLM-5.2成本降幅超预期 | 创业门槛进一步降低 | L3 |
-| OpenAI跟进行业定价 | 头部竞争加剧 | L2 |
-
-信号强度: 7/10 — 行业机制级
-
-## 综合判断
-**结论**: 模型差异化缩小，应用层窗口打开。
-
-## 战略建议
-| 选项 | 必须为真的前提 | 风险 | 信心 |
-|------|--------------|------|------|
-| 继续应用层深挖 | 价格战不压缩利润空间 | L3 |
-
-### Kill List（明确不做）
-- Agent 框架对比研究 — 已商品化，差异化空间小
-- 模型能力深度评测 — 决策价值递减
-
-🤖 认知校准
-```
-
-## 配置说明
-
-`config.toml` 配置段：
-
-- `[llm]` — API Key、模型、接口地址
-- `[[sources]]` — RSS 源（名称、URL、分类、类型、关键词、排除关键词）
-- `[prompts]` — 系统提示词
-- `[prompts.vertical_overrides]` — 垂直领域专属框架
-- `[decisions]` — DecisionLedger（活跃决策追踪）
-- `[scan_agent]` — Scan Agent 配置
-- `[graveyard]` — Decay Agent 配置
-
-源适配器支持配置：
-- `keywords` — 正向关键词白名单（文章需匹配至少一个）
-- `exclude_keywords` — 反向关键词黑名单（匹配即丢弃）
-- `date_range` — "d7" = 最近 7 天，"h24" = 最近 24 小时等
-
-### 信息源层级
-
-| 层级 | 名称 | 说明 |
-|------|------|------|
-| 1 | 信号源 | 官方博客、YouTube 技术频道 |
-| 2 | 精选源 | 已有人替你过滤 |
-| 3 | 社区源 | HN、Reddit |
-| 4 | 市场源 | GitHub Trending、融资数据 |
+| 层级 | 名称 | 前端显示 |
+|-------|------|-----------------|
+| 1 | 内参学习源（FT、Economist、Stratechery） | ❌ 隐藏（仅 LLM 熔炼） |
+| 2 | 官方权威源（Federal Register、SEC、arXiv） | ✅ 完整溯源链接 |
+| 3 | 社区源（HN、GitHub） | ✅ 溯源链接 |
+| 4 | 市场源（A 股） | ✅ 溯源链接 |
 
 ## 部署
 
-### GitHub Actions（推荐）
-
-内置的 `.github/workflows/daily.yml` 通过 cron 定时每日运行管线。
-推送到 GitHub 后配置 Secrets（DEEPSEEK_API_KEY），Cloudflare Pages 自动部署生成的 `index.html`。
-
-### 手动运行
+### 自建 RSSHub（可选，用于修复国内源）
 
 ```bash
+docker run -d --name rsshub -p 1200:1200 diygod/rsshub
+export RSSHUB_BASE_URL=http://localhost:1200
+```
+
+### 前端
+
+```bash
+cd astro-frontend
+npm run build
+# 输出：dist/ → 部署到 Cloudflare Pages
+```
+
+### 管线定时运行
+
+```bash
+# Linux/macOS 定时任务
+0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release >> data/pipeline.log 2>&1
+
+# Windows 任务计划程序
 cargo run --release
-# 输出: DailyBrief/index.html → CF Pages
-# 零服务器成本、全球 CDN、免 ICP 备案
 ```
 
 ## 许可

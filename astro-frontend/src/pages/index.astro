@@ -10,9 +10,9 @@ const published = allPosts
 ---
 
 <BaseLayout title="Dashboard | Sulix.Intel" description="Daily Geopolitical Tech Intelligence Briefing">
-  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid #171717">
-    <h1 class="font-mono" style="font-size:1.25rem;font-weight:700;color:#171717;margin:0">今日信号</h1>
-    <span class="font-mono" style="font-size:0.6875rem;color:#a3a3a3">{published.length} 条</span>
+  <div class="flex items-baseline justify-between border-b-2 border-neutral-950" style="margin-bottom:0.75rem;padding-bottom:0.5rem">
+    <h1 class="font-mono font-bold text-neutral-900" style="font-size:1.25rem;margin:0">今日信号</h1>
+    <span class="font-mono text-xs text-neutral-400">{published.length} 条</span>
   </div>
 
   {published.length > 0 ? (
@@ -31,7 +31,7 @@ const published = allPosts
       ))}
     </div>
   ) : (
-    <div class="font-mono" style="text-align:center;padding:3rem 0;color:#a3a3a3;font-size:0.875rem">
+    <div class="font-mono text-center text-neutral-400" style="padding:3rem 0;font-size:0.875rem">
       No significant signals today.
     </div>
   )}

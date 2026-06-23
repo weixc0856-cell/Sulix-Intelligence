@@ -46,6 +46,16 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
     }
 }
 
+/// 替换 RSSHub URL 中的实例地址
+/// 所有 rsshub.app 开头的 URL 以配置的 rsshub_base 替换
+pub fn resolve_rsshub_url(url: &str, rsshub_base: &str) -> String {
+    if url.contains("rsshub.app") && rsshub_base != "https://rsshub.app" {
+        url.replace("https://rsshub.app", rsshub_base)
+    } else {
+        url.to_string()
+    }
+}
+
 /// 构建可展示 attribution 链接的源名称集合
 ///
 /// 仅包含 `show_attribution() == true` 的源（public == true 且 layer != 1）。

@@ -64,6 +64,11 @@ async fn fetch_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("请求失败")))
 }
 
+/// 获取 RSSHub 基础 URL（优先使用环境变量 RSSHUB_BASE_URL，否则默认 rsshub.app）
+fn get_rsshub_base() -> String {
+    std::env::var("RSSHUB_BASE_URL").unwrap_or_else(|_| "https://rsshub.app".into())
+}
+
 /// 抓取单个 RSS 源并输出标准化 RawSignal
 pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
     // 使用全局 HTTP Client（复用连接池，统一 User-Agent）
@@ -77,9 +82,17 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
         crate::client::global_client().clone()
     };
 
+    // RSSHub URL 重写：用环境变量 RSSHUB_BASE_URL 替换 rsshub.app
+    let actual_url = if config.url.contains("rsshub.app") {
+        let base = get_rsshub_base();
+        config.url.replace("https://rsshub.app", &base)
+    } else {
+        config.url.clone()
+    };
+
     // Phase 3: 尝试从缓存读取
     let cache = crate::client::global_cache();
-    let cache_key = format!("rss:{}", config.url);
+    let cache_key = format!("rss:{}", actual_url);
     if let Some(cached) = cache.get(&cache_key) {
         log::debug!("📦 RSS 缓存命中 [{}]", config.name);
         // 缓存命中，直接解析
@@ -87,9 +100,9 @@ pub async fn fetch_rss(config: &SourceConfig, date_range: &str) -> Result<Vec<Ra
         return parse_feed_bytes(&bytes, config, date_range);
     }
 
-    log::debug!("抓取 RSS [{}] → {}", config.name, config.url);
+    log::debug!("抓取 RSS [{}] → {}", config.name, actual_url);
 
-    let bytes = fetch_with_retry(&client, &config.url).await?;
+    let bytes = fetch_with_retry(&client, &actual_url).await?;
     // 写入缓存（RSS 的 TTL 由 LayeredCache 默认 60s 控制）
     if let Ok(text) = String::from_utf8(bytes.clone()) {
         cache.set(cache_key, text);

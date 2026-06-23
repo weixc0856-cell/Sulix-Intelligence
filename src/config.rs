@@ -32,6 +32,9 @@ pub struct Config {
     /// News Layer 配置
     #[serde(default)]
     pub news_layer: Option<NewsLayerConfig>,
+    /// 去重配置
+    #[serde(default)]
+    pub dedup: Option<DedupConfig>,
 }
 
 /// LLM 配置
@@ -290,6 +293,24 @@ fn default_llm_change_detection() -> bool {
 }
 fn default_rsshub_base() -> String {
     "https://rsshub.app".into()
+}
+
+/// 去重配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct DedupConfig {
+    /// Jaccard 标题相似度阈值（超过此值判定为重复，默认 0.75）
+    #[serde(default = "default_dedup_threshold")]
+    pub title_similarity_threshold: f64,
+    /// 去重时间窗口（小时），0 表示不限制
+    #[serde(default = "default_dedup_window")]
+    pub window_hours: u32,
+}
+
+fn default_dedup_threshold() -> f64 {
+    0.75
+}
+fn default_dedup_window() -> u32 {
+    0
 }
 
 impl Config {
