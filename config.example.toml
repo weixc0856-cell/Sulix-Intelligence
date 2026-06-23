@@ -46,6 +46,13 @@ enabled = true
 # public 字段（默认 true）：
 #   false = 前端不显示该源的 attribution 链接，但 LLM 仍完全吸收
 #   内参学习源（layer=1）通常设为 false
+#
+# score 字段（1-10，默认 5）：
+#   10 = 官方权威源（OpenAI Blog, BIS）
+#   8 = 深度分析（Simon Willison, YC Blog）
+#   5 = 默认中等
+#   1 = 社交噪音（Reddit, Twitter）
+#   用于 SVI 计算的 source_score 因子
 
 # 主权公共数据源示例
 [[sources]]
@@ -63,6 +70,37 @@ type = "rss"
 url = "https://hnrss.org/frontpage"
 category = "AI Competition"
 layer = 3
+public = true
+enabled = true
+
+# AI 生态核心源示例
+[[sources]]
+name = "OpenAI Blog"
+type = "rss"
+url = "https://rsshub.app/openai/blog"
+category = "AI"
+layer = 2
+score = 10
+public = true
+enabled = true
+
+[[sources]]
+name = "Simon Willison"
+type = "rss"
+url = "https://simonwillison.net/atom/everything/"
+category = "AI"
+layer = 2
+score = 8
+public = true
+enabled = true
+
+[[sources]]
+name = "YC Blog"
+type = "rss"
+url = "https://www.ycombinator.com/blog/rss"
+category = "创业"
+layer = 2
+score = 8
 public = true
 enabled = true
 

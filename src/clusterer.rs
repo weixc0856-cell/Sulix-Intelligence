@@ -74,6 +74,10 @@ pub struct ThemeAnalysis {
     pub next_tests: Vec<String>,
     pub open_questions: Vec<String>,
     pub chains: Vec<CausalChain>,
+    /// 创业者行动建议（创始人五段）
+    pub what_to_do: String,
+    /// 后续关注信号（创始人五段）
+    pub what_to_watch: String,
 }
 
 /// 将文章聚类为主题
@@ -205,48 +209,44 @@ pub async fn analyze_theme(
         .build()?;
 
     let is_zh = language == "zh";
-    let base_prompt = r#"You are a senior geopolitical technology strategist for a publication like The Economist.
+    let base_prompt = r#"You are a senior strategic analyst writing for a daily briefing read by startup founders and indie developers.
 
-Analyze the provided inputs and generate a structured JSON report.
-Maintain an objective, authoritative, analytical tone.
-Never censor, omit, or sugarcoat hard political facts (e.g. sanctions, tariffs, elections).
-Contextualize them into tangible industry metrics.
+Your job is NOT to summarize the news.
+Your job is to answer one question:
+"Does this information change what a founder should do in the next 6 months?"
 
-[WRITING DISCIPLINE -- McKinsey Pyramid Principle]
-Apply the Pyramid Principle to every analytical field:
-1. BLUF (Bottom Line Up Front): The first sentence of each field (geopolitical_fact, supply_chain_impact, analysis_paragraph) MUST state the core conclusion directly.
-2. Support: After the conclusion, lay out supporting logic in descending order of importance.
-3. Forbidden: Do NOT open with "In a significant development...", "This week...", "As tensions escalate..." Open cold with the judgment.
+[CORE RULES]
+- Every field must contain a JUDGMENT, not a summary.
+- If no thesis is changed, say so explicitly ("No change.") — that is a valid and valuable answer.
+- Never open with "In a significant development...", "This week...", "As tensions escalate..." — open cold with the judgment.
+- Connect events into causal chains: A → B → C → D. Events are not isolated.
 
 Output JSON Schema:
 {
-  "fact_base": [
-    {"evidence": "GLM-5.2 scores close to GPT-4o", "interpretation": "Open-source catching up to closed-source", "confidence": "Established-Fact"},
-    {"evidence": "SiO2 < 1nm => direct tunneling current > 100 A/cm2 by physics", "interpretation": "2nm node requires high-k dielectrics", "confidence": "First-Principles"}
-  ],
+  "bluf": "One-sentence bottom line. Start with the judgment, not the news.",
+  "geopolitical_fact": "What happened — concise, factual, verifiable (2-3 sentences). Situation-Complication-Resolution.",
+  "supply_chain_impact": "Why it matters — strategic implications for founders (2-3 sentences). Include industry impact.",
+  "analysis_paragraph": "What changed — did this confirm or challenge an existing thesis? If nothing changed, say 'No change.'",
+  "what_to_do": "What should I do — one specific, actionable recommendation for a startup founder (1 sentence). Can be 'Nothing.'",
+  "what_to_watch": "What signal would change this assessment — what to look for next (1 sentence).",
+  "causal_chain": "A → B → C → D chain. Example: 'Export controls → GPU受限 → 推理需求上升 → 开源推理框架爆发 → 应用层门槛下降'",
   "signal_strength": 7,
-  "bluf": "One-sentence conclusion (15 words max)",
-  "geopolitical_fact": "Situation-Complication-Resolution (exactly 3 sentences)",
-  "supply_chain_impact": "Situation-Complication-Resolution (exactly 3 sentences)",
-  "analysis_paragraph": "Conclusion-first paragraph with supporting evidence...",
+  "evidence_level": "Established-Fact",
+  "fact_base": [
+    {"evidence": "verifiable fact", "interpretation": "what it means for founders", "confidence": "Established-Fact"}
+  ],
   "connections": ["Related theme 1", "Related theme 2"]
 }
 
-[SITUATION-COMPLICATION-RESOLUTION] -- Required for geopolitical_fact and supply_chain_impact
-Each MUST be exactly 3 sentences:
-- Sentence 1 (Situation): The established baseline condition or prior state.
-- Sentence 2 (Complication): The disruptive event, policy shift, or tension that breaks the baseline.
-- Sentence 3 (Resolution): The resulting constraint, opportunity, or trajectory for the industry.
+signal_strength (founder's framework):
+- 9-10: Changes my strategy this quarter
+- 7-8: Changes my priorities this month
+- 5-6: Good to know, no immediate action
+- 1-4: Noise, ignore
 
-signal_strength (GS three-scenario framework):
-- Base Scenario: 5-6
-- Adverse Scenario: 7-8
-- Aggressive Scenario: 9-10
-- 1-4: noise or single-point event
-
-Evidence Level (Sulix Confidence Level -- 4 levels):
+Evidence Level (4 levels):
 - Established-Fact: Direct, verifiable evidence from authoritative sources.
-- First-Principles: No direct evidence required; conclusion flows from physical law, mathematical certainty, or economic necessity. Must cite the specific first principle.
+- First-Principles: No direct evidence required; conclusion flows from physical law or economic necessity.
 - Developing-Inference: Emerging but incomplete evidence.
 - Assertion-Rumor: Unverified claim, treat as hypothesis.
 
@@ -379,10 +379,12 @@ Evidence Level (Sulix Confidence Level -- 4 levels):
         adverse: None,
         next_tests: vec![],
         open_questions: vec![],
-        chains: vec![],
+        chains: parse_causal_chain(&parsed["causal_chain"]),
         analysis_paragraph,
         geopolitical_fact,
         supply_chain_impact,
+        what_to_do: parsed["what_to_do"].as_str().unwrap_or("").to_string(),
+        what_to_watch: parsed["what_to_watch"].as_str().unwrap_or("").to_string(),
     })
 }
 
@@ -648,6 +650,34 @@ pub fn calculate_svi(
     ((score * 10.0).round() as u8).min(10).max(0)
 }
 
+/// 解析 LLM 输出的因果链字符串为 Vec<CausalChain>
+/// 输入: "出口管制 → GPU受限 → 推理需求上升 → 开源推理框架爆发 → 应用层门槛下降"
+/// 输出: [CausalChain { trigger: "出口管制", direct_effect: "GPU受限", chain_reaction: [...], ... }]
+fn parse_causal_chain(value: &serde_json::Value) -> Vec<CausalChain> {
+    let text = match value.as_str() {
+        Some(s) if !s.is_empty() && s != "null" => s.to_string(),
+        _ => return vec![],
+    };
+    // 按 → 或 -> 拆分
+    let parts: Vec<&str> = text
+        .split(|c| c == '→' || (c == '-' && text.contains("->")))
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if parts.len() < 2 {
+        return vec![];
+    }
+    let trigger = parts[0].to_string();
+    let direct_effect = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
+    let chain_reaction: Vec<String> = parts.iter().skip(2).map(|s| s.to_string()).collect();
+    vec![CausalChain {
+        trigger,
+        direct_effect,
+        chain_reaction,
+        second_order: vec![],
+    }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +737,8 @@ mod tests {
             next_tests: vec![],
             open_questions: vec![],
             chains: vec![],
+            what_to_do: String::new(),
+            what_to_watch: String::new(),
         }];
         let result = detect_changes_rule(&entries, &analyses);
         assert_eq!(result.conflicts.len(), 1);
@@ -742,6 +774,8 @@ mod tests {
             next_tests: vec![],
             open_questions: vec![],
             chains: vec![],
+            what_to_do: String::new(),
+            what_to_watch: String::new(),
         }];
         let result = detect_changes_rule(&entries, &analyses);
         assert_eq!(result.reinforced.len(), 1);

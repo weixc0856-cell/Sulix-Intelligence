@@ -443,6 +443,8 @@ mod tests {
             next_tests: vec![],
             open_questions: vec![],
             chains: vec![],
+            what_to_do: String::new(),
+            what_to_watch: String::new(),
         });
 
         let edge = blue_team_edge("DE");
