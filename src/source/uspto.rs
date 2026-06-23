@@ -33,13 +33,10 @@ struct UsptoItem {
 
 /// 从 USPTO API 拉取并过滤专利信号
 pub async fn fetch_patents(config: &SourceConfig, date_range: &str) -> Result<Vec<RawSignal>> {
-    use chrono::{Duration, Utc};
+    use chrono::Utc;
     use crate::source::rss::parse_date_range;
 
-    let client = reqwest::Client::builder()
-        .user_agent("SulixIntel/2.0 (Global Pipeline)")
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::client::global_client().clone();
 
     let url = "https://developer.uspto.gov/ibd-api/v1/patent/application/publications";
     let resp: UsptoResponse = client.get(url)
