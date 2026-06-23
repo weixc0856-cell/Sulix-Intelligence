@@ -90,8 +90,8 @@ async fn main() -> Result<()> {
         log::info!("🗃️ EntitySanctionDb 新实例");
         entity::EntitySanctionDb::new()
     };
-    // Phase 4: 接入认知引擎后，entity_db 将被传递到 DiGraph context
-    let _entity_db = &mut entity_db;
+
+
 
     // 写入设计令牌 CSS（在抓取前，确保 HTML 引用的 design.css 存在）
     let vault_base = PathBuf::from(&config.output.vault_path);
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
 
     // 5. Pipeline: 清洗 → 合规过滤 → 去重
     let before_pipeline = all_signals.len();
-    pipeline::run_pipeline(&mut all_signals)?;
+    pipeline::run_pipeline_with_config(&mut all_signals, config.dedup.as_ref())?;
     log::info!(
         "Pipeline: {} → {} 条（清洗/合规/去重）",
         before_pipeline,
@@ -193,6 +193,36 @@ async fn main() -> Result<()> {
     enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
     catalog.save_step(3, "enriched_signals", &new_articles)?;
     fetcher::enrich_articles_content(&mut new_articles, 5).await;
+
+    // Phase 3: 实体提取 — 从丰富后的文章内容中提取实体
+    for article in &new_articles {
+        let combined = format!("{} {}", article.title, article.summary.as_deref().unwrap_or(""));
+        let names = entity::extract_entities_from_text(&combined);
+        for name in &names {
+            // 检查是否已存在同名实体
+            let exists = entity_db.sanctioned.values().any(|e| e.name == *name)
+                || entity_db.unsanctioned.values().any(|e| e.name == *name);
+            if !exists {
+                let entity = entity::Entity {
+                    id: format!("ent-{}-{}", chrono::Utc::now().timestamp(), entity_db.unsanctioned.len()),
+                    entity_type: entity::EntityType::Unknown,
+                    name: name.clone(),
+                    aliases: vec![],
+                    sanctioned: false,
+                    external_refs: vec![entity::ExternalRef {
+                        source: article.source.clone(),
+                        external_id: article.id.clone(),
+                        url: Some(article.url.clone()),
+                    }],
+                    relationships: vec![],
+                };
+                entity_db.add_entity(entity);
+            }
+        }
+    }
+    let entity_count = entity_db.sanctioned.len() + entity_db.unsanctioned.len();
+    log::info!("🗃️ EntitySanctionDb: {} 实体 (sanctioned: {}, unsanctioned: {})",
+        entity_count, entity_db.sanctioned.len(), entity_db.unsanctioned.len());
 
     // 7. 分组 + Scan Agent v1.1 信号标记 + 三层分流
     let grouped = llm::group_by_category(&new_articles);
@@ -780,6 +810,11 @@ async fn main() -> Result<()> {
                 zh_root.join("index.html").display()
             );
         }
+    }
+
+    // 保存 EntitySanctionDb 到磁盘
+    if let Err(e) = entity_db.save_to_file(&entity_db_path.to_string_lossy()) {
+        log::warn!("⚠️ EntitySanctionDb 保存失败: {}", e);
     }
 
     println!("\n✅ EN 简报: {}", month_dir.join("index.html").display());
