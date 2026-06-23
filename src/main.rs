@@ -2,21 +2,30 @@
 //!
 //! 管线：RSS 抓取 → 去重 → 全文提取 → 主题聚类 → 影响分析 → 咨询简报
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
 mod agent;
 mod archive;
+mod belief_engine;
 mod catalog;
-mod premium;
+mod client;
 mod clusterer;
 mod config;
 mod db;
+mod decision_engine;
+mod design;
 mod enricher;
+mod entity;
 mod fetcher;
 mod llm;
+mod orchestrator;
 mod pipeline;
+mod premium;
+mod question_engine;
 mod renderer;
 mod source;
 mod template;
@@ -40,6 +49,15 @@ async fn main() -> Result<()> {
         config.llm.model
     );
 
+    // Phase 2: 加载特殊专题 / Flash Mode
+    let special_topics = source::load_special_topics(&config.output.vault_path);
+    if !special_topics.is_empty() {
+        log::info!("📌 加载 {} 个特殊专题", special_topics.len());
+        for st in &special_topics {
+            log::info!("  - {} (flash: {})", st.title, st.is_flash);
+        }
+    }
+
     // 2. 初始化数据库
     let db_path = get_db_path(&config);
     let db = db::Database::open(&db_path)?;
@@ -54,6 +72,32 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("data"));
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let catalog = catalog::DataCatalog::new(&data_dir, &today);
+
+    // Phase 3: 加载实体关系数据库（EntitySanctionDb）
+    let entity_db_path = data_dir.join("entity_db.json");
+    let mut entity_db = if entity_db_path.exists() {
+        match entity::EntitySanctionDb::load_from_file(&entity_db_path.to_string_lossy()) {
+            Ok(db) => {
+                log::info!("🗃️ EntitySanctionDb 已加载: {} 个实体", db.sanctioned.len());
+                db
+            }
+            Err(e) => {
+                log::warn!("⚠️ EntitySanctionDb 加载失败: {}，创建新实例", e);
+                entity::EntitySanctionDb::new()
+            }
+        }
+    } else {
+        log::info!("🗃️ EntitySanctionDb 新实例");
+        entity::EntitySanctionDb::new()
+    };
+    // Phase 4: 接入认知引擎后，entity_db 将被传递到 DiGraph context
+    let _entity_db = &mut entity_db;
+
+    // 写入设计令牌 CSS（在抓取前，确保 HTML 引用的 design.css 存在）
+    let vault_base = PathBuf::from(&config.output.vault_path);
+    fs::create_dir_all(&vault_base)?;
+    fs::write(vault_base.join("design.css"), sulix_intel::design::generate_full_css())?;
+    log::info!("🎨 design.css 已生成");
 
     // 4. Source Adapter: 遍历所有源，用对应适配器抓取
     log::info!("开始拉取信号源...");
@@ -128,7 +172,7 @@ async fn main() -> Result<()> {
     let total_new = new_articles.len();
     let triage = if let Some(ref sc) = config.scan_agent {
         if sc.enabled && !grouped.is_empty() {
-            match agent::scan::scan_and_triage(&grouped, &api_key, &config.llm).await {
+            match agent::scan::scan_and_triage(&grouped, &api_key, &config.llm, config.prompts.as_ref()).await {
                 Ok(t) => {
                     log::info!(
                         "Scan v1.1: 🟢Insight:{} 🟡Watchlist:{} 🔵Memory:{}",
@@ -186,10 +230,10 @@ async fn main() -> Result<()> {
             theme.title,
             theme.articles.len()
         );
-        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm, "en").await?;
+        let mut analysis = clusterer::analyze_theme(theme, &api_key, &config.llm, "en", config.prompts.as_ref()).await?;
         // Phase 1: 蓝军挑战
         let (assumptions, adverse, next_tests, open_questions) =
-            clusterer::challenge_theme(&analysis, &api_key, &config.llm).await?;
+            clusterer::challenge_theme(&analysis, &api_key, &config.llm, config.prompts.as_ref()).await?;
         analysis.assumptions = assumptions;
         analysis.adverse = adverse;
         analysis.next_tests = next_tests;
@@ -210,10 +254,10 @@ async fn main() -> Result<()> {
     // 双轨：生成繁体中文版分析
     let mut analyses_zh = Vec::new();
     for theme in &themes {
-        match clusterer::analyze_theme(theme, &api_key, &config.llm, "zh").await {
+        match clusterer::analyze_theme(theme, &api_key, &config.llm, "zh", config.prompts.as_ref()).await {
             Ok(mut a) => {
                 if let Ok((assumptions, adverse, next_tests, open_questions)) =
-                    clusterer::challenge_theme(&a, &api_key, &config.llm).await
+                    clusterer::challenge_theme(&a, &api_key, &config.llm, config.prompts.as_ref()).await
                 {
                     a.assumptions = assumptions;
                     a.adverse = adverse;
@@ -234,25 +278,80 @@ async fn main() -> Result<()> {
     }
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
-    // === Premium: 多 Agent 深度研报（信号强度 ≥5 的主题）===
+    // === Phase 3: DiGraph 认知引擎管线 ===
+    // Cluster -> BlueTeam(veto -> 回Cluster) -> QE -> BE -> DE
+    let mut decisions = Vec::new();
+    {
+        use crate::orchestrator::{
+            DiGraph, ClusterNode, BlueTeamNode, QENode, BENode, DENode, blue_team_edge,
+            RouteResult, GraphContext,
+        };
+
+        let mut ctx = GraphContext::new(config.clone(), api_key.clone());
+        ctx.current_themes = themes.clone();
+        ctx.current_analyses = analyses.clone();
+
+        let mut graph = DiGraph::new();
+        graph.add_node(Box::new(ClusterNode { name: "Cluster" }));
+        graph.add_node(Box::new(BlueTeamNode { name: "BlueTeam" }));
+        graph.add_node(Box::new(QENode { name: "QE" }));
+        graph.add_node(Box::new(BENode { name: "BE" }));
+        graph.add_node(Box::new(DENode { name: "DE" }));
+
+        // 蓝军条件边：blue team 检查 + veto 回滚
+        graph.add_edge("Cluster", "BlueTeam", Arc::new(|_| RouteResult::ProceedTo("BlueTeam".into())));
+        graph.add_edge("BlueTeam", "QE", blue_team_edge("QE"));
+        graph.add_edge("QE", "BE", Arc::new(|_| RouteResult::ProceedTo("BE".into())));
+        graph.add_edge("BE", "DE", Arc::new(|_| RouteResult::ProceedTo("DE".into())));
+
+        graph.set_entry("Cluster");
+        if let Err(e) = graph.run(&mut ctx) {
+            log::warn!("⚠️ GraphFlow 认知引擎异常: {}", e);
+        }
+
+        decisions = ctx.decisions;
+        if !decisions.is_empty() {
+            log::info!("🧠 DiGraph 认知引擎: {} 个决策项", decisions.len());
+        }
+    }
+
+    // === Premium: 多 Agent 深度研报（SVI ≥ 7 的主题）===
     let vault_base = PathBuf::from(&config.output.vault_path);
     let premium_dir = vault_base.join("premium");
-    fs::create_dir_all(&premium_dir).ok();
+    fs::create_dir_all(&premium_dir)?;
+    let mut flash_headlines: Vec<String> = Vec::new();
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
-        if analysis.signal_strength < 5 {
+        let svi = clusterer::calculate_svi(analysis, theme, &config.sources);
+        if svi < 7 {
             continue;
+        }
+        let is_flash = svi >= 9;
+        if is_flash {
+            flash_headlines.push(theme.title.clone());
         }
         let theme_context: String = theme.articles.iter()
             .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
             .collect::<Vec<_>>()
             .join("\n");
-        match premium::generate_premium_report(theme, &theme_context, &api_key, &config.llm).await {
+        match premium::generate_premium_report(theme, &theme_context, &api_key, &config.llm, config.prompts.as_ref()).await {
             Ok(report) => {
                 if let Ok(html) = renderer::render_premium_report(&report) {
                     let slug = theme.title.to_lowercase().replace(' ', "-");
                     let path = premium_dir.join(format!("{}.html", slug));
-                    let _ = fs::write(&path, &html);
+                    fs::write(&path, &html)?;
                     log::info!("📖 Premium: {} → {}", theme.title, path.display());
+                }
+                // Phase 2: Substack 自动推送（失败不阻塞管线）
+                if let Some(sub) = &config.substack {
+                    if sub.enabled {
+                        if let Err(e) = premium::push_to_substack(
+                            &report, &sub.api_key, &sub.publication_url
+                        ).await {
+                            log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
+                        } else {
+                            log::info!("📬 Substack draft created: {}", theme.title);
+                        }
+                    }
                 }
             }
             Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
@@ -267,6 +366,17 @@ async fn main() -> Result<()> {
     );
     catalog.save_step(7, "summary", &summary)?;
 
+    // === Astro 前端资产：Markdown 输出 ===
+    let content_dir = PathBuf::from("D:/Project/Sulix Intelligence/content/posts");
+    fs::create_dir_all(&content_dir)?;
+    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        let markdown = renderer::render_signal_markdown(theme, analysis, &today);
+        let slug = theme.title.to_lowercase().replace(' ', "-");
+        let md_path = content_dir.join(format!("{}-{}.md", today, slug));
+        fs::write(&md_path, &markdown)?;
+        log::info!("📝 Astro Markdown: {}", md_path.display());
+    }
+
     // 认知校准（传入真数据，非空 vec；跳过校准不中断管线）
     let calibration_text = if !analyses.is_empty() {
         let calibration_input: Vec<llm::VerticalAnalysis> = analyses
@@ -276,13 +386,12 @@ async fn main() -> Result<()> {
                 articles: vec![],
             })
             .collect();
-        agent::calibration::calibrate(&calibration_input, &api_key, &config.llm).await?
+        agent::calibration::calibrate(&calibration_input, &api_key, &config.llm, config.prompts.as_ref()).await?
     } else {
         String::new()
     };
     catalog.save_step(8, "calibration", &calibration_text)?;
 
-    // Markdown 渲染已停用（仅作计数日志）
     log::info!(
         "📝 分析主题: {} 个, 信号: {} 条",
         analyses.len(),
@@ -295,10 +404,21 @@ async fn main() -> Result<()> {
     let month_dir = en_root.join(&today[..7]);
 
     // 英文日详情
-    if let Ok(html) = renderer::render_html_report(&themes, &analyses, &today) {
+    let flash = flash_headlines.first().map(String::as_str);
+    if let Ok(html) = renderer::render_html_report(&themes, &analyses, &today, Some(&calibration_text), &config.sources, flash, "en") {
         fs::create_dir_all(&month_dir)?;
-        let _ = fs::write(month_dir.join("index.html"), &html);
+        fs::write(month_dir.join("index.html"), &html)?;
         log::info!("📄 EN 简报写入: {}", month_dir.join("index.html").display());
+        // Phase 2: 决策输出注入（如果认知引擎产生了决策）
+        if !decisions.is_empty() {
+            let decision_html = decision_engine::render_decision_html(&decisions);
+            let path = month_dir.join("index.html");
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let updated = content.replacen("</main>", &format!("{}</main>", decision_html), 1);
+                let _ = std::fs::write(&path, &updated);
+                log::info!("🧠 决策区块注入: {} 项", decisions.len());
+            }
+        }
     }
     // === 编年史看板初始化（在双语写入之前） ===
     let db_dir = data_dir.join(&today[..7]);
@@ -313,7 +433,7 @@ async fn main() -> Result<()> {
         fs::create_dir_all(&zh_dir)
             .unwrap_or_else(|e| log::warn!("无法创建中文目录 {:?}: {}", zh_dir, e));
 
-        if let Ok(zh_html) = renderer::render_html_report(&themes, &analyses_zh, &today) {
+        if let Ok(zh_html) = renderer::render_html_report(&themes, &analyses_zh, &today, Some(&calibration_text), &config.sources, flash, "zh") {
             if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
                 log::warn!("写入中文 HTML 失败 {:?}: {}", zh_dir.join("index.html"), e);
             }
