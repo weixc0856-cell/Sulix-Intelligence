@@ -17,3 +17,14 @@
 
 # 自动化分析产物
 /findings.json
+
+# 博客文章内容（独立管理，不纳入主仓库）
+/content/posts/
+
+# Astro 前端依赖与构建产物
+/astro-frontend/node_modules/
+/astro-frontend/dist/
+/astro-frontend/.astro/
+
+# 编译器增量缓存
+.rustc_info.json
