@@ -171,6 +171,7 @@ fn default_compression_enabled() -> bool {
 /// 通过 accessor 方法（get_*）传入默认值，由调用方在各自的模块中维护。
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)]
 pub struct PromptsConfig {
     #[serde(default)]
     pub base: Option<String>,
@@ -194,6 +195,7 @@ pub struct PromptsConfig {
     pub quant: Option<String>,
 }
 
+#[allow(dead_code)]
 impl PromptsConfig {
     pub fn get_scan_agent<'a>(&'a self, default: &'a str) -> &'a str {
         self.scan_agent.as_deref().unwrap_or(default)
