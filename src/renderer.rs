@@ -1,4 +1,4 @@
-//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
+﻿//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
 //!
 //! 字体授权声明（SIL Open Font License，100% 免费商用）:
 //! - Lora (serif, 大标题): SIL OFL, 免费商用
@@ -43,10 +43,64 @@ fn validate_url(url: &str) -> String {
     }
 }
 
+/// 渲染 SEO meta tags + Open Graph + Twitter Card
+pub fn render_seo_meta(title: &str, description: &str, relative_path: &str) -> String {
+    format!(
+        r#"<meta name="description" content="{description}">
+<meta property="og:title" content="{title} | Sulix Intelligence">
+<meta property="og:description" content="{description}">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://intel.getsulix.com/{relative_path}">
+<meta property="og:site_name" content="Sulix Intelligence">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{title}">
+<meta name="twitter:description" content="{description}">
+<link rel="canonical" href="https://intel.getsulix.com/{relative_path}">"#,
+        title = html_escape(title),
+        description = html_escape(description),
+        relative_path = relative_path
+    )
+}
+
+/// 渲染 JSON-LD 结构化数据（对标 Google 高价值 TechArticle）
+pub fn render_json_ld(title: &str, date: &str, text_snippet: &str) -> String {
+    let description = text_snippet.chars().take(150).collect::<String>().replace('"', "\\\"");
+    format!(
+        r#"<script type="application/ld+json">
+{{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{title}",
+  "datePublished": "{date}",
+  "inLanguage": "en",
+  "publisher": {{
+    "@type": "Organization",
+    "name": "Sulix Intelligence"
+  }},
+  "description": "{description}",
+  "dependencies": "USPTO, SEC EDGAR, arXiv"
+}}
+</script>"#,
+        title = html_escape(title),
+        date = date,
+        description = description
+    )
+}
+
 use crate::clusterer::{Assumption, Theme, ThemeAnalysis};
 use crate::fetcher::Article;
 use crate::premium::PremiumReport;
 use crate::template::{self, TemplateData};
+
+/// CSS 相对路径辅助函数
+/// depth=0: "./design.css"  depth=1: "../design.css"  depth=2: "../../design.css"
+fn css_href(depth: usize) -> String {
+    if depth == 0 {
+        "./design.css".to_string()
+    } else {
+        format!("{}design.css", "../".repeat(depth))
+    }
+}
 
 /// 渲染战略分析报告
 pub fn render_analysis_report(
@@ -510,156 +564,145 @@ fn build_source_index(themes: &[Theme], analyses: &[ThemeAnalysis]) -> String {
     md
 }
 
-// ===== HTML 渲染（Economist Graphic Detail 版式）=====
+// ===== Terminal Dashboard (Bloomberg Terminal 风格) =====
 
-/// 渲染 Economist 风格的 HTML 简报
+use std::collections::BTreeSet;
+
+/// SVI 颜色色值
+fn svi_color(svi: u8) -> &'static str {
+    match svi { 9..=10 => "#dc2626", 7..=8 => "#ea580c", 5..=6 => "#ca8a04", 3..=4 => "#16a34a", _ => "#2563eb" }
+}
+
+/// SVI 颜色表情
+fn svi_emoji(svi: u8) -> &'static str {
+    match svi { 9..=10 => "🔴", 7..=8 => "🟠", 5..=6 => "🟡", 3..=4 => "🟢", _ => "🔵" }
+}
+
+/// 渲染 Bloomberg Terminal 风格的 HTML 简报
 pub fn render_html_report(
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
     date: &str,
+    calibration: Option<&str>,
+    attributable_sources: &[crate::config::SourceConfig],
+    flash_headline: Option<&str>,
+    language: &str,
 ) -> Result<String> {
-    let top = analyses.iter().max_by_key(|a| a.signal_strength);
+    let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
-    // Build data as owned Strings to avoid lifetime issues
-    let (category, headline, sub, fact, impact_text, entities, sources) = if let Some(t) = top {
-        let cat = t.theme_title.clone();
-        let hd = t.bluf.clone();
-        let sb = t.impact.clone();
-        let ft = if t.geopolitical_fact.is_empty() {
-            t.bluf.clone()
-        } else {
-            t.geopolitical_fact.clone()
-        };
-        let it = if t.supply_chain_impact.is_empty() {
-            t.impact.clone()
-        } else {
-            t.supply_chain_impact.clone()
-        };
+    // 按 SVI 降序排列
+    let mut indexed: Vec<(&Theme, &ThemeAnalysis)> = themes.iter().zip(analyses.iter()).filter(|(_, a)| a.signal_strength > 0).collect();
+    indexed.sort_by(|(_, a), (_, b)| b.signal_strength.cmp(&a.signal_strength));
 
-        let mut ents: Vec<String> = Vec::new();
-        for a in analyses {
-            if a.signal_strength >= 5 {
-                ents.push(a.theme_title.clone());
-            }
-        }
-        let mut urls: Vec<(String, String)> = Vec::new();
-        if let Some(theme) = themes.iter().find(|th| th.id == t.theme_id) {
-            for art in &theme.articles {
-                if !art.url.is_empty() {
-                    urls.push((art.source.clone(), art.url.clone()));
-                }
-            }
-        }
-        (
-            html_escape(&cat),
-            html_escape(&hd),
-            html_escape(&sb),
-            html_escape(&ft),
-            html_escape(&it),
-            ents,
-            urls,
-        )
-    } else {
-        (
-            "Analysis".into(),
-            "No significant signals today.".into(),
-            String::new(),
-            String::new(),
-            String::new(),
-            vec![],
-            vec![],
-        )
+    let mut signals_html = String::new();
+    let mut explicit_set: BTreeSet<String> = BTreeSet::new();
+    let mut implicit_set: BTreeSet<String> = BTreeSet::new();
+
+    for (theme, analysis) in &indexed {
+        let svi = analysis.signal_strength;
+        let is_premium = svi >= 7;
+
+        let mut srcs: Vec<String> = Vec::new();
+        for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
+        for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
+
+        let summary = if analysis.bluf.len() > 80 { let end = analysis.bluf.floor_char_boundary(80); format!("{}...", &analysis.bluf[..end]) } else { analysis.bluf.clone() };
+
+        let prem = if is_premium {
+            let slug = theme.title.to_lowercase().replace(' ', "-");
+            format!(r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#, html_escape(&slug))
+        } else { String::new() };
+
+        let line = format!(
+            r#"<div style="display:flex;flex-direction:column;padding:0.5rem 0;border-bottom:1px solid #e5e5e5">
+  <div style="display:flex;align-items:center;gap:0.5rem">
+    <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.8125rem">{}</span>
+    <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.8rem;min-width:3ch">{:.1}</span>
+    <span style="font-family:'Inter',sans-serif;font-size:0.875rem;font-weight:500;color:#171717;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{}</span>
+    <span style="margin-left:auto">{}</span>
+  </div>
+  <div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#525252;margin-top:0.125rem;padding-left:4.5rem">{}</div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;margin-top:0.125rem;padding-left:4.5rem">├─ 来源: {}</div>
+</div>"#,
+            svi_color(svi), svi_emoji(svi), svi_color(svi), svi as f64, html_escape(&theme.title), prem, html_escape(&summary), html_escape(&srcs.join(" · "))
+        );
+        signals_html.push_str(&line);
+    }
+
+    let explicit_links: Vec<String> = explicit_set.iter().map(|s| format!(r#"<span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#525252">{} </span>"#, html_escape(s))).collect();
+    let implicit_links: Vec<String> = implicit_set.iter().map(|s| format!(r#"<span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3">{} </span>"#, html_escape(s))).collect();
+
+    let cal_html = match calibration {
+        Some(cal) if !cal.is_empty() => format!(r#"<div style="border-top:1px solid #e5e5e5;margin-top:1.5rem;padding-top:0.75rem"><span style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase">Cognitive Calibration</span><p style="font-family:'Inter',sans-serif;font-size:0.8125rem;color:#737373;font-style:italic;margin:0.25rem 0 0">{}</p></div>"#, html_escape(cal)),
+        _ => String::new(),
     };
 
-    let entities_html: String = entities.iter()
-        .map(|e| format!("<span class='inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-sm border border-slate-200'>{}</span>", html_escape(e)))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let flash = flash_headline.map(|fh| format!(r#"<div style="background-color:#dc2626;color:#fff;text-align:center;padding:0.375rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:600">⚡ FLASH: {}</div>"#, html_escape(fh))).unwrap_or_default();
 
-    let sources_html: String = sources.iter()
-        .map(|(name, url)| format!("<li><a href='{}' target='_blank' class='text-sm text-sky-800 hover:text-red-600 underline font-medium transition-colors break-all'>{} ↗</a></li>", validate_url(url), html_escape(name)))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let top = analyses.iter().max_by_key(|a| a.signal_strength);
+    let seo_title = top.map(|a| a.theme_title.as_str()).unwrap_or("Daily Briefing");
+    let seo_desc = top.map(|a| a.bluf.as_str()).unwrap_or("Sulix Intelligence");
+    let lang_attr = if language == "zh" { "zh-Hant" } else { "en" };
+    let seo_meta = render_seo_meta(seo_title, seo_desc, &format!("en/{}/", date));
+    let json_ld = render_json_ld(seo_title, date, seo_desc);
+    let d = if date.len() >= 10 { format!("{}-{}-{}", &date[0..4], &date[5..7], &date[8..10]) } else { date.to_string() };
+    let is_zh = language == "zh";
+    let en_href = if is_zh { format!("../en/{}/index.html", date) } else { "#".into() };
+    let zh_href = if !is_zh { format!("../zh/{}/index.html", date) } else { "#".into() };
+    let en_s = if !is_zh { "color:#171717;font-weight:700" } else { "color:#a3a3a3" };
+    let zh_s = if is_zh { "color:#171717;font-weight:700" } else { "color:#a3a3a3" };
 
     let html = format!(
         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="{}">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{} | Sulix Intelligence</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Lora:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3120b'/><text y='75' x='35' font-family='sans-serif' font-weight='900' font-size='70' fill='white'>i</text></svg>">
-  <style>body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#fcfcfc;color:#111;}}.chronicle-title{{font-family:'Lora','Playfair Display','Georgia',serif;line-height:1.15;}}</style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sulix.Intel | {}</title>
+<link rel="stylesheet" href="./design.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3120b'/><text y='75' x='35' font-family='sans-serif' font-weight='900' font-size='70' fill='white'>i</text></svg>">
+{}{}
+<style>body{{font-family:'Inter',sans-serif;background:#fcfcfc;color:#111;margin:0}}a{{text-decoration:none}}a:hover{{text-decoration:underline}}</style>
 </head>
-<body class="antialiased min-h-screen pb-12">
-  <div class="h-[4px] w-full bg-[#e3120b]"></div>
-  <header class="border-b border-neutral-100 bg-white">
-    <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between sm:px-6 lg:px-8">
-      <a href="/" class="flex items-center gap-2.5 no-underline group select-none">
-        <div class="w-6 h-6 bg-[#e3120b] flex items-center justify-center rounded-xs shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-          <span class="text-white font-sans font-black text-sm tracking-tighter leading-none relative -top-[0.5px]" style="font-family: Inter">i</span>
-        </div>
-        <div class="flex items-baseline tracking-tight">
-          <span class="text-lg font-bold text-neutral-900" style="font-family: 'Lora', 'Playfair Display', 'Georgia', serif;">Sulix</span>
-          <span class="text-lg font-light text-neutral-300 mx-0.5">.</span>
-          <span class="text-xs font-semibold tracking-widest text-neutral-400 uppercase" style="font-family: Inter;">Intel</span>
-        </div>
-      </a>
-      <nav class="flex items-center gap-3 text-[11px] font-semibold tracking-wider text-neutral-400" style="font-family: Inter">
-        <button onclick="toggleLang('en')" id="l-en" class="font-bold border-b-2 border-neutral-900 pb-0.5 cursor-pointer">EN</button>
-        <span class="text-neutral-300">|</span>
-        <button onclick="toggleLang('zh')" id="l-zh" class="text-neutral-400 hover:text-neutral-900 cursor-pointer">繁中</button>
-      </nav>
-    </div>
-  </header>
-  <main class="max-w-5xl mx-auto px-4 pt-8 sm:px-6 lg:px-8">
-    <div class="space-y-2">
-      <span class="text-[#e3120b] text-xs font-bold uppercase tracking-widest block">{}</span>
-      <h1 class="chronicle-title text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900">{}</h1>
-      <p class="chronicle-title text-lg sm:text-xl italic text-neutral-500 font-normal">{}</p>
-    </div>
-    <div class="border-t border-neutral-200 mt-6 pt-2 flex justify-between items-center text-xs text-neutral-400 font-medium">
-      <span>SULIX INTELLIGENCE REPORT</span><span>{}</span>
-    </div>
-    <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div class="lg:col-span-2 space-y-6">
-        <div class="bg-white rounded-lg p-6 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-          <h2 class="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3"><span class="w-1.5 h-1.5 bg-neutral-400 rounded-full inline-block mr-1.5"></span>Geopolitical Fact</h2>
-          <div class="text-neutral-800 text-[15px] leading-relaxed">{}</div>
-        </div>
-        <div class="bg-white rounded-lg p-6 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-          <h2 class="text-xs font-bold uppercase tracking-wider text-[#e3120b] mb-3"><span class="w-1.5 h-1.5 bg-[#e3120b] rounded-full inline-block mr-1.5"></span>Supply Chain Impact</h2>
-          <div class="text-neutral-800 text-[15px] leading-relaxed">{}</div>
-        </div>
-      </div>
-      <div class="space-y-6">
-        <div class="bg-white rounded-lg p-5 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-4">Watchlist Entities</h3>
-          <div class="flex flex-wrap gap-2">{}</div>
-        </div>
-        <div class="bg-white rounded-lg p-5 border border-neutral-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3">Primary Sources</h3>
-          <ul class="space-y-2.5">{}</ul>
-        </div>
-        <div class="rounded-lg bg-neutral-50 p-4 border border-neutral-200/60 text-center">
-          <span class="text-[11px] font-semibold text-neutral-400 tracking-wider uppercase">Pipeline Integrity</span>
-          <p class="text-xs text-neutral-500 mt-1">Aggregated with zero filters. Focused on technology-macro convergence.</p>
-        </div>
-      </div>
-    </div>
-  </main>
-<script>
-function toggleLang(t){{var p=window.location.pathname;if(p.endsWith('index.html')){{p=p.substring(0,p.lastIndexOf('index.html'))}}
-if(t==='zh'){{if(!p.startsWith('/zh/')){{var ce=p.startsWith('/en/')?p.substring(3):p;window.location.pathname='/zh'+(ce.startsWith('/')?ce:'/'+ce)}}}}
-else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.location.pathname=(cz==='/'||cz==='')?'/':'/en'+cz}}else if(p==='/'||p===''){{window.location.pathname='/en/'}}}}}}
-(function(){{var pp=window.location.pathname,zh=pp.startsWith('/zh/');var el=document.getElementById('l-zh');var ee=document.getElementById('l-en');if(el&&ee){{el.className=zh?'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900':'text-neutral-400 hover:text-neutral-900 cursor-pointer';ee.className=zh?'text-neutral-400 hover:text-neutral-900 cursor-pointer':'font-bold border-b-2 border-neutral-900 pb-0.5 text-neutral-900'}}}}}})()
-</script>
+<body>
+{}
+<header style="border-bottom:1px solid #e5e5e5;background:#fff"><div style="max-width:72rem;margin:0 auto;padding:0 1rem;height:3rem;display:flex;align-items:center;justify-content:space-between">
+<a href="/" style="display:flex;align-items:center;gap:0.5rem"><span style="background-color:#e3120b;color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.75rem;padding:0.125rem 0.375rem;border-radius:0.125rem">i</span><span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.9375rem;color:#171717">Sulix.Intel</span></a>
+<nav style="display:flex;align-items:center;gap:0.75rem">
+<a href="{}" style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;{}">EN</a><span style="color:#d4d4d4;font-size:0.6875rem">|</span>
+<a href="{}" style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;{}">繁中</a>
+<a href="https://sulix.substack.com/subscribe" target="_blank" style="background-color:#e3120b;color:#fff;font-family:'JetBrains Mono',monospace;font-size:0.625rem;font-weight:600;padding:0.25rem 0.5rem;border-radius:0.125rem;text-transform:uppercase;letter-spacing:0.05em">Subscribe →</a>
+</nav></div></header>
+<main style="max-width:72rem;margin:0 auto;padding:1rem 1rem 2rem">
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid #171717">
+<h1 style="font-family:'JetBrains Mono',monospace;font-size:1.25rem;font-weight:700;color:#171717;margin:0">今日信号</h1>
+<span style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;color:#a3a3a3">{} · {} 条</span>
+</div>
+<div>{}</div>
+{}
+{}
+</main>
+<footer style="max-width:72rem;margin:1.5rem auto 2rem;padding:0 1rem"><div style="border-top:1px solid #e5e5e5;padding-top:1rem">
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase;margin-bottom:0.5rem">📚 Primary Sources & Traces</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#525252;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem">═══ Explicit Citation ═══</div>
+<div style="display:flex;flex-wrap:wrap;gap:0.375rem;margin-bottom:0.5rem">{}</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem">═══ Implicit Intelligence ═══</div>
+<div style="display:flex;flex-wrap:wrap;gap:0.375rem;margin-bottom:0.75rem">{}</div>
+<p style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3;line-height:1.5;margin:0">* Sulix operates under Fair Use. Data from publicly available primary documents.</p>
+</div>
+<div style="margin-top:1rem;padding-top:0.5rem;border-top:1px solid #e5e5e5;font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3">Sulix.Intel · intel.getsulix.com · Substack · GitHub · MIT · Generated {}</div>
+</footer>
 </body>
 </html>"#,
-        headline, category, headline, sub, date, fact, impact_text, entities_html, sources_html,
+        lang_attr, html_escape(seo_title), seo_meta, json_ld,
+        flash,
+        en_href, en_s, zh_href, zh_s,
+        d, indexed.len(),
+        signals_html,
+        flash_headline.map(|_| format!(r#"<div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #e5e5e5;display:flex;gap:1rem;font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3"><span>{} 条信号</span><span style="color:#dc2626">🔴 Flash</span></div>"#, indexed.len())).unwrap_or_default(),
+        cal_html,
+        if explicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No explicit citations</span>".into() } else { explicit_links.join("") },
+        if implicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No implicit sources</span>".into() } else { implicit_links.join("") },
+        chrono::Local::now().format("%Y-%m-%d %H:%M UTC"),
     );
 
     Ok(html)
@@ -696,8 +739,6 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Geopolitical Tech Chronicle | Sulix</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <style>body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#fcfcfc;color:#111;}}.chronicle-title{{font-family:'Lora','Playfair Display','Georgia',serif;}}</style>
 </head>
 <body>
@@ -771,9 +812,7 @@ pub fn render_premium_report(report: &PremiumReport) -> Result<String> {
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Premium Research — {} | Sulix Intel</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
-  <style>body{{font-family:'Inter',sans-serif;background:#fcfcfc;color:#111;}}.serif{{font-family:'Lora','Georgia',serif;letter-spacing:-0.02em;}}</style>
+  <link rel="stylesheet" href="./design.css">
 </head>
 <body class="antialiased">
   <div class="h-[4px] w-full bg-[#e3120b]"></div>
@@ -844,6 +883,141 @@ pub fn render_premium_report(report: &PremiumReport) -> Result<String> {
     );
 
     Ok(html)
+}
+
+/// 渲染信号为 Markdown + YAML frontmatter（用于 Astro Content Collections）
+///
+/// Code Review: sources/entities 使用 serde_json 序列化防止 YAML 注入撕裂。
+pub fn render_signal_markdown(
+    theme: &Theme,
+    analysis: &ThemeAnalysis,
+    date: &str,
+) -> String {
+    let svi_emoji_str = match analysis.signal_strength {
+        9..=10 => "🔴",
+        7..=8 => "🟠",
+        5..=6 => "🟡",
+        3..=4 => "🟢",
+        _ => "🔵",
+    };
+
+    let source_names: Vec<&str> = theme.articles.iter().map(|a| a.source.as_str()).collect();
+    let json_sources = serde_json::to_string(&source_names).unwrap_or_else(|_| "[]".to_string());
+    let json_entities = serde_json::to_string(&analysis.connections).unwrap_or_else(|_| "[]".to_string());
+
+    let tags: Vec<&str> = std::iter::once(analysis.theme_title.as_str()).collect();
+    let json_tags = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
+
+    let slug = theme.title.to_lowercase().replace(' ', "-");
+
+    format!(
+        r#"---
+title: "{title}"
+date: "{date}"
+status: "published"
+svi: {svi}
+color_tag: "{emoji}"
+is_premium: {premium}
+slug: "{slug}"
+summary: "{summary}"
+sources: {sources}
+entities: {entities}
+tags: {tags}
+author: "Diplomat · Architect · Quant"
+---
+
+## Executive Summary
+
+{bluf}
+
+## Geopolitical Fact
+
+{geopolitical}
+
+## Supply Chain Impact
+
+{impact}
+
+## Analysis
+
+{analysis_para}
+"#,
+        title = theme.title,
+        date = date,
+        svi = analysis.signal_strength,
+        emoji = svi_emoji_str,
+        premium = if analysis.signal_strength >= 7 { "true" } else { "false" },
+        slug = slug,
+        summary = analysis.bluf,
+        sources = json_sources,
+        entities = json_entities,
+        tags = json_tags,
+        bluf = analysis.bluf,
+        geopolitical = analysis.geopolitical_fact,
+        impact = analysis.supply_chain_impact,
+        analysis_para = analysis.analysis_paragraph,
+    )
+}
+
+/// 渲染 Premium 报告为 Substack Markdown（用于 API 推送）
+///
+/// Code Review 防御性设计: report.sources 必须转化为纯 Markdown 链接格式
+/// [Source Name](URL)，不能直接把前端的 HTML 字符串灌进去。
+/// 但当前 PremiumReport.sources 仅为 Vec<String>（源名称），无 URL。
+/// 此处先渲染为名称列表，Phase 2 Substack 精确化时扩展为带 URL 的格式。
+pub fn render_substack_markdown(report: &PremiumReport) -> String {
+    let scenarios = report.risk_scenarios.join("\n");
+    let sources = report.sources.join("\n");
+
+    format!(
+        r#"---
+title: "【Premium】{title}"
+date: {date}
+---
+
+## Executive Summary
+
+{summary}
+
+---
+
+## 👤 Diplomat — Geopolitical Assessment
+
+{diplomat}
+
+---
+
+## 👤 Architect — Technical Impact
+
+{architect}
+
+---
+
+## 👤 Quant — Commercial Framework
+
+{quant}
+
+---
+
+## Risk Scenarios
+
+{scenarios}
+
+---
+
+## Primary Sources
+
+{sources}
+"#,
+        title = report.theme_title,
+        date = report.date,
+        summary = report.executive_summary,
+        diplomat = report.geopolitical_assessment,
+        architect = report.technical_impact,
+        quant = report.commercial_framework,
+        scenarios = scenarios,
+        sources = sources,
+    )
 }
 
 #[cfg(test)]

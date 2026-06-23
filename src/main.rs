@@ -280,7 +280,7 @@ async fn main() -> Result<()> {
 
     // === Phase 3: DiGraph 认知引擎管线 ===
     // Cluster -> BlueTeam(veto -> 回Cluster) -> QE -> BE -> DE
-    let mut decisions = Vec::new();
+    let mut decisions;
     {
         use crate::orchestrator::{
             DiGraph, ClusterNode, BlueTeamNode, QENode, BENode, DENode, blue_team_edge,

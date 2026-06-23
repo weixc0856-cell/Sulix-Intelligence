@@ -31,6 +31,7 @@ use crate::source::RawSignal;
 /// 所有节点读写此上下文，图引擎负责调度。
 /// Clone 代价可控（内部为 Vec/String 等标准类型）。
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GraphContext {
     pub config: Config,
     pub raw_signals: Vec<RawSignal>,
@@ -84,6 +85,7 @@ impl GraphContext {
 
 /// 条件路由枚举 — 决定执行流向
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum RouteResult {
     /// 流向指定节点
     ProceedTo(String),
