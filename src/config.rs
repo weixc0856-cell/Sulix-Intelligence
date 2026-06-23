@@ -2,10 +2,12 @@
 
 use anyhow::Result;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 
 /// 根配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub llm: LlmConfig,
     pub output: OutputConfig,
@@ -18,10 +20,20 @@ pub struct Config {
     /// Phase D: 记忆墓地配置
     #[serde(default)]
     pub graveyard: Option<GraveyardConfig>,
+    /// Phase 2: 可配置的 Prompts（每个字段为 Option，None = 使用代码中的硬编码默认值）
+    #[serde(default)]
+    pub prompts: Option<PromptsConfig>,
+    /// Phase 2: Substack 发布配置
+    #[serde(default)]
+    pub substack: Option<SubstackConfig>,
+    /// Phase 2: 用户关切问题系统
+    #[serde(default)]
+    pub questions: Option<QuestionsConfig>,
 }
 
 /// LLM 配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct LlmConfig {
     pub api_key: Option<String>,
     /// Provider 名称: "deepseek" | "openai" | "perplexity"（默认 deepseek）
@@ -42,6 +54,7 @@ fn default_llm_provider() -> String {
 
 /// 输出配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct OutputConfig {
     pub vault_path: String,
     /// 日期范围过滤: "d1"/"d3"/"w1"/"w2"/"m1"（默认 "d7" = 7天）
@@ -55,12 +68,14 @@ fn default_date_range() -> String {
 
 /// 存储配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct StorageConfig {
     pub data_dir: Option<String>,
 }
 
 /// RSS 源配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct SourceConfig {
     pub name: String,
     /// 唯一的系统标识（ASCII only，不可用中文；不设置则自动从 name hash）
@@ -79,6 +94,9 @@ pub struct SourceConfig {
     /// 信息源层级：1=内参学习（不挂公开链接）, 2=官方权威源, 3=极客社区, 4=市场数据
     #[serde(default = "default_layer")]
     pub layer: u8,
+    /// 是否公开可展示。false 时前端不显示该源的 attribution 链接，但 LLM 仍完全吸收
+    #[serde(default = "default_public")]
+    pub public: bool,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 }
@@ -88,6 +106,12 @@ impl SourceConfig {
     /// 内参源仅用于后台 LLM 认知校准，前端不展示溯源链接
     pub fn is_internal(&self) -> bool {
         self.layer == 1
+    }
+
+    /// 是否在前端展示 attribution 链接
+    /// 仅当 public == true 且不为内参源（layer != 1）时才展示
+    pub fn show_attribution(&self) -> bool {
+        self.public && self.layer != 1
     }
 }
 
@@ -99,8 +123,13 @@ fn default_enabled() -> bool {
     true
 }
 
+fn default_public() -> bool {
+    true
+}
+
 /// Scan Agent 配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct ScanAgentConfig {
     /// 是否启用 Scan Agent
     #[serde(default = "default_scan_enabled")]
@@ -113,6 +142,7 @@ fn default_scan_enabled() -> bool {
 
 /// Phase D: 记忆墓地配置
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct GraveyardConfig {
     /// 是否启用 Decay Agent
     #[serde(default = "default_graveyard_enabled")]
@@ -133,6 +163,90 @@ fn default_retention_days() -> u32 {
 }
 fn default_compression_enabled() -> bool {
     true
+}
+
+/// Phase 2: 可配置的 Prompts 系统
+///
+/// 每个字段为 Option<String>，None = 使用代码中的硬编码默认值。
+/// 通过 accessor 方法（get_*）传入默认值，由调用方在各自的模块中维护。
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct PromptsConfig {
+    #[serde(default)]
+    pub base: Option<String>,
+    #[serde(default)]
+    pub vertical_overrides: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub scan_agent: Option<String>,
+    #[serde(default)]
+    pub calibration: Option<String>,
+    #[serde(default)]
+    pub cluster_articles: Option<String>,
+    #[serde(default)]
+    pub analyze_theme: Option<String>,
+    #[serde(default)]
+    pub challenge_theme: Option<String>,
+    #[serde(default)]
+    pub diplomat: Option<String>,
+    #[serde(default)]
+    pub architect: Option<String>,
+    #[serde(default)]
+    pub quant: Option<String>,
+}
+
+impl PromptsConfig {
+    pub fn get_scan_agent<'a>(&'a self, default: &'a str) -> &'a str {
+        self.scan_agent.as_deref().unwrap_or(default)
+    }
+    pub fn get_calibration<'a>(&'a self, default: &'a str) -> &'a str {
+        self.calibration.as_deref().unwrap_or(default)
+    }
+    pub fn get_cluster_articles<'a>(&'a self, default: &'a str) -> &'a str {
+        self.cluster_articles.as_deref().unwrap_or(default)
+    }
+    pub fn get_analyze_theme<'a>(&'a self, default: &'a str) -> &'a str {
+        self.analyze_theme.as_deref().unwrap_or(default)
+    }
+    pub fn get_challenge_theme<'a>(&'a self, default: &'a str) -> &'a str {
+        self.challenge_theme.as_deref().unwrap_or(default)
+    }
+    pub fn get_diplomat<'a>(&'a self, default: &'a str) -> &'a str {
+        self.diplomat.as_deref().unwrap_or(default)
+    }
+    pub fn get_architect<'a>(&'a self, default: &'a str) -> &'a str {
+        self.architect.as_deref().unwrap_or(default)
+    }
+    pub fn get_quant<'a>(&'a self, default: &'a str) -> &'a str {
+        self.quant.as_deref().unwrap_or(default)
+    }
+}
+
+/// Phase 2: Substack 发布配置
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct SubstackConfig {
+    /// Substack API Key
+    pub api_key: String,
+    /// Substack 出版物 URL: "https://sulix.substack.com"
+    pub publication_url: String,
+    /// 是否启用自动推送
+    #[serde(default = "default_substack_enabled")]
+    pub enabled: bool,
+}
+
+fn default_substack_enabled() -> bool {
+    false  // 默认不启用，避免意外推送测试数据
+}
+
+/// Phase 2: 用户关切问题系统
+///
+/// 在 config.toml 的 [questions] 段中声明。
+/// Question 的 text 字段在 TOML 中为 "question"。
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct QuestionsConfig {
+    #[serde(default)]
+    pub questions: Vec<crate::question_engine::Question>,
 }
 
 impl Config {
