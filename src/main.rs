@@ -165,6 +165,30 @@ async fn main() -> Result<()> {
         println!("  [{}/{}] {}", a.category, a.source, a.title);
     }
 
+    // 证据快照：对所有 SVI >= 5 的新文章写入证据目录
+    let vault_path = &config.output.vault_path;
+    for article in &new_articles {
+        if article.content.is_some() || article.summary.is_some() {
+            let signal = crate::source::RawSignal {
+                id: article.id.clone(),
+                title: article.title.clone(),
+                url: article.url.clone(),
+                source: article.source.clone(),
+                source_id: article.source.clone(),
+                category: article.category.clone(),
+                content: article.content.clone(),
+                summary: article.summary.clone(),
+                published_at: article.published_at,
+                metrics: None,
+                requires_sanitization: false,
+                is_internal: article.is_internal,
+            };
+            if let Err(e) = pipeline::capture_evidence_snapshot(&signal, 5, vault_path) {
+                log::warn!("⚠️ 证据快照写入失败 [{}]: {}", article.id, e);
+            }
+        }
+    }
+
     // 7. Wikipedia 上下文注入 + 正文提取
     enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
     catalog.save_step(3, "enriched_signals", &new_articles)?;
@@ -225,11 +249,33 @@ async fn main() -> Result<()> {
     }
 
     // ==================== 聚类分析（只对 Insight 层） ====================
-    log::info!("📊 开始主题聚类 (Insight: {} 篇)...", triage.insight.len());
-    let themes = if triage.insight.is_empty() {
+    let mut insight_articles = triage.insight;
+    // News Layer: LLM 预去重（在聚类前语义合并同一事件的文章）
+    if let Some(ref nl) = config.news_layer {
+        if nl.llm_prededup {
+            let before = insight_articles.len();
+            insight_articles = clusterer::llm_prededup(
+                &insight_articles,
+                &api_key,
+                &config.llm,
+                config.prompts.as_ref(),
+                nl.prededup_batch_size,
+            )
+            .await?;
+            let removed = before - insight_articles.len();
+            if removed > 0 {
+                log::info!("🔍 LLM 预去重: 移除 {} 篇重复信号", removed);
+            }
+        }
+    }
+    log::info!(
+        "📊 开始主题聚类 (Insight: {} 篇)...",
+        insight_articles.len()
+    );
+    let themes = if insight_articles.is_empty() {
         vec![]
     } else {
-        clusterer::cluster_articles(&triage.insight, &api_key, &config.llm).await?
+        clusterer::cluster_articles(&insight_articles, &api_key, &config.llm).await?
     };
     catalog.save_step(5, "themes", &themes)?;
 
@@ -341,6 +387,52 @@ async fn main() -> Result<()> {
         if !decisions.is_empty() {
             log::info!("🧠 DiGraph 认知引擎: {} 个决策项", decisions.len());
         }
+
+        // Memory Layer: 保存信念数据库快照
+        let belief_db_path = data_dir.join("belief_db.json");
+        let mut belief_db = if belief_db_path.exists() {
+            crate::belief_engine::BeliefDb::load_from_file(&belief_db_path.to_string_lossy())
+                .unwrap_or_else(|_| {
+                    let d = crate::belief_engine::BeliefDb::new(&today);
+                    log::info!("🧠 BeliefDb 新实例");
+                    d
+                })
+        } else {
+            let d = crate::belief_engine::BeliefDb::new(&today);
+            log::info!("🧠 BeliefDb 新实例");
+            d
+        };
+        belief_db.snapshot_date = today.clone();
+        // 如果有决策输出，记录到 beliefs
+        if !ctx.belief_updates.is_empty() {
+            let support = ctx
+                .belief_updates
+                .iter()
+                .filter(|u| matches!(u.evidence_type, crate::belief_engine::EvidenceType::Support))
+                .count();
+            let challenge = ctx
+                .belief_updates
+                .iter()
+                .filter(|u| {
+                    matches!(
+                        u.evidence_type,
+                        crate::belief_engine::EvidenceType::Challenge
+                    )
+                })
+                .count();
+            let contradictions = ctx
+                .belief_updates
+                .iter()
+                .filter(|u| u.is_contradiction)
+                .count();
+            belief_db.total_support += support;
+            belief_db.total_challenge += challenge;
+            belief_db.contradictions_detected += contradictions;
+            belief_db.recent_updates = ctx.belief_updates.clone();
+        }
+        if let Err(e) = belief_db.save_to_file(&belief_db_path.to_string_lossy()) {
+            log::warn!("⚠️ BeliefDb 保存失败: {}", e);
+        }
     }
 
     // === Premium: 多 Agent 深度研报（SVI ≥ 7 的主题）===
@@ -450,6 +542,45 @@ async fn main() -> Result<()> {
         themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len()
     );
 
+    // === Change Detection: 加载近 7 天 chronicle ===
+    let chronicle_path = data_dir.join("database.json");
+    let chronicle = if chronicle_path.exists() {
+        match archive::ChronicleDb::load(&chronicle_path) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                log::warn!("⚠️ Chronicle 加载失败: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let recent_entries: Vec<archive::ChronicleEntry> = chronicle
+        .map(|c| c.sorted().into_iter().take(50).collect())
+        .unwrap_or_default();
+    let change_summary = if config
+        .news_layer
+        .as_ref()
+        .map(|n| n.llm_change_detection)
+        .unwrap_or(false)
+    {
+        match clusterer::detect_changes_llm(&recent_entries, &analyses, &api_key, &config.llm).await
+        {
+            Some(s) => {
+                if !s.conflicts.is_empty() {
+                    log::info!("⚠️ Change Detection (LLM): {} 冲突信号", s.conflicts.len());
+                }
+                s
+            }
+            None => {
+                log::warn!("LLM Change Detection 失败，回退到规则版");
+                clusterer::detect_changes_rule(&recent_entries, &analyses)
+            }
+        }
+    } else {
+        clusterer::detect_changes_rule(&recent_entries, &analyses)
+    };
+
     // === 目录路由写入（/en/ = 英文, /zh/ = 繁体中文）===
     let report_dir = PathBuf::from(&config.output.vault_path);
     let en_root = report_dir.join("en");
@@ -465,6 +596,8 @@ async fn main() -> Result<()> {
         &config.sources,
         flash,
         "en",
+        &source_statuses,
+        Some(&change_summary),
     ) {
         fs::create_dir_all(&month_dir)?;
         fs::write(month_dir.join("index.html"), &html)?;
@@ -501,6 +634,8 @@ async fn main() -> Result<()> {
             &config.sources,
             flash,
             "zh",
+            &source_statuses,
+            Some(&change_summary),
         ) {
             if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
                 log::warn!("写入中文 HTML 失败 {:?}: {}", zh_dir.join("index.html"), e);
@@ -555,8 +690,7 @@ async fn main() -> Result<()> {
     // Decay Agent 记忆墓地
     if let Some(ref grave_config) = config.graveyard {
         if grave_config.enabled {
-            let all_articles: Vec<fetcher::Article> = triage
-                .insight
+            let all_articles: Vec<fetcher::Article> = insight_articles
                 .iter()
                 .chain(triage.watchlist.iter())
                 .cloned()

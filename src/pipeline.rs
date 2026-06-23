@@ -24,7 +24,6 @@ pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
 // ===== Phase 3: 离线证据快照（ArchiveBox 式不可变证据日志）=====
 
 /// 证据条目（按事件追加到 JSONL）
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct EvidenceSnapshot {
     /// UUID v7 格式凭证 ID
@@ -48,7 +47,6 @@ pub struct EvidenceSnapshot {
 /// Expert Refinement (ArchiveBox 法务防蒸发):
 /// 当 SVI >= 7，将原始信号作为不可变 JSONL 证据日志写入 evidence/ 目录。
 /// 即使现实世界源被删/改，付费会员仍可在后台调用离线铁证。
-#[allow(dead_code)]
 pub fn capture_evidence_snapshot(signal: &RawSignal, svi: u8, vault_path: &str) -> Result<()> {
     let evidence_dir = std::path::Path::new(vault_path).join("evidence");
     std::fs::create_dir_all(&evidence_dir)?;
