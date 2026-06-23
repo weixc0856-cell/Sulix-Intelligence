@@ -433,33 +433,7 @@ async fn main() -> Result<()> {
             d
         };
         belief_db.snapshot_date = today.clone();
-        // 如果有决策输出，记录到 beliefs
-        if !ctx.belief_updates.is_empty() {
-            let support = ctx
-                .belief_updates
-                .iter()
-                .filter(|u| matches!(u.evidence_type, crate::belief_engine::EvidenceType::Support))
-                .count();
-            let challenge = ctx
-                .belief_updates
-                .iter()
-                .filter(|u| {
-                    matches!(
-                        u.evidence_type,
-                        crate::belief_engine::EvidenceType::Challenge
-                    )
-                })
-                .count();
-            let contradictions = ctx
-                .belief_updates
-                .iter()
-                .filter(|u| u.is_contradiction)
-                .count();
-            belief_db.total_support += support;
-            belief_db.total_challenge += challenge;
-            belief_db.contradictions_detected += contradictions;
-            belief_db.recent_updates = ctx.belief_updates.clone();
-        }
+        belief_db.apply_updates(&ctx.belief_updates);
         if let Err(e) = belief_db.save_to_file(&belief_db_path.to_string_lossy()) {
             log::warn!("⚠️ BeliefDb 保存失败: {}", e);
         }

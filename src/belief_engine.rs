@@ -44,6 +44,58 @@ pub enum EvidenceType {
     Neutral,
 }
 
+/// 信念数据库快照（Memory Layer 持久化）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BeliefDb {
+    pub snapshot_date: String,
+    pub beliefs: Vec<BeliefStatement>,
+    pub recent_updates: Vec<BeliefUpdate>,
+    pub total_support: usize,
+    pub total_challenge: usize,
+    pub contradictions_detected: usize,
+}
+
+impl BeliefDb {
+    pub fn new(date: &str) -> Self {
+        Self {
+            snapshot_date: date.to_string(),
+            beliefs: vec![],
+            recent_updates: vec![],
+            total_support: 0,
+            total_challenge: 0,
+            contradictions_detected: 0,
+        }
+    }
+
+    pub fn save_to_file(&self, path: &str) -> anyhow::Result<()> {
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    pub fn load_from_file(path: &str) -> anyhow::Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&content)?)
+    }
+
+    /// 批量应用信念更新：统计 support/challenge/contradictions
+    pub fn apply_updates(&mut self, updates: &[BeliefUpdate]) {
+        let support = updates
+            .iter()
+            .filter(|u| matches!(u.evidence_type, EvidenceType::Support))
+            .count();
+        let challenge = updates
+            .iter()
+            .filter(|u| matches!(u.evidence_type, EvidenceType::Challenge))
+            .count();
+        let contradictions = updates.iter().filter(|u| u.is_contradiction).count();
+        self.total_support += support;
+        self.total_challenge += challenge;
+        self.contradictions_detected += contradictions;
+        self.recent_updates = updates.to_vec();
+    }
+}
+
 /// 更新信念状态
 ///
 /// 对每个信念检查新的 QuestionMatch 是否与之相关。
