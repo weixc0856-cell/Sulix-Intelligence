@@ -29,6 +29,9 @@ pub struct Config {
     /// Phase 2: 用户关切问题系统
     #[serde(default)]
     pub questions: Option<QuestionsConfig>,
+    /// News Layer 配置
+    #[serde(default)]
+    pub news_layer: Option<NewsLayerConfig>,
 }
 
 /// LLM 配置
@@ -99,6 +102,10 @@ pub struct SourceConfig {
     pub public: bool,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// 源权重 1-10：10=官方权威源（OpenAI Blog, BIS），1=社交噪音（Reddit, Twitter）
+    /// 用于 SVI 计算中的 source_score 因子替代 layer-based 映射
+    #[serde(default = "default_source_score")]
+    pub score: u8,
 }
 
 impl SourceConfig {
@@ -117,6 +124,10 @@ impl SourceConfig {
 
 fn default_layer() -> u8 {
     2
+}
+
+fn default_source_score() -> u8 {
+    5
 }
 
 fn default_enabled() -> bool {
@@ -249,6 +260,36 @@ fn default_substack_enabled() -> bool {
 pub struct QuestionsConfig {
     #[serde(default)]
     pub questions: Vec<crate::question_engine::Question>,
+}
+
+/// News Layer 配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct NewsLayerConfig {
+    /// 聚类前启用 LLM 语义去重
+    #[serde(default = "default_llm_prededup")]
+    pub llm_prededup: bool,
+    /// LLM 预去重批大小
+    #[serde(default = "default_prededup_batch")]
+    pub prededup_batch_size: usize,
+    /// Change Detection 使用 LLM 语义版（否则用规则版）
+    #[serde(default = "default_llm_change_detection")]
+    pub llm_change_detection: bool,
+    /// RSSHub 基础 URL（部署自己的 RSSHub 实例可替换）
+    #[serde(default = "default_rsshub_base")]
+    pub rsshub_base: String,
+}
+
+fn default_llm_prededup() -> bool {
+    false
+}
+fn default_prededup_batch() -> usize {
+    15
+}
+fn default_llm_change_detection() -> bool {
+    false
+}
+fn default_rsshub_base() -> String {
+    "https://rsshub.app".into()
 }
 
 impl Config {

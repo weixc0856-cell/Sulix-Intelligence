@@ -98,7 +98,7 @@ pub async fn cluster_articles(
 3. 主题标题要简洁有力（10 字以内），如"模型商品化""Agent可靠性""政策风险"
 4. 给每个主题写一句话摘要（30 字以内）
 
-输出严格 JSON：
+Output json. 输出严格 JSON：
 {"themes": [
   {"id": "t1", "title": "模型商品化", "summary": "开源模型能力接近闭锁", "article_indices": [0, 2, 5]},
   {"id": "t2", "title": "Agent可靠性", "summary": "可靠性成为竞争焦点", "article_indices": [1, 3]}
@@ -250,7 +250,7 @@ Evidence Level (Sulix Confidence Level -- 4 levels):
 - Developing-Inference: Emerging but incomplete evidence.
 - Assertion-Rumor: Unverified claim, treat as hypothesis.
 
-[OUTPUT RULE] Output ONLY valid JSON."#;
+[OUTPUT RULE] Output json only (valid JSON)."#;
     let base_prompt = prompts
         .and_then(|p| Some(p.get_analyze_theme(base_prompt)))
         .unwrap_or(base_prompt);
@@ -422,7 +422,7 @@ pub async fn challenge_theme(
 - 逆境情景必须包含半定量概率区间(Probability Range)和对冲边界(Hedging Boundary)
 - 待验证项必须包含具体数据源或指标及建议时间窗口
 
-输出严格 JSON，必须包含以下全部字段：
+Output json. 输出严格 JSON，必须包含以下全部字段：
 {
   "assumptions": [
     {"text": "假设内容", "load_bearing": true, "evidence_strength": "weak|moderate|strong", "category": "技术|政策|市场|供应链|金融"}
@@ -615,25 +615,20 @@ pub fn calculate_svi(
         0.3
     };
 
-    // 2. SourceCredibility: 取 articles 中最低 layer 值（layer 越低越权威）
-    let best_layer = theme
+    // 2. SourceScore: 取 articles 中最高的 source score（归一化到 0.1-1.0）
+    // score: 10=OpenAI Blog/BIS, 5=默认, 1=社交噪音
+    let best_score = theme
         .articles
         .iter()
         .map(|a| {
             sources
                 .iter()
                 .find(|s| s.name == a.source)
-                .map(|s| s.layer)
-                .unwrap_or(3)
+                .map(|s| s.score as f64 / 10.0)
+                .unwrap_or(0.5)
         })
-        .min()
-        .unwrap_or(3);
-    let source_credibility = match best_layer {
-        1 => 1.0,
-        2 => 0.7,
-        3 => 0.4,
-        _ => 0.2,
-    };
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap_or(0.5);
 
     // 3. TemporalUrgency: signal_strength 已包含 LLM 对时效性的评估
     let temporal_urgency = (analysis.signal_strength as f64) / 10.0;
@@ -647,8 +642,504 @@ pub fn calculate_svi(
     let score = entity_surge * SVI_ENTITY_SURGE
         + sanction_sensitivity * SVI_SANCTION_SENSITIVITY
         + patent_mutation * SVI_PATENT_MUTATION
-        + source_credibility * SVI_SOURCE_CREDIBILITY
+        + best_score * SVI_SOURCE_CREDIBILITY
         + temporal_urgency * SVI_TEMPORAL_URGENCY;
 
     ((score * 10.0).round() as u8).min(10).max(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_semantic_relation_deserialization() {
+        let json = r#"{"topic": "AI Coding", "relation": "conflict", "justification": "test"}"#;
+        let entry: ChangeDetectionEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.relation, SemanticRelation::Conflict);
+
+        let json = r#"{"topic": "AI Coding", "relation": "reinforce", "justification": "test"}"#;
+        let entry: ChangeDetectionEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.relation, SemanticRelation::Reinforce);
+
+        let json = r#"{"topic": "AI Coding", "relation": "irrelevant", "justification": "test"}"#;
+        let entry: ChangeDetectionEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.relation, SemanticRelation::Irrelevant);
+    }
+
+    #[test]
+    fn test_detect_changes_rule_cold_start() {
+        let result = detect_changes_rule(&[], &[]);
+        assert!(result.new_signals.is_empty());
+        assert_eq!(result.no_change_count, 0);
+    }
+
+    #[test]
+    fn test_detect_changes_rule_with_data() {
+        use crate::archive::ChronicleEntry;
+        let entries = vec![ChronicleEntry {
+            date: "2026-06-22".into(),
+            topic: "AI".into(),
+            headline: "test".into(),
+            entities: vec![],
+            signal_strength: 7,
+            language: "en".into(),
+        }];
+        let analyses = vec![ThemeAnalysis {
+            theme_id: "t1".into(),
+            theme_title: "AI".into(),
+            bluf: "test".into(),
+            impact: "".into(),
+            geopolitical_fact: "".into(),
+            supply_chain_impact: "".into(),
+            analysis_paragraph: "".into(),
+            evidence_level: "".into(),
+            signal_strength: 7,
+            fact_base: vec![],
+            connections: vec![],
+            source_urls: vec![],
+            assumptions: vec![],
+            adverse: Some(AdverseScenario {
+                scenario: "冲突".into(),
+                early_warning: "".into(),
+                severity: "high".into(),
+            }),
+            next_tests: vec![],
+            open_questions: vec![],
+            chains: vec![],
+        }];
+        let result = detect_changes_rule(&entries, &analyses);
+        assert_eq!(result.conflicts.len(), 1);
+        assert_eq!(result.conflicts[0].topic, "AI");
+    }
+
+    #[test]
+    fn test_detect_changes_rule_fallback_no_adverse() {
+        use crate::archive::ChronicleEntry;
+        let entries = vec![ChronicleEntry {
+            date: "2026-06-22".into(),
+            topic: "AI".into(),
+            headline: "test".into(),
+            entities: vec![],
+            signal_strength: 7,
+            language: "en".into(),
+        }];
+        let analyses = vec![ThemeAnalysis {
+            theme_id: "t1".into(),
+            theme_title: "AI".into(),
+            bluf: "reinforced".into(),
+            impact: "".into(),
+            geopolitical_fact: "".into(),
+            supply_chain_impact: "".into(),
+            analysis_paragraph: "".into(),
+            evidence_level: "".into(),
+            signal_strength: 7,
+            fact_base: vec![],
+            connections: vec![],
+            source_urls: vec![],
+            assumptions: vec![],
+            adverse: None,
+            next_tests: vec![],
+            open_questions: vec![],
+            chains: vec![],
+        }];
+        let result = detect_changes_rule(&entries, &analyses);
+        assert_eq!(result.reinforced.len(), 1);
+        assert!(result.conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_detect_changes_llm_json_parsing_fallback() {
+        // 模拟 LLM 输出：前后有多余文字
+        let raw_with_noise = r#"Here is my analysis:
+[
+  {"topic": "Test", "relation": "conflict", "justification": "Direct contradiction on CapEx assumptions"}
+]
+That's my final answer."#;
+
+        let clean = raw_with_noise
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        // 提取 JSON 数组段落
+        if let Some(arr_start) = clean.find('[') {
+            if let Some(arr_end) = clean.rfind(']') {
+                let slice = &clean[arr_start..=arr_end];
+                let entries: Vec<ChangeDetectionEntry> = serde_json::from_str(slice).unwrap();
+                assert_eq!(entries.len(), 1);
+                assert_eq!(entries[0].topic, "Test");
+                assert_eq!(entries[0].relation, SemanticRelation::Conflict);
+                return;
+            }
+        }
+        panic!("JSON array extraction failed");
+    }
+}
+
+// ===== News Layer: Change Detection =====
+
+/// Change Detection 输出
+#[derive(Debug, Clone, Serialize)]
+pub struct ConflictEntry {
+    pub topic: String,
+    pub today_signal: String,
+    pub prior_belief: String,
+}
+
+/// Change Summary 输出
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeSummary {
+    pub conflicts: Vec<ConflictEntry>,
+    pub reinforced: Vec<String>,
+    pub new_signals: Vec<String>,
+    pub no_change_count: usize,
+}
+
+/// 语义关系枚举（LLM Change Detection 使用）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticRelation {
+    /// 冲突：今日信号推翻或篡改了历史 Belief
+    Conflict,
+    /// 强化：今日信号是旧事实的深化或因果传导
+    Reinforce,
+    /// 无关：不同的技术栈或实体
+    Irrelevant,
+}
+
+/// LLM Change Detection 输出条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeDetectionEntry {
+    pub topic: String,
+    pub relation: SemanticRelation,
+    pub justification: String,
+}
+
+/// 检测今日信号与近 7 天 chronicle 的冲突/强化关系（规则版）
+///
+/// 基于 topic 名称匹配 + 蓝军输出。用于 LLM 版不可用时的 fallback。
+/// 冷启动处理：chronicle 为空时返回 all-new。
+pub fn detect_changes_rule(
+    recent_entries: &[crate::archive::ChronicleEntry],
+    analyses: &[ThemeAnalysis],
+) -> ChangeSummary {
+    if recent_entries.is_empty() {
+        return ChangeSummary {
+            conflicts: vec![],
+            reinforced: vec![],
+            new_signals: analyses.iter().map(|a| a.theme_title.clone()).collect(),
+            no_change_count: 0,
+        };
+    }
+
+    // 从 chronicle 条目中提取近期主题摘要
+    let recent_topics: Vec<&str> = recent_entries.iter().map(|e| e.topic.as_str()).collect();
+    let mut conflicts = Vec::new();
+    let mut reinforced = Vec::new();
+    let mut new_signals = Vec::new();
+
+    for analysis in analyses {
+        let title = &analysis.theme_title;
+        let summary = &analysis.bluf;
+
+        // 检查 chronicle 中是否有相同 topic
+        let prior: Vec<&&str> = recent_topics.iter().filter(|t| t == &title).collect();
+
+        if prior.is_empty() {
+            new_signals.push(title.clone());
+            continue;
+        }
+
+        // 检查蓝军输出：有 adverse 或 weak assumption → 可能是冲突
+        let has_adverse = analysis
+            .adverse
+            .as_ref()
+            .map(|a| !a.scenario.is_empty())
+            .unwrap_or(false);
+        let has_weak = analysis
+            .assumptions
+            .iter()
+            .any(|a| a.load_bearing && a.evidence_strength == "weak");
+
+        if has_adverse || has_weak {
+            conflicts.push(ConflictEntry {
+                topic: title.clone(),
+                today_signal: summary.clone(),
+                prior_belief: format!("近 7 天出现 {} 次", prior.len()),
+            });
+        } else {
+            reinforced.push(title.clone());
+        }
+    }
+
+    let no_change = reinforced.len();
+    ChangeSummary {
+        conflicts,
+        reinforced,
+        new_signals,
+        no_change_count: no_change,
+    }
+}
+
+// ===== News Layer: LLM Change Detection =====
+
+/// LLM 语义版 Change Detection
+///
+/// 对比今日分析主题与近 7 天历史 Chronicle 条目，
+/// 运用熊彼特创造性毁灭与诺斯路径依赖理论，
+/// 判定经济与地缘语义依赖关系。
+///
+/// 滑动窗口+SVI 过滤：只选取 SVI >= 5 的核心条目参与比对。
+/// 防死锁：LLM 失败时返回 None，由调用方 fallback 到规则版。
+pub async fn detect_changes_llm(
+    recent_entries: &[crate::archive::ChronicleEntry],
+    analyses: &[ThemeAnalysis],
+    api_key: &str,
+    llm_config: &crate::config::LlmConfig,
+) -> Option<ChangeSummary> {
+    // 滑动窗口：取最近 30 条 chronicle 条目参与比对
+    let core_entries: Vec<&crate::archive::ChronicleEntry> =
+        recent_entries.iter().take(30).collect();
+
+    if core_entries.is_empty() {
+        log::info!("Change Detection: 近 7 天无 SVI>=5 的核心条目，冷启动模式");
+        return None;
+    }
+    if analyses.is_empty() {
+        return None;
+    }
+
+    let history_json = serde_json::to_string(&core_entries).unwrap_or_default();
+    let today_json = serde_json::to_string(&analyses.iter().map(|a| serde_json::json!({
+        "topic": a.theme_title,
+        "bluf": a.bluf,
+        "impact": a.impact,
+        "signal_strength": a.signal_strength,
+        "has_adverse": a.adverse.as_ref().map(|x| !x.scenario.is_empty()).unwrap_or(false),
+    })).collect::<Vec<_>>()).unwrap_or_default();
+
+    let system_prompt = r#"你是 Sulix 智库的终极历史审查官。
+对比【今日分析主题】与【近 7 天历史 Chronicle 条目】，判定其经济与地缘语义依赖关系。
+
+约束：
+- 运用熊彼特"创造性毁灭"与诺斯"路径依赖"理论。
+- 如果今日事件导致旧事件的 CapEx 预测或制度变迁预期失效 → conflict
+- 如果今日事件是旧事件合规阻尼(Compliance Drag)的因果传导或非线性深化 → reinforce
+- 如果今日事件涉及完全不同的技术栈、地理实体或宏观政策维度 → irrelevant
+
+Output json. 输出严格 JSON 数组，每项格式：
+{"topic": "主题名", "relation": "conflict|reinforce|irrelevant", "justification": "一句话经济学/社会学依据"}"#;
+
+    let user_prompt = format!(
+        "【历史条目】:\n{}\n\n【今日分析】:\n{}",
+        history_json, today_json
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .ok()?;
+
+    let raw =
+        crate::llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt)
+            .await
+            .map_err(|e| {
+                log::warn!("LLM Change Detection API 调用失败: {}", e);
+            })
+            .ok()?;
+
+    // 多步容错解析：JSON fence 剥离 → 提取数组段
+    let raw_clean = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    // 尝试直接解析为 Vec<ChangeDetectionEntry>
+    let entries_result: Result<Vec<ChangeDetectionEntry>, _> = serde_json::from_str(raw_clean);
+    let entries = match entries_result {
+        Ok(e) => e,
+        Err(_) => {
+            // 尝试提取 JSON 数组段（LLM 可能在数组前后加了额外文字）
+            if let Some(arr_start) = raw_clean.find('[') {
+                if let Some(arr_end) = raw_clean.rfind(']') {
+                    let slice = &raw_clean[arr_start..=arr_end];
+                    match serde_json::from_str::<Vec<ChangeDetectionEntry>>(slice) {
+                        Ok(e) => e,
+                        Err(e2) => {
+                            log::warn!(
+                                "LLM Change Detection JSON 解析失败 (fallback 尝试也失败): {}",
+                                e2
+                            );
+                            return None;
+                        }
+                    }
+                } else {
+                    log::warn!("LLM Change Detection 响应中未找到 JSON 数组");
+                    return None;
+                }
+            } else {
+                log::warn!(
+                    "LLM Change Detection 响应中未找到 JSON 数组: {}",
+                    &raw_clean[..raw_clean.len().min(200)]
+                );
+                return None;
+            }
+        }
+    };
+
+    let mut conflicts = Vec::new();
+    let mut reinforced = Vec::new();
+    let mut new_signals = Vec::new();
+
+    for entry in entries {
+        match entry.relation {
+            SemanticRelation::Conflict => {
+                conflicts.push(ConflictEntry {
+                    topic: entry.topic.clone(),
+                    today_signal: entry.justification.clone(),
+                    prior_belief: "近 7 天历史基线".into(),
+                });
+            }
+            SemanticRelation::Reinforce => {
+                reinforced.push(entry.topic);
+            }
+            SemanticRelation::Irrelevant => {
+                new_signals.push(entry.topic);
+            }
+        }
+    }
+
+    let no_change = reinforced.len();
+    Some(ChangeSummary {
+        conflicts,
+        reinforced,
+        new_signals,
+        no_change_count: no_change,
+    })
+}
+
+// ===== News Layer: LLM 预去重 =====
+
+/// LLM 预去重 prompt 结构
+const PREDEDUP_SYSTEM_PROMPT: &str = r#"你是新闻去重专家。判断哪些文章在报道同一事件。
+输出JSON: {"keep": [保留的文章序号], "merge_groups": [[同一事件的文章序号组]]}
+只返回JSON，不要解释。"#;
+
+/// 在聚类前对文章做 LLM 语义去重
+/// 按 category 分批，batch_size 建议 15-20
+pub async fn llm_prededup(
+    articles: &[Article],
+    api_key: &str,
+    llm_config: &crate::config::LlmConfig,
+    prompts: Option<&crate::config::PromptsConfig>,
+    batch_size: usize,
+) -> Result<Vec<Article>> {
+    if articles.len() <= 1 {
+        return Ok(articles.to_vec());
+    }
+
+    // 按 category 分组
+    let mut by_cat: std::collections::HashMap<String, Vec<Article>> =
+        std::collections::HashMap::new();
+    for art in articles.iter() {
+        by_cat
+            .entry(art.category.clone())
+            .or_default()
+            .push(art.clone());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let system_prompt = prompts
+        .and_then(|p| Some(p.get_cluster_articles(PREDEDUP_SYSTEM_PROMPT)))
+        .unwrap_or(PREDEDUP_SYSTEM_PROMPT);
+
+    let mut result = Vec::new();
+
+    for (_cat, batch) in by_cat {
+        if batch.len() <= 1 {
+            result.extend(batch);
+            continue;
+        }
+
+        for chunk in batch.chunks(batch_size) {
+            let article_list: String = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, a)| {
+                    format!(
+                        "[{}] {}: {}",
+                        i,
+                        a.title,
+                        a.summary.as_deref().unwrap_or("")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let user_prompt = format!(
+                "Category: {}\n\nArticles:\n{}",
+                chunk[0].category, article_list
+            );
+
+            match crate::llm::call_with_retry_raw(
+                &client,
+                api_key,
+                llm_config,
+                system_prompt,
+                &user_prompt,
+            )
+            .await
+            {
+                Ok(raw) => {
+                    let clean = raw
+                        .trim()
+                        .trim_start_matches("```json")
+                        .trim_start_matches("```")
+                        .trim_end_matches("```")
+                        .trim();
+
+                    #[derive(serde::Deserialize, Default)]
+                    struct DedupOutput {
+                        keep: Vec<usize>,
+                        merge_groups: Vec<Vec<usize>>,
+                    }
+
+                    let dedup: DedupOutput = serde_json::from_str(clean).unwrap_or_default();
+
+                    let mut keep_indices: std::collections::HashSet<usize> =
+                        dedup.keep.into_iter().collect();
+                    for group in &dedup.merge_groups {
+                        // 每组保留第一篇
+                        if let Some(&first) = group.first() {
+                            keep_indices.insert(first);
+                        }
+                    }
+
+                    if keep_indices.is_empty() {
+                        result.extend(chunk.iter().cloned());
+                    } else {
+                        for (i, article) in chunk.iter().enumerate() {
+                            if keep_indices.contains(&i) {
+                                result.push(article.clone());
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // LLM 失败，回退保留全部
+                    result.extend(chunk.iter().cloned());
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
