@@ -6,6 +6,7 @@ pub mod agent;
 pub mod archive;
 pub mod belief_engine;
 pub mod catalog;
+pub mod change_detection;
 pub mod client;
 pub mod clusterer;
 pub mod config;

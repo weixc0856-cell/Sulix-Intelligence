@@ -12,6 +12,7 @@ mod agent;
 mod archive;
 mod belief_engine;
 mod catalog;
+mod change_detection;
 mod client;
 mod clusterer;
 mod config;
