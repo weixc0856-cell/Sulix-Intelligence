@@ -19,6 +19,9 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
 
+      - name: Create config from template
+        run: cp config.example.toml config.toml
+
       - name: Run Sulix Intel Pipeline
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
