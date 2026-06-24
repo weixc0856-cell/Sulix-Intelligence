@@ -1,11 +1,10 @@
 //! Sulix Intelligence — 个人创业者的 AI 战略情报助手
 //!
-//! 管线：RSS 抓取 → 去重 → 全文提取 → 主题聚类 → 影响分析 → 咨询简报
-//!
-//! 管线分为 3 个主要阶段：
-//!   stage_init()              — 配置/DB/EntityDb/CSS
-//!   stage_fetch_and_prepare() — 源抓取/去重/丰富/实体提取
-//!   stage_analyze_and_render()— 分流/聚类/分析/认知引擎/渲染输出
+//! 管线按 4-Agent 架构组织：
+//!   init()            — 配置/DB/EntityDb/CSS
+//!   agent_signal()    — 源抓取/去重/丰富/实体提取
+//!   agent_research()  — 分流/聚类/分析/蓝军/认知引擎/BeliefDb
+//!   agent_publish()   — Premium 报告/HTML/Chronicle/看板
 
 use std::sync::Arc;
 
@@ -41,16 +40,33 @@ async fn main() -> Result<()> {
     env_logger::init();
     log::info!("🚀 Sulix Intelligence — 启动");
 
-    let (config, api_key, db, catalog, data_dir, today, mut entity_db) = stage_init().await?;
+    // Agent 0: 初始化
+    let (config, api_key, db, catalog, data_dir, today, mut entity_db) = init().await?;
 
-    let Some((new_articles, source_statuses, entity_db_after_fetch)) =
-        stage_fetch_and_prepare(&config, &api_key, &db, &catalog, &today, entity_db).await?
+    // Signal Agent: 抓取 → 去重 → 丰富 → 实体提取
+    let Some((new_articles, source_statuses, entity_db_fetched)) =
+        agent_signal(&config, &api_key, &db, &catalog, &today, entity_db).await?
     else {
         return Ok(());
     };
-    entity_db = entity_db_after_fetch;
+    entity_db = entity_db_fetched;
 
-    stage_analyze_and_render(
+    // Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
+    let source_statuses_clone = source_statuses.clone();
+    let research = agent_research(
+        &config,
+        &api_key,
+        &db,
+        &catalog,
+        &data_dir,
+        &today,
+        new_articles,
+        source_statuses_clone,
+    )
+    .await?;
+
+    // Publishing Agent: Premium → 渲染 → Chronicle → 看板
+    agent_publish(
         &config,
         &api_key,
         &db,
@@ -58,7 +74,7 @@ async fn main() -> Result<()> {
         &data_dir,
         &today,
         &mut entity_db,
-        new_articles,
+        research,
         source_statuses,
     )
     .await?;
@@ -67,10 +83,10 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-// ===== 管线阶段 1: 初始化 =====
+// ===== Agent 0: 初始化 =====
 
 /// 加载配置、初始化数据库、加载 EntitySanctionDb、生成设计 CSS
-async fn stage_init() -> Result<(
+async fn init() -> Result<(
     config::Config,
     String,
     db::Database,
@@ -146,11 +162,11 @@ async fn stage_init() -> Result<(
     Ok((config, api_key, db, catalog, data_dir, today, entity_db))
 }
 
-// ===== 管线阶段 2: 抓取 → 去重 → 丰富 =====
+// ===== Signal Agent: 抓取 → 去重 → 丰富 =====
 
 /// 源抓取 → Pipeline 清洗去重 → SQLite 去重 → Trend 写入 → 证据快照 → 丰富 → 实体提取
 /// 返回 None 表示今日无新文章（管线提前终止）
-async fn stage_fetch_and_prepare(
+async fn agent_signal(
     config: &config::Config,
     api_key: &str,
     db: &db::Database,
@@ -323,17 +339,32 @@ async fn stage_fetch_and_prepare(
 
 /// Scan Agent 分流 → 聚类 → 主题分析 → 蓝军验证 → DiGraph 引擎 → Premium → 渲染输出
 #[allow(clippy::too_many_arguments)]
-async fn stage_analyze_and_render(
+/// Research Agent 的输出（传递给 Publishing Agent）
+struct ResearchOutput {
+    themes: Vec<clusterer::Theme>,
+    analyses: Vec<clusterer::ThemeAnalysis>,
+    analyses_zh: Vec<clusterer::ThemeAnalysis>,
+    decisions: Vec<decision_engine::Decision>,
+    triage: agent::scan::TriageResult,
+    total_new: usize,
+    new_articles: Vec<fetcher::Article>,
+}
+
+// ===== Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb =====
+
+/// Scan Agent 分流 → LLM 预去重 → 聚类 → 主题分析 → 蓝军验证 → DiGraph 引擎 → BeliefDb
+/// 返回 ResearchOutput 供 Publishing Agent 使用
+#[allow(clippy::too_many_arguments)]
+async fn agent_research(
     config: &config::Config,
     api_key: &str,
     db: &db::Database,
     catalog: &catalog::DataCatalog,
     data_dir: &PathBuf,
     today: &str,
-    entity_db: &mut entity::EntitySanctionDb,
     new_articles: Vec<fetcher::Article>,
     source_statuses: Vec<(String, bool, usize)>,
-) -> Result<()> {
+) -> Result<ResearchOutput> {
     // 分组 + Scan Agent
     let grouped = llm::group_by_category(&new_articles);
     let total_new = new_articles.len();
@@ -383,11 +414,19 @@ async fn stage_analyze_and_render(
 
     if triage.insight.is_empty() && triage.watchlist.is_empty() {
         println!("\n📋 今日 {} 篇全部进入 Signal Memory。\n", total_new);
-        return Ok(());
+        return Ok(ResearchOutput {
+            themes: vec![],
+            analyses: vec![],
+            analyses_zh: vec![],
+            decisions: vec![],
+            triage,
+            total_new,
+            new_articles: vec![],
+        });
     }
 
     // 聚类（只对 Insight 层）
-    let mut insight_articles = triage.insight;
+    let mut insight_articles = triage.insight.clone();
     if let Some(ref nl) = config.news_layer {
         if nl.llm_prededup {
             let before = insight_articles.len();
@@ -538,6 +577,43 @@ async fn stage_analyze_and_render(
             log::warn!("⚠️ BeliefDb 保存失败: {}", e);
         }
     }
+
+    // 返回研究结果供 Publishing Agent 使用
+    Ok(ResearchOutput {
+        themes,
+        analyses,
+        analyses_zh,
+        decisions,
+        triage,
+        total_new,
+        new_articles,
+    })
+}
+
+// ===== Publishing Agent: Premium → 渲染 → Chronicle → 看板 =====
+
+/// Premium 报告 → 合成摘要 → Markdown 输出 → 变更检测 → HTML 渲染 → Chronicle → Decay Agent
+#[allow(clippy::too_many_arguments)]
+async fn agent_publish(
+    config: &config::Config,
+    api_key: &str,
+    db: &db::Database,
+    catalog: &catalog::DataCatalog,
+    data_dir: &PathBuf,
+    today: &str,
+    entity_db: &mut entity::EntitySanctionDb,
+    research: ResearchOutput,
+    source_statuses: Vec<(String, bool, usize)>,
+) -> Result<()> {
+    let ResearchOutput {
+        themes,
+        analyses,
+        analyses_zh,
+        decisions,
+        triage,
+        total_new,
+        new_articles,
+    } = research;
 
     // Premium 深度研报
     let vault_base = PathBuf::from(&config.output.vault_path);
