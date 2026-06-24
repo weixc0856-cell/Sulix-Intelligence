@@ -92,6 +92,7 @@ pub fn render_json_ld(title: &str, date: &str, text_snippet: &str) -> String {
 }
 
 use crate::clusterer::{Assumption, Theme, ThemeAnalysis};
+use crate::db::TrendRow;
 use crate::fetcher::Article;
 use crate::premium::PremiumReport;
 use crate::template::{self, TemplateData};
@@ -947,6 +948,48 @@ else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.locati
     );
 
     Ok(html)
+}
+
+/// 渲染 Trend Layer 趋势区块
+pub fn render_trend_block(trends: &[TrendRow]) -> String {
+    if trends.is_empty() {
+        return String::new();
+    }
+    let rows: String = trends
+        .iter()
+        .map(|t| {
+            let (arrow, color) = if t.change_pct > 20.0 {
+                ("↑", "#16a34a")
+            } else if t.change_pct < -20.0 {
+                ("↓", "#dc2626")
+            } else {
+                ("→", "#a3a3a3")
+            };
+            let label = if t.recent_count > 0 {
+                format!("{} 篇", t.recent_count)
+            } else {
+                "0".to_string()
+            };
+            format!(
+                r#"<div style="display:flex;justify-content:space-between;font-size:0.8125rem;padding:0.25rem 0;border-bottom:1px solid #f0f0f0">
+  <span style="font-family:'Inter',sans-serif;color:#171717">{}</span>
+  <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:{}">{}{:.0}%</span>
+</div>"#,
+                html_escape(&t.category),
+                color,
+                arrow,
+                t.change_pct.abs()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"<div style="margin-top:1.5rem;padding:0.75rem;background:#fafafa;border-radius:0.25rem">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#171717;margin-bottom:0.5rem">📊 过去 14 天趋势</div>
+  {}</div>"#,
+        rows
+    )
 }
 
 /// 渲染 Premium 深度研报（长格式，多 Agent 合成）

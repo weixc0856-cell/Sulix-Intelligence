@@ -164,6 +164,25 @@ async fn main() -> Result<()> {
         println!("  [{}/{}] {}", a.category, a.source, a.title);
     }
 
+    // Trend Layer: 按 category 统计每日文章数
+    {
+        use std::collections::HashMap;
+        let mut cat_counts: HashMap<&str, u32> = HashMap::new();
+        for a in &new_articles {
+            *cat_counts.entry(&a.category).or_insert(0) += 1;
+        }
+        let stats: Vec<db::CategoryStat> = cat_counts
+            .into_iter()
+            .map(|(cat, count)| db::CategoryStat {
+                category: cat.to_string(),
+                article_count: count,
+            })
+            .collect();
+        if let Err(e) = db.upsert_daily_stats(&today, &stats) {
+            log::warn!("⚠️ Trend Layer 写入失败: {}", e);
+        }
+    }
+
     // 证据快照：对所有 SVI >= 5 的新文章写入证据目录
     let vault_path = &config.output.vault_path;
     for article in &new_articles {
@@ -627,6 +646,19 @@ async fn main() -> Result<()> {
                 log::info!("🧠 决策区块注入: {} 项", decisions.len());
             }
         }
+
+        // Trend Layer: 注入趋势区块
+        if let Ok(trends) = db.get_trend(14) {
+            if !trends.is_empty() {
+                let trend_html = renderer::render_trend_block(&trends);
+                let path = month_dir.join("index.html");
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let updated = content.replacen("</main>", &format!("{}</main>", trend_html), 1);
+                    let _ = std::fs::write(&path, &updated);
+                    log::info!("📊 Trend Layer: {} 个类别趋势", trends.len());
+                }
+            }
+        }
     }
     // === 编年史看板初始化（在双语写入之前） ===
     let db_dir = data_dir.join(&today[..7]);
@@ -654,6 +686,18 @@ async fn main() -> Result<()> {
         ) {
             if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
                 log::warn!("写入中文 HTML 失败 {:?}: {}", zh_dir.join("index.html"), e);
+            }
+            // ZH 趋势注入
+            if let Ok(trends) = db.get_trend(14) {
+                if !trends.is_empty() {
+                    let trend_html = renderer::render_trend_block(&trends);
+                    let zh_path = zh_dir.join("index.html");
+                    if let Ok(content) = std::fs::read_to_string(&zh_path) {
+                        let updated =
+                            content.replacen("</main>", &format!("{}</main>", trend_html), 1);
+                        let _ = std::fs::write(&zh_path, &updated);
+                    }
+                }
             }
             log::info!("🌏 中文简报已生成");
         }

@@ -6,6 +6,21 @@ use std::path::Path;
 
 use crate::fetcher::Article;
 
+/// 每日类别统计（Trend Layer）
+pub struct CategoryStat {
+    pub category: String,
+    pub article_count: u32,
+}
+
+/// 趋势数据行
+#[derive(Debug, Clone)]
+pub struct TrendRow {
+    pub category: String,
+    pub recent_count: i64,
+    pub prev_count: i64,
+    pub change_pct: f64,
+}
+
 // ===== Phase D: 记忆墓地数据结构 =====
 
 /// 埋葬条目（写入用）
@@ -91,7 +106,15 @@ impl Database {
                 wake_up_count INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_graveyard_category
-                ON knowledge_graveyard(category);",
+                ON knowledge_graveyard(category);
+
+            -- Trend Layer: 每日类别统计
+            CREATE TABLE IF NOT EXISTS daily_category_stats (
+                date TEXT NOT NULL,
+                category TEXT NOT NULL,
+                article_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (date, category)
+            );",
         )?;
 
         Ok(Database { conn })
@@ -170,6 +193,63 @@ impl Database {
             stats.push(row?);
         }
         Ok(stats)
+    }
+
+    /// 写入每日类别统计（Trend Layer）
+    pub fn upsert_daily_stats(&self, date: &str, stats: &[CategoryStat]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        for stat in stats {
+            tx.execute(
+                "INSERT OR REPLACE INTO daily_category_stats (date, category, article_count)
+                 VALUES (?1, ?2, ?3)",
+                params![date, stat.category, stat.article_count],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 获取近 N 天类别趋势（Trend Layer）
+    /// 返回每个类别在 recent_days 和 previous_days 的数量对比
+    pub fn get_trend(&self, days: i32) -> Result<Vec<TrendRow>> {
+        let half = days / 2;
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                category,
+                SUM(CASE WHEN date >= date('now', ?1) THEN article_count ELSE 0 END) as recent,
+                SUM(CASE WHEN date < date('now', ?1) AND date >= date('now', ?2) THEN article_count ELSE 0 END) as prev
+             FROM daily_category_stats
+             WHERE date >= date('now', ?2)
+             GROUP BY category
+             HAVING recent > 0 OR prev > 0
+             ORDER BY recent DESC",
+        )?;
+
+        let recent_start = format!("-{} days", half);
+        let prev_start = format!("-{} days", days);
+        let rows = stmt.query_map(params![recent_start, prev_start], |row| {
+            let recent: i64 = row.get(1)?;
+            let prev: i64 = row.get(2)?;
+            let change_pct = if prev > 0 {
+                ((recent - prev) as f64 / prev as f64) * 100.0
+            } else if recent > 0 {
+                100.0
+            } else {
+                0.0
+            };
+            Ok(TrendRow {
+                category: row.get(0)?,
+                recent_count: recent,
+                prev_count: prev,
+                change_pct,
+            })
+        })?;
+
+        let mut trends = Vec::new();
+        for row in rows {
+            trends.push(row?);
+        }
+        Ok(trends)
     }
 
     // ===== Phase D: 记忆墓地 =====
