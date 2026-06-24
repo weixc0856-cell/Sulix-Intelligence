@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "astro dev",
-    "prebuild": "mkdir -p src/content/posts public/data && cp -r ../content/posts/*.md src/content/posts/ 2>/dev/null; cp ../data/belief_db.json public/data/ 2>/dev/null; cp ../DailyBrief/design.css public/ 2>/dev/null; npx astro sync 2>/dev/null || true",
+    "prebuild": "mkdir -p src/content/posts public/data && cp -r ../content/posts/*.mdx src/content/posts/ 2>/dev/null; cp ../data/belief_db.json public/data/ 2>/dev/null; npx astro sync 2>/dev/null || true",
     "build": "astro build",
     "preview": "astro preview",
     "test": "echo \"Error: no test specified\" && exit 1"

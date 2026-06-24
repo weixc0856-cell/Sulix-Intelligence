@@ -103,8 +103,6 @@ pub async fn agent_publish(
     let vault_base = PathBuf::from(&config.output.vault_path);
     let premium_dir = vault_base.join("premium");
     fs::create_dir_all(&premium_dir)?;
-    let mut flash_headlines: Vec<String> = Vec::new();
-    let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
         let svi = crate::clusterer::calculate_svi(analysis, theme, &config.sources);
         let asi_config = crate::engine::analysis::asi::AsiConfig::default();
@@ -127,12 +125,10 @@ pub async fn agent_publish(
             &confidence_config,
         );
         let final_val = crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
-        asi_score_map.insert(theme.title.clone(), (asi_result.asi, confidence_result.confidence, final_val));
         if final_val >= 6.0 {
             log::info!("⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})", theme.title, svi, asi_result.asi, confidence_result.confidence, final_val);
         }
         if svi < 7 { continue; }
-        if svi >= 9 { flash_headlines.push(theme.title.clone()); }
         let theme_context: String = theme.articles.iter()
             .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
             .collect::<Vec<_>>().join("\n");
@@ -278,53 +274,6 @@ pub async fn agent_publish(
             change_summary.conflicts.len(), change_summary.reinforced.len(), change_summary.new_signals.len());
     }
 
-    // HTML 渲染（通过 Publisher trait）
-    let flash = flash_headlines.first().cloned();
-    let css_path = vault_base.join("design.css");
-    let css_content = std::fs::read_to_string(&css_path).unwrap_or_default();
-    let dashboard_css = css_content.clone();
-    let html_ctx = crate::renderer::publisher::PublishContext {
-        themes: themes.clone(),
-        analyses: analyses.clone(),
-        analyses_zh: analyses_zh.clone(),
-        date: today.to_string(),
-        language: "en".into(),
-        calibration: Some(calibration_text.clone()),
-        attributable_sources: config.sources.clone(),
-        flash_headline: flash,
-        change_summary: Some(change_summary.clone()),
-        theses: vec![],
-        report: None,
-        archive_entries: vec![],
-        archive_entries_zh: vec![],
-        source_statuses: source_statuses.clone(),
-        decisions: decisions.clone(),
-        asi_scores: asi_score_map.clone(),
-        editor_notes: editor_notes.clone(),
-        belief_notes_html: belief_notes_html.clone(),
-        css_content,
-        articles: new_articles.clone(),
-        watchlist_count: triage.watchlist.len(),
-        output_dir: vault_base.clone(),
-    };
-    crate::renderer::publisher::HtmlPublisher::new().publish(&html_ctx)?;
-
-    // Trend 区块注入
-    if let Ok(trends) = db.get_trend(TREND_DAYS) {
-        if !trends.is_empty() {
-            let trend_html = crate::renderer::render_trend_block(&trends);
-            for lang in &["en", "zh"] {
-                let path = vault_base.join(lang).join(&today[..7]).join("index.html");
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let updated = content.replacen("</main>", &format!("{trend_html}</main>"), 1);
-                    if let Err(e) = std::fs::write(&path, &updated) {
-                        log::warn!("Trend 注入失败 {}: {}", path.display(), e);
-                    }
-                }
-            }
-        }
-    }
-
     // Chronicle 构建
     let db_dir = data_dir.join(&today[..7]);
     fs::create_dir_all(&db_dir).unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
@@ -345,22 +294,6 @@ pub async fn agent_publish(
         });
     }
     chronicle.save(&chronicle_path)?;
-
-    // Chronicle 看板（通过 DashboardPublisher）
-    let dashboard_ctx = crate::renderer::publisher::PublishContext {
-        themes: vec![], analyses: vec![], analyses_zh: vec![],
-        date: today.to_string(), language: "en".into(), calibration: None,
-        attributable_sources: vec![], flash_headline: None, change_summary: None,
-        theses: vec![], report: None,
-        archive_entries: chronicle.sorted_by_lang("en"),
-        archive_entries_zh: chronicle.sorted_by_lang("zh"),
-        source_statuses: vec![], decisions: vec![], asi_scores: HashMap::new(),
-        editor_notes: vec![],
-        belief_notes_html: String::new(),
-        css_content: dashboard_css.clone(), articles: vec![], watchlist_count: 0,
-        output_dir: vault_base.clone(),
-    };
-    crate::renderer::publisher::DashboardPublisher::new().publish(&dashboard_ctx)?;
 
     // Decay Agent
     if let Some(ref g) = config.graveyard {
@@ -479,19 +412,9 @@ pub async fn agent_publish(
             log::warn!("⚠️ Memory Engine 保存失败: {}", e);
         }
 
-        // Thesis 看板
-        let memory_dir = vault_base.join("memory");
-        if let Err(e) = std::fs::create_dir_all(&memory_dir) {
-            log::warn!("⚠️ Memory 目录创建失败: {}", e);
-        } else {
-            let dashboard = crate::renderer::render_memory_dashboard(
-                memory.theses(), memory.all_outcomes(), memory.all_reflections(),
-            );
-            if let Err(e) = std::fs::write(memory_dir.join("index.html"), &dashboard) {
-                log::warn!("⚠️ Thesis 看板写入失败: {}", e);
-            } else {
-                log::info!("📊 Thesis 看板已生成: {} 个 Thesis", memory.theses().len());
-            }
+        // TODO: 生成 Thesis MDX 供 Astro 展示
+        if memory.theses().len() > 0 {
+            log::info!("📊 Thesis: {} 个活跃", memory.theses().len());
         }
     }
     // 将置信度变化通知追加到 belief_notes_html

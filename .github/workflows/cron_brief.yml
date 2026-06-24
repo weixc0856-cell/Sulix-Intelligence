@@ -33,17 +33,30 @@ jobs:
           cargo build --release
           cargo run --release
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: astro-frontend/package-lock.json
+
+      - name: Build Astro Frontend
+        run: |
+          cd astro-frontend
+          npm ci
+          npm run build
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy DailyBrief/ --project-name=sulix-intelligence
+          command: pages deploy astro-frontend/dist/ --project-name=sulix-intelligence
 
       - name: Commit and Push
         run: |
           git config user.name "Sulix-Bot"
           git config user.email "bot@sulix.com"
-          git add DailyBrief/
+          git add content/posts/
           git diff --quiet && git diff --staged --quiet || \
             (git commit -m "chore(data): daily brief $(date +%Y-%m-%d)" && git push)

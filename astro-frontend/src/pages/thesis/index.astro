@@ -1,0 +1,39 @@
+---
+import BaseLayout from '../../layouts/base.astro';
+import { getCollection } from 'astro:content';
+
+const theses = await getCollection('thesis');
+const active = theses.filter(t => t.data.status !== 'Retired');
+---
+
+<BaseLayout title="Thesis Dashboard | Sulix">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1rem;padding-bottom:0.5rem;border-bottom:2px solid #171717">
+    <h1 class="font-mono" style="font-size:1.25rem;font-weight:700;color:#171717;margin:0">🧠 Thesis Dashboard</h1>
+    <span class="font-mono" style="font-size:0.6875rem;color:#a3a3a3">{active.length} active / {theses.length} total</span>
+  </div>
+
+  {active.length === 0 ? (
+    <p style="font-size:0.875rem;color:#a3a3a3;text-align:center;padding:2rem">No active theses yet.</p>
+  ) : (
+    <div style="display:flex;flex-direction:column;gap:0.5rem">
+      {active.map(thesis => (
+        <a href={`/thesis/${thesis.data.slug}`} style="text-decoration:none;display:block;padding:0.75rem;border:1px solid #e5e5e5;border-radius:0.25rem;transition:border-color 0.15s" class="hover:border-neutral-400">
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <span style="font-size:1.25rem">
+              {thesis.data.status === 'Strengthening' ? '📈' : thesis.data.status === 'Weakening' ? '📉' : '🔵'}
+            </span>
+            <div style="flex:1">
+              <div class="font-mono" style="font-weight:600;color:#171717;font-size:0.875rem">{thesis.data.title}</div>
+              {thesis.data.summary && <div style="font-size:0.75rem;color:#737373;margin-top:0.125rem">{thesis.data.summary}</div>}
+            </div>
+            <div style="display:flex;gap:0.75rem;font-size:0.6875rem;color:#a3a3a3;font-family:'JetBrains Mono',monospace">
+              <span>{thesis.data.evidence_count} ev</span>
+              {thesis.data.support_count !== undefined && <span style="color:#16a34a">+{thesis.data.support_count}</span>}
+              {thesis.data.challenge_count !== undefined && <span style="color:#dc2626">-{thesis.data.challenge_count}</span>}
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>
+  )}
+</BaseLayout>

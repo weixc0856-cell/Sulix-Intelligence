@@ -198,7 +198,7 @@ impl Publisher for MarkdownPublisher {
                 theme, analysis, &ctx.date,
             );
             outputs.push(PublishedOutput::File {
-                path: PathBuf::from("content/posts").join(format!("{}-{}.md", ctx.date, slug)),
+                path: PathBuf::from("content/posts").join(format!("{}-{}.mdx", ctx.date, slug)),
                 content: md,
             });
         }
