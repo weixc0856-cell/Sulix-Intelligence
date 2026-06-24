@@ -29,6 +29,7 @@
 
 # 博客文章内容（独立管理，不纳入主仓库）
 /content/posts/
+/content/reports/
 
 # Astro 前端依赖与构建产物
 /astro-frontend/node_modules/
