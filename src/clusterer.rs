@@ -224,6 +224,7 @@ Your job is to answer one question:
 Output JSON Schema:
 {
   "bluf": "One-sentence bottom line. Start with the judgment, not the news.",
+  "impact": "Strategic implications for founders (1 sentence). What does this mean for a startup?",
   "geopolitical_fact": "What happened — concise, factual, verifiable (2-3 sentences). Situation-Complication-Resolution.",
   "supply_chain_impact": "Why it matters — strategic implications for founders (2-3 sentences). Include industry impact.",
   "analysis_paragraph": "What changed — did this confirm or challenge an existing thesis? If nothing changed, say 'No change.'",
