@@ -73,11 +73,31 @@ layer = 3
 public = true
 enabled = true
 
-# AI 生态核心源示例
+# AI 生态核心源示例（使用 Direct RSS，非 RSSHub）
 [[sources]]
 name = "OpenAI Blog"
 type = "rss"
-url = "https://rsshub.app/openai/blog"
+url = "https://openai.com/news/rss.xml"
+category = "AI"
+layer = 2
+score = 10
+public = true
+enabled = true
+
+[[sources]]
+name = "Anthropic Blog"
+type = "rss"
+url = "https://www.anthropic.com/rss.xml"
+category = "AI"
+layer = 2
+score = 10
+public = true
+enabled = true
+
+[[sources]]
+name = "Google DeepMind Blog"
+type = "rss"
+url = "https://deepmind.google/blog/rss.xml"
 category = "AI"
 layer = 2
 score = 10
@@ -95,10 +115,10 @@ public = true
 enabled = true
 
 [[sources]]
-name = "YC Blog"
+name = "a16z Blog"
 type = "rss"
-url = "https://www.ycombinator.com/blog/rss"
-category = "创业"
+url = "https://a16z.com/feed/"
+category = "投资"
 layer = 2
 score = 8
 public = true
