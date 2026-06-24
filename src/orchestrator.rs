@@ -127,6 +127,12 @@ pub struct DiGraph {
     executed: std::collections::HashSet<String>,
 }
 
+impl Default for DiGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiGraph {
     pub fn new() -> Self {
         Self {
@@ -147,7 +153,7 @@ impl DiGraph {
     pub fn add_edge(&mut self, from: &str, to: &str, condition: ConditionEdgeFn) {
         self.edges
             .entry(from.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((to.to_string(), condition));
     }
 

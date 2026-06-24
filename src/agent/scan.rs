@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::LlmConfig;
+use crate::config::SourceConfig;
 use crate::fetcher::Article;
 use crate::llm;
 
@@ -45,6 +46,7 @@ pub async fn scan_and_triage(
     api_key: &str,
     llm_config: &LlmConfig,
     prompts: Option<&crate::config::PromptsConfig>,
+    sources: &[SourceConfig],
 ) -> Result<TriageResult> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -90,13 +92,29 @@ pub async fn scan_and_triage(
                         let tag = matched
                             .map(|r| r.relevance.as_str())
                             .unwrap_or("Context Update");
+                        // 验证 tag 是否为预期的 4 个值之一，防止 LLM 拼写错误
+                        let tag = match tag {
+                            "Structural Shift" | "Competitive Signal" | "Context Update" | "Noise" => tag,
+                            other => {
+                                log::warn!("⚠️ Scan Agent: unknown relevance tag '{other}' from LLM, defaulting to 'Context Update'");
+                                "Context Update"
+                            }
+                        };
+
+                        // Source 可信度加权
+                        let source_score = sources
+                            .iter()
+                            .find(|s| s.name == article.source)
+                            .map(|s| s.score as f32)
+                            .unwrap_or(5.0);
+                        let source_factor = 0.5 + source_score / 20.0; // 0.55 (score=1) .. 1.0 (score=10)
+                        let weighted = (importance as f32 * source_factor).round() as u8;
 
                         // 三层分流
-                        // 综合评分 = importance * 0.25 + tag 权重
                         let composite = if tag == "Structural Shift" {
-                            (importance as f32 * 0.25 + 9.0 * 0.25) as u8 // Structural Shift 保底高分
+                            weighted.max(7) // Structural Shift 保底进 insight
                         } else {
-                            importance
+                            weighted
                         };
 
                         if composite >= 7 {

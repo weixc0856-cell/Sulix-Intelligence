@@ -161,6 +161,22 @@ Dual-Track Emission: HTML (EN/ZH) + Markdown (Astro)
 | Serde deny_unknown_fields (strict config validation) | Sec | ✅ |
 | html_escape (37 usages across all render functions) | Sec | ✅ |
 
+### Code Structure (54 files, 8 directories)
+
+```
+src/
+├── domain/        — Core domain models (Theme → Thesis → Evidence)
+├── engine/        — Domain engines (analysis / memory / premium)
+├── hermes/        — Change detection + trends + conflicts
+├── renderer/      — Multi-format output (HTML / Markdown / Dashboard)
+├── clusterer/     — Theme clustering + synthesis + pre-dedup
+├── agent/         — Scan Agent + Calibration + Decay
+├── source/        — Source adapters (RSS / USPTO)
+├── event_log.rs   — PipelineEvent append-only log
+├── app_context.rs — Unified Arc-passing context
+└── main.rs        — Pipeline orchestration
+```
+
 ## Configuration
 
 `config.toml` key sections:

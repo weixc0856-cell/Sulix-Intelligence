@@ -106,7 +106,7 @@ pub(crate) async fn call_with_retry(
                 let err_str = e.to_string();
 
                 // 4xx 错误不重试（auth/billing/rate limit 非临时性问题）
-                if err_str.contains("401") || err_str.contains("403") || err_str.contains("429") {
+                if err_str.contains("401") || err_str.contains("403") {
                     log::warn!("❌ 非临时性错误，不重试: {}", err_str);
                     return Err(e);
                 }
@@ -116,7 +116,7 @@ pub(crate) async fn call_with_retry(
         }
     }
 
-    Err(last_error.unwrap())
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("重试循环退出但未积累错误")))
 }
 
 /// 调用 DeepSeek API 返回原始文本，带指数退避重试
@@ -138,7 +138,7 @@ pub(crate) async fn call_with_retry_raw(
             Ok(result) => return Ok(result),
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("401") || err_str.contains("403") || err_str.contains("429") {
+                if err_str.contains("401") || err_str.contains("403") {
                     log::warn!("❌ 非临时性错误，不重试: {}", err_str);
                     return Err(e);
                 }
@@ -146,7 +146,7 @@ pub(crate) async fn call_with_retry_raw(
             }
         }
     }
-    Err(last_error.unwrap())
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("重试循环退出但未积累错误")))
 }
 
 /// 不带重试的原始 API 调用（供 call_with_retry_raw 使用）

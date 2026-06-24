@@ -10,22 +10,27 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 mod agent;
+mod app_context;
 mod archive;
 mod belief_engine;
 mod catalog;
-mod change_detection;
 mod client;
 mod clusterer;
 mod config;
 mod db;
 mod decision_engine;
 mod design;
+mod domain;
+mod engine;
 mod enricher;
 mod entity;
+mod event_log;
 mod fetcher;
+mod hermes;
 mod llm;
 mod orchestrator;
 mod pipeline;
@@ -33,7 +38,6 @@ mod premium;
 mod question_engine;
 mod renderer;
 mod source;
-mod template;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -168,7 +172,7 @@ async fn init() -> Result<(
 /// 返回 None 表示今日无新文章（管线提前终止）
 async fn agent_signal(
     config: &config::Config,
-    api_key: &str,
+    _api_key: &str,
     db: &db::Database,
     catalog: &catalog::DataCatalog,
     today: &str,
@@ -358,12 +362,12 @@ struct ResearchOutput {
 async fn agent_research(
     config: &config::Config,
     api_key: &str,
-    db: &db::Database,
+    _db: &db::Database,
     catalog: &catalog::DataCatalog,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     today: &str,
     new_articles: Vec<fetcher::Article>,
-    source_statuses: Vec<(String, bool, usize)>,
+    _source_statuses: Vec<(String, bool, usize)>,
 ) -> Result<ResearchOutput> {
     // 分组 + Scan Agent
     let grouped = llm::group_by_category(&new_articles);
@@ -375,6 +379,7 @@ async fn agent_research(
                 api_key,
                 &config.llm,
                 config.prompts.as_ref(),
+                &config.sources,
             )
             .await
             {
@@ -485,6 +490,16 @@ async fn agent_research(
     }
     catalog.save_step(6, "theme_analyses", &analyses)?;
 
+    // 主题证据快照（记录每篇文章所属主题 + 分析结论）
+    if !themes.is_empty() && !analyses.is_empty() {
+        if let Err(e) =
+            pipeline::capture_topic_evidence(&themes, &analyses, &config.output.vault_path)
+        {
+            log::warn!("⚠️ 主题证据快照写入失败: {}", e);
+        }
+        log::info!("📸 主题证据快照: {} 篇", analyses.len());
+    }
+
     // 中文分析
     let mut analyses_zh = Vec::new();
     for theme in &themes {
@@ -561,7 +576,8 @@ async fn agent_research(
         let belief_db_path = data_dir.join("belief_db.json");
         let mut belief_db = if belief_db_path.exists() {
             crate::belief_engine::BeliefDb::load_from_file(&belief_db_path.to_string_lossy())
-                .unwrap_or_else(|_| {
+                .unwrap_or_else(|e| {
+                    log::error!("⚠️ BeliefDb 加载失败，历史信念数据可能丢失: {e}");
                     let d = crate::belief_engine::BeliefDb::new(today);
                     log::info!("🧠 BeliefDb 新实例");
                     d
@@ -599,7 +615,7 @@ async fn agent_publish(
     api_key: &str,
     db: &db::Database,
     catalog: &catalog::DataCatalog,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     today: &str,
     entity_db: &mut entity::EntitySanctionDb,
     research: ResearchOutput,
@@ -681,7 +697,9 @@ async fn agent_publish(
     catalog.save_step(7, "summary", &summary)?;
 
     // Markdown 输出（Astro 前端资产）
-    let content_dir = PathBuf::from("D:/Project/Sulix Intelligence/content/posts");
+    let content_dir = PathBuf::from(&config.output.vault_path)
+        .join("content")
+        .join("posts");
     fs::create_dir_all(&content_dir)?;
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
         let markdown = renderer::render_signal_markdown(theme, analysis, today);
@@ -776,27 +794,29 @@ async fn agent_publish(
         fs::write(month_dir.join("index.html"), &html)?;
         log::info!("📄 EN 简报写入: {}", month_dir.join("index.html").display());
 
-        // 决策区块注入
-        if !decisions.is_empty() {
-            let decision_html = decision_engine::render_decision_html(&decisions);
-            let path = month_dir.join("index.html");
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let updated = content.replacen("</main>", &format!("{}</main>", decision_html), 1);
-                let _ = std::fs::write(&path, &updated);
-                log::info!("🧠 决策区块注入: {} 项", decisions.len());
+        // 决策区块 + 趋势区块注入（批量读-改-写，一次完成）
+        let path = month_dir.join("index.html");
+        let content = std::fs::read_to_string(&path).ok();
+        if let Some(content) = content {
+            let mut blocks = String::new();
+            if !decisions.is_empty() {
+                blocks.push_str(&decision_engine::render_decision_html(&decisions));
             }
-        }
-
-        // Trend 区块注入
-        if let Ok(trends) = db.get_trend(14) {
-            if !trends.is_empty() {
-                let trend_html = renderer::render_trend_block(&trends);
-                let path = month_dir.join("index.html");
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let updated = content.replacen("</main>", &format!("{}</main>", trend_html), 1);
-                    let _ = std::fs::write(&path, &updated);
-                    log::info!("📊 Trend Layer: {} 个类别趋势", trends.len());
+            if let Ok(trends) = db.get_trend(14) {
+                if !trends.is_empty() {
+                    blocks.push_str(&renderer::render_trend_block(&trends));
                 }
+            }
+            if !blocks.is_empty() {
+                let updated = content.replacen("</main>", &format!("{blocks}</main>"), 1);
+                if let Err(e) = std::fs::write(&path, &updated) {
+                    log::warn!("区块注入写入失败 {}: {}", path.display(), e);
+                }
+                if !decisions.is_empty() {
+                    log::info!("🧠 决策区块注入: {} 项", decisions.len());
+                }
+            } else {
+                log::info!("📊 Trend/决策: 无内容注入");
             }
         }
     }
@@ -824,17 +844,20 @@ async fn agent_publish(
             &source_statuses,
             Some(&change_summary),
         ) {
-            if let Err(e) = fs::write(zh_dir.join("index.html"), &zh_html) {
+            let zh_path = zh_dir.join("index.html");
+            if let Err(e) = fs::write(&zh_path, &zh_html) {
                 log::warn!("写入中文 HTML 失败: {}", e);
             }
-            if let Ok(trends) = db.get_trend(14) {
-                if !trends.is_empty() {
-                    let trend_html = renderer::render_trend_block(&trends);
-                    let zh_path = zh_dir.join("index.html");
-                    if let Ok(content) = std::fs::read_to_string(&zh_path) {
+            // 中文版趋势区块注入（批量）
+            if let Ok(content) = std::fs::read_to_string(&zh_path) {
+                if let Ok(trends) = db.get_trend(14) {
+                    if !trends.is_empty() {
+                        let trend_html = renderer::render_trend_block(&trends);
                         let updated =
-                            content.replacen("</main>", &format!("{}</main>", trend_html), 1);
-                        let _ = std::fs::write(&zh_path, &updated);
+                            content.replacen("</main>", &format!("{trend_html}</main>"), 1);
+                        if let Err(e) = std::fs::write(&zh_path, &updated) {
+                            log::warn!("中文 Trend 区块写入失败 {}: {}", zh_path.display(), e);
+                        }
                     }
                 }
             }
@@ -879,7 +902,7 @@ async fn agent_publish(
     }
 
     // 英文 Chronicle 条目
-    for (analysis, theme) in analyses.iter().zip(themes.iter()) {
+    for (analysis, _theme) in analyses.iter().zip(themes.iter()) {
         let mut entities: Vec<String> = Vec::new();
         for fb in &analysis.fact_base {
             for word in fb.evidence.split_whitespace() {
@@ -959,6 +982,54 @@ async fn agent_publish(
     let entity_db_path = data_dir.join("entity_db.json");
     if let Err(e) = entity_db.save_to_file(&entity_db_path.to_string_lossy()) {
         log::warn!("⚠️ EntitySanctionDb 保存失败: {}", e);
+    }
+
+    // Memory Engine 信念追踪 + Hermes 分析
+    {
+        let mut memory = engine::memory::MemoryEngine::new(
+            PathBuf::from(&config.output.vault_path).join("memory_db.json"),
+        );
+        if let Err(e) = memory.load() {
+            log::warn!("⚠️ Memory Engine 加载失败: {}", e);
+        }
+
+        // 基础更新：主题分析 → Thesis
+        if let Err(e) = memory.update_from_analysis(today, &themes, &analyses) {
+            log::warn!("⚠️ Memory Engine 更新失败: {}", e);
+        } else {
+            let before = memory.theses().len();
+            // Hermes 矛盾写入：将 change_summary 冲突记到 Thesis
+            if !change_summary.conflicts.is_empty() {
+                hermes::apply_conflicts(&change_summary, &mut memory, today);
+            }
+            // Hermes 趋势检测：Trend >30% 写入 Thesis
+            if let Ok(trends) = db.get_trend(14) {
+                hermes::analyze_trends(&trends, &mut memory, today);
+            }
+            // Hermes 新 Thesis 发现：chronicle 重复主题自动创建
+            hermes::discover_theses(&analyses, &chronicle, &mut memory, today);
+            log::info!(
+                "🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
+                memory.theses().len(),
+                memory.theses().len() - before,
+            );
+        }
+        if let Err(e) = memory.save() {
+            log::warn!("⚠️ Memory Engine 保存失败: {}", e);
+        }
+
+        // Thesis 看板
+        let memory_dir = vault_base.join("memory");
+        if let Err(e) = std::fs::create_dir_all(&memory_dir) {
+            log::warn!("⚠️ Memory 目录创建失败: {}", e);
+        } else {
+            let dashboard = renderer::render_memory_dashboard(memory.theses());
+            if let Err(e) = std::fs::write(memory_dir.join("index.html"), &dashboard) {
+                log::warn!("⚠️ Thesis 看板写入失败: {}", e);
+            } else {
+                log::info!("📊 Thesis 看板已生成: {} 个 Thesis", memory.theses().len());
+            }
+        }
     }
 
     // LLM 审计

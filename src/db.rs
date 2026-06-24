@@ -62,6 +62,8 @@ impl Database {
 
         // 启用 WAL 模式（更好的并发性能）
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        // 设置忙等待超时，避免并发读写时 SQLITE_BUSY
+        conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
 
         // 初始化表结构
         conn.execute_batch(
@@ -152,17 +154,6 @@ impl Database {
         Ok(new_articles)
     }
 
-    /// 统计今日新增文章数
-    #[allow(dead_code)]
-    pub fn today_count(&self) -> Result<u32> {
-        let count: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM articles WHERE date(fetched_at) = date('now')",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(count)
-    }
-
     /// 记录日报
     pub fn record_report(&self, date: &str, content: &str, count: usize) -> Result<()> {
         self.conn.execute(
@@ -171,29 +162,6 @@ impl Database {
             params![date, content, count as u32],
         )?;
         Ok(())
-    }
-
-    /// 获取最近 N 天的文章统计
-    #[allow(dead_code)]
-    pub fn recent_stats(&self, days: u32) -> Result<Vec<(String, u32)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT date(fetched_at) as day, COUNT(*) as cnt
-             FROM articles
-             WHERE fetched_at >= datetime('now', ?1)
-             GROUP BY day
-             ORDER BY day DESC",
-        )?;
-
-        let range = format!("-{} days", days);
-        let rows = stmt.query_map(params![range], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
-        })?;
-
-        let mut stats = Vec::new();
-        for row in rows {
-            stats.push(row?);
-        }
-        Ok(stats)
     }
 
     /// 写入每日类别统计（Trend Layer）
@@ -355,10 +323,9 @@ mod tests {
 
     fn test_db() -> Database {
         let conn = Connection::open_in_memory().unwrap();
-        // Initialize schema (same as Database::open)
+        // Initialize schema (same as Database::open, minus WAL which is file-only)
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS articles (
+            "CREATE TABLE IF NOT EXISTS articles (
                 id TEXT PRIMARY KEY, source TEXT NOT NULL, title TEXT NOT NULL,
                 url TEXT NOT NULL, content TEXT, summary TEXT, published_at TEXT,
                 fetched_at TEXT NOT NULL DEFAULT (datetime('now')),

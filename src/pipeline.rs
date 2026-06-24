@@ -11,17 +11,8 @@ use anyhow::Result;
 use regex::Regex;
 use serde::Serialize;
 
+use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::source::RawSignal;
-
-/// 运行管线（使用默认去重阈值 0.75）
-#[allow(dead_code)]
-pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
-    sanitize_all(signals);
-    compliance_filter_all(signals);
-    dedup(signals, 0.75);
-    post_process(signals);
-    Ok(())
-}
 
 /// 运行管线（使用配置的去重阈值）
 pub fn run_pipeline_with_config(
@@ -32,7 +23,9 @@ pub fn run_pipeline_with_config(
         .map(|c| c.title_similarity_threshold)
         .unwrap_or(0.75);
     sanitize_all(signals);
-    compliance_filter_all(signals);
+    // 合规过滤（A 股代码等）仅在展示时应用，不在持久化前执行，
+    // 避免因误报（如匹配美国邮编 60601）导致数据不可逆丢失。
+    // 展示端在 HTML 渲染时单独调用 compliance_filter。
     dedup(signals, threshold);
     post_process(signals);
     Ok(())
@@ -55,6 +48,12 @@ pub struct EvidenceSnapshot {
     pub raw_content: Option<String>,
     /// 触发事件快照的 SVI 值
     pub svi: u8,
+    /// 所属主题（主题分析后填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_title: Option<String>,
+    /// 分析结论（主题分析后填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bluf: Option<String>,
     /// 时间戳
     pub captured_at: String,
 }
@@ -75,6 +74,8 @@ pub fn capture_evidence_snapshot(signal: &RawSignal, svi: u8, vault_path: &str) 
         url: signal.url.clone(),
         raw_content: signal.content.clone(),
         svi,
+        theme_title: None,
+        bluf: None,
         captured_at: chrono::Local::now().to_rfc3339(),
     };
 
@@ -88,6 +89,46 @@ pub fn capture_evidence_snapshot(signal: &RawSignal, svi: u8, vault_path: &str) 
     let line = serde_json::to_string(&snapshot)?;
     use std::io::Write;
     writeln!(file, "{}", line)?;
+
+    Ok(())
+}
+
+/// 为主题文章创建可回溯的证据快照（附带分析上下文）
+///
+/// 在主题分析完成后调用，每篇主题文章 + 分析结论一并记入证据链。
+pub fn capture_topic_evidence(
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    vault_path: &str,
+) -> Result<()> {
+    let evidence_dir = std::path::Path::new(vault_path).join("evidence");
+    std::fs::create_dir_all(&evidence_dir)?;
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let log_path = evidence_dir.join(format!("{}.jsonl", date));
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
+    use std::io::Write;
+
+    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        for article in &theme.articles {
+            let snapshot = EvidenceSnapshot {
+                id: format!("ev-topic-{}", chrono::Utc::now().timestamp()),
+                source: article.source.clone(),
+                title: article.title.clone(),
+                url: article.url.clone(),
+                raw_content: article.content.clone().or_else(|| article.summary.clone()),
+                svi: analysis.signal_strength,
+                theme_title: Some(theme.title.clone()),
+                bluf: Some(analysis.bluf.clone()),
+                captured_at: chrono::Local::now().to_rfc3339(),
+            };
+            let line = serde_json::to_string(&snapshot)?;
+            writeln!(file, "{}", line)?;
+        }
+    }
 
     Ok(())
 }
@@ -136,8 +177,8 @@ fn sanitize_text(text: &str, url_re: &Regex, email_re: &Regex) -> String {
 
 /// 合规过滤：A 股个股代码熔断 + 荐股词熔断
 ///
-/// 仅过滤 public 展示的输出文本，不影响 LLM 全量熔炼。
-/// 熔断后以 "[REDACTED]" 替换敏感片段。
+/// 当前从管线中移除（避免持久化前数据丢失），留待 HTML 渲染时使用。
+#[allow(dead_code)]
 fn compliance_filter(text: &str) -> String {
     // A 股代码匹配：6 位数字，6xxxxx / 00xxxx / 30xxxx / 68xxxx
     // 使用 \b 词边界替代不支持的 look-around 断言
@@ -152,6 +193,7 @@ fn compliance_filter(text: &str) -> String {
     step2.to_string()
 }
 
+#[allow(dead_code)]
 fn compliance_filter_all(signals: &mut [RawSignal]) {
     for signal in signals.iter_mut() {
         signal.title = compliance_filter(&signal.title);

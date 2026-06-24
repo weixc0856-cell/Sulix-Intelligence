@@ -279,6 +279,7 @@ pub struct NewsLayerConfig {
     pub llm_change_detection: bool,
     /// RSSHub 基础 URL（部署自己的 RSSHub 实例可替换）
     #[serde(default = "default_rsshub_base")]
+    #[allow(dead_code)]
     pub rsshub_base: String,
 }
 
@@ -303,6 +304,7 @@ pub struct DedupConfig {
     pub title_similarity_threshold: f64,
     /// 去重时间窗口（小时），0 表示不限制
     #[serde(default = "default_dedup_window")]
+    #[allow(dead_code)]
     pub window_hours: u32,
 }
 
@@ -320,6 +322,15 @@ impl Config {
             .map_err(|e| anyhow::anyhow!("无法读取配置文件 {}: {}", path, e))?;
         let config: Config =
             toml::from_str(&content).map_err(|e| anyhow::anyhow!("TOML 解析错误: {}", e))?;
+        // 验证 date_range 格式
+        let valid = &["d1", "d3", "d7", "w1", "w2", "m1"];
+        if !valid.contains(&config.output.date_range.as_str()) {
+            anyhow::bail!(
+                "无效的 date_range '{}'，预期值: {}",
+                config.output.date_range,
+                valid.join(", ")
+            );
+        }
         Ok(config)
     }
 

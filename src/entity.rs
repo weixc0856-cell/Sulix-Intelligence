@@ -166,6 +166,12 @@ pub struct EntitySanctionDb {
     pub unsanctioned: HashMap<String, Entity>,
 }
 
+impl Default for EntitySanctionDb {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(dead_code)]
 impl EntitySanctionDb {
     pub fn new() -> Self {
@@ -185,63 +191,12 @@ impl EntitySanctionDb {
         }
     }
 
-    /// 升级到 sanctioned（OpenCTI draft->commit）
-    pub fn promote(&mut self, id: &str) -> Option<()> {
-        if let Some(mut entity) = self.unsanctioned.remove(id) {
-            entity.sanctioned = true;
-            entity
-                .relationships
-                .iter_mut()
-                .for_each(|r| r.inferred = false);
-            self.sanctioned.insert(id.to_string(), entity);
-            Some(())
-        } else {
-            None
-        }
-    }
-
-    /// 丢弃待审核实体（OpenCTI draft discard）
-    pub fn discard(&mut self, id: &str) -> bool {
-        self.unsanctioned.remove(id).is_some()
-    }
-
     /// 按类型查询已确认实体
     pub fn get_by_type(&self, entity_type: &EntityType) -> Vec<&Entity> {
         self.sanctioned
             .values()
             .filter(|e| e.entity_type == *entity_type)
             .collect()
-    }
-
-    /// 按名称搜索实体（含别名）
-    pub fn search_by_name(&self, name: &str) -> Vec<&Entity> {
-        let lower = name.to_lowercase();
-        let mut results: Vec<&Entity> = self
-            .sanctioned
-            .values()
-            .filter(|e| {
-                e.name.to_lowercase().contains(&lower)
-                    || e.aliases.iter().any(|a| a.to_lowercase().contains(&lower))
-            })
-            .collect();
-        // 也搜索 unsanctioned
-        results.extend(self.unsanctioned.values().filter(|e| {
-            e.name.to_lowercase().contains(&lower)
-                || e.aliases.iter().any(|a| a.to_lowercase().contains(&lower))
-        }));
-        results
-    }
-
-    /// 获取实体的所有关系（sanctioned + unsanctioned）
-    pub fn get_relationships(&self, entity_id: &str) -> Vec<&Relationship> {
-        let mut rels = Vec::new();
-        if let Some(entity) = self.sanctioned.get(entity_id) {
-            rels.extend(entity.relationships.iter());
-        }
-        if let Some(entity) = self.unsanctioned.get(entity_id) {
-            rels.extend(entity.relationships.iter());
-        }
-        rels
     }
 
     /// 为实体增加关系
@@ -255,11 +210,6 @@ impl EntitySanctionDb {
         } else {
             None
         }
-    }
-
-    /// 清理所有 unsanctioned 条目
-    pub fn clear_unsanctioned(&mut self) {
-        self.unsanctioned.clear();
     }
 
     /// 加载/保存到 JSON 文件
@@ -333,10 +283,8 @@ pub fn extract_entities_from_text(text: &str) -> Vec<String> {
     ];
 
     for (name, aliases) in patterns {
-        if aliases.iter().any(|a| lower.contains(a)) {
-            if !entities.contains(&name.to_string()) {
-                entities.push(name.to_string());
-            }
+        if aliases.iter().any(|a| lower.contains(a)) && !entities.contains(&name.to_string()) {
+            entities.push(name.to_string());
         }
     }
 
@@ -346,92 +294,6 @@ pub fn extract_entities_from_text(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_entity_sanctioned_unsanctioned_separation() {
-        let mut db = EntitySanctionDb::new();
-
-        let entity = Entity {
-            id: "e1".into(),
-            entity_type: EntityType::Organization,
-            name: "TSMC".into(),
-            aliases: vec!["taiwan semiconductor".into()],
-            sanctioned: false,
-            external_refs: vec![],
-            relationships: vec![],
-        };
-        db.add_entity(entity);
-
-        assert_eq!(db.sanctioned.len(), 0);
-        assert_eq!(db.unsanctioned.len(), 1);
-
-        db.promote("e1");
-        assert_eq!(db.sanctioned.len(), 1);
-        assert_eq!(db.unsanctioned.len(), 0);
-    }
-
-    #[test]
-    fn test_discard_removes_unsanctioned() {
-        let mut db = EntitySanctionDb::new();
-        db.add_entity(Entity {
-            id: "e2".into(),
-            entity_type: EntityType::Technology,
-            name: "EUV".into(),
-            aliases: vec![],
-            sanctioned: false,
-            external_refs: vec![],
-            relationships: vec![],
-        });
-        assert!(db.discard("e2"));
-        assert_eq!(db.unsanctioned.len(), 0);
-    }
-
-    #[test]
-    fn test_search_by_name_with_aliases() {
-        let mut db = EntitySanctionDb::new();
-        db.add_entity(Entity {
-            id: "e3".into(),
-            entity_type: EntityType::Organization,
-            name: "TSMC".into(),
-            aliases: vec!["taiwan semiconductor manufacturing company".into()],
-            sanctioned: true,
-            external_refs: vec![],
-            relationships: vec![],
-        });
-        let results = db.search_by_name("taiwan");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].name, "TSMC");
-    }
-
-    #[test]
-    fn test_add_relationship() {
-        let mut db = EntitySanctionDb::new();
-        db.add_entity(Entity {
-            id: "e4".into(),
-            entity_type: EntityType::Organization,
-            name: "TSMC".into(),
-            aliases: vec![],
-            sanctioned: true,
-            external_refs: vec![],
-            relationships: vec![],
-        });
-        db.add_relationship(
-            "e4",
-            Relationship {
-                id: "r1".into(),
-                relationship_type: RelationshipType::SupplyChain,
-                target_id: "e5".into(),
-                target_name: "ASML".into(),
-                confidence: 0.9,
-                inferred: true,
-                inference_rule: Some("supply-chain-from-patent".into()),
-                created_at: "2026-06-23".into(),
-            },
-        );
-        let rels = db.get_relationships("e4");
-        assert_eq!(rels.len(), 1);
-        assert_eq!(rels[0].target_name, "ASML");
-    }
 
     #[test]
     fn test_entity_extraction() {

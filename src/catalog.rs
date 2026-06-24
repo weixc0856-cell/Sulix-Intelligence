@@ -37,22 +37,4 @@ impl DataCatalog {
         );
         Ok(())
     }
-
-    /// 获取某步输出的文件路径（用于读取）
-    #[allow(dead_code)]
-    pub fn step_path(&self, index: u32, name: &str) -> PathBuf {
-        self.step_dir.join(format!("{:02}_{}.json", index, name))
-    }
-
-    /// 获取所有已落盘文件列表（调试用）
-    #[allow(dead_code)]
-    pub fn list_steps(&self) -> Result<Vec<String>> {
-        let mut files: Vec<String> = fs::read_dir(&self.step_dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
-            .map(|e| e.file_name().to_string_lossy().to_string())
-            .collect();
-        files.sort();
-        Ok(files)
-    }
 }
