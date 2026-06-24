@@ -55,6 +55,12 @@ pub struct PublishContext {
     pub editor_notes: Vec<crate::agent::editor::EditorNote>,
     /// Belief Engine HTML 区块
     pub belief_notes_html: String,
+    /// 内联 CSS 内容（从 design.css 读取）
+    pub css_content: String,
+    /// 今日原始文章列表（用于 Signal Feed 板块）
+    pub articles: Vec<crate::fetcher::Article>,
+    /// 观察列表数量
+    pub watchlist_count: usize,
     pub output_dir: PathBuf,
 }
 
@@ -116,6 +122,10 @@ impl HtmlPublisher {
             Some(&ctx.asi_scores),
             Some(&ctx.editor_notes),
             Some(&ctx.belief_notes_html),
+            &ctx.css_content,
+            &ctx.articles,
+            ctx.watchlist_count,
+            ctx.articles.len(),
         )?;
 
         let dir = ctx.output_dir.join(language).join(&ctx.date);

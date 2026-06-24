@@ -206,6 +206,7 @@ pub async fn agent_publish(
         asi_scores: HashMap::new(),
         editor_notes: vec![],
         belief_notes_html: String::new(),
+        css_content: String::new(), articles: vec![], watchlist_count: 0,
         output_dir: PathBuf::from(&config.output.vault_path),
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
@@ -279,6 +280,8 @@ pub async fn agent_publish(
 
     // HTML 渲染（通过 Publisher trait）
     let flash = flash_headlines.first().cloned();
+    let css_path = vault_base.join("design.css");
+    let css_content = std::fs::read_to_string(&css_path).unwrap_or_default();
     let html_ctx = crate::renderer::publisher::PublishContext {
         themes: themes.clone(),
         analyses: analyses.clone(),
@@ -298,6 +301,9 @@ pub async fn agent_publish(
         asi_scores: asi_score_map.clone(),
         editor_notes: editor_notes.clone(),
         belief_notes_html: belief_notes_html.clone(),
+        css_content,
+        articles: new_articles.clone(),
+        watchlist_count: triage.watchlist.len(),
         output_dir: vault_base.clone(),
     };
     crate::renderer::publisher::HtmlPublisher::new().publish(&html_ctx)?;
@@ -350,6 +356,7 @@ pub async fn agent_publish(
         source_statuses: vec![], decisions: vec![], asi_scores: HashMap::new(),
         editor_notes: vec![],
         belief_notes_html: String::new(),
+        css_content: String::new(), articles: vec![], watchlist_count: 0,
         output_dir: vault_base.clone(),
     };
     crate::renderer::publisher::DashboardPublisher::new().publish(&dashboard_ctx)?;

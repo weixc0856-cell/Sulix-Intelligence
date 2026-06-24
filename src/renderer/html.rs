@@ -4,9 +4,60 @@ use anyhow::Result;
 
 use crate::clusterer::{Theme, ThemeAnalysis, ChangeSummary};
 use crate::config::SourceConfig;
+use crate::fetcher::Article;
 
 use super::helpers::{html_escape, svi_color, svi_emoji};
 use super::seo::{render_seo_meta, render_json_ld};
+
+// ===== 渲染原始 Feed 列表 =====
+
+/// 渲染 "Today's Signal Feed" — 当日所有原始文章摘要
+fn render_signal_feed(articles: &[Article], watchlist_count: usize, total_new: usize) -> String {
+    if articles.is_empty() {
+        return String::new();
+    }
+
+    let mut feed_html = String::from(
+        r#"<div style="margin-top:1.5rem;padding-top:1rem;border-top:2px solid #171717">
+<div style="font-family:'JetBrains Mono',monospace;font-size:0.875rem;font-weight:700;color:#171717;margin-bottom:0.25rem">📡 Today's Signal Feed</div>
+<div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#737373;margin-bottom:0.75rem">"#
+    );
+    feed_html.push_str(&format!("{} new articles", total_new));
+    if watchlist_count > 0 {
+        feed_html.push_str(&format!(" · {} watchlisted", watchlist_count));
+    }
+    let insight_count = articles.len().saturating_sub(watchlist_count);
+    feed_html.push_str(&format!(" · {} insights", insight_count));
+    feed_html.push_str("</div>");
+
+    // 按 category 分组
+    use std::collections::BTreeMap;
+    let mut by_category: BTreeMap<String, Vec<&Article>> = BTreeMap::new();
+    for art in articles {
+        let cat = if art.category.is_empty() { "Uncategorized".into() } else { art.category.clone() };
+        by_category.entry(cat).or_default().push(art);
+    }
+
+    for (category, items) in &by_category {
+        feed_html.push_str(&format!(
+            r#"<div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;font-weight:600;color:#525252;margin-top:0.5rem;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">{}</div>"#,
+            html_escape(category)
+        ));
+        for art in items {
+            feed_html.push_str(&format!(
+                r#"<div style="display:flex;align-items:baseline;gap:0.375rem;padding:0.1875rem 0;border-bottom:1px solid #f5f5f5">
+<span style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3;white-space:nowrap;min-width:5ch">{}</span>
+<span style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#525252;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{}</span>
+</div>"#,
+                html_escape(&art.source),
+                html_escape(&art.title),
+            ));
+        }
+    }
+
+    feed_html.push_str("</div>");
+    feed_html
+}
 
 // ===== Terminal Dashboard (Bloomberg Terminal 风格) =====
 
@@ -25,6 +76,10 @@ pub fn render_html_report(
     asi_scores: Option<&HashMap<String, (f64, f64, f64)>>,  // theme_title → (asi, confidence, final)
     editor_notes: Option<&[crate::agent::editor::EditorNote]>,  // Editor Agent
     belief_notes_html: Option<&str>,  // Belief Engine HTML
+    css_content: &str,  // ← 新增: 内联 CSS
+    articles: &[Article],  // ← 新增: 今日原始文章列表
+    watchlist_count: usize,  // ← 新增: 观察列表数量
+    total_new: usize,  // ← 新增: 当日新增总数
 ) -> Result<String> {
     let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
@@ -251,13 +306,14 @@ pub fn render_html_report(
         html
     };
 
+    let feed_html = render_signal_feed(articles, watchlist_count, total_new);
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="{}">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Sulix.Intel | {}</title>
-<link rel="stylesheet" href="./design.css">
+<style>{css_content}</style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23e3120b'/><text y='75' x='35' font-family='sans-serif' font-weight='900' font-size='70' fill='white'>i</text></svg>">
 {}{}
 <style>body{{font-family:'Inter',sans-serif;background:#fcfcfc;color:#111;margin:0}}a{{text-decoration:none}}a:hover{{text-decoration:underline}}</style>
@@ -280,6 +336,7 @@ pub fn render_html_report(
 <div>{}</div>
 {}
 {}
+	{}
 </main>
 <footer style="max-width:72rem;margin:1.5rem auto 2rem;padding:0 1rem"><div style="border-top:1px solid #e5e5e5;padding-top:1rem">
 <div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;font-weight:600;text-transform:uppercase;margin-bottom:0.5rem">📚 Primary Sources & Traces</div>
@@ -303,6 +360,8 @@ pub fn render_html_report(
         signals_html,
         flash_headline.map(|_| format!(r#"<div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #e5e5e5;display:flex;gap:1rem;font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3"><span>{} 条信号</span><span style="color:#dc2626">🔴 Flash</span></div>"#, indexed.len())).unwrap_or_default(),
         cal_html,
+
+        feed_html,
         if explicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No explicit citations</span>".into() } else { explicit_links.join("") },
         if implicit_links.is_empty() { "<span style=\"font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3\">No implicit sources</span>".into() } else { implicit_links.join("") },
         source_health_html,
