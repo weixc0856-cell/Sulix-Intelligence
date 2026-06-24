@@ -100,7 +100,13 @@ npm run dev        # → http://localhost:4321
 ## 管线
 
 ```
-RSS 源 → RawSignal → Pipeline（清洗 + 合规 + 去重）
+RSS/USPTO 源 → RawSignal → Pipeline（清洗 + 合规 + 去重）
+  ↓
+证据快照（SVI ≥ 5 → 不可变 JSONL 证据日志）
+  ↓
+Wikipedia 注入 + 正文提取
+  ↓
+EntitySanctionDb 实体提取（去重 → 持久化）
   ↓
 Scan Agent v1.1（4 类标签，Insight/Watchlist/Memory 三层分流）
   ↓
@@ -108,35 +114,47 @@ LLM 预去重（语义去重，聚类前合并同一事件的文章）
   ↓
 主题聚类（最多 5 个主题，每个 ≥2 篇文章）
   ↓
-主题分析（BLUF + 地缘事实 + 供应链影响）
+创始人分析（What happened / Why it matters / What changed / What to do / What to watch）
+  ↓
+因果链提取（A → B → C → D）
   ↓
 蓝军验证（承重假设检测，SVI 降级）
   ↓
-三 Agent 委员会（Diplomat → Architect → Quant）
+DiGraph 认知引擎（QE → Belief Engine → Decision Engine）
   ↓
-双轨产出：HTML（本地看板）+ Markdown（Astro 前端）
+BeliefDb 快照（支持/挑战/矛盾累积）
+  ↓
+变更检测（规则或 LLM：冲突/强化/无关）
+  ↓
+趋势层（14 天类别趋势统计：daily_category_stats SQLite 表）
+  ↓
+双轨产出：HTML（中英文）+ Markdown（Astro 前端）
 ```
 
 ## 功能
 
 | 功能 | 产品层 | 状态 |
 |---------|-------|--------|
-| 21+ 数据源（Federal Register / SEC / arXiv / FT / Economist / HN 等） | 0 | ✅ |
+| 29 数据源 + Source Scoring（score 1-10） | 0 | ✅ |
 | 合规熔断（A 股代码 + 荐股词过滤） | 1 | ✅ |
-| SVI 战略异动指数（五维评分） | 1 | ✅ |
+| SVI 战略异动指数（source_score × recency × signal_strength） | 1 | ✅ |
+| Source Scoring（SourceConfig.score + recency 因子） | 1 | ✅ |
 | LLM 预去重（聚类前语义去重） | 1 | ✅ |
-| 三 Agent 委员会（Diplomat + Architect + Quant） | 2 | ✅ |
-| 蓝军验证（承重假设挑战） | 2 | ✅ |
-| TerminationCondition 组合子（.and()/.or()） | 2 | ✅ |
-| DiGraph 编排引擎（GraphFlow 风格） | 2 | ✅ |
-| Question Engine（信号-问题匹配） | 3-5 | ✅ |
-| Belief Engine（contradiction_score 公式） | 3-5 | ✅ |
-| Decision Engine（四层决策模型） | 3-5 | ✅ |
-| EntitySanctionDb（双 ID + 推断/声明隔离） | 3-5 | ✅ |
-| Terminal Dashboard（Bloomberg Terminal 风格） | News | ✅ |
-| Change Detection（LLM 语义冲突检测） | News | ✅ |
+| 证据快照（SVI ≥ 5 → JSONL 证据日志） | 1 | ✅ |
+| EntitySanctionDb 实体提取（ARM/NVIDIA/OpenAI 等） | 1 | ✅ |
+| 创始人分析（What happened / What changed / What to do） | 1 | ✅ |
+| 因果链提取（A → B → C → D） | 1 | ✅ |
+| 蓝军验证（承重假设挑战，SVI 降级） | 2 | ✅ |
+| DiGraph 认知引擎（QE → Belief Engine → Decision Engine） | 2 | ✅ |
+| 变更检测（规则 + LLM：冲突/强化/无关） | News | ✅ |
+| 趋势层（14 天类别趋势） | News | ✅ |
 | 源健康监控 | News | ✅ |
-| Astro 前端（Content Collections v6） | News | ✅ |
+| Astro 前端（Sulix Daily 三级布局） | News | ✅ |
+| 研究报告系统（free/premium/enterprise 三级） | Research | ✅ |
+| Memory 看板（BeliefDb：支持/挑战/矛盾） | Memory | ✅ |
+| LLM 审计（AtomicU64 计数器） | Infra | ✅ |
+| Serde deny_unknown_fields（严格配置验证） | Sec | ✅ |
+| html_escape（37 处覆盖） | Sec | ✅ |
 | 研究报告系统（定价分层，Stripe 就绪） | Research | ✅ |
 | 记忆仪表盘（BeliefDb + 矛盾追踪） | Memory | ✅ |
 | 版本化管线（uuid_v7 + 原子写入 + 断点恢复） | 基建 | ✅ |

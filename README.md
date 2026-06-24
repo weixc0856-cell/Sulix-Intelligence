@@ -100,7 +100,13 @@ npm run dev        # → http://localhost:4321
 ## Pipeline
 
 ```
-RSS Sources → RawSignal → Pipeline (sanitize + compliance + dedup)
+RSS/USPTO Sources → RawSignal → Pipeline (sanitize + compliance + dedup)
+  ↓
+Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log)
+  ↓
+Wikipedia Enrichment + Full-Text Extraction
+  ↓
+EntitySanctionDb Extraction (entity → dedup → persist)
   ↓
 Scan Agent v1.1 (4-class tags, 3-tier triage: Insight/Watchlist/Memory)
   ↓
@@ -108,46 +114,52 @@ LLM Pre-dedup (semantic dedup before clustering)
   ↓
 Theme Clustering (≤5 themes, ≥2 articles each)
   ↓
-Theme Analysis (BLUF + Geopolitical Fact + Supply Chain Impact)
+Founder Analysis (What happened / Why it matters / What changed / What to do / What to watch)
+  ↓
+Causal Chain Extraction (A → B → C → D)
   ↓
 Blue Team Verification (load-bearing assumptions, SVI downgrade)
   ↓
-3-Agent Council (Diplomat → Architect → Quant)
+DiGraph Cognitive Engine (QE → Belief Engine → Decision Engine)
   ↓
-Dual-Track Emission: HTML (Obsidian) + Markdown (Astro)
+BeliefDb Snapshot (support/challenge/contradiction accumulation)
+  ↓
+Change Detection (rule or LLM: conflict/reinforce/irrelevant)
+  ↓
+Trend Layer (14-day category trend: daily_category_stats SQLite table)
+  ↓
+Dual-Track Emission: HTML (EN/ZH) + Markdown (Astro)
 ```
 
 ## Features
 
 | Feature | Layer | Status |
 |---------|-------|--------|
-| 21+ data sources (Federal Register / SEC / arXiv / FT / Economist / HN / etc.) | 0 | ✅ |
+| 29 data sources with Source Scoring (score 1-10 per source) | 0 | ✅ |
 | Compliance filter (A-stock codes + stock promotion) | 1 | ✅ |
-| SVI Strategic Volatility Index (5-dimension scoring) | 1 | ✅ |
+| SVI Strategic Volatility Index (source_score × recency × signal_strength) | 1 | ✅ |
+| Source Scoring (SourceConfig.score + recency factor in SVI) | 1 | ✅ |
 | LLM pre-dedup (semantic dedup before clustering) | 1 | ✅ |
-| 3-Agent Council (Diplomat + Architect + Quant) | 2 | ✅ |
-| Blue Team verification (load-bearing assumption challenge) | 2 | ✅ |
-| TerminationCondition combinators (.and()/.or()) | 2 | ✅ |
-| DiGraph orchestration engine (GraphFlow-style) | 2 | ✅ |
-| Question Engine (signal-to-question matching) | 3-5 | ✅ |
-| Belief Engine (contradiction_score formula) | 3-5 | ✅ |
-| Decision Engine (4-tier: NoChange/CourseCorrect/Urgent/StrategicPivot) | 3-5 | ✅ |
-| EntitySanctionDb (dual ID + inferred/declared isolation) | 3-5 | ✅ |
-| Terminal Dashboard (Bloomberg Terminal style) | News | ✅ |
-| Change Detection (LLM semantic conflict detection) | News | ✅ |
-| Source Health monitor | News | ✅ |
-| Astro frontend (Content Collections v6, Zod schema) | News | ✅ |
-| Research report system (priced tiers, Stripe-ready) | Research | ✅ |
-| Memory Dashboard (BeliefDb + contradiction tracking) | Memory | ✅ |
+| Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log) | 1 | ✅ |
+| EntitySanctionDb extraction (14 entities: ARM, NVIDIA, OpenAI, etc.) | 1 | ✅ |
+| Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log) | 1 | ✅ |
+| Founder Analysis (What happened / Why it matters / What changed / What to do / What to watch) | 1 | ✅ |
+| Causal Chain (A → B → C → D extraction) | 1 | ✅ |
+| Blue Team verification (load-bearing assumption challenge, SVI downgrade) | 2 | ✅ |
+| DiGraph cognitive engine (QE → Belief Engine → Decision Engine) | 2 | ✅ |
+| Change Detection (rule + LLM: conflict/reinforce/irrelevant) | News | ✅ |
+| Trend Layer (14-day category trend in HTML) | News | ✅ |
+| Source Health monitor (per-source success/failure tracking) | News | ✅ |
+| Astro frontend (Sulix Daily layout: Top 3 + Next + Folded) | News | ✅ |
+| Research report system (priced tiers: free/premium/enterprise, Stripe-ready) | Research | ✅ |
+| Memory Dashboard (BeliefDb: support/challenge/contradiction tracking) | Memory | ✅ |
+| LLM Audit (AtomicU64 counters: calls, input tokens, output tokens) | Infra | ✅ |
 | Versioned pipeline (uuid_v7 + atomic write + resume) | Infra | ✅ |
 | LayeredCache + CircuitBreaker + RetryConfig | Infra | ✅ |
-| RSSHub URL rewrite (env var RSSHUB_BASE_URL) | Infra | ✅ |
 | Substack API integration (Markdown → Draft API) | Biz | ✅ |
-| Flash Mode (SVI ≥ 9 → red banner + alert) | News | ✅ |
-| SpecialTopic injection (.flash/*.json files) | News | ✅ |
 | Bilingual EN/ZH (language-specific routing) | All | ✅ |
-| Philosophical prompt injection (Three Easies / First-Principles / Daoist dialectics) | 2 | ✅ |
-| Social science paradigms (Coase / Beck / K-Waves) | 2 | ✅ |
+| Serde deny_unknown_fields (strict config validation) | Sec | ✅ |
+| html_escape (37 usages across all render functions) | Sec | ✅ |
 
 ## Configuration
 
@@ -156,7 +168,7 @@ Dual-Track Emission: HTML (Obsidian) + Markdown (Astro)
 | Section | Purpose |
 |---------|---------|
 | `[llm]` | API key, model, endpoint |
-| `[[sources]]` | RSS feeds with name, URL, category, layer, public |
+| `[[sources]]` | RSS feeds with name, URL, category, layer, score (1-10), public |
 | `[prompts]` | Base + domain-specific system prompts |
 | `[prompts.vertical_overrides]` | Domain-specific analytical frameworks |
 | `[news_layer]` | LLM pre-dedup, Change Detection, RSSHub base URL |
