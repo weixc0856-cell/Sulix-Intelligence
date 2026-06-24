@@ -19,6 +19,10 @@ pub enum PipelineEventType {
     ThesisUpdated,
     /// 检测到信念冲突
     ConflictDetected,
+    /// 现实结果与 Thesis 判断的偏差被记录（Meta Layer）
+    OutcomeRecorded,
+    /// Thesis 被证伪（Meta Layer）
+    ThesisRefuted,
 }
 
 /// 单条管线事件
@@ -32,6 +36,12 @@ pub struct PipelineEvent {
     pub timestamp: String,
     /// 人类可读描述
     pub description: String,
+    /// 关联论题 ID（可选，用于按 Thesis 聚合查询）
+    #[serde(default)]
+    pub thesis_id: Option<String>,
+    /// 关联事件 ID 列表（可选，用于构建事件链）
+    #[serde(default)]
+    pub related_events: Vec<String>,
     /// 事件附加数据（任意 JSON）
     pub data: serde_json::Value,
 }
@@ -50,23 +60,17 @@ impl EventLog {
         }
     }
 
-    /// 追加一条事件
+    /// 追加一条事件（自动裁剪超过 10K 的最旧条目）
     pub fn push(&mut self, event: PipelineEvent) {
         self.entries.push(event);
+        if self.entries.len() > 10_000 {
+            self.entries.remove(0);
+        }
     }
 
     /// 获取所有事件
     pub fn all(&self) -> &[PipelineEvent] {
         &self.entries
-    }
-
-    /// 获取最近 N 条事件（按追加顺序倒序）
-    pub fn recent(&self, n: usize) -> Vec<&PipelineEvent> {
-        self.entries
-            .iter()
-            .rev()
-            .take(n)
-            .collect()
     }
 
     /// 保存到 JSON 文件
@@ -98,7 +102,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_event_log_push_and_recent() {
+    fn test_event_log_push_and_all() {
         let mut log = EventLog::new();
         assert_eq!(log.all().len(), 0);
 
@@ -107,6 +111,8 @@ mod tests {
             event_type: PipelineEventType::ThemeCreated,
             timestamp: "2026-06-24T10:00:00Z".into(),
             description: "主题 'AI 商品化' 已创建".into(),
+            thesis_id: None,
+            related_events: vec![],
             data: serde_json::json!({"theme_id": "t1"}),
         });
         log.push(PipelineEvent {
@@ -114,14 +120,12 @@ mod tests {
             event_type: PipelineEventType::SVIChanged,
             timestamp: "2026-06-24T10:05:00Z".into(),
             description: "主题 'AI 商品化' SVI 从 6 变为 8".into(),
+            thesis_id: None,
+            related_events: vec![],
             data: serde_json::json!({"theme_id": "t1", "old_svi": 6, "new_svi": 8}),
         });
 
         assert_eq!(log.all().len(), 2);
-
-        let recent = log.recent(1);
-        assert_eq!(recent.len(), 1);
-        assert_eq!(recent[0].id, "evt-2");
     }
 
     #[test]
@@ -132,6 +136,8 @@ mod tests {
             event_type: PipelineEventType::ThesisUpdated,
             timestamp: "2026-06-24T12:00:00Z".into(),
             description: "论题 '模型商品化' 状态变更为 Strengthening".into(),
+            thesis_id: Some("thesis-1".into()),
+            related_events: vec![],
             data: serde_json::json!({"thesis_id": "thesis-1", "new_status": "Strengthening"}),
         });
 
@@ -146,9 +152,55 @@ mod tests {
     }
 
     #[test]
-    fn test_event_log_empty_recent() {
-        let log = EventLog::new();
-        let recent = log.recent(5);
-        assert!(recent.is_empty());
+    fn test_outcome_recorded_event_type() {
+        let evt = PipelineEvent {
+            id: "evt-3".into(),
+            event_type: PipelineEventType::OutcomeRecorded,
+            timestamp: "2026-06-24T14:00:00Z".into(),
+            description: "实际结果与 Thesis 偏差记录".into(),
+            thesis_id: Some("t2".into()),
+            related_events: vec!["evt-1".into()],
+            data: serde_json::json!({"deviation": "高估采用率"}),
+        };
+        assert_eq!(evt.event_type, PipelineEventType::OutcomeRecorded);
+        assert_eq!(evt.related_events.len(), 1);
+    }
+
+    #[test]
+    fn test_thesis_refuted_event_type() {
+        let evt = PipelineEvent {
+            id: "evt-4".into(),
+            event_type: PipelineEventType::ThesisRefuted,
+            timestamp: "2026-06-24T15:00:00Z".into(),
+            description: "论题 '模型商品化' 被证伪".into(),
+            thesis_id: Some("t3".into()),
+            related_events: vec!["evt-1".into()],
+            data: serde_json::json!({"reason": "关键假设被证伪"}),
+        };
+        assert_eq!(evt.event_type, PipelineEventType::ThesisRefuted);
+        assert_eq!(evt.related_events.len(), 1);
+    }
+
+    #[test]
+    fn test_event_log_cap_at_10k() {
+        let mut log = EventLog::new();
+        // 压入 10_001 条
+        for i in 0..10_001 {
+            log.push(PipelineEvent {
+                id: format!("evt-{}", i),
+                event_type: PipelineEventType::ThemeCreated,
+                timestamp: "2026-06-24T10:00:00Z".into(),
+                description: "cap test".into(),
+                thesis_id: None,
+                related_events: vec![],
+                data: serde_json::json!({}),
+            });
+        }
+        // 应有 10_000 条（最旧的 evt-0 被移除）
+        assert_eq!(log.all().len(), 10_000);
+        // 最旧应为 evt-1（evt-0 已被移除）
+        assert_eq!(log.all().first().unwrap().id, "evt-1");
+        // 最新应为 evt-10000
+        assert_eq!(log.all().last().unwrap().id, "evt-10000");
     }
 }

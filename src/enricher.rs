@@ -108,7 +108,10 @@ async fn fetch_summary(client: &reqwest::Client, url: &str) -> Result<Option<Str
     }
 }
 
-/// 简单的 URL 编码（避免引入依赖）
+/// 简单的 URL 编码
+///
+/// 技术债：使用 url::percent_encoding::percent_encode 替换可减少维护成本。
+/// 当前实现对于 Wikipedia REST API 路径（仅 ASCII 非保留字符）工作正确。
 fn urlencoding(input: &str) -> String {
     let mut result = String::new();
     for byte in input.bytes() {

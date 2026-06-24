@@ -217,3 +217,81 @@ fn simple_hash(url: &str) -> String {
     url.hash(&mut hasher);
     format!("{:x}", hasher.finish())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn test_parse_date_range_hours() {
+        let d = parse_date_range("6h");
+        assert_eq!(d, Duration::hours(6));
+    }
+
+    #[test]
+    fn test_parse_date_range_days() {
+        let d = parse_date_range("3d");
+        assert_eq!(d, Duration::days(3));
+    }
+
+    #[test]
+    fn test_parse_date_range_weeks() {
+        let d = parse_date_range("2w");
+        assert_eq!(d, Duration::weeks(2));
+    }
+
+    #[test]
+    fn test_parse_date_range_months() {
+        let d = parse_date_range("1m");
+        assert_eq!(d, Duration::days(30));
+    }
+
+    #[test]
+    fn test_parse_date_range_default() {
+        let d = parse_date_range("invalid");
+        assert_eq!(d, Duration::days(7));
+    }
+
+    #[test]
+    fn test_matches_keywords_positive() {
+        let text = "US tightens semiconductor export controls on China";
+        let keywords = vec!["semiconductor".to_string(), "export".to_string()];
+        assert!(matches_keywords(text, &keywords));
+    }
+
+    #[test]
+    fn test_matches_keywords_negative() {
+        let text = "Federal reserve maintains interest rates";
+        let keywords = vec!["semiconductor".to_string(), "AI chip".to_string()];
+        assert!(!matches_keywords(text, &keywords));
+    }
+
+    #[test]
+    fn test_matches_keywords_case_insensitive() {
+        let text = "AI Chip Export Restrictions";
+        let keywords = vec!["ai chip".to_string()];
+        assert!(matches_keywords(text, &keywords));
+    }
+
+    #[test]
+    fn test_matches_keywords_empty_keywords() {
+        let text = "Any text";
+        let keywords: Vec<String> = vec![];
+        assert!(!matches_keywords(text, &keywords));
+    }
+
+    #[test]
+    fn test_simple_hash_consistent() {
+        let h1 = simple_hash("https://example.com/rss");
+        let h2 = simple_hash("https://example.com/rss");
+        assert_eq!(h1, h2, "same URL should produce same hash");
+    }
+
+    #[test]
+    fn test_simple_hash_different() {
+        let h1 = simple_hash("https://url1.com");
+        let h2 = simple_hash("https://url2.com");
+        assert_ne!(h1, h2, "different URLs should produce different hashes");
+    }
+}

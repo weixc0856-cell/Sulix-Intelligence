@@ -9,8 +9,9 @@
 
 // ===== 信念模型（从 domain 层导入）=====
 
+pub use crate::domain::evidence::Stance;
 pub use crate::domain::thesis::{
-    BeliefDb, BeliefStatement, BeliefUpdate, EvidenceType,
+    BeliefDb, BeliefStatement, BeliefUpdate,
 };
 
 impl BeliefDb {
@@ -40,11 +41,11 @@ impl BeliefDb {
     pub fn apply_updates(&mut self, updates: &[BeliefUpdate]) {
         let support = updates
             .iter()
-            .filter(|u| matches!(u.evidence_type, EvidenceType::Support))
+            .filter(|u| matches!(u.evidence_type, Stance::Supports))
             .count();
         let challenge = updates
             .iter()
-            .filter(|u| matches!(u.evidence_type, EvidenceType::Challenge))
+            .filter(|u| matches!(u.evidence_type, Stance::Challenges))
             .count();
         let contradictions = updates.iter().filter(|u| u.is_contradiction).count();
         self.total_support += support;
@@ -97,12 +98,12 @@ pub fn update_beliefs(
 
         let (evidence_type, delta, is_contradiction) = if challenge_count > support_count {
             let d = -(challenge_count as i8).min(5);
-            (EvidenceType::Challenge, d, d <= -3)
+            (Stance::Challenges, d, d <= -3)
         } else if support_count > challenge_count {
             let d = (support_count as i8).min(5);
-            (EvidenceType::Support, d, false)
+            (Stance::Supports, d, false)
         } else {
-            (EvidenceType::Neutral, 0, false)
+            (Stance::Neutral, 0, false)
         };
 
         updates.push(BeliefUpdate {

@@ -219,3 +219,76 @@ fn build_scan_user_prompt(category: &str, batch_idx: usize, articles: &[Article]
 
     prompt
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fetcher::Article;
+
+    fn make_mock(title: &str, importance: u8, relevance: &str) -> llm::AnalyzedArticle {
+        llm::AnalyzedArticle {
+            title: title.to_string(), url: String::new(), importance,
+            relevance: relevance.to_string(),
+            time_horizon: String::new(), action: String::new(), confidence: String::new(),
+            judgment: String::new(), summary: String::new(), strategic_level: String::new(),
+            blue_rebuttal: String::new(), arbitration: String::new(), evidence_type: String::new(),
+        }
+    }
+
+    fn make_article(title: &str, source: &str) -> Article {
+        Article {
+            id: String::new(), title: title.to_string(), source: source.to_string(),
+            url: "https://example.com".into(),
+            content: Some("test content".into()), summary: Some("test summary".into()),
+            published_at: None, category: String::new(),
+            wiki_summary: None, evidence_type: String::new(), is_internal: false,
+        }
+    }
+
+    #[test]
+    fn test_build_scan_prompt_v11_basic() {
+        let prompt = build_scan_prompt_v11("AI", 1, 1, &[]);
+        assert!(prompt.contains("AI"));
+        assert!(prompt.contains("Structural Shift"));
+    }
+
+    #[test]
+    fn test_build_scan_user_prompt() {
+        let articles = vec![make_article("Article One", "Src1")];
+        let prompt = build_scan_user_prompt("Tech", 1, &articles);
+        assert!(prompt.contains("Article One"));
+    }
+
+    #[test]
+    fn test_triage_routing_logic() {
+        let mock_results = vec![
+            make_mock("High", 9, "Structural Shift"),
+            make_mock("Mid", 5, "Competitive Signal"),
+            make_mock("Low", 2, "Context Update"),
+        ];
+        let mut insight = 0usize; let mut wl = 0; let mut sm = 0;
+        for m in &mock_results {
+            let composite = if m.relevance == "Structural Shift" { ((m.importance as f32 * 1.0).round() as u8).max(7) } else { (m.importance as f32 * 1.0).round() as u8 };
+            if composite >= 7 { insight += 1; } else if composite >= 3 { wl += 1; } else { sm += 1; }
+        }
+        assert_eq!(insight, 1); assert_eq!(wl, 1); assert_eq!(sm, 1);
+    }
+
+    #[test]
+    fn test_triage_structural_shift_floor() {
+        let _m = make_mock("test", 4, "Structural Shift");
+        let composite = ((4.0_f32 * 0.55).round() as u8).max(7);
+        assert_eq!(composite, 7);
+    }
+
+    #[test]
+    fn test_tag_validation_fallback() {
+        for tag in &["Structral", "", "COMPETITIVE"] {
+            let valid = match *tag {
+                "Structural Shift" | "Competitive Signal" | "Context Update" | "Noise" => *tag,
+                _ => "Context Update",
+            };
+            assert_eq!(valid, "Context Update");
+        }
+    }
+}

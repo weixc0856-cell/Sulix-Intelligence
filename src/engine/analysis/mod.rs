@@ -6,9 +6,12 @@
 //! - causal: parse_causal_chain (因果链解析)
 
 pub mod analyzer;
+pub mod asi;
 pub mod causal;
 pub mod svi;
 
 pub use analyzer::*;
+#[allow(unused_imports)]
+pub use asi::*;
 // (parse_causal_chain is pub(super) in causal.rs — no pub items to glob-rexport)
 pub use svi::*;

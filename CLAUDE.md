@@ -6,8 +6,8 @@
 src/
 ├── engine/           ← 核心引擎（analysis / memory / premium）
 ├── clusterer/        ← 聚类 + 共享类型（重导出入口）
-├── hermes.rs         ← 变更检测 + 趋势/矛盾/Thesis 发现
-├── renderer.rs       ← HTML + Markdown 渲染
+├── hermes/           ← 变更检测 + 趋势/矛盾/Thesis 发现
+├── renderer/         ← HTML + Markdown 渲染
 ├── main.rs           ← 4-agent 管线编排
 └── ...               ← 基础设施（config/db/llm/fetcher 等）
 ```
@@ -27,7 +27,7 @@ cargo run --release     # 运行完整管线
 - **4-Agent 管线**: init → agent_signal → agent_research → agent_publish
 - **engine/ 目录**: 核心领域逻辑，独立于管线编排
 - **clusterer/ 重导**: 历史兼容层，新代码直接引用 engine 子模块
-- **死代码冻结**: orchestrator/question_engine/decision_engine 冻结不投入
+- **认知引擎**: orchestrator (DiGraph) + question_engine + decision_engine 构成认知管线
 
 ## Skill routing
 

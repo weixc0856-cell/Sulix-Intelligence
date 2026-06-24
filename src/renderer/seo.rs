@@ -1,7 +1,6 @@
 use super::helpers::html_escape;
 
 /// 渲染 SEO meta tags + Open Graph + Twitter Card
-#[allow(dead_code)]
 pub fn render_seo_meta(title: &str, description: &str, relative_path: &str) -> String {
     format!(
         r#"<meta name="description" content="{description}">

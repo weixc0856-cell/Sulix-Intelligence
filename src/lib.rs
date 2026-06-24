@@ -3,7 +3,7 @@
 //! 管线：RSS 抓取 → 去重 → 全文提取 → 主题聚类 → 影响分析 → 咨询简报
 
 pub mod agent;
-pub mod app_context;
+
 pub mod archive;
 pub mod belief_engine;
 pub mod catalog;

@@ -38,13 +38,3 @@ pub struct Evidence {
     pub signal_strength: u8,
 }
 
-/// 证据来源描述
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvidenceSource {
-    /// 来源名称
-    pub name: String,
-    /// 来源 URL（可选）
-    pub url: Option<String>,
-    /// 可信度评分 1-10
-    pub reliability: u8,
-}

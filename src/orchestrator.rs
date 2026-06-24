@@ -20,9 +20,7 @@ use crate::belief_engine::BeliefUpdate;
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::decision_engine::Decision;
-use crate::premium::PremiumReport;
 use crate::question_engine::QuestionMatch;
-use crate::source::RawSignal;
 
 // ===== 全局图执行上下文（黑板模式）=====
 
@@ -31,19 +29,15 @@ use crate::source::RawSignal;
 /// 所有节点读写此上下文，图引擎负责调度。
 /// Clone 代价可控（内部为 Vec/String 等标准类型）。
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct GraphContext {
     pub config: Config,
-    pub raw_signals: Vec<RawSignal>,
     pub current_themes: Vec<Theme>,
     pub current_analyses: Vec<ThemeAnalysis>,
-    pub current_reports: Vec<PremiumReport>,
     pub question_matches: Vec<Vec<QuestionMatch>>,
     pub belief_updates: Vec<BeliefUpdate>,
     pub decisions: Vec<Decision>,
     /// 循环计数器：节点名 -> 执行次数
     pub loop_counters: HashMap<String, usize>,
-    pub is_flash_mode: bool,
     pub api_key: String,
     /// 蓝队回退轮次（组 3 死锁保护）
     pub loop_counter: u8,
@@ -58,15 +52,12 @@ impl GraphContext {
         Self {
             config,
             api_key,
-            raw_signals: Vec::new(),
             current_themes: Vec::new(),
             current_analyses: Vec::new(),
-            current_reports: Vec::new(),
             question_matches: Vec::new(),
             belief_updates: Vec::new(),
             decisions: Vec::new(),
             loop_counters: HashMap::new(),
-            is_flash_mode: false,
             loop_counter: 0,
             max_loops: 3,
             confidence_history: Vec::new(),
@@ -85,14 +76,11 @@ impl GraphContext {
 
 /// 条件路由枚举 — 决定执行流向
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum RouteResult {
     /// 流向指定节点
     ProceedTo(String),
     /// 对抗重跑，流向指定节点（蓝军 veto）
     LoopBack(String),
-    /// 安全熔断
-    Terminate,
 }
 
 // ===== 图节点 trait =====
@@ -241,10 +229,6 @@ impl DiGraph {
                             self.executed.remove(&target);
                             self.execution_queue.push_back(target);
                         }
-                        RouteResult::Terminate => {
-                            log::info!("🛑 GraphFlow: 条件终止");
-                            return Ok(());
-                        }
                     }
                 }
             }
@@ -296,7 +280,7 @@ impl GraphNode for QENode {
         if let Some(questions) = &ctx.config.questions {
             let client = crate::client::global_client().clone();
             for analysis in &ctx.current_analyses {
-                if let Ok(matches) = crate::question_engine::match_questions(
+                if let Ok(matches) = crate::question_engine::match_questions_sync(
                     analysis,
                     &questions.questions,
                     &client,

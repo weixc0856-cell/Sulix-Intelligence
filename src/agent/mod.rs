@@ -8,4 +8,5 @@
 
 pub mod calibration;
 pub mod decay;
+pub mod editor;
 pub mod scan;

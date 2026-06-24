@@ -51,7 +51,10 @@ Output JSON Schema:
   "fact_base": [
     {"evidence": "verifiable fact", "interpretation": "what it means for founders", "confidence": "Established-Fact"}
   ],
-  "connections": ["Related theme 1", "Related theme 2"]
+  "connections": ["Related theme 1", "Related theme 2"],
+  "assumptions": [
+    {"text": "承重假设描述（该判断成立的前提条件）", "load_bearing": true, "evidence_strength": "strong"}
+  ]
 }
 
 signal_strength (founder's framework):
@@ -107,6 +110,15 @@ Evidence Level (4 levels):
         .await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
+    // 带日志的字段提取：LLM 缺失字段时记录 warn
+    let es = |field: &str, default: &str| -> String {
+        let s = parsed[field].as_str();
+        if s.is_none() {
+            log::warn!("⚠️ LLM 响应缺少字段 '{}'，使用默认值 '{}'", field, default);
+        }
+        s.unwrap_or(default).to_string()
+    };
+
     let source_urls: Vec<String> = theme.articles.iter().map(|a| a.url.clone()).collect();
     let connections = parsed["connections"]
         .as_array()
@@ -136,63 +148,152 @@ Evidence Level (4 levels):
         .unwrap_or_default();
 
     let mut fact_base = fact_base;
-    let evidence_level_raw = parsed["evidence_level"].as_str().unwrap_or("发展中-推断");
-    let evidence_level = map_to_scl(evidence_level_raw);
+    let evidence_level_raw = es("evidence_level", "发展中-推断");
+    let evidence_level = map_to_scl(&evidence_level_raw);
     for fb in &mut fact_base {
         fb.confidence = map_to_scl(&fb.confidence);
     }
 
+    // 解析 assumptions（从 LLM JSON 中提取承重假设）
+    let assumptions: Vec<Assumption> = parsed["assumptions"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(Assumption {
+                        text: v["text"].as_str()?.to_string(),
+                        load_bearing: v["load_bearing"].as_bool().unwrap_or(true),
+                        evidence_strength: v["evidence_strength"]
+                            .as_str()
+                            .unwrap_or("medium")
+                            .to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(ThemeAnalysis {
         theme_id: theme.id.clone(),
         theme_title: theme.title.clone(),
-        bluf: parsed["bluf"].as_str().unwrap_or("待分析").to_string(),
-        impact: parsed["impact"].as_str().unwrap_or("待分析").to_string(),
+        bluf: es("bluf", "待分析"),
+        impact: es("impact", "待分析"),
         evidence_level,
         signal_strength: (parsed["signal_strength"].as_u64().unwrap_or(5) as u8).clamp(1, 10),
-        geopolitical_fact: parsed["geopolitical_fact"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-        supply_chain_impact: parsed["supply_chain_impact"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-        analysis_paragraph: parsed["analysis_paragraph"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
+        geopolitical_fact: es("geopolitical_fact", ""),
+        supply_chain_impact: es("supply_chain_impact", ""),
+        analysis_paragraph: es("analysis_paragraph", ""),
         fact_base,
         connections,
         source_urls,
-        assumptions: vec![],
+        assumptions,
         adverse: None,
         next_tests: vec![],
         open_questions: vec![],
         chains: parse_causal_chain(&parsed["causal_chain"]),
-        what_to_do: parsed["what_to_do"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-        what_to_watch: parsed["what_to_watch"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
+        what_to_do: es("what_to_do", ""),
+        what_to_watch: es("what_to_watch", ""),
     })
 }
 
 /// 蓝军验证：挑战主题分析
-#[allow(dead_code)]
+///
+/// 使用 LLM 对分析进行对抗性审查，识别：
+///   1. 未被识别的承重假设
+///   2. 可能的逆境情景
+///   3. 分析中的盲点
+///   4. 需要注意的早期预警信号
 pub async fn challenge_theme(
-    _analysis: &ThemeAnalysis,
-    _api_key: &str,
-    _llm_config: &LlmConfig,
-    _prompts: Option<&crate::config::PromptsConfig>,
+    analysis: &ThemeAnalysis,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<(
     Vec<Assumption>,
     Option<AdverseScenario>,
     Vec<String>,
     Vec<String>,
 )> {
-    // TODO: v2 决策从简，不再投入。保留函数签名避免破坏编译，调用方可逐步移除。
-    Ok((vec![], None, vec![], vec![]))
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()?;
+
+    let base_prompt = "You are a red-team adversarial analyst. Your job is to STRESS-TEST the following strategic analysis.
+
+Find weaknesses, hidden assumptions, and failure scenarios that the original analyst missed.
+
+Output JSON Schema:
+{
+  \"hidden_assumptions\": [
+    {\"text\": \"隐藏的承重假设描述\", \"load_bearing\": true, \"evidence_strength\": \"weak\"}
+  ],
+  \"adverse_scenario\": {
+    \"scenario\": \"如果假设不成立会发生什么？\",
+    \"early_warning\": \"什么信号会表明这个情景正在发生？\",
+    \"severity\": \"critical / high / moderate\"
+  },
+  \"blind_spots\": [\"分析中缺失的角度 1\", \"分析中缺失的角度 2\"],
+  \"early_warnings\": [\"需要关注的预警信号 1\"]
+}
+
+[OUTPUT RULE] Output json only (valid JSON).";
+
+    let prompt = prompts
+        .map(|p| p.get_analyze_theme(base_prompt))
+        .unwrap_or(base_prompt);
+
+    let user_prompt = format!(
+        "## 主题: {}\nBLUF: {}\n影响: {}\n地缘: {}\n供应链: {}\n分析: {}\n",
+        analysis.theme_title,
+        analysis.bluf,
+        analysis.impact,
+        analysis.geopolitical_fact,
+        analysis.supply_chain_impact,
+        analysis.analysis_paragraph,
+    );
+
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &prompt, &user_prompt).await?;
+    let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
+
+    // 解析隐藏假设
+    let hidden_assumptions: Vec<Assumption> = parsed["hidden_assumptions"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    Some(Assumption {
+                        text: v["text"].as_str()?.to_string(),
+                        load_bearing: v["load_bearing"].as_bool().unwrap_or(true),
+                        evidence_strength: v["evidence_strength"]
+                            .as_str()
+                            .unwrap_or("weak")
+                            .to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // 解析逆境情景
+    let adverse_scenario = parsed["adverse_scenario"].as_object().and_then(|obj| {
+        Some(AdverseScenario {
+            scenario: obj.get("scenario")?.as_str()?.to_string(),
+            early_warning: obj.get("early_warning")?.as_str()?.to_string(),
+            severity: obj.get("severity")?.as_str()?.to_string(),
+        })
+    });
+
+    // 解析盲点
+    let blind_spots: Vec<String> = parsed["blind_spots"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    // 解析预警信号
+    let early_warnings: Vec<String> = parsed["early_warnings"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    Ok((hidden_assumptions, adverse_scenario, blind_spots, early_warnings))
 }

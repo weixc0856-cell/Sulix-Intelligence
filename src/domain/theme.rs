@@ -4,7 +4,7 @@
 //! Assumption（承重假设）、AdverseScenario（逆境情景）、
 //! CausalChain（因果链）、Summary（综合摘要）。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::domain::evidence::FactBaseEntry;
 use crate::fetcher::Article;
@@ -20,7 +20,7 @@ pub struct Theme {
 }
 
 /// 承重假设
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assumption {
     pub text: String,
     pub load_bearing: bool,

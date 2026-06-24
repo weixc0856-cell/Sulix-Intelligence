@@ -175,37 +175,6 @@ fn sanitize_text(text: &str, url_re: &Regex, email_re: &Regex) -> String {
     }
 }
 
-/// 合规过滤：A 股个股代码熔断 + 荐股词熔断
-///
-/// 当前从管线中移除（避免持久化前数据丢失），留待 HTML 渲染时使用。
-#[allow(dead_code)]
-fn compliance_filter(text: &str) -> String {
-    // A 股代码匹配：6 位数字，6xxxxx / 00xxxx / 30xxxx / 68xxxx
-    // 使用 \b 词边界替代不支持的 look-around 断言
-    let stock_code_re = Regex::new(r"\b([6]\d{5}|[0]\d{5}|[3]\d{5})\b").unwrap();
-    // 荐股词匹配
-    let promo_re =
-        Regex::new(r"(?i)(建仓|加仓|全仓|清仓|买入|卖出|推荐买入|强烈推荐|必涨|翻倍|稳赚)")
-            .unwrap();
-
-    let step1 = stock_code_re.replace_all(text, "[REDACTED]");
-    let step2 = promo_re.replace_all(&step1, "[REDACTED]");
-    step2.to_string()
-}
-
-#[allow(dead_code)]
-fn compliance_filter_all(signals: &mut [RawSignal]) {
-    for signal in signals.iter_mut() {
-        signal.title = compliance_filter(&signal.title);
-        if let Some(content) = &signal.content {
-            signal.content = Some(compliance_filter(content));
-        }
-        if let Some(summary) = &signal.summary {
-            signal.summary = Some(compliance_filter(summary));
-        }
-    }
-}
-
 /// 清除 HTML 中有害标签，保留对 LLM 有用的结构（抄 RSSHub parameter.ts）
 /// 使用正则保留 a/p/blockquote/li/strong/em/code/pre，剥离 script/style/iframe 等
 fn sanitize_html_structure(html: &str) -> String {
@@ -219,7 +188,7 @@ fn sanitize_html_structure(html: &str) -> String {
     // 移除不在保留列表中的所有其他标签
     let all_tag = Regex::new(r"</?(\w+)[^>]*>").unwrap();
     let result = all_tag.replace_all(&no_strip, |caps: &regex::Captures| {
-        let tag = caps.get(1).unwrap().as_str();
+        let tag = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let is_keep = matches!(
             tag,
             "a" | "p"

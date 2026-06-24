@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use anyhow::Result;
 
@@ -22,6 +22,9 @@ pub fn render_html_report(
     language: &str,
     source_statuses: &[(String, bool, usize)],
     change_summary: Option<&ChangeSummary>,
+    asi_scores: Option<&HashMap<String, (f64, f64, f64)>>,  // theme_title → (asi, confidence, final)
+    editor_notes: Option<&[crate::agent::editor::EditorNote]>,  // Editor Agent
+    belief_notes_html: Option<&str>,  // Belief Engine HTML
 ) -> Result<String> {
     let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
@@ -38,66 +41,96 @@ pub fn render_html_report(
     let mut explicit_set: BTreeSet<String> = BTreeSet::new();
     let mut implicit_set: BTreeSet<String> = BTreeSet::new();
 
-    for (theme, analysis) in &indexed {
-        let svi = analysis.signal_strength;
-        let is_premium = svi >= 7;
+    // 三分层排版：Top (≥7) → Next (5-6) → Remaining (<5)
+    let top: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength >= 7).collect();
+    let mid: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength >= 5 && a.signal_strength < 7).collect();
+    let rest: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength < 5).collect();
 
-        let mut srcs: Vec<String> = Vec::new();
-        for art in &theme.articles {
-            if !srcs.contains(&art.source) {
-                srcs.push(art.source.clone());
-            }
-        }
-        for s in &srcs {
-            if attributable_names.contains(s) {
-                explicit_set.insert(s.clone());
-            } else {
-                implicit_set.insert(s.clone());
-            }
-        }
-
-        let summary = if analysis.bluf.len() > 80 {
-            let end = analysis.bluf.floor_char_boundary(80);
-            format!("{}...", &analysis.bluf[..end])
-        } else {
-            analysis.bluf.clone()
-        };
-
-        let prem = if is_premium {
+    // --- Tier 1: Top (全量展示) ---
+    if !top.is_empty() {
+        signals_html.push_str(r#"<div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;color:#171717;margin-bottom:0.25rem;padding:0.25rem 0;border-bottom:2px solid #171717">🔴 TOP — 今日最重要</div>"#);
+        for (theme, analysis) in &top {
+            let svi = analysis.signal_strength;
+            let mut srcs: Vec<String> = Vec::new();
+            for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
+            for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
+            let summary = if analysis.bluf.len() > 100 { let end = analysis.bluf.floor_char_boundary(100); format!("{}...", &analysis.bluf[..end]) } else { analysis.bluf.clone() };
             let slug = theme.title.to_lowercase().replace(' ', "-");
-            format!(
-                r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#,
-                html_escape(&slug)
-            )
-        } else {
-            String::new()
-        };
-
-        let line = format!(
-            r#"<div style="display:flex;flex-direction:column;padding:0.5rem 0;border-bottom:1px solid #e5e5e5">
+            let prem = format!(r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#, html_escape(&slug));
+            let asi_display = asi_scores.and_then(|s| s.get(&theme.title).map(|(a, c, _)| format!(r#"<span style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#737373">· ASI:{:.2} CF:{:.2}</span>"#, a, c))).unwrap_or_default();
+            signals_html.push_str(&format!(
+                r#"<div style="display:flex;flex-direction:column;padding:0.5rem 0;border-bottom:1px solid #e5e5e5">
   <div style="display:flex;align-items:center;gap:0.5rem">
     <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.8125rem">{}</span>
-    <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.8rem;min-width:3ch">{:.1}</span>
-    <span style="font-family:'Inter',sans-serif;font-size:0.875rem;font-weight:500;color:#171717;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{}</span>
+    <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.8rem;min-width:3ch">{:.1}</span>{}
+    <span style="font-family:'Inter',sans-serif;font-size:0.875rem;font-weight:500;color:#171717;flex:1">{}</span>
     <span style="margin-left:auto">{}</span>
   </div>
   <div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#525252;margin-top:0.125rem;padding-left:4.5rem">{}</div>
   <div style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#a3a3a3;margin-top:0.125rem;padding-left:4.5rem">├─ 来源: {}</div>
 </div>"#,
-            svi_color(svi),
-            svi_emoji(svi),
-            svi_color(svi),
-            svi as f64,
-            html_escape(&theme.title),
-            prem,
-            html_escape(&summary),
-            html_escape(&srcs.join(" · "))
-        );
-        signals_html.push_str(&line);
+                svi_color(svi), svi_emoji(svi), svi_color(svi), svi as f64, asi_display,
+                html_escape(&theme.title), prem,
+                html_escape(&summary), html_escape(&srcs.join(" · "))
+            ));
+        }
+    }
+
+    // --- Tier 2: Next (紧凑展示，仅标题+来源+BLUF 一行) ---
+    if !mid.is_empty() {
+        signals_html.push_str(r#"<div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;color:#525252;margin-top:0.75rem;margin-bottom:0.25rem;padding:0.25rem 0;border-bottom:1px solid #d4d4d4">🟠 NEXT — 值得关注</div>"#);
+        for (theme, analysis) in &mid {
+            let svi = analysis.signal_strength;
+            let mut srcs: Vec<String> = Vec::new();
+            for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
+            for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
+            signals_html.push_str(&format!(
+                r#"<div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #f0f0f0">
+  <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.75rem;min-width:2ch">{:.1}</span>
+  <span style="font-family:'Inter',sans-serif;font-size:0.8125rem;color:#525252;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{}</span>
+  <span style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#a3a3a3">{}</span>
+</div>"#,
+                svi_color(svi), svi as f64,
+                html_escape(&theme.title),
+                html_escape(&srcs.join(" "))
+            ));
+        }
+    }
+
+    // --- Tier 3: Remaining (仅标题) ---
+    if !rest.is_empty() {
+        signals_html.push_str(r#"<div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;color:#a3a3a3;margin-top:0.75rem;margin-bottom:0.25rem;padding:0.25rem 0;border-bottom:1px solid #e5e5e5">⚪ REMAINING — 其余信号</div>"#);
+        for (theme, analysis) in &rest {
+            let svi = analysis.signal_strength;
+            for art in &theme.articles {
+                if attributable_names.contains(art.source.as_str()) {
+                    explicit_set.insert(art.source.clone());
+                } else {
+                    implicit_set.insert(art.source.clone());
+                }
+            }
+            signals_html.push_str(&format!(
+                r#"<div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#a3a3a3;padding:0.1875rem 0;padding-left:0.5rem;border-bottom:1px solid #f5f5f5">{} <span style="font-family:'JetBrains Mono',monospace;font-size:0.5625rem;color:#d4d4d4">{:.1}</span></div>"#,
+                html_escape(&theme.title),
+                svi as f64,
+            ));
+        }
     }
 
     let explicit_links: Vec<String> = explicit_set.iter().map(|s| format!(r#"<span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#525252">{} </span>"#, html_escape(s))).collect();
     let implicit_links: Vec<String> = implicit_set.iter().map(|s| format!(r#"<span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:#a3a3a3">{} </span>"#, html_escape(s))).collect();
+
+    // Editor Agent: Personal Impact 区块（追加到信号列表末尾）
+    if let Some(notes) = editor_notes {
+        if !notes.is_empty() {
+            signals_html.push_str(&crate::agent::editor::render_editor_notes_html(notes));
+        }
+    }
+
+    // Belief Engine: 信念变化区块
+    if let Some(html) = belief_notes_html {
+        signals_html.push_str(html);
+    }
 
     let cal_html = match calibration {
         Some(cal) if !cal.is_empty() => format!(

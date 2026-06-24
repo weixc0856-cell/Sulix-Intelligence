@@ -15,6 +15,7 @@ use crate::config::SourceConfig;
 
 pub mod rss;
 pub mod uspto;
+pub mod reddit;
 
 /// 统一信号结构（RSSHub DataItem 对应，含可选的数字指标字段）
 #[derive(Debug, Clone, Serialize)]
@@ -43,18 +44,8 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
     match config.source_type.as_str() {
         "rss" => rss::fetch_rss(config, date_range).await,
         "uspto" => uspto::fetch_patents(config, date_range).await,
+        "reddit" => reddit::fetch_reddit(config, date_range).await,
         other => Err(anyhow::anyhow!("未知源类型: {}", other)),
-    }
-}
-
-/// 替换 RSSHub URL 中的实例地址
-/// 所有 rsshub.app 开头的 URL 以配置的 rsshub_base 替换
-#[allow(dead_code)]
-pub fn resolve_rsshub_url(url: &str, rsshub_base: &str) -> String {
-    if url.contains("rsshub.app") && rsshub_base != "https://rsshub.app" {
-        url.replace("https://rsshub.app", rsshub_base)
-    } else {
-        url.to_string()
     }
 }
 

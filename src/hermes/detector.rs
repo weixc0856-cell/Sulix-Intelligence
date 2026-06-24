@@ -88,8 +88,9 @@ pub async fn detect_changes_llm(
     api_key: &str,
     llm_config: &LlmConfig,
 ) -> Option<ChangeSummary> {
-    // 滑动窗口：取最近 30 条 chronicle 条目参与比对
-    let core_entries: Vec<&ChronicleEntry> = recent_entries.iter().take(30).collect();
+    // 滑动窗口：取最近 N 条 chronicle 条目参与比对
+    const WINDOW: usize = 30;
+    let core_entries: Vec<&ChronicleEntry> = recent_entries.iter().take(WINDOW).collect();
 
     if core_entries.is_empty() {
         log::info!("Change Detection: 近 7 天无 SVI>=5 的核心条目，冷启动模式");

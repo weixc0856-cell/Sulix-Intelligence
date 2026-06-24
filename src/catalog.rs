@@ -33,7 +33,7 @@ impl DataCatalog {
         fs::write(&path, &json)?;
         log::debug!(
             "  🪵 已落盘: {}",
-            path.file_name().unwrap().to_string_lossy()
+            path.file_name().map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed("(unknown)"))
         );
         Ok(())
     }

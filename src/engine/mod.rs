@@ -6,3 +6,4 @@
 pub mod analysis;
 pub mod memory;
 pub mod premium;
+pub mod belief;

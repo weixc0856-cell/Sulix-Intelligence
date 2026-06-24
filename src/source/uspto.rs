@@ -18,7 +18,6 @@ struct UsptoResponse {
 
 /// 单条专利
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct UsptoItem {
     #[serde(rename = "patentApplicationNumber")]
     pub application_number: String,
@@ -29,6 +28,7 @@ struct UsptoItem {
     #[serde(rename = "publicationDate")]
     pub pub_date: String,
     #[serde(rename = "applicantName")]
+    #[allow(dead_code)]
     pub applicants: Vec<String>,
 }
 

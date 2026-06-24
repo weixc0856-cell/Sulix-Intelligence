@@ -6,6 +6,7 @@
 //!   agent_research()  — 分流/聚类/分析/蓝军/认知引擎/BeliefDb
 //!   agent_publish()   — Premium 报告/HTML/Chronicle/看板
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -14,7 +15,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 mod agent;
-mod app_context;
+
 mod archive;
 mod belief_engine;
 mod catalog;
@@ -38,6 +39,8 @@ mod premium;
 mod question_engine;
 mod renderer;
 mod source;
+mod twitter;
+mod publishing;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -70,7 +73,7 @@ async fn main() -> Result<()> {
     .await?;
 
     // Publishing Agent: Premium → 渲染 → Chronicle → 看板
-    agent_publish(
+    publishing::agent_publish(
         &config,
         &api_key,
         &db,
@@ -145,7 +148,13 @@ async fn init() -> Result<(
                 db
             }
             Err(e) => {
-                log::warn!("⚠️ EntitySanctionDb 加载失败: {}，创建新实例", e);
+                let backup = format!(
+                    "{}.corrupt.{}",
+                    entity_db_path.to_string_lossy(),
+                    chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                );
+                log::warn!("⚠️ EntitySanctionDb 加载失败 ({}), 备份到 {} 后重建", e, backup);
+                let _ = std::fs::rename(&entity_db_path, &backup);
                 entity::EntitySanctionDb::new()
             }
         }
@@ -339,20 +348,7 @@ async fn agent_signal(
     Ok(Some((new_articles, source_statuses, entity_db)))
 }
 
-// ===== 管线阶段 3: 分析 → 渲染 =====
-
-/// Scan Agent 分流 → 聚类 → 主题分析 → 蓝军验证 → DiGraph 引擎 → Premium → 渲染输出
-#[allow(clippy::too_many_arguments)]
-/// Research Agent 的输出（传递给 Publishing Agent）
-struct ResearchOutput {
-    themes: Vec<clusterer::Theme>,
-    analyses: Vec<clusterer::ThemeAnalysis>,
-    analyses_zh: Vec<clusterer::ThemeAnalysis>,
-    decisions: Vec<decision_engine::Decision>,
-    triage: agent::scan::TriageResult,
-    total_new: usize,
-    new_articles: Vec<fetcher::Article>,
-}
+use publishing::ResearchOutput;
 
 // ===== Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb =====
 
@@ -427,6 +423,7 @@ async fn agent_research(
             triage,
             total_new,
             new_articles: vec![],
+            question_matches: vec![],
         });
     }
 
@@ -532,6 +529,7 @@ async fn agent_research(
 
     // DiGraph 认知引擎 + BeliefDb
     let decisions;
+    let question_matches: Vec<crate::question_engine::QuestionMatch>;
     {
         use crate::orchestrator::{
             blue_team_edge, BENode, BlueTeamNode, ClusterNode, DENode, DiGraph, GraphContext,
@@ -572,16 +570,23 @@ async fn agent_research(
             log::info!("🧠 DiGraph 认知引擎: {} 个决策项", decisions.len());
         }
 
-        // BeliefDb 持久化
+        // BeliefDb 持久化（含损坏备份保护）
         let belief_db_path = data_dir.join("belief_db.json");
         let mut belief_db = if belief_db_path.exists() {
-            crate::belief_engine::BeliefDb::load_from_file(&belief_db_path.to_string_lossy())
-                .unwrap_or_else(|e| {
-                    log::error!("⚠️ BeliefDb 加载失败，历史信念数据可能丢失: {e}");
-                    let d = crate::belief_engine::BeliefDb::new(today);
-                    log::info!("🧠 BeliefDb 新实例");
-                    d
-                })
+            match crate::belief_engine::BeliefDb::load_from_file(&belief_db_path.to_string_lossy())
+            {
+                Ok(db) => db,
+                Err(e) => {
+                    let backup = format!(
+                        "{}.corrupt.{}",
+                        belief_db_path.to_string_lossy(),
+                        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                    );
+                    log::error!("⚠️ BeliefDb 加载失败 ({}), 备份到 {} 后重建", e, backup);
+                    let _ = std::fs::rename(&belief_db_path, &backup);
+                    crate::belief_engine::BeliefDb::new(today)
+                }
+            }
         } else {
             let d = crate::belief_engine::BeliefDb::new(today);
             log::info!("🧠 BeliefDb 新实例");
@@ -592,6 +597,13 @@ async fn agent_research(
         if let Err(e) = belief_db.save_to_file(&belief_db_path.to_string_lossy()) {
             log::warn!("⚠️ BeliefDb 保存失败: {}", e);
         }
+
+        // 收集 QuestionEngine 匹配结果供 ASI 使用
+        question_matches = ctx
+            .question_matches
+            .into_iter()
+            .flatten()
+            .collect();
     }
 
     // 返回研究结果供 Publishing Agent 使用
@@ -603,443 +615,11 @@ async fn agent_research(
         triage,
         total_new,
         new_articles,
+        question_matches,
     })
 }
 
-// ===== Publishing Agent: Premium → 渲染 → Chronicle → 看板 =====
-
-/// Premium 报告 → 合成摘要 → Markdown 输出 → 变更检测 → HTML 渲染 → Chronicle → Decay Agent
-#[allow(clippy::too_many_arguments)]
-async fn agent_publish(
-    config: &config::Config,
-    api_key: &str,
-    db: &db::Database,
-    catalog: &catalog::DataCatalog,
-    data_dir: &Path,
-    today: &str,
-    entity_db: &mut entity::EntitySanctionDb,
-    research: ResearchOutput,
-    source_statuses: Vec<(String, bool, usize)>,
-) -> Result<()> {
-    let ResearchOutput {
-        themes,
-        analyses,
-        analyses_zh,
-        decisions,
-        triage,
-        total_new,
-        new_articles,
-    } = research;
-
-    // Premium 深度研报
-    let vault_base = PathBuf::from(&config.output.vault_path);
-    let premium_dir = vault_base.join("premium");
-    fs::create_dir_all(&premium_dir)?;
-    let mut flash_headlines: Vec<String> = Vec::new();
-    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
-        let svi = clusterer::calculate_svi(analysis, theme, &config.sources);
-        if svi < 7 {
-            continue;
-        }
-        if svi >= 9 {
-            flash_headlines.push(theme.title.clone());
-        }
-        let theme_context: String = theme
-            .articles
-            .iter()
-            .map(|a| {
-                format!(
-                    "- [{}] {}: {}",
-                    a.source,
-                    a.title,
-                    a.summary.as_deref().unwrap_or("")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        match premium::generate_premium_report(
-            theme,
-            &theme_context,
-            api_key,
-            &config.llm,
-            config.prompts.as_ref(),
-        )
-        .await
-        {
-            Ok(report) => {
-                if let Ok(html) = renderer::render_premium_report(&report) {
-                    let slug = theme.title.to_lowercase().replace(' ', "-");
-                    fs::write(premium_dir.join(format!("{}.html", slug)), &html)?;
-                    log::info!("📖 Premium: {} → {}.html", theme.title, slug);
-                }
-                if let Some(sub) = &config.substack {
-                    if sub.enabled {
-                        if let Err(e) =
-                            premium::push_to_substack(&report, &sub.api_key, &sub.publication_url)
-                                .await
-                        {
-                            log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
-                        }
-                    }
-                }
-            }
-            Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
-        }
-    }
-
-    // 合成摘要
-    let summary = clusterer::synthesize(&themes, &analyses);
-    log::info!(
-        "✅ 聚类完成: {} 个主题, {} 篇文章",
-        summary.theme_count,
-        summary.total_articles
-    );
-    catalog.save_step(7, "summary", &summary)?;
-
-    // Markdown 输出（Astro 前端资产）
-    let content_dir = PathBuf::from(&config.output.vault_path)
-        .join("content")
-        .join("posts");
-    fs::create_dir_all(&content_dir)?;
-    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
-        let markdown = renderer::render_signal_markdown(theme, analysis, today);
-        let slug = theme.title.to_lowercase().replace(' ', "-");
-        fs::write(
-            content_dir.join(format!("{}-{}.md", today, slug)),
-            &markdown,
-        )?;
-    }
-
-    // 认知校准
-    let calibration_text = if !analyses.is_empty() {
-        let calibration_input: Vec<llm::VerticalAnalysis> = analyses
-            .iter()
-            .map(|ta| llm::VerticalAnalysis {
-                category: ta.theme_title.clone(),
-                articles: vec![],
-            })
-            .collect();
-        agent::calibration::calibrate(
-            &calibration_input,
-            api_key,
-            &config.llm,
-            config.prompts.as_ref(),
-        )
-        .await?
-    } else {
-        String::new()
-    };
-    catalog.save_step(8, "calibration", &calibration_text)?;
-    log::info!(
-        "📝 分析主题: {} 个, 信号: {} 条",
-        analyses.len(),
-        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len()
-    );
-
-    // Change Detection
-    let chronicle_path = data_dir.join("database.json");
-    let chronicle = if chronicle_path.exists() {
-        match archive::ChronicleDb::load(&chronicle_path) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                log::warn!("⚠️ Chronicle 加载失败: {}", e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let recent_entries: Vec<archive::ChronicleEntry> = chronicle
-        .map(|c| c.sorted().into_iter().take(50).collect())
-        .unwrap_or_default();
-    let change_summary = if config
-        .news_layer
-        .as_ref()
-        .map(|n| n.llm_change_detection)
-        .unwrap_or(false)
-    {
-        clusterer::detect_changes_llm(&recent_entries, &analyses, api_key, &config.llm)
-            .await
-            .unwrap_or_else(|| clusterer::detect_changes_rule(&recent_entries, &analyses))
-    } else {
-        clusterer::detect_changes_rule(&recent_entries, &analyses)
-    };
-    if !change_summary.conflicts.is_empty() || !change_summary.reinforced.is_empty() {
-        log::info!(
-            "🔄 Change Detection: {} 冲突, {} 强化, {} 新信号",
-            change_summary.conflicts.len(),
-            change_summary.reinforced.len(),
-            change_summary.new_signals.len()
-        );
-    }
-
-    // === 渲染输出 ===
-    let report_dir = PathBuf::from(&config.output.vault_path);
-    let en_root = report_dir.join("en");
-    let month_dir = en_root.join(&today[..7]);
-
-    let flash = flash_headlines.first().map(String::as_str);
-    if let Ok(html) = renderer::render_html_report(
-        &themes,
-        &analyses,
-        today,
-        Some(&calibration_text),
-        &config.sources,
-        flash,
-        "en",
-        &source_statuses,
-        Some(&change_summary),
-    ) {
-        fs::create_dir_all(&month_dir)?;
-        fs::write(month_dir.join("index.html"), &html)?;
-        log::info!("📄 EN 简报写入: {}", month_dir.join("index.html").display());
-
-        // 决策区块 + 趋势区块注入（批量读-改-写，一次完成）
-        let path = month_dir.join("index.html");
-        let content = std::fs::read_to_string(&path).ok();
-        if let Some(content) = content {
-            let mut blocks = String::new();
-            if !decisions.is_empty() {
-                blocks.push_str(&decision_engine::render_decision_html(&decisions));
-            }
-            if let Ok(trends) = db.get_trend(14) {
-                if !trends.is_empty() {
-                    blocks.push_str(&renderer::render_trend_block(&trends));
-                }
-            }
-            if !blocks.is_empty() {
-                let updated = content.replacen("</main>", &format!("{blocks}</main>"), 1);
-                if let Err(e) = std::fs::write(&path, &updated) {
-                    log::warn!("区块注入写入失败 {}: {}", path.display(), e);
-                }
-                if !decisions.is_empty() {
-                    log::info!("🧠 决策区块注入: {} 项", decisions.len());
-                }
-            } else {
-                log::info!("📊 Trend/决策: 无内容注入");
-            }
-        }
-    }
-
-    // Chronicle 看板
-    let db_dir = data_dir.join(&today[..7]);
-    fs::create_dir_all(&db_dir)
-        .unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
-    let chronicle_path = data_dir.join("database.json");
-    let mut chronicle = archive::ChronicleDb::load(&chronicle_path)?;
-
-    // 繁体中文版
-    if !analyses_zh.is_empty() {
-        let zh_dir = report_dir.join("zh").join(&today[..7]);
-        fs::create_dir_all(&zh_dir)
-            .unwrap_or_else(|e| log::warn!("无法创建中文目录 {:?}: {}", zh_dir, e));
-        if let Ok(zh_html) = renderer::render_html_report(
-            &themes,
-            &analyses_zh,
-            today,
-            Some(&calibration_text),
-            &config.sources,
-            flash,
-            "zh",
-            &source_statuses,
-            Some(&change_summary),
-        ) {
-            let zh_path = zh_dir.join("index.html");
-            if let Err(e) = fs::write(&zh_path, &zh_html) {
-                log::warn!("写入中文 HTML 失败: {}", e);
-            }
-            // 中文版趋势区块注入（批量）
-            if let Ok(content) = std::fs::read_to_string(&zh_path) {
-                if let Ok(trends) = db.get_trend(14) {
-                    if !trends.is_empty() {
-                        let trend_html = renderer::render_trend_block(&trends);
-                        let updated =
-                            content.replacen("</main>", &format!("{trend_html}</main>"), 1);
-                        if let Err(e) = std::fs::write(&zh_path, &updated) {
-                            log::warn!("中文 Trend 区块写入失败 {}: {}", zh_path.display(), e);
-                        }
-                    }
-                }
-            }
-            log::info!("🌏 中文简报已生成");
-        }
-        // 中文 Chronicle 条目
-        for a in &analyses_zh {
-            let mut entities: Vec<String> = Vec::new();
-            for fb in &a.fact_base {
-                for word in fb.evidence.split_whitespace() {
-                    let upper = word.to_uppercase();
-                    if [
-                        "TSMC",
-                        "ASML",
-                        "NVIDIA",
-                        "OPENAI",
-                        "ANTHROPIC",
-                        "GOOGLE",
-                        "META",
-                        "MICROSOFT",
-                        "INTEL",
-                        "AMD",
-                        "ARM",
-                        "HBM",
-                    ]
-                    .contains(&upper.as_str())
-                        && !entities.contains(&upper)
-                    {
-                        entities.push(upper);
-                    }
-                }
-            }
-            chronicle.push(archive::ChronicleEntry {
-                date: today.to_string(),
-                topic: a.theme_title.clone(),
-                headline: a.bluf.clone(),
-                entities,
-                signal_strength: a.signal_strength,
-                language: "zh".into(),
-            });
-        }
-    }
-
-    // 英文 Chronicle 条目
-    for (analysis, _theme) in analyses.iter().zip(themes.iter()) {
-        let mut entities: Vec<String> = Vec::new();
-        for fb in &analysis.fact_base {
-            for word in fb.evidence.split_whitespace() {
-                let upper = word.to_uppercase();
-                if [
-                    "TSMC",
-                    "ASML",
-                    "NVIDIA",
-                    "OPENAI",
-                    "ANTHROPIC",
-                    "GOOGLE",
-                    "META",
-                    "MICROSOFT",
-                    "INTEL",
-                    "AMD",
-                    "ARM",
-                    "HBM",
-                ]
-                .contains(&upper.as_str())
-                    && !entities.contains(&upper)
-                {
-                    entities.push(upper);
-                }
-            }
-        }
-        chronicle.push(archive::ChronicleEntry {
-            date: today.to_string(),
-            topic: analysis.theme_title.clone(),
-            headline: analysis.bluf.clone(),
-            entities,
-            signal_strength: analysis.signal_strength,
-            language: "en".into(),
-        });
-    }
-    chronicle.save(&chronicle_path)?;
-
-    // 编年史看板
-    let sorted = chronicle.sorted();
-    let archive_html = renderer::render_archive_dashboard(&sorted)?;
-    fs::create_dir_all(&en_root)?;
-    fs::write(en_root.join("index.html"), &archive_html)?;
-    fs::write(report_dir.join("index.html"), &archive_html)?;
-    log::info!("📚 编年史看板: {} 条 → EN + root", sorted.len());
-
-    let zh_root = report_dir.join("zh");
-    fs::create_dir_all(&zh_root)?;
-    let zh_entries = chronicle.sorted_by_lang("zh");
-    if !zh_entries.is_empty() {
-        if let Ok(zh_archive) = renderer::render_archive_dashboard(&zh_entries) {
-            fs::write(zh_root.join("index.html"), &zh_archive)?;
-            log::info!(
-                "📚 中文看板: {} 条 → {}",
-                zh_entries.len(),
-                zh_root.join("index.html").display()
-            );
-        }
-    }
-
-    // Decay Agent 记忆墓地维护
-    if let Some(ref g) = config.graveyard {
-        if g.enabled {
-            match agent::decay::run_maintenance(db, &new_articles, api_key, &config.llm, g).await {
-                Ok(_) => log::info!("🪦 Decay Agent 维护完成"),
-                Err(e) => log::warn!("⚠️ Decay Agent 失败: {}", e),
-            }
-        }
-    }
-
-    // 记录到数据库
-    db.record_report(
-        today,
-        &format!("Daily brief - {} topics", analyses.len()),
-        total_new,
-    )?;
-
-    // 保存 EntitySanctionDb
-    let entity_db_path = data_dir.join("entity_db.json");
-    if let Err(e) = entity_db.save_to_file(&entity_db_path.to_string_lossy()) {
-        log::warn!("⚠️ EntitySanctionDb 保存失败: {}", e);
-    }
-
-    // Memory Engine 信念追踪 + Hermes 分析
-    {
-        let mut memory = engine::memory::MemoryEngine::new(
-            PathBuf::from(&config.output.vault_path).join("memory_db.json"),
-        );
-        if let Err(e) = memory.load() {
-            log::warn!("⚠️ Memory Engine 加载失败: {}", e);
-        }
-
-        // 基础更新：主题分析 → Thesis
-        if let Err(e) = memory.update_from_analysis(today, &themes, &analyses) {
-            log::warn!("⚠️ Memory Engine 更新失败: {}", e);
-        } else {
-            let before = memory.theses().len();
-            // Hermes 矛盾写入：将 change_summary 冲突记到 Thesis
-            if !change_summary.conflicts.is_empty() {
-                hermes::apply_conflicts(&change_summary, &mut memory, today);
-            }
-            // Hermes 趋势检测：Trend >30% 写入 Thesis
-            if let Ok(trends) = db.get_trend(14) {
-                hermes::analyze_trends(&trends, &mut memory, today);
-            }
-            // Hermes 新 Thesis 发现：chronicle 重复主题自动创建
-            hermes::discover_theses(&analyses, &chronicle, &mut memory, today);
-            log::info!(
-                "🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
-                memory.theses().len(),
-                memory.theses().len() - before,
-            );
-        }
-        if let Err(e) = memory.save() {
-            log::warn!("⚠️ Memory Engine 保存失败: {}", e);
-        }
-
-        // Thesis 看板
-        let memory_dir = vault_base.join("memory");
-        if let Err(e) = std::fs::create_dir_all(&memory_dir) {
-            log::warn!("⚠️ Memory 目录创建失败: {}", e);
-        } else {
-            let dashboard = renderer::render_memory_dashboard(memory.theses());
-            if let Err(e) = std::fs::write(memory_dir.join("index.html"), &dashboard) {
-                log::warn!("⚠️ Thesis 看板写入失败: {}", e);
-            } else {
-                log::info!("📊 Thesis 看板已生成: {} 个 Thesis", memory.theses().len());
-            }
-        }
-    }
-
-    // LLM 审计
-    log::info!("📊 {}", llm::llm_audit_summary());
-
-    println!("\n✅ EN 简报: {}", month_dir.join("index.html").display());
-    println!("✅ 看板: {}", en_root.join("index.html").display());
-    Ok(())
-}
-
+// ===== [agent_publish moved to src/publishing.rs] =====
 fn get_db_path(config: &config::Config) -> PathBuf {
     let data_dir = config
         .storage

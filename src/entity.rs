@@ -228,7 +228,6 @@ impl EntitySanctionDb {
 /// 实体归一化映射表（belief_engine.rs 的 ENTITY_NORMALIZATION 升级版）
 ///
 /// 将原始文本中的技术术语映射到 EntitySanctionDb 中的标准化实体名称。
-#[allow(dead_code)]
 pub fn extract_entities_from_text(text: &str) -> Vec<String> {
     let mut entities = Vec::new();
     let lower = text.to_lowercase();
@@ -248,7 +247,7 @@ pub fn extract_entities_from_text(text: &str) -> Vec<String> {
         ("Google", &["google", "alphabet", "谷歌"]),
         ("Meta", &["meta", "facebook", "meta platforms"]),
         ("Amazon", &["amazon", "amzn", "aws", "亚马逊"]),
-        ("TSA", &["tsa", "taiwan semiconductor", "先进制程"]),
+        ("TSA", &["tsa", "先进制程"]),
         ("EUV", &["euv", "extreme ultraviolet", "high-na"]),
         ("HBM", &["hbm", "high-bandwidth memory", "hbm3", "hbm4"]),
         (

@@ -35,6 +35,12 @@ pub struct Config {
     /// 去重配置
     #[serde(default)]
     pub dedup: Option<DedupConfig>,
+    /// Twitter/X 发布配置
+    #[serde(default)]
+    pub twitter: Option<TwitterConfig>,
+    /// Belief Engine Phase B: WayneOPC 核心信念
+    #[serde(default)]
+    pub beliefs: Option<Vec<BeliefConfig>>,
 }
 
 /// LLM 配置
@@ -277,10 +283,6 @@ pub struct NewsLayerConfig {
     /// Change Detection 使用 LLM 语义版（否则用规则版）
     #[serde(default = "default_llm_change_detection")]
     pub llm_change_detection: bool,
-    /// RSSHub 基础 URL（部署自己的 RSSHub 实例可替换）
-    #[serde(default = "default_rsshub_base")]
-    #[allow(dead_code)]
-    pub rsshub_base: String,
 }
 
 fn default_llm_prededup() -> bool {
@@ -291,9 +293,6 @@ fn default_prededup_batch() -> usize {
 }
 fn default_llm_change_detection() -> bool {
     false
-}
-fn default_rsshub_base() -> String {
-    "https://rsshub.app".into()
 }
 
 /// 去重配置
@@ -313,6 +312,29 @@ fn default_dedup_threshold() -> f64 {
 }
 fn default_dedup_window() -> u32 {
     0
+}
+
+/// Belief Engine Phase B: WayneOPC 核心信念配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct BeliefConfig {
+    /// 信念 ID (B1-B10)
+    pub id: String,
+    /// 信念陈述
+    pub statement: String,
+    /// 初始置信度 0-100
+    pub confidence: u8,
+    /// 类别
+    pub category: String,
+}
+
+/// Twitter/X 发布配置
+#[derive(Debug, Deserialize, Clone)]
+pub struct TwitterConfig {
+    /// API Bearer Token
+    pub bearer_token: String,
+    /// 是否启用
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 impl Config {
