@@ -135,7 +135,7 @@ Output JSON only:
     }
 
     let relevance = parsed["relevance"].as_u64().unwrap_or(3).min(10) as u8;
-    let evidence_type = parsed["evidence_type"].as_str().unwrap_or("Neutral").to_string();
+    let _evidence_type = parsed["evidence_type"].as_str().unwrap_or("Neutral").to_string();
     let reasoning = parsed["reasoning"].as_str().unwrap_or("LLM 语义匹配").to_string();
 
     Ok(Some((relevance, format!("LLM: {}", reasoning))))
@@ -231,9 +231,9 @@ pub async fn match_questions(
 pub fn match_questions_sync(
     analysis: &ThemeAnalysis,
     questions: &[Question],
-    client: &reqwest::Client,
-    api_key: &str,
-    llm_config: &LlmConfig,
+    _client: &reqwest::Client,
+    _api_key: &str,
+    _llm_config: &LlmConfig,
 ) -> Result<Vec<QuestionMatch>> {
     // 降级为纯关键词匹配（同步版本不需要 LLM）
     let analysis_text = format!(
