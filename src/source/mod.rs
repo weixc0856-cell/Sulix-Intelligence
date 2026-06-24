@@ -1,6 +1,7 @@
 //! Source Adapter 模块（抄 RSSHub: 每源一个适配器，统一 RawSignal 输出）
 //!
-//! dispatch_source() 根据配置路由到对应的适配器。
+//! fetch_source() 根据 source_type 路由到对应的适配器。
+//! 加新源：在 match 中增加一个分支即可。
 //! 不使用 trait（避免 async_trait 依赖），直接用函数分发。
 
 use std::collections::{HashMap, HashSet};

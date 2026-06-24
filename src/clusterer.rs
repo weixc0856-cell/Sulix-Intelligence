@@ -585,11 +585,12 @@ pub struct Summary {
 }
 
 /// 战略异动指数 (SVI) 权重
-const SVI_ENTITY_SURGE: f64 = 0.25;
+const SVI_ENTITY_SURGE: f64 = 0.20;
 const SVI_SANCTION_SENSITIVITY: f64 = 0.25;
-const SVI_PATENT_MUTATION: f64 = 0.20;
+const SVI_PATENT_MUTATION: f64 = 0.15;
 const SVI_SOURCE_CREDIBILITY: f64 = 0.15;
-const SVI_TEMPORAL_URGENCY: f64 = 0.15;
+const SVI_TEMPORAL_URGENCY: f64 = 0.10;
+const SVI_RECENCY: f64 = 0.15;
 
 /// 计算战略异动指数 (SVI)
 ///
@@ -632,20 +633,40 @@ pub fn calculate_svi(
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap_or(0.5);
 
-    // 3. TemporalUrgency: signal_strength 已包含 LLM 对时效性的评估
+    // 3. Recency: 基于文章发布时间（无时间戳则用 signal_strength 代理）
+    let recency = if let Some(pub_date) = theme.articles.iter().filter_map(|a| a.published_at).max()
+    {
+        let days_old = (chrono::Utc::now() - pub_date.with_timezone(&chrono::Utc))
+            .num_days()
+            .max(0);
+        if days_old <= 1 {
+            1.0
+        } else if days_old <= 3 {
+            0.8
+        } else if days_old <= 7 {
+            0.5
+        } else {
+            0.2
+        }
+    } else {
+        0.5
+    };
+
+    // 4. TemporalUrgency: signal_strength 作为 LLM 对时效性的评估
     let temporal_urgency = (analysis.signal_strength as f64) / 10.0;
 
-    // 4. SanctionSensitivity: Phase 1 用 signal_strength 代理，Phase 2 接入 EntitySanctionDb
+    // 5. SanctionSensitivity: Phase 1 用 signal_strength 代理，Phase 2 接入 EntitySanctionDb
     let sanction_sensitivity = temporal_urgency;
 
-    // 5. PatentMutation: Phase 1 用 signal_strength 代理，Phase 2 接入 USPTO 突变检测
+    // 6. PatentMutation: Phase 1 用 signal_strength 代理，Phase 2 接入 USPTO 突变检测
     let patent_mutation = (analysis.signal_strength as f64) / 10.0;
 
     let score = entity_surge * SVI_ENTITY_SURGE
         + sanction_sensitivity * SVI_SANCTION_SENSITIVITY
         + patent_mutation * SVI_PATENT_MUTATION
         + best_score * SVI_SOURCE_CREDIBILITY
-        + temporal_urgency * SVI_TEMPORAL_URGENCY;
+        + temporal_urgency * SVI_TEMPORAL_URGENCY
+        + recency * SVI_RECENCY;
 
     ((score * 10.0).round() as u8).min(10).max(0)
 }

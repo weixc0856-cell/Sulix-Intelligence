@@ -10,12 +10,34 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::config::LlmConfig;
 use crate::fetcher::Article;
 
 /// 最大重试次数
 const MAX_RETRIES: u32 = 3;
+
+// ===== LLM 调用审计计数器 =====
+/// 总调用次数
+pub static LLM_CALL_COUNT: AtomicU64 = AtomicU64::new(0);
+/// 估计输入 token 数（字符数 / 4 粗略估计）
+pub static LLM_INPUT_TOKENS: AtomicU64 = AtomicU64::new(0);
+/// 估计输出 token 数
+pub static LLM_OUTPUT_TOKENS: AtomicU64 = AtomicU64::new(0);
+
+/// 获取 LLM 审计统计摘要
+pub fn llm_audit_summary() -> String {
+    let calls = LLM_CALL_COUNT.load(Ordering::Relaxed);
+    let input = LLM_INPUT_TOKENS.load(Ordering::Relaxed);
+    let output = LLM_OUTPUT_TOKENS.load(Ordering::Relaxed);
+    format!(
+        "LLM 调用: {} 次, 输入 ~{}k tokens, 输出 ~{}k tokens",
+        calls,
+        input / 1000,
+        output / 1000,
+    )
+}
 
 /// 单个 vertical 的分析结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +157,11 @@ async fn call_raw_inner(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
+    // LLM 审计计数
+    LLM_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    let input_est = (system_prompt.len() + user_prompt.len()) as u64;
+    LLM_INPUT_TOKENS.fetch_add(input_est / 4, Ordering::Relaxed);
+
     let url = format!(
         "{}/chat/completions",
         llm_config.base_url.trim_end_matches('/')
@@ -179,6 +206,9 @@ async fn call_raw_inner(
         .map(|c| &c.message.content)
         .ok_or_else(|| anyhow::anyhow!("API 响应中没有 choices"))?
         .clone();
+
+    // LLM 输出审计
+    LLM_OUTPUT_TOKENS.fetch_add(content.len() as u64 / 4, Ordering::Relaxed);
 
     Ok(content)
 }

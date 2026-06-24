@@ -802,6 +802,9 @@ async fn main() -> Result<()> {
         log::warn!("⚠️ EntitySanctionDb 保存失败: {}", e);
     }
 
+    // LLM 调用审计
+    log::info!("📊 {}", llm::llm_audit_summary());
+
     println!("\n✅ EN 简报: {}", month_dir.join("index.html").display());
     println!("✅ 看板: {}", en_root.join("index.html").display());
     log::info!("✅ Sulix Intelligence 执行完成");
