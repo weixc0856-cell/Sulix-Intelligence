@@ -7,17 +7,34 @@ const allPosts = await getCollection('posts');
 const published = allPosts
   .filter(p => p.data.status === 'published')
   .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
+
+const top3 = published.slice(0, 3);
+const next = published.slice(3, 13);
+const rest = published.slice(13);
+
+const latestDate = published.length > 0 ? published[0].data.date : '';
+const today = new Date().toISOString().slice(0, 10);
 ---
 
-<BaseLayout title="Dashboard | Sulix.Intel" description="Daily Geopolitical Tech Intelligence Briefing">
-  <div class="flex items-baseline justify-between border-b-2 border-neutral-950" style="margin-bottom:0.75rem;padding-bottom:0.5rem">
-    <h1 class="font-mono font-bold text-neutral-900" style="font-size:1.25rem;margin:0">今日信号</h1>
-    <span class="font-mono text-xs text-neutral-400">{published.length} 条</span>
+<BaseLayout title="Sulix Daily" description="Daily strategic intelligence briefing for founders">
+  <!-- Header -->
+  <div class="flex items-baseline justify-between border-b-2 border-neutral-900" style="margin-bottom:1rem;padding-bottom:0.5rem">
+    <h1 class="font-mono font-bold" style="font-size:1.25rem;margin:0;color:#171717">Sulix Daily</h1>
+    <span class="font-mono text-xs text-neutral-400">{today}</span>
   </div>
 
-  {published.length > 0 ? (
-    <div>
-      {published.map(post => (
+  <!-- Trend Summary (placeholder — real data from Rust backend) -->
+  <div class="font-mono text-xs text-neutral-400" style="margin-bottom:1rem;padding:0.5rem;background:#fafafa;border-radius:4px">
+    📊 趋势摘要：今日 {published.length} 条信号 · 含 {top3.length} 个主题 · 报告生成于 {new Date().toISOString().slice(11, 16)}
+  </div>
+
+  <!-- Top 3 -->
+  {top3.length > 0 && (
+    <div style="margin-bottom:1.5rem">
+      <div class="font-mono font-bold" style="font-size:0.75rem;color:#dc2626;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em">
+        🔴 今日最重要的 {top3.length} 件事
+      </div>
+      {top3.map(post => (
         <SignalRow
           title={post.data.title}
           date={post.data.date}
@@ -30,9 +47,57 @@ const published = allPosts
         />
       ))}
     </div>
-  ) : (
+  )}
+
+  <!-- Next batch -->
+  {next.length > 0 && (
+    <div style="margin-bottom:1.5rem">
+      <div class="font-mono font-bold" style="font-size:0.75rem;color:#525252;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em">
+        🟡 值得关注 ({next.length})
+      </div>
+      {next.map(post => (
+        <SignalRow
+          title={post.data.title}
+          date={post.data.date}
+          svi={post.data.svi}
+          colorTag={post.data.color_tag}
+          isPremium={post.data.is_premium}
+          slug={post.data.slug}
+          summary={post.data.summary}
+          tags={post.data.tags}
+        />
+      ))}
+    </div>
+  )}
+
+  <!-- Rest (folded) -->
+  {rest.length > 0 && (
+    <div>
+      <div class="font-mono font-bold" style="font-size:0.75rem;color:#a3a3a3;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em">
+        ⚪ 可忽略 ({rest.length})
+      </div>
+      <details>
+        <summary class="font-mono text-xs text-neutral-400" style="cursor:pointer;margin-bottom:0.5rem">展开</summary>
+        {rest.map(post => (
+          <SignalRow
+            title={post.data.title}
+            date={post.data.date}
+            svi={post.data.svi}
+            colorTag={post.data.color_tag}
+            isPremium={post.data.is_premium}
+            slug={post.data.slug}
+            summary={post.data.summary}
+            tags={post.data.tags}
+          />
+        ))}
+      </details>
+    </div>
+  )}
+
+  <!-- Empty state -->
+  {published.length === 0 && (
     <div class="font-mono text-center text-neutral-400" style="padding:3rem 0;font-size:0.875rem">
-      No significant signals today.
+      今日暂无信号。
     </div>
   )}
 </BaseLayout>
