@@ -14,6 +14,7 @@ use serde::Serialize;
 use crate::source::RawSignal;
 
 /// 运行管线（使用默认去重阈值 0.75）
+#[allow(dead_code)]
 pub fn run_pipeline(signals: &mut Vec<RawSignal>) -> Result<()> {
     sanitize_all(signals);
     compliance_filter_all(signals);

@@ -14,6 +14,7 @@ pub struct CategoryStat {
 
 /// 趋势数据行
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TrendRow {
     pub category: String,
     pub recent_count: i64,

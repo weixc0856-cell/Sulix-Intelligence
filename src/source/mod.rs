@@ -49,6 +49,7 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
 
 /// 替换 RSSHub URL 中的实例地址
 /// 所有 rsshub.app 开头的 URL 以配置的 rsshub_base 替换
+#[allow(dead_code)]
 pub fn resolve_rsshub_url(url: &str, rsshub_base: &str) -> String {
     if url.contains("rsshub.app") && rsshub_base != "https://rsshub.app" {
         url.replace("https://rsshub.app", rsshub_base)
