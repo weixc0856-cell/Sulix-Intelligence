@@ -15,17 +15,34 @@ use crate::llm::VerticalAnalysis;
 ///
 /// 输入今天的分析结果，输出一个问题字符串。
 /// 失败时返回空字符串，调用方忽略即可。
+/// `language` 控制输出语言: "en" 或 "zh"
 pub async fn calibrate(
     analysis: &[VerticalAnalysis],
     api_key: &str,
     llm_config: &LlmConfig,
     prompts: Option<&crate::config::PromptsConfig>,
+    language: &str,
 ) -> Result<String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let system_prompt_inner = r#"你是一个认知校准师。你的任务不是总结，而是提问。
+    let system_prompt_inner = if language == "en" {
+        r#"You are a cognitive calibration specialist. Your job is NOT to summarize — it is to ask questions.
+
+Read today's analysis and find the ONE most valuable contradiction, blind spot, or cognitive bias worth challenging.
+Output a single sharp question that makes a founder question their own judgment framework.
+
+Rules:
+- Output only 1 question, no explanation
+- Be specific (reference today's actual content)
+- Be sharp but not sarcastic
+- Don't ask questions with known answers
+
+Output strict JSON:
+{"articles": [{"title": "Cognitive Calibration", "importance": 1, "relevance": "high", "time_horizon": "short", "action": "investigate", "confidence": "medium", "judgment": "Your question here"}]}"#
+    } else {
+        r#"你是一个认知校准师。你的任务不是总结，而是提问。
 
 阅读今天的分析结果，找出 1 个最值得追问的矛盾、盲点或认知偏见。
 输出一个扎心但有用的问题，让创业者反思自己的判断框架。
@@ -37,7 +54,8 @@ pub async fn calibrate(
 - 不要问已知答案的问题
 
 Output json. 输出严格 JSON：
-{"articles": [{"title": "认知校准", "importance": 1, "relevance": "高", "time_horizon": "短期", "action": "研究", "confidence": "中", "judgment": "你的问题在这里"}]}"#;
+{"articles": [{"title": "认知校准", "importance": 1, "relevance": "高", "time_horizon": "短期", "action": "研究", "confidence": "中", "judgment": "你的问题在这里"}]}"#
+    };
 
     let system_prompt = match prompts {
         Some(p) => p.get_calibration(system_prompt_inner),

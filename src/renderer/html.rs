@@ -372,7 +372,23 @@ pub fn render_html_report(
 }
 
 /// 渲染编年史看板总页面（Economist Graphic Detail 版式）
-pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> Result<String> {
+/// `css_content`: 内联 CSS 字符串（从 design.css 读取）
+/// `language`: "en" 或 "zh" — 控制标题和副标题语言
+pub fn render_archive_dashboard(
+    entries: &[crate::archive::ChronicleEntry],
+    css_content: &str,
+    language: &str,
+) -> Result<String> {
+    let is_zh = language == "zh";
+    let title = if is_zh { "地缘技术编年史 | Sulix" } else { "Geopolitical Tech Chronicle | Sulix" };
+    let h1 = if is_zh { "地缘技术编年史" } else { "Geopolitical Tech Chronicle" };
+    let subtitle = if is_zh {
+        "系统性追踪地缘政治摩擦沿科技供应链的传导路径与突变点。"
+    } else {
+        "A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines."
+    };
+    let feed_label = if is_zh { "历史事件时间线" } else { "Historical Event Feed" };
+
     let list_html: String = entries.iter().map(|item| {
         let entities_badges: String = item.entities.iter()
             .map(|e| format!("<span class='text-[10px] font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded-sm'>{}</span>", html_escape(e)))
@@ -398,10 +414,11 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 
     let html = format!(
         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="{}">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Geopolitical Tech Chronicle | Sulix</title>
+  <title>{}</title>
+  <style>{}</style>
   <style>body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background-color:#fcfcfc;color:#111;}}.chronicle-title{{font-family:'Lora','Playfair Display','Georgia',serif;}}</style>
 </head>
 <body>
@@ -428,12 +445,12 @@ pub fn render_archive_dashboard(entries: &[crate::archive::ChronicleEntry]) -> R
 
   <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="border-b-2 border-neutral-950 pb-6">
-      <h1 class="chronicle-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">Geopolitical Tech Chronicle</h1>
-      <p class="chronicle-title text-lg italic text-neutral-500 mt-2">A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines.</p>
+      <h1 class="chronicle-title text-4xl sm:text-5xl font-bold tracking-tight text-neutral-900">{}</h1>
+      <p class="chronicle-title text-lg italic text-neutral-500 mt-2">{}</p>
       <div class="mt-3 text-xs text-neutral-400">{} entries spanning {} topics</div>
     </div>
     <div class="mt-8 space-y-1">
-      <div class="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-200 pb-2 px-2">Historical Event Feed</div>
+      <div class="text-xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-200 pb-2 px-2">{}</div>
       {}
     </div>
   </div>
@@ -445,12 +462,18 @@ else if(t==='en'){{if(p.startsWith('/zh/')){{var cz=p.substring(3);window.locati
 </script>
 </body>
 </html>"#,
+        if is_zh { "zh-Hant" } else { "en" },
+        title,
+        css_content,
+        h1,
+        subtitle,
         entries.len(),
         entries
             .iter()
             .map(|e| e.topic.as_str())
             .collect::<std::collections::HashSet<&str>>()
             .len(),
+        feed_label,
         list_html,
     );
 

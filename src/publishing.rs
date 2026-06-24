@@ -217,7 +217,7 @@ pub async fn agent_publish(
         let calibration_input: Vec<crate::llm::VerticalAnalysis> = analyses.iter()
             .map(|ta| crate::llm::VerticalAnalysis { category: ta.theme_title.clone(), articles: vec![] })
             .collect();
-        crate::agent::calibration::calibrate(&calibration_input, api_key, &config.llm, config.prompts.as_ref()).await?
+        crate::agent::calibration::calibrate(&calibration_input, api_key, &config.llm, config.prompts.as_ref(), "en").await?
     } else {
         String::new()
     };
@@ -282,6 +282,7 @@ pub async fn agent_publish(
     let flash = flash_headlines.first().cloned();
     let css_path = vault_base.join("design.css");
     let css_content = std::fs::read_to_string(&css_path).unwrap_or_default();
+    let dashboard_css = css_content.clone();
     let html_ctx = crate::renderer::publisher::PublishContext {
         themes: themes.clone(),
         analyses: analyses.clone(),
@@ -351,12 +352,12 @@ pub async fn agent_publish(
         date: today.to_string(), language: "en".into(), calibration: None,
         attributable_sources: vec![], flash_headline: None, change_summary: None,
         theses: vec![], report: None,
-        archive_entries: chronicle.sorted(),
+        archive_entries: chronicle.sorted_by_lang("en"),
         archive_entries_zh: chronicle.sorted_by_lang("zh"),
         source_statuses: vec![], decisions: vec![], asi_scores: HashMap::new(),
         editor_notes: vec![],
         belief_notes_html: String::new(),
-        css_content: String::new(), articles: vec![], watchlist_count: 0,
+        css_content: dashboard_css.clone(), articles: vec![], watchlist_count: 0,
         output_dir: vault_base.clone(),
     };
     crate::renderer::publisher::DashboardPublisher::new().publish(&dashboard_ctx)?;

@@ -109,11 +109,14 @@ impl HtmlPublisher {
             return Ok(None);
         }
 
+        // 校准文本仅用于英文版，中文版暂不生成
+        let calibration = if language == "en" { ctx.calibration.as_deref() } else { None };
+
         let html = crate::renderer::html::render_html_report(
             &ctx.themes,
             analyses,
             &ctx.date,
-            ctx.calibration.as_deref(),
+            calibration,
             &ctx.attributable_sources,
             ctx.flash_headline.as_deref(),
             language,
@@ -224,7 +227,7 @@ impl Publisher for DashboardPublisher {
 
         // Chronicle 看板（EN → en_root + root）
         if !ctx.archive_entries.is_empty() {
-            let archive_html = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries)?;
+            let archive_html = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries, &ctx.css_content, "en")?;
             let en_root = ctx.output_dir.join("en");
             std::fs::create_dir_all(&en_root)?;
             let en_path = en_root.join("index.html");
@@ -241,7 +244,7 @@ impl Publisher for DashboardPublisher {
         if !ctx.archive_entries_zh.is_empty() {
             let zh_root = ctx.output_dir.join("zh");
             std::fs::create_dir_all(&zh_root)?;
-            if let Ok(zh_archive) = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries_zh) {
+            if let Ok(zh_archive) = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries_zh, &ctx.css_content, "zh") {
                 let zh_path = zh_root.join("index.html");
                 std::fs::write(&zh_path, &zh_archive)?;
                 outputs.push(PublishedOutput::File { path: zh_path, content: zh_archive });
