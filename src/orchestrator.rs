@@ -288,9 +288,7 @@ impl GraphNode for QENode {
     fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
         log::info!("  节点 QE: Question Engine");
         if let Some(questions) = &ctx.config.questions {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()?;
+            let client = crate::client::global_client().clone();
             for analysis in &ctx.current_analyses {
                 if let Ok(matches) = crate::question_engine::match_questions(
                     analysis,

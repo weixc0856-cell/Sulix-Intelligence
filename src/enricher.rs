@@ -18,13 +18,7 @@ use crate::fetcher::Article;
 /// 遍历文章，对每篇文章的标题尝试查询 Wikipedia。
 /// 先查中文版，回退到英文版。查询结果写入 article.wiki_summary。
 pub async fn enrich_with_wikipedia(articles: &mut [Article], max_concurrency: usize) -> u32 {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return 0,
-    };
+    let client = crate::client::global_client().clone();
 
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
     let mut handles = Vec::new();

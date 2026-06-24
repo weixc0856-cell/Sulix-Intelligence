@@ -36,12 +36,7 @@ pub struct Article {
 pub async fn enrich_articles_content(articles: &mut [Article], max_concurrency: usize) -> u32 {
     use std::sync::Arc;
 
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .timeout(std::time::Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .unwrap_or_default();
+    let client = crate::client::global_client().clone();
 
     let mut tasks = Vec::new();
     for (i, article) in articles.iter().enumerate() {
