@@ -35,3 +35,4 @@
 /astro-frontend/node_modules/
 /astro-frontend/dist/
 /astro-frontend/.astro/
+output/
