@@ -224,9 +224,11 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
         .replace(' ', "-");
 
     let status_str = match thesis.status {
+        crate::domain::thesis::ThesisStatus::Proposed => "proposed",
         crate::domain::thesis::ThesisStatus::Active
         | crate::domain::thesis::ThesisStatus::Strengthening => "strengthening",
         crate::domain::thesis::ThesisStatus::Weakening => "weakening",
+        crate::domain::thesis::ThesisStatus::Dormant => "dormant",
         crate::domain::thesis::ThesisStatus::Retired => "retired",
     };
 
@@ -241,14 +243,7 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
         .filter(|e| e.stance == Stance::Challenges)
         .count();
 
-    // Compute confidence from evidence ratio: baseline 0.5 + net_support / total * 0.5
-    let total = support + challenge;
-    let confidence = if total == 0 {
-        0.5
-    } else {
-        let ratio = support as f64 / total as f64;
-        (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
-    };
+    let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
 
     let mut mdx = String::new();
     mdx.push_str("---\n");
@@ -318,16 +313,13 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
     if !outcomes.is_empty() {
         mdx.push_str("## Outcomes\n\n");
         for o in outcomes {
-            let icon = match o.result {
-                crate::engine::memory::OutcomeType::Confirmed => "✅",
-                crate::engine::memory::OutcomeType::PartiallyConfirmed => "🟡",
-                crate::engine::memory::OutcomeType::Refuted => "❌",
-                crate::engine::memory::OutcomeType::Inconclusive => "❓",
+            let icon = match o.verdict {
+                crate::engine::memory::OutcomeVerdict::Confirmed => "✅",
+                crate::engine::memory::OutcomeVerdict::PartiallyConfirmed => "🟡",
+                crate::engine::memory::OutcomeVerdict::Invalidated => "❌",
+                crate::engine::memory::OutcomeVerdict::Unknown => "❓",
             };
-            mdx.push_str(&format!(
-                "- {} {}: 预期「{}」→ 实际「{}」\n",
-                icon, o.recorded_at, o.expected, o.actual
-            ));
+            mdx.push_str(&format!("- {} {}: {}\n", icon, o.date, o.description));
         }
         mdx.push('\n');
     }

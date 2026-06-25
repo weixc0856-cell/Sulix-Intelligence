@@ -3,10 +3,16 @@
 //! 职责：维护 `Thesis: Vec<Evidence>` 结构，每日更新。
 //! 输出不公开，只存储。目标是形成 "判断→证据→修正" 的连续积累。
 //!
-//! 与 belief_engine.rs 并行运行（不替换），独立存储。
+//! v2 新增:
+//!   - Evidence 去重 (sha256 hash)
+//!   - 事件驱动的置信度追踪 (仅记录有意义的变化)
+//!   - 状态变更历史
+//!   - 生命周期: 30d Dormant / 90d Retired
+//!   - Proposed 创建 / Resurrected 检测
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::clusterer::{Theme, ThemeAnalysis};
@@ -14,9 +20,12 @@ use crate::clusterer::{Theme, ThemeAnalysis};
 // ===== 数据模型（从 domain 层导入）=====
 
 pub use crate::domain::evidence::{Evidence, Stance};
-pub use crate::domain::outcome::{Outcome, OutcomeType};
+pub use crate::domain::outcome::{Outcome, OutcomeVerdict};
 pub use crate::domain::reflection::Reflection;
-pub use crate::domain::thesis::{Thesis, ThesisStatus};
+pub use crate::domain::thesis::{
+    ConfidenceSnapshot, ConfidenceTrigger, StatusTransition, Thesis, ThesisStatus,
+    TransitionTrigger,
+};
 
 /// 信念追踪引擎
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +41,45 @@ pub struct MemoryEngine {
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
+}
+
+/// Evidence 去重 hash
+fn evidence_hash(title: &str, source: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let normalized = format!(
+        "{}:{}",
+        title.trim().to_lowercase(),
+        source.trim().to_lowercase()
+    );
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// 计算置信度 0.0-1.0（从证据 Support/Challenge 比例）
+pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
+    let support = evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Supports)
+        .count() as f64;
+    let challenge = evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Challenges)
+        .count() as f64;
+    let total = support + challenge;
+    if total == 0.0 {
+        0.5
+    } else {
+        let ratio = support / total;
+        (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
+    }
+}
+
+/// 计算闲置天数
+fn idle_days(today: &str, updated: &str) -> Option<u32> {
+    let updated_d = chrono::NaiveDate::parse_from_str(updated, "%Y-%m-%d").ok()?;
+    let today_d = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d").ok()?;
+    Some((today_d - updated_d).num_days() as u32)
 }
 
 // ===== 实现 =====
@@ -77,7 +125,11 @@ impl MemoryEngine {
 
     /// 核心更新：将当日分析结果融入信念系统
     ///
-    /// 遍历 themes/analyses，匹配或新建 Thesis，追加 Evidence，更新状态。
+    /// v2 新增:
+    ///   - Evidence 去重 (sha256 hash)
+    ///   - 事件驱动的置信度快照
+    ///   - 状态变更历史记录
+    ///   - 30d Dormant / 90d Retired 生命周期
     pub fn update_from_analysis(
         &mut self,
         today: &str,
@@ -86,20 +138,35 @@ impl MemoryEngine {
     ) -> Result<()> {
         for (theme, analysis) in themes.iter().zip(analyses.iter()) {
             let title = &theme.title;
+            let source = theme
+                .sources
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
 
             // 尝试匹配现有 Thesis
             let matched = self.match_thesis(title);
 
             if let Some(idx) = matched {
+                // Evidence 去重检查
+                let hash = evidence_hash(title, &source);
+                let is_duplicate = self.theses[idx]
+                    .evidences
+                    .iter()
+                    .any(|e| evidence_hash(&e.title, &e.source) == hash);
+
+                if is_duplicate {
+                    // 跳过重复，但仍更新 timestamp 和状态
+                    self.theses[idx].updated = today.to_string();
+                    self.theses[idx].status = self.recompute_status(idx, today);
+                    continue;
+                }
+
                 // 追加证据
                 self.theses[idx].evidences.push(Evidence {
                     date: today.to_string(),
                     title: title.clone(),
-                    source: theme
-                        .sources
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| "unknown".to_string()),
+                    source,
                     summary: analysis.bluf.clone(),
                     stance: if analysis.signal_strength >= 3 {
                         Stance::Supports
@@ -109,10 +176,37 @@ impl MemoryEngine {
                     signal_strength: analysis.signal_strength,
                 });
                 self.theses[idx].updated = today.to_string();
-                self.theses[idx].status = self.recompute_status(idx, today);
+
+                // 记录状态变更
+                let old_status = self.theses[idx].status.clone();
+                let new_status = self.recompute_status(idx, today);
+                if old_status != new_status {
+                    let desc = format!(
+                        "{:?} → {:?} (evidence: {})",
+                        old_status,
+                        new_status,
+                        self.theses[idx].evidences.len()
+                    );
+                    self.record_status_transition_inner(
+                        idx,
+                        new_status,
+                        TransitionTrigger::EvidenceThreshold,
+                        &desc,
+                    );
+                } else {
+                    self.theses[idx].status = new_status;
+                }
+
+                // 事件驱动的置信度快照
+                let trigger = if old_status != self.theses[idx].status {
+                    ConfidenceTrigger::StatusChange
+                } else {
+                    ConfidenceTrigger::SignificantChange
+                };
+                self.record_confidence_inner(idx, trigger, "daily update");
             } else {
-                // 新建 Thesis
-                self.theses.push(Thesis {
+                // 新建 Thesis（状态: Active）
+                let new_thesis = Thesis {
                     id: format!("thesis-{}", chrono::Utc::now().timestamp()),
                     title: title.clone(),
                     created: today.to_string(),
@@ -120,23 +214,29 @@ impl MemoryEngine {
                     evidences: vec![Evidence {
                         date: today.to_string(),
                         title: title.clone(),
-                        source: theme
-                            .sources
-                            .first()
-                            .cloned()
-                            .unwrap_or_else(|| "unknown".to_string()),
+                        source,
                         summary: analysis.bluf.clone(),
                         stance: Stance::Supports,
                         signal_strength: analysis.signal_strength,
                     }],
                     assumptions: analysis.assumptions.clone(),
                     status: ThesisStatus::Active,
-                });
+                    confidence_history: vec![],
+                    status_history: vec![],
+                    parent_id: None,
+                    merged_ids: vec![],
+                    related_thesis_ids: vec![],
+                    metadata: HashMap::new(),
+                };
+                self.theses.push(new_thesis);
+                let new_idx = self.theses.len() - 1;
+                // 记录初始置信度
+                self.record_confidence_inner(new_idx, ConfidenceTrigger::Initial, "thesis created");
             }
         }
 
-        // 退休检查
-        self.retire_stale(today, 30);
+        // 生命周期管理: 30d Dormant / 90d Retired
+        self.check_idle_timeouts(today, 30, 90);
 
         Ok(())
     }
@@ -195,11 +295,13 @@ impl MemoryEngine {
     }
 
     /// 标题关键词重叠匹配（>= 50% 关键词重叠视为同一 Thesis）
+    ///
+    /// 排除 Retired 和 Proposed。Dormant 可匹配（auto-wake 机制）。
     fn match_thesis(&self, title: &str) -> Option<usize> {
         self.theses
             .iter()
             .enumerate()
-            .filter(|(_, t)| t.status != ThesisStatus::Retired)
+            .filter(|(_, t)| !matches!(t.status, ThesisStatus::Retired | ThesisStatus::Proposed))
             .find(|(_, t)| Self::title_overlap(title, &t.title))
             .map(|(i, _)| i)
     }
@@ -246,28 +348,88 @@ impl MemoryEngine {
         }
     }
 
-    /// 退休检查：连续 N 天无新 Evidence 的 Thesis → Retired
-    fn retire_stale(&mut self, today: &str, max_idle_days: u32) {
-        for thesis in &mut self.theses {
-            if thesis.status == ThesisStatus::Retired {
+    /// 生命周期管理: 30d Dormant / 90d Retired
+    fn check_idle_timeouts(&mut self, today: &str, dormant_days: u32, retired_days: u32) {
+        for i in 0..self.theses.len() {
+            let should_skip = matches!(
+                self.theses[i].status,
+                ThesisStatus::Retired | ThesisStatus::Dormant | ThesisStatus::Proposed
+            );
+            if should_skip {
                 continue;
             }
-            if let Ok(updated) = chrono::NaiveDate::parse_from_str(&thesis.updated, "%Y-%m-%d") {
-                if let Ok(today_d) = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d") {
-                    let idle = (today_d - updated).num_days() as u32;
-                    if idle >= max_idle_days {
-                        thesis.status = ThesisStatus::Retired;
-                    }
-                } else {
-                    log::warn!("⚠️ retire_stale: 无法解析 today 日期 '{}'", today);
+            if let Some(idle) = idle_days(today, &self.theses[i].updated) {
+                if idle >= retired_days {
+                    let desc = format!("{} days idle (>={})", idle, retired_days);
+                    self.record_status_transition_inner(
+                        i,
+                        ThesisStatus::Retired,
+                        TransitionTrigger::IdleTimeout,
+                        &desc,
+                    );
+                } else if idle >= dormant_days {
+                    let desc = format!("{} days idle (>={})", idle, dormant_days);
+                    self.record_status_transition_inner(
+                        i,
+                        ThesisStatus::Dormant,
+                        TransitionTrigger::IdleTimeout,
+                        &desc,
+                    );
                 }
-            } else {
-                log::warn!(
-                    "⚠️ retire_stale: 无法解析 thesis.updated 日期 '{}' (id: {})",
-                    thesis.updated,
-                    thesis.id
-                );
             }
+        }
+    }
+
+    // ===== 内部辅助方法 =====
+
+    /// 记录状态变更（内部：按 index 操作）
+    fn record_status_transition_inner(
+        &mut self,
+        idx: usize,
+        new_status: ThesisStatus,
+        trigger: TransitionTrigger,
+        description: &str,
+    ) {
+        let old_status = self.theses[idx].status.clone();
+        self.theses[idx].status_history.push(StatusTransition {
+            from: old_status,
+            to: new_status.clone(),
+            date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+            trigger,
+            description: description.to_string(),
+        });
+        self.theses[idx].status = new_status;
+    }
+
+    /// 记录置信度快照（内部：事件驱动）
+    fn record_confidence_inner(&mut self, idx: usize, trigger: ConfidenceTrigger, reason: &str) {
+        let new_value = compute_confidence(&self.theses[idx].evidences);
+
+        // 事件驱动：仅在有意义的变化时记录
+        let should_record = match trigger {
+            ConfidenceTrigger::Initial => true,
+            ConfidenceTrigger::StatusChange => true,
+            ConfidenceTrigger::OutcomeRecorded => true,
+            ConfidenceTrigger::ManualUpdate => true,
+            ConfidenceTrigger::SignificantChange => {
+                let last = self.theses[idx]
+                    .confidence_history
+                    .last()
+                    .map(|s| s.value)
+                    .unwrap_or(0.0);
+                (new_value - last).abs() > 0.1
+            }
+        };
+
+        if should_record {
+            self.theses[idx]
+                .confidence_history
+                .push(ConfidenceSnapshot {
+                    date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+                    value: new_value,
+                    trigger,
+                    reason: reason.to_string(),
+                });
         }
     }
 
@@ -276,13 +438,16 @@ impl MemoryEngine {
     /// 记录 Thesis 的实际结果
     ///
     /// 比较 Thesis 的 prediction 与 reality，记录偏差。
-    /// 同时触发 PipelineEventType::OutcomeRecorded（由调用方负责推送 EventLog）。
+    /// 同时触发置信度快照（OutcomeRecorded）。
     pub fn record_outcome(&mut self, outcome: Outcome) -> Result<()> {
-        // 验证 thesis 存在
-        if !self.theses.iter().any(|t| t.id == outcome.thesis_id) {
-            anyhow::bail!("Thesis '{}' not found", outcome.thesis_id);
-        }
+        // 验证 thesis 存在并记录置信度快照
+        let idx = self
+            .theses
+            .iter()
+            .position(|t| t.id == outcome.thesis_id)
+            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", outcome.thesis_id))?;
         self.outcomes.push(outcome);
+        self.record_confidence_inner(idx, ConfidenceTrigger::OutcomeRecorded, "outcome recorded");
         Ok(())
     }
 
@@ -304,7 +469,6 @@ impl MemoryEngine {
     ///
     /// 基于 Outcome 记录生成结构化反思：
     /// 什么判断错了、为什么错、学到了什么。
-    #[allow(dead_code)]
     pub fn generate_reflection(&self, thesis_id: &str) -> Result<Reflection> {
         let thesis = self
             .theses
@@ -324,11 +488,11 @@ impl MemoryEngine {
 
         // 找出最终结果
         let latest = outcomes.last().unwrap();
-        let error_reason = match latest.result {
-            OutcomeType::Confirmed | OutcomeType::PartiallyConfirmed => {
+        let error_reason = match latest.verdict {
+            OutcomeVerdict::Confirmed | OutcomeVerdict::PartiallyConfirmed => {
                 "判断基本正确，但细节有偏差".to_string()
             }
-            OutcomeType::Refuted => {
+            OutcomeVerdict::Invalidated => {
                 // 从 Thesis 的 assumptions 推断错误原因
                 let wrong_assumptions: Vec<String> = thesis
                     .assumptions
@@ -342,19 +506,19 @@ impl MemoryEngine {
                     format!("承重假设错误: {}", wrong_assumptions.join("; "))
                 }
             }
-            OutcomeType::Inconclusive => "证据不足，尚无法判定".to_string(),
+            OutcomeVerdict::Unknown => "证据不足，尚无法判定".to_string(),
         };
 
         let lessons = vec![
-            format!("预期: {} vs 实际: {}", latest.expected, latest.actual),
+            format!("结果: {}", latest.description),
             format!("错误原因: {}", error_reason),
         ];
 
-        let verdict = match latest.result {
-            OutcomeType::Confirmed => "confirmed",
-            OutcomeType::PartiallyConfirmed => "partially-confirmed",
-            OutcomeType::Refuted => "refuted",
-            OutcomeType::Inconclusive => "inconclusive",
+        let verdict = match latest.verdict {
+            OutcomeVerdict::Confirmed => "confirmed",
+            OutcomeVerdict::PartiallyConfirmed => "partially-confirmed",
+            OutcomeVerdict::Invalidated => "invalidated",
+            OutcomeVerdict::Unknown => "unknown",
         };
 
         let support_count = thesis
@@ -440,8 +604,74 @@ impl MemoryEngine {
                 signal_strength: 6,
             }],
             assumptions: vec![],
-            status: ThesisStatus::Active,
+            status: ThesisStatus::Proposed,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
+    }
+
+    // ===== Public API: 置信度 & 状态 =====
+
+    /// 记录置信度快照（公开 API，按 thesis_id）
+    #[allow(dead_code)]
+    pub fn record_confidence(
+        &mut self,
+        thesis_id: &str,
+        trigger: ConfidenceTrigger,
+        reason: &str,
+    ) -> Result<()> {
+        let idx = self
+            .theses
+            .iter()
+            .position(|t| t.id == thesis_id)
+            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", thesis_id))?;
+        self.record_confidence_inner(idx, trigger, reason);
+        Ok(())
+    }
+
+    /// 记录状态变更（公开 API，按 thesis_id）
+    #[allow(dead_code)]
+    pub fn record_status_transition(
+        &mut self,
+        thesis_id: &str,
+        new_status: ThesisStatus,
+        trigger: TransitionTrigger,
+        description: &str,
+    ) -> Result<()> {
+        let idx = self
+            .theses
+            .iter()
+            .position(|t| t.id == thesis_id)
+            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", thesis_id))?;
+        self.record_status_transition_inner(idx, new_status, trigger, description);
+        Ok(())
+    }
+
+    /// 计算 Thesis 的历史正确率
+    #[allow(dead_code)]
+    pub fn historical_accuracy(&self, thesis_id: &str) -> Option<f64> {
+        let outcomes: Vec<&Outcome> = self
+            .outcomes
+            .iter()
+            .filter(|o| o.thesis_id == thesis_id)
+            .collect();
+        if outcomes.is_empty() {
+            return None;
+        }
+        let total = outcomes.len() as f64;
+        let score: f64 = outcomes
+            .iter()
+            .map(|o| match o.verdict {
+                OutcomeVerdict::Confirmed => 1.0,
+                OutcomeVerdict::PartiallyConfirmed => 0.5,
+                OutcomeVerdict::Invalidated | OutcomeVerdict::Unknown => 0.0,
+            })
+            .sum();
+        Some(score / total)
     }
 }
 
@@ -529,6 +759,12 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // 完全匹配
@@ -547,6 +783,12 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -565,6 +807,12 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -589,6 +837,12 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -606,6 +860,12 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Retired,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -631,6 +891,12 @@ mod tests {
             }],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -670,6 +936,12 @@ mod tests {
             ],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -695,6 +967,12 @@ mod tests {
             }],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -712,10 +990,16 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // 超过 30 天 idle
-        mem.retire_stale("2026-06-24", 30);
+        mem.check_idle_timeouts("2026-06-24", 30, 90);
         assert_eq!(mem.theses[0].status, ThesisStatus::Retired);
     }
 
@@ -730,10 +1014,16 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Active,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // 仅 0 天 idle
-        mem.retire_stale("2026-06-24", 30);
+        mem.check_idle_timeouts("2026-06-24", 30, 90);
         assert_eq!(mem.theses[0].status, ThesisStatus::Active);
     }
 
@@ -748,10 +1038,16 @@ mod tests {
             evidences: vec![],
             assumptions: vec![],
             status: ThesisStatus::Retired,
+            confidence_history: vec![],
+            status_history: vec![],
+            parent_id: None,
+            merged_ids: vec![],
+            related_thesis_ids: vec![],
+            metadata: std::collections::HashMap::new(),
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过
-        mem.retire_stale("2026-06-24", 30);
+        mem.check_idle_timeouts("2026-06-24", 30, 90);
         assert_eq!(mem.theses[0].status, ThesisStatus::Retired);
     }
 
@@ -811,15 +1107,29 @@ mod tests {
         // 第一次更新创建 thesis
         mem.update_from_analysis("2026-06-23", &themes, &analyses)
             .unwrap();
-        // 第二次更新追加证据
+        assert_eq!(
+            mem.theses[0].evidences.len(),
+            1,
+            "first run creates 1 evidence"
+        );
+
+        // 第二次更新：相同 title+source → dedup，不追加
         mem.update_from_analysis("2026-06-24", &themes, &analyses)
             .unwrap();
+        assert_eq!(
+            mem.theses[0].evidences.len(),
+            1,
+            "dedup: same title+source should not create duplicate"
+        );
 
-        assert_eq!(mem.theses.len(), 1, "should not create duplicate");
+        // 第三次更新：不同 source → 应追加
+        let themes2 = vec![make_theme("AI Commoditization", vec!["other-src".into()])];
+        mem.update_from_analysis("2026-06-25", &themes2, &analyses)
+            .unwrap();
         assert_eq!(
             mem.theses[0].evidences.len(),
             2,
-            "should have 2 evidence entries"
+            "different source should create new evidence"
         );
     }
 }

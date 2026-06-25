@@ -19,7 +19,7 @@ use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
 use crate::decision_engine::Decision;
-use crate::engine::memory::{MemoryEngine, Outcome, OutcomeType, Stance, ThesisStatus};
+use crate::engine::memory::{MemoryEngine, Outcome, OutcomeVerdict, Stance, ThesisStatus};
 use crate::renderer::publisher::Publisher;
 
 /// Research Agent 的输出（传递给 Publishing Agent）
@@ -478,14 +478,13 @@ pub async fn agent_publish(
                     let outcome = Outcome {
                         id: format!("outcome-{}", chrono::Utc::now().timestamp()),
                         thesis_id: thesis.id.clone(),
-                        expected: thesis.title.clone(),
-                        actual: format!("被证伪 (S={}, C={})", support, challenge),
-                        result: OutcomeType::Refuted,
-                        recorded_at: today.to_string(),
-                        deviation_analysis: Some(format!(
-                            "挑战证据 ({}) 超过支持证据 ({})",
+                        description: format!(
+                            "被证伪: 挑战证据 ({}) 超过支持证据 ({})",
                             challenge, support
-                        )),
+                        ),
+                        verdict: OutcomeVerdict::Invalidated,
+                        date: today.to_string(),
+                        supporting_evidence: vec![],
                     };
                     if let Err(e) = memory.record_outcome(outcome) {
                         log::warn!("⚠️ Outcome 记录失败: {}", e);
@@ -500,7 +499,7 @@ pub async fn agent_publish(
                             data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
                         });
                         log::info!(
-                            "🧠 Meta Layer: Thesis '{}' → Refuted (S={}, C={})",
+                            "🧠 Meta Layer: Thesis '{}' → Invalidated (S={}, C={})",
                             thesis.title,
                             support,
                             challenge
@@ -512,11 +511,10 @@ pub async fn agent_publish(
                 let outcome = Outcome {
                     id: format!("outcome-{}", chrono::Utc::now().timestamp()),
                     thesis_id: thesis.id.clone(),
-                    expected: thesis.title.clone(),
-                    actual: format!("证据持续积累 ({} 条)", thesis.evidences.len()),
-                    result: OutcomeType::PartiallyConfirmed,
-                    recorded_at: today.to_string(),
-                    deviation_analysis: None,
+                    description: format!("证据持续积累 ({} 条)", thesis.evidences.len()),
+                    verdict: OutcomeVerdict::PartiallyConfirmed,
+                    date: today.to_string(),
+                    supporting_evidence: vec![],
                 };
                 if let Err(e) = memory.record_outcome(outcome) {
                     log::warn!("⚠️ Outcome 记录失败: {}", e);
@@ -540,10 +538,10 @@ pub async fn agent_publish(
         }
         // 生成置信度变化通知
         let recent_outcomes: Vec<_> = memory.all_outcomes().iter().rev().take(3).map(|o| {
-            let icon = match o.result { OutcomeType::Confirmed => "✅", OutcomeType::PartiallyConfirmed => "🟡", OutcomeType::Refuted => "❌", OutcomeType::Inconclusive => "❓" };
+            let icon = match o.verdict { OutcomeVerdict::Confirmed => "✅", OutcomeVerdict::PartiallyConfirmed => "🟡", OutcomeVerdict::Invalidated => "❌", OutcomeVerdict::Unknown => "❓" };
             format!(r#"<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #f0f0f0;font-size:0.75rem">
-  <span>{}</span><div><strong>{}</strong><div style="color:#737373;font-size:0.6875rem">{} → {}</div></div>
-</div>"#, icon, o.expected, o.expected, o.actual)
+  <span>{}</span><div><strong>{}</strong></div>
+</div>"#, icon, o.description)
         }).collect();
         outcome_notifications_html = if recent_outcomes.is_empty() {
             String::new()

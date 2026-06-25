@@ -9,24 +9,34 @@
 //!                                    Thesis 在此
 //!
 //! 核心类型：Thesis（长期跟踪论题）、ThesisStatus（论题状态）、
-//! BeliefStatement（信念声明）、BeliefUpdate（信念更新）、
-//! BeliefDb（信念数据库快照）。
+//! ConfidenceSnapshot（置信度快照）、StatusTransition（状态变更记录）。
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::domain::evidence::{Evidence, Stance};
 use crate::domain::theme::Assumption;
 
-/// Thesis 状态
+/// Thesis 状态 — 完整生命周期
+///
+/// 内部状态机（前端展示为简化版本）:
+///   Proposed → Active ⇄ Strengthening / Weakening → Dormant → Retired
+///                                                          ↑ new evidence ↓
+///                                                     (reactivate via Active)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ThesisStatus {
+    /// 新建提案 — Hermes 提名，待用户确认
+    Proposed,
     /// 常规跟踪
     Active,
     /// 近 7 天有 >= 2 条支持证据
     Strengthening,
     /// 近 7 天挑战证据 > 支持证据
     Weakening,
-    /// 连续 30 天无新证据
+    /// 30 天无新证据
+    Dormant,
+    /// 90 天无新证据（或用户手动退休）
     Retired,
 }
 
@@ -35,6 +45,11 @@ pub enum ThesisStatus {
 /// Cognition Model 核心：记录一个判断从建立到修正的完整生命周期。
 /// assumptions 是批判性思维的关键——大多数错误判断来自隐藏前提错误，
 /// 而非事实错误。显式化 assumptions 使系统能追踪假设何时被证伪。
+///
+/// v2 新增:
+/// - confidence_history: 事件驱动的置信度追踪（仅记录有意义的变化）
+/// - status_history: 状态变更的时间线
+/// - metadata: 扩展元数据（合并记录、复活事件等）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Thesis {
     /// 唯一 ID
@@ -52,6 +67,75 @@ pub struct Thesis {
     pub assumptions: Vec<Assumption>,
     /// 当前状态
     pub status: ThesisStatus,
+
+    // === v2 新增字段 ===
+    /// 事件驱动的置信度时间线（仅记录有意义的变化）
+    #[serde(default)]
+    pub confidence_history: Vec<ConfidenceSnapshot>,
+    /// 状态变更历史
+    #[serde(default)]
+    pub status_history: Vec<StatusTransition>,
+    /// 父论题 ID（合并/分叉时使用）
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// 已合并到此论题的 ID 列表
+    #[serde(default)]
+    pub merged_ids: Vec<String>,
+    /// 相关论题 ID 列表
+    #[serde(default)]
+    pub related_thesis_ids: Vec<String>,
+    /// 扩展元数据（复活事件、自定义标签等）
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+}
+
+/// 置信度快照 — 事件驱动，非 daily sampling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfidenceSnapshot {
+    pub date: String,
+    pub value: f64,
+    pub trigger: ConfidenceTrigger,
+    pub reason: String,
+}
+
+/// 置信度快照触发原因
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ConfidenceTrigger {
+    /// 首次创建
+    Initial,
+    /// 状态变更
+    StatusChange,
+    /// 置信度变化超过 10%
+    SignificantChange,
+    /// 用户手动更新
+    ManualUpdate,
+    /// 记录了 Outcome
+    OutcomeRecorded,
+}
+
+/// 状态变更记录
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusTransition {
+    pub from: ThesisStatus,
+    pub to: ThesisStatus,
+    pub date: String,
+    pub trigger: TransitionTrigger,
+    pub description: String,
+}
+
+/// 状态变更触发原因
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TransitionTrigger {
+    /// 证据数量/平衡触发
+    EvidenceThreshold,
+    /// 超时（Dormant/Retired）
+    IdleTimeout,
+    /// Hermes 发现
+    HermesDetection,
+    /// 用户手动操作
+    UserAction,
+    /// Outcome 触发
+    OutcomeBased,
 }
 
 /// 信念声明
