@@ -31,6 +31,7 @@ use crate::archive::ChronicleEntry;
 use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
 use crate::config::SourceConfig;
 use crate::decision_engine::Decision;
+use crate::domain::reflection::Reflection;
 use crate::domain::thesis::Thesis;
 use crate::engine::premium::PremiumReport;
 
@@ -68,20 +69,16 @@ pub struct PublishContext {
     pub output_dir: PathBuf,
     /// MDX 输出目录（如 output/），None = 不输出 MDX
     pub mdx_output_dir: Option<PathBuf>,
+    /// Reflection 记录
+    pub reflections: Vec<Reflection>,
 }
 
 /// 发布输出结果
 pub enum PublishedOutput {
     /// 内存字符串（如 HTML 片段）
-    Inline {
-        content: String,
-        label: String,
-    },
+    Inline { content: String, label: String },
     /// 写入文件
-    File {
-        path: PathBuf,
-        content: String,
-    },
+    File { path: PathBuf, content: String },
 }
 
 /// 发布器 Trait
@@ -116,7 +113,11 @@ impl HtmlPublisher {
         }
 
         // 校准文本仅用于英文版，中文版暂不生成
-        let calibration = if language == "en" { ctx.calibration.as_deref() } else { None };
+        let calibration = if language == "en" {
+            ctx.calibration.as_deref()
+        } else {
+            None
+        };
 
         let html = crate::renderer::html::render_html_report(
             &ctx.themes,
@@ -164,13 +165,19 @@ impl Publisher for HtmlPublisher {
 
         // 英文版
         if let Some(path) = Self::render_and_write(ctx, "en", &ctx.analyses)? {
-            outputs.push(PublishedOutput::File { path, content: String::new() });
+            outputs.push(PublishedOutput::File {
+                path,
+                content: String::new(),
+            });
         }
 
         // 中文版（如有）
         if !ctx.analyses_zh.is_empty() {
             if let Some(path) = Self::render_and_write(ctx, "zh", &ctx.analyses_zh)? {
-                outputs.push(PublishedOutput::File { path, content: String::new() });
+                outputs.push(PublishedOutput::File {
+                    path,
+                    content: String::new(),
+                });
             }
         }
 
@@ -197,12 +204,12 @@ impl Publisher for MarkdownPublisher {
         let mut outputs = Vec::new();
 
         for (theme, analysis) in ctx.themes.iter().zip(ctx.analyses.iter()) {
-            let slug = theme.title.to_lowercase()
+            let slug = theme
+                .title
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
-            let md = crate::renderer::markdown::render_signal_markdown(
-                theme, analysis, &ctx.date,
-            );
+            let md = crate::renderer::markdown::render_signal_markdown(theme, analysis, &ctx.date);
             outputs.push(PublishedOutput::File {
                 path: PathBuf::from("content/posts").join(format!("{}-{}.mdx", ctx.date, slug)),
                 content: md,
@@ -233,27 +240,44 @@ impl Publisher for DashboardPublisher {
 
         // Chronicle 看板（EN → en_root + root）
         if !ctx.archive_entries.is_empty() {
-            let archive_html = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries, &ctx.css_content, "en")?;
+            let archive_html = crate::renderer::html::render_archive_dashboard(
+                &ctx.archive_entries,
+                &ctx.css_content,
+                "en",
+            )?;
             let en_root = ctx.output_dir.join("en");
             std::fs::create_dir_all(&en_root)?;
             let en_path = en_root.join("index.html");
             std::fs::write(&en_path, &archive_html)?;
-            outputs.push(PublishedOutput::File { path: en_path, content: archive_html.clone() });
+            outputs.push(PublishedOutput::File {
+                path: en_path,
+                content: archive_html.clone(),
+            });
 
             // 同时写入 root
             let root_path = ctx.output_dir.join("index.html");
             std::fs::write(&root_path, &archive_html)?;
-            outputs.push(PublishedOutput::File { path: root_path, content: archive_html });
+            outputs.push(PublishedOutput::File {
+                path: root_path,
+                content: archive_html,
+            });
         }
 
         // 中文 Chronicle 看板
         if !ctx.archive_entries_zh.is_empty() {
             let zh_root = ctx.output_dir.join("zh");
             std::fs::create_dir_all(&zh_root)?;
-            if let Ok(zh_archive) = crate::renderer::html::render_archive_dashboard(&ctx.archive_entries_zh, &ctx.css_content, "zh") {
+            if let Ok(zh_archive) = crate::renderer::html::render_archive_dashboard(
+                &ctx.archive_entries_zh,
+                &ctx.css_content,
+                "zh",
+            ) {
                 let zh_path = zh_root.join("index.html");
                 std::fs::write(&zh_path, &zh_archive)?;
-                outputs.push(PublishedOutput::File { path: zh_path, content: zh_archive });
+                outputs.push(PublishedOutput::File {
+                    path: zh_path,
+                    content: zh_archive,
+                });
             }
         }
 
@@ -279,11 +303,16 @@ impl Publisher for PremiumPublisher {
     fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
         if let Some(ref report) = ctx.report {
             let html = crate::renderer::premium::render_premium_report(report)?;
-            let slug = report.theme_title.to_lowercase()
+            let slug = report
+                .theme_title
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
             return Ok(vec![PublishedOutput::File {
-                path: ctx.output_dir.join("premium").join(format!("{}-{}.html", ctx.date, slug)),
+                path: ctx
+                    .output_dir
+                    .join("premium")
+                    .join(format!("{}-{}.html", ctx.date, slug)),
                 content: html,
             }]);
         }
@@ -314,7 +343,8 @@ impl Publisher for SeoPublisher {
             let description = &analysis.bluf;
             let relative_path = format!("en/{}/index.html", ctx.date);
 
-            let seo_meta = crate::renderer::seo::render_seo_meta(title, description, &relative_path);
+            let seo_meta =
+                crate::renderer::seo::render_seo_meta(title, description, &relative_path);
             let json_ld = crate::renderer::seo::render_json_ld(title, &ctx.date, &analysis.bluf);
 
             outputs.push(PublishedOutput::Inline {
@@ -358,9 +388,16 @@ impl Publisher for MdxPublisher {
             let asi = ctx.asi_scores.get(&theme.title).map(|s| s.0).unwrap_or(0.0);
             let conf = ctx.asi_scores.get(&theme.title).map(|s| s.1).unwrap_or(0.0);
             let mdx = crate::renderer::mdx::render_daily_mdx(
-                theme, analysis, &ctx.date, asi, conf, &ctx.editor_notes,
+                theme,
+                analysis,
+                &ctx.date,
+                asi,
+                conf,
+                &ctx.editor_notes,
             );
-            let slug = theme.title.to_lowercase()
+            let slug = theme
+                .title
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
             let path = daily_dir.join(format!("{}-{}.mdx", ctx.date, slug));
@@ -373,7 +410,9 @@ impl Publisher for MdxPublisher {
         std::fs::create_dir_all(&thesis_dir)?;
         for thesis in &ctx.theses {
             let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &[]);
-            let slug = thesis.title.to_lowercase()
+            let slug = thesis
+                .title
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
             let path = thesis_dir.join(format!("{}-{}.mdx", thesis.updated, slug));
@@ -386,7 +425,9 @@ impl Publisher for MdxPublisher {
             let research_dir = mdx_dir.join("research");
             std::fs::create_dir_all(&research_dir)?;
             let mdx = crate::renderer::mdx::render_research_mdx(report);
-            let slug = report.theme_title.to_lowercase()
+            let slug = report
+                .theme_title
+                .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
             let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
@@ -394,10 +435,35 @@ impl Publisher for MdxPublisher {
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
-        log::info!("📝 MDX 输出: {} daily, {} thesis{}",
+        // 4. Reflections → output/reflection/
+        if !ctx.reflections.is_empty() {
+            let reflection_dir = mdx_dir.join("reflection");
+            std::fs::create_dir_all(&reflection_dir)?;
+            for reflection in &ctx.reflections {
+                let thesis_title = ctx
+                    .theses
+                    .iter()
+                    .find(|t| t.id == reflection.thesis_id)
+                    .map(|t| t.title.as_str())
+                    .unwrap_or("Unknown Thesis");
+                let mdx = crate::renderer::mdx::render_reflection_mdx(reflection, thesis_title);
+                let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
+                let path = reflection_dir.join(format!("{}.mdx", slug));
+                std::fs::write(&path, &mdx)?;
+                outputs.push(PublishedOutput::File { path, content: mdx });
+            }
+        }
+
+        log::info!(
+            "📝 MDX 输出: {} daily, {} thesis, {} reflections{}",
             ctx.themes.len(),
             ctx.theses.len(),
-            if ctx.report.is_some() { ", 1 research" } else { "" },
+            ctx.reflections.len(),
+            if ctx.report.is_some() {
+                ", 1 research"
+            } else {
+                ""
+            },
         );
 
         Ok(outputs)

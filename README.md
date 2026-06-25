@@ -10,50 +10,41 @@
 
 > **Fully Automated AI Think Tank — Personal Strategy OS for solo entrepreneurs.**
 
-Sulix Intelligence is a **cognitive engine** that processes raw signals into structured knowledge assets:
+Sulix Intelligence is a **cognitive engine** that processes raw signals into structured knowledge assets.
 
 ```
-Raw Signals → Cognitive Engine → MDX Knowledge Assets → Astro Frontend (separate repo)
+Raw Signals (RSS/USPTO/Reddit)
+    ↓
+Pipeline (sanitize + compliance + dedup)
+    ↓
+AnalysisEngine (SVI + ASI + Confidence + Theme Clustering)
+    ↓
+Blue Team Verification + Editor Agent
+    ↓
+MemoryEngine (Thesis + Evidence + Outcome + Reflection)
+    ↓
+MDX Knowledge Assets → sulix-web (Astro Frontend) → Cloudflare Pages
 ```
 
 **Answer:** Not "what happened" — but "does this change my decision for the next 6 months."
 
-## Architecture
+## Three-Repository Architecture
 
-```
-                              Sulix-Intelligence (Engine)
-                                      │
-                          Rust Pipeline (Cognitive Engine)
-                          LLM Analysis + SVI/ASI + MemoryEngine
-                                      │
-                                  MDX Output
-                          output/{daily,thesis,research,memory}/
-                                      │
-                          GitHub Action (copy + commit)
-                                      │
-                              Intel-Web (Frontend)
-                          Astro + Content Collections + Tailwind
-                          intel.getsulix.com
-```
+| Repo | Responsibility | Tech Stack |
+|------|--------------|------------|
+| **sulix-engine** ← this repo | Data Acquisition, Analysis, Memory, Content Generation | Rust + feed-rs + DeepSeek API |
+| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | Rendering, Navigation, UX | Astro + Tailwind + design.css |
+| **sulix-docs** | Product Decisions, Architecture, ADR, Research | Obsidian Markdown |
 
-### Three Products
+Cross-boundary changes require ADR.
+
+## Products
 
 | Product | Purpose | Format | Price |
 |---------|---------|--------|-------|
 | **News Layer** | User acquisition | Daily MDX signals | $0 |
 | **Research Layer** | Revenue | Multi-agent reports · MDX | $99-$4999 |
 | **Memory Layer** | Moat | Thesis tracking · MDX | Private |
-
-### Tech Stack
-
-| Layer | Stack |
-|-------|-------|
-| Engine | Rust + feed-rs + scraper + reqwest + tokio + rusqlite |
-| LLM | DeepSeek / OpenAI API (BYOK) |
-| Knowledge Format | MDX (YAML frontmatter + Markdown) |
-| Frontend | Astro + TypeScript + Tailwind (in [Intel-Web](https://github.com/weixc0856-cell/Intel-Web)) |
-| Deploy | Cloudflare Pages + GitHub Actions |
-| Cost | ~$0/mo infrastructure + LLM API (~$3/mo) |
 
 ## Quick Start
 
@@ -75,9 +66,9 @@ cargo run --release
 #   output/daily/YYYY-MM-DD-slug.mdx    → Daily signals
 #   output/thesis/YYYY-MM-DD-slug.mdx   → Thesis tracking
 #   output/research/YYYY-MM-DD-slug.mdx → Premium reports
-#   data/belief_db.json                 → Memory Layer
+#   output/reflection/YYYY-MM-DD-slug.mdx → Reflections
 
-# 4. Preview with frontend
+# 4. Preview with frontend (sulix-web)
 git clone https://github.com/weixc0856-cell/Intel-Web.git
 cd Intel-Web
 cp -r ../Sulix-Intelligence/output/* src/content/
@@ -113,7 +104,7 @@ Change Detection + Trend Layer
   ↓
 MemoryEngine (Thesis + Evidence + Outcome + Reflection)
   ↓
-MDX Output: daily/  thesis/  research/  memory/
+MDX Output: daily/  thesis/  research/  reflection/
 ```
 
 ## MDX Knowledge Format
@@ -173,7 +164,7 @@ This format is:
 | MemoryEngine (Thesis + Outcome + Reflection) | ✅ |
 | Belief Engine Phase B (WayneOPC) | ✅ |
 | Meta Layer (auto outcome detection) | ✅ |
-| MDX knowledge output | ✅ |
+| MDX knowledge output (6 collections) | ✅ |
 | Twitter/X tweet pipeline | ✅ |
 | Reddit data source | ✅ |
 | Change Detection (rule + LLM) | ✅ |
@@ -183,7 +174,7 @@ This format is:
 | LLM Audit counters | ✅ |
 | Substack API integration | ✅ |
 
-### Code Structure (59+ files)
+### Code Structure (65+ files)
 
 ```
 src/
@@ -227,7 +218,7 @@ cargo run --release
 
 ### Frontend
 
-Frontend is a separate repo: [Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
+Frontend is a separate repo: [sulix-web](https://github.com/weixc0856-cell/Intel-Web)
 
 ```bash
 git clone https://github.com/weixc0856-cell/Intel-Web.git

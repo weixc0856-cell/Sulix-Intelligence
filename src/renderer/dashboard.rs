@@ -1,7 +1,7 @@
-use crate::db::TrendRow;
-use crate::engine::memory::{Thesis, ThesisStatus, Stance, Outcome, Reflection, OutcomeType};
-use crate::domain::evidence::Evidence;
 use super::helpers::html_escape;
+use crate::db::TrendRow;
+use crate::domain::evidence::Evidence;
+use crate::engine::memory::{Outcome, OutcomeType, Reflection, Stance, Thesis, ThesisStatus};
 
 /// 渲染 Trend Layer 趋势区块
 pub fn render_trend_block(trends: &[TrendRow]) -> String {
@@ -45,7 +45,9 @@ pub fn render_trend_block(trends: &[TrendRow]) -> String {
 /// 渲染单个 Thesis 的支持/挑战证据时间线 HTML
 fn render_evidence_timeline(evidences: &[Evidence]) -> String {
     if evidences.is_empty() {
-        return String::from("<div style=\"font-size:0.75rem;color:#a3a3a3;padding:0.25rem 0\">暂无证据</div>");
+        return String::from(
+            "<div style=\"font-size:0.75rem;color:#a3a3a3;padding:0.25rem 0\">暂无证据</div>",
+        );
     }
 
     // 按日期聚合统计
@@ -251,7 +253,10 @@ pub fn render_memory_dashboard(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let total_active = theses.iter().filter(|t| t.status != ThesisStatus::Retired).count();
+    let total_active = theses
+        .iter()
+        .filter(|t| t.status != ThesisStatus::Retired)
+        .count();
     let total_outcomes = outcomes.len();
     let total_reflections = reflections.len();
 

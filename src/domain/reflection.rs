@@ -29,11 +29,17 @@ pub struct Reflection {
     pub thesis_id: String,
     /// 关联的 Outcome ID
     pub outcome_id: String,
+    /// 裁决结果（对应 Astro schema verdict 字段）
+    pub verdict: String,
     /// 错误/偏差原因
     pub error_reason: String,
     /// 经验教训
     #[serde(default)]
     pub lessons: Vec<String>,
+    /// 创建时的置信度
+    pub confidence_at_creation: f64,
+    /// 现在的置信度
+    pub confidence_now: f64,
     /// 反思创建日期
     pub created_at: String,
 }

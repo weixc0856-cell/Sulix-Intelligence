@@ -2,12 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 
 use anyhow::Result;
 
-use crate::clusterer::{Theme, ThemeAnalysis, ChangeSummary};
+use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
 use crate::config::SourceConfig;
 use crate::fetcher::Article;
 
 use super::helpers::{html_escape, svi_color, svi_emoji};
-use super::seo::{render_seo_meta, render_json_ld};
+use super::seo::{render_json_ld, render_seo_meta};
 
 // ===== 渲染原始 Feed 列表 =====
 
@@ -20,7 +20,7 @@ fn render_signal_feed(articles: &[Article], watchlist_count: usize, total_new: u
     let mut feed_html = String::from(
         r#"<div style="margin-top:1.5rem;padding-top:1rem;border-top:2px solid #171717">
 <div style="font-family:'JetBrains Mono',monospace;font-size:0.875rem;font-weight:700;color:#171717;margin-bottom:0.25rem">📡 Today's Signal Feed</div>
-<div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#737373;margin-bottom:0.75rem">"#
+<div style="font-family:'Inter',sans-serif;font-size:0.75rem;color:#737373;margin-bottom:0.75rem">"#,
     );
     feed_html.push_str(&format!("{} new articles", total_new));
     if watchlist_count > 0 {
@@ -34,7 +34,11 @@ fn render_signal_feed(articles: &[Article], watchlist_count: usize, total_new: u
     use std::collections::BTreeMap;
     let mut by_category: BTreeMap<String, Vec<&Article>> = BTreeMap::new();
     for art in articles {
-        let cat = if art.category.is_empty() { "Uncategorized".into() } else { art.category.clone() };
+        let cat = if art.category.is_empty() {
+            "Uncategorized".into()
+        } else {
+            art.category.clone()
+        };
         by_category.entry(cat).or_default().push(art);
     }
 
@@ -73,13 +77,13 @@ pub fn render_html_report(
     language: &str,
     source_statuses: &[(String, bool, usize)],
     change_summary: Option<&ChangeSummary>,
-    asi_scores: Option<&HashMap<String, (f64, f64, f64)>>,  // theme_title → (asi, confidence, final)
-    editor_notes: Option<&[crate::agent::editor::EditorNote]>,  // Editor Agent
-    belief_notes_html: Option<&str>,  // Belief Engine HTML
-    css_content: &str,  // ← 新增: 内联 CSS
-    articles: &[Article],  // ← 新增: 今日原始文章列表
-    watchlist_count: usize,  // ← 新增: 观察列表数量
-    total_new: usize,  // ← 新增: 当日新增总数
+    asi_scores: Option<&HashMap<String, (f64, f64, f64)>>, // theme_title → (asi, confidence, final)
+    editor_notes: Option<&[crate::agent::editor::EditorNote]>, // Editor Agent
+    belief_notes_html: Option<&str>,                       // Belief Engine HTML
+    css_content: &str,                                     // ← 新增: 内联 CSS
+    articles: &[Article],                                  // ← 新增: 今日原始文章列表
+    watchlist_count: usize,                                // ← 新增: 观察列表数量
+    total_new: usize,                                      // ← 新增: 当日新增总数
 ) -> Result<String> {
     let attributable_names = crate::source::attributable_source_names(attributable_sources);
 
@@ -97,9 +101,18 @@ pub fn render_html_report(
     let mut implicit_set: BTreeSet<String> = BTreeSet::new();
 
     // 三分层排版：Top (≥7) → Next (5-6) → Remaining (<5)
-    let top: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength >= 7).collect();
-    let mid: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength >= 5 && a.signal_strength < 7).collect();
-    let rest: Vec<_> = indexed.iter().filter(|(_, a)| a.signal_strength < 5).collect();
+    let top: Vec<_> = indexed
+        .iter()
+        .filter(|(_, a)| a.signal_strength >= 7)
+        .collect();
+    let mid: Vec<_> = indexed
+        .iter()
+        .filter(|(_, a)| a.signal_strength >= 5 && a.signal_strength < 7)
+        .collect();
+    let rest: Vec<_> = indexed
+        .iter()
+        .filter(|(_, a)| a.signal_strength < 5)
+        .collect();
 
     // --- Tier 1: Top (全量展示) ---
     if !top.is_empty() {
@@ -107,11 +120,29 @@ pub fn render_html_report(
         for (theme, analysis) in &top {
             let svi = analysis.signal_strength;
             let mut srcs: Vec<String> = Vec::new();
-            for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
-            for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
-            let summary = if analysis.bluf.len() > 100 { let end = analysis.bluf.floor_char_boundary(100); format!("{}...", &analysis.bluf[..end]) } else { analysis.bluf.clone() };
+            for art in &theme.articles {
+                if !srcs.contains(&art.source) {
+                    srcs.push(art.source.clone());
+                }
+            }
+            for s in &srcs {
+                if attributable_names.contains(s) {
+                    explicit_set.insert(s.clone());
+                } else {
+                    implicit_set.insert(s.clone());
+                }
+            }
+            let summary = if analysis.bluf.len() > 100 {
+                let end = analysis.bluf.floor_char_boundary(100);
+                format!("{}...", &analysis.bluf[..end])
+            } else {
+                analysis.bluf.clone()
+            };
             let slug = theme.title.to_lowercase().replace(' ', "-");
-            let prem = format!(r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#, html_escape(&slug));
+            let prem = format!(
+                r#"<a href="../premium/{}.html" style="color:#ea580c;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;text-decoration:none;border:1px solid #ea580c;padding:0.0625rem 0.375rem;border-radius:0.125rem">🔒 Premium</a>"#,
+                html_escape(&slug)
+            );
             let asi_display = asi_scores.and_then(|s| s.get(&theme.title).map(|(a, c, _)| format!(r#"<span style="font-family:'JetBrains Mono',monospace;font-size:0.625rem;color:#737373">· ASI:{:.2} CF:{:.2}</span>"#, a, c))).unwrap_or_default();
             signals_html.push_str(&format!(
                 r#"<div style="display:flex;flex-direction:column;padding:0.5rem 0;border-bottom:1px solid #e5e5e5">
@@ -137,8 +168,18 @@ pub fn render_html_report(
         for (theme, analysis) in &mid {
             let svi = analysis.signal_strength;
             let mut srcs: Vec<String> = Vec::new();
-            for art in &theme.articles { if !srcs.contains(&art.source) { srcs.push(art.source.clone()); } }
-            for s in &srcs { if attributable_names.contains(s) { explicit_set.insert(s.clone()); } else { implicit_set.insert(s.clone()); } }
+            for art in &theme.articles {
+                if !srcs.contains(&art.source) {
+                    srcs.push(art.source.clone());
+                }
+            }
+            for s in &srcs {
+                if attributable_names.contains(s) {
+                    explicit_set.insert(s.clone());
+                } else {
+                    implicit_set.insert(s.clone());
+                }
+            }
             signals_html.push_str(&format!(
                 r#"<div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #f0f0f0">
   <span style="color:{};font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.75rem;min-width:2ch">{:.1}</span>
@@ -380,14 +421,26 @@ pub fn render_archive_dashboard(
     language: &str,
 ) -> Result<String> {
     let is_zh = language == "zh";
-    let title = if is_zh { "地缘技术编年史 | Sulix" } else { "Geopolitical Tech Chronicle | Sulix" };
-    let h1 = if is_zh { "地缘技术编年史" } else { "Geopolitical Tech Chronicle" };
+    let title = if is_zh {
+        "地缘技术编年史 | Sulix"
+    } else {
+        "Geopolitical Tech Chronicle | Sulix"
+    };
+    let h1 = if is_zh {
+        "地缘技术编年史"
+    } else {
+        "Geopolitical Tech Chronicle"
+    };
     let subtitle = if is_zh {
         "系统性追踪地缘政治摩擦沿科技供应链的传导路径与突变点。"
     } else {
         "A long-arc systemic tracker tracing geopolitical frictions down to technology supply lines."
     };
-    let feed_label = if is_zh { "历史事件时间线" } else { "Historical Event Feed" };
+    let feed_label = if is_zh {
+        "历史事件时间线"
+    } else {
+        "Historical Event Feed"
+    };
 
     let list_html: String = entries.iter().map(|item| {
         let entities_badges: String = item.entities.iter()

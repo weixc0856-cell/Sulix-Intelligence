@@ -51,9 +51,15 @@ impl Default for AsiConfig {
     }
 }
 
-fn default_user_relevance_weight() -> f64 { 0.4 }
-fn default_time_urgency_weight() -> f64 { 0.3 }
-fn default_actionability_weight() -> f64 { 0.3 }
+fn default_user_relevance_weight() -> f64 {
+    0.4
+}
+fn default_time_urgency_weight() -> f64 {
+    0.3
+}
+fn default_actionability_weight() -> f64 {
+    0.3
+}
 
 /// ASI 计算结果
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -90,7 +96,10 @@ pub fn calculate_asi(
     let user_relevance = if question_matches.is_empty() {
         0.3
     } else {
-        let avg: f64 = question_matches.iter().map(|m| m.relevance as f64).sum::<f64>()
+        let avg: f64 = question_matches
+            .iter()
+            .map(|m| m.relevance as f64)
+            .sum::<f64>()
             / question_matches.len() as f64;
         (avg / 10.0).clamp(0.0, 1.0)
     };
@@ -161,9 +170,15 @@ impl Default for ConfidenceConfig {
     }
 }
 
-fn default_evidence_quality_weight() -> f64 { 0.4 }
-fn default_consensus_level_weight() -> f64 { 0.3 }
-fn default_verifiability_weight() -> f64 { 0.3 }
+fn default_evidence_quality_weight() -> f64 {
+    0.4
+}
+fn default_consensus_level_weight() -> f64 {
+    0.3
+}
+fn default_verifiability_weight() -> f64 {
+    0.3
+}
 
 /// Confidence 计算结果
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -304,8 +319,18 @@ mod tests {
 
     #[test]
     fn test_final_value() {
-        let asi = AsiResult { asi: 0.8, user_relevance: 0.8, time_urgency: 0.8, actionability: 0.8 };
-        let conf = ConfidenceResult { confidence: 1.0, evidence_quality: 1.0, consensus_level: 1.0, verifiability: 1.0 };
+        let asi = AsiResult {
+            asi: 0.8,
+            user_relevance: 0.8,
+            time_urgency: 0.8,
+            actionability: 0.8,
+        };
+        let conf = ConfidenceResult {
+            confidence: 1.0,
+            evidence_quality: 1.0,
+            consensus_level: 1.0,
+            verifiability: 1.0,
+        };
         let fv = final_value(8, &asi, &conf);
         assert!((fv - 6.4).abs() < 0.01);
     }
@@ -380,16 +405,36 @@ mod tests {
 
     #[test]
     fn test_final_value_zero() {
-        let asi = AsiResult { asi: 0.0, user_relevance: 0.0, time_urgency: 0.0, actionability: 0.0 };
-        let conf = ConfidenceResult { confidence: 1.0, evidence_quality: 1.0, consensus_level: 1.0, verifiability: 1.0 };
+        let asi = AsiResult {
+            asi: 0.0,
+            user_relevance: 0.0,
+            time_urgency: 0.0,
+            actionability: 0.0,
+        };
+        let conf = ConfidenceResult {
+            confidence: 1.0,
+            evidence_quality: 1.0,
+            consensus_level: 1.0,
+            verifiability: 1.0,
+        };
         assert!((final_value(0, &asi, &conf) - 0.0).abs() < 0.01);
         assert!((final_value(10, &asi, &conf) - 0.0).abs() < 0.01);
     }
 
     #[test]
     fn test_final_value_clamp_upper() {
-        let asi = AsiResult { asi: 1.0, user_relevance: 1.0, time_urgency: 1.0, actionability: 1.0 };
-        let conf = ConfidenceResult { confidence: 1.0, evidence_quality: 1.0, consensus_level: 1.0, verifiability: 1.0 };
+        let asi = AsiResult {
+            asi: 1.0,
+            user_relevance: 1.0,
+            time_urgency: 1.0,
+            actionability: 1.0,
+        };
+        let conf = ConfidenceResult {
+            confidence: 1.0,
+            evidence_quality: 1.0,
+            consensus_level: 1.0,
+            verifiability: 1.0,
+        };
         let fv = final_value(10, &asi, &conf);
         assert!(fv <= 10.0);
         assert!((fv - 10.0).abs() < 0.01);
@@ -399,14 +444,22 @@ mod tests {
     fn test_calculate_confidence_established_fact() {
         let config = ConfidenceConfig::default();
         let result = calculate_confidence("Established-Fact", 9, 5, &config);
-        assert!(result.confidence > 0.7, "high quality evidence should yield high confidence: {}", result.confidence);
+        assert!(
+            result.confidence > 0.7,
+            "high quality evidence should yield high confidence: {}",
+            result.confidence
+        );
     }
 
     #[test]
     fn test_calculate_confidence_rumor_low() {
         let config = ConfidenceConfig::default();
         let result = calculate_confidence("Assertion-Rumor", 3, 1, &config);
-        assert!(result.confidence < 0.5, "rumor with single source should yield low confidence: {}", result.confidence);
+        assert!(
+            result.confidence < 0.5,
+            "rumor with single source should yield low confidence: {}",
+            result.confidence
+        );
     }
 
     #[test]
@@ -414,7 +467,10 @@ mod tests {
         let config = ConfidenceConfig::default();
         let single = calculate_confidence("Developing-Inference", 5, 1, &config);
         let multi = calculate_confidence("Developing-Inference", 5, 5, &config);
-        assert!(multi.confidence > single.confidence, "more sources should increase confidence");
+        assert!(
+            multi.confidence > single.confidence,
+            "more sources should increase confidence"
+        );
     }
 
     #[test]

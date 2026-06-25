@@ -14,14 +14,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::archive::{ChronicleDb, ChronicleEntry};
 use crate::agent::editor::EditorNote;
-use crate::clusterer::{Theme, ThemeAnalysis, ChangeSummary};
+use crate::archive::{ChronicleDb, ChronicleEntry};
+use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
 use crate::decision_engine::Decision;
-use crate::renderer::publisher::Publisher;
 use crate::engine::memory::{MemoryEngine, Outcome, OutcomeType, Stance, ThesisStatus};
+use crate::renderer::publisher::Publisher;
 
 /// Research Agent 的输出（传递给 Publishing Agent）
 pub struct ResearchOutput {
@@ -38,8 +38,18 @@ pub struct ResearchOutput {
 /// Extract entities from analysis fact_base (deduplicated entity list per analysis)
 fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
     let known_entities = [
-        "TSMC", "ASML", "NVIDIA", "OPENAI", "ANTHROPIC", "GOOGLE",
-        "META", "MICROSOFT", "INTEL", "AMD", "ARM", "HBM",
+        "TSMC",
+        "ASML",
+        "NVIDIA",
+        "OPENAI",
+        "ANTHROPIC",
+        "GOOGLE",
+        "META",
+        "MICROSOFT",
+        "INTEL",
+        "AMD",
+        "ARM",
+        "HBM",
     ];
     let mut entities = Vec::new();
     for fb in &analysis.fact_base {
@@ -116,7 +126,10 @@ pub async fn agent_publish(
             .num_days()
             .max(0);
         let asi_result = crate::engine::analysis::asi::calculate_asi(
-            &question_matches, analysis.signal_strength, max_days_old, &asi_config,
+            &question_matches,
+            analysis.signal_strength,
+            max_days_old,
+            &asi_config,
         );
         let confidence_config = crate::engine::analysis::asi::ConfidenceConfig::default();
         let confidence_result = crate::engine::analysis::asi::calculate_confidence(
@@ -125,16 +138,47 @@ pub async fn agent_publish(
             theme.sources.len(),
             &confidence_config,
         );
-        let final_val = crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
-        asi_score_map.insert(theme.title.clone(), (asi_result.asi, confidence_result.confidence, final_val));
+        let final_val =
+            crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
+        asi_score_map.insert(
+            theme.title.clone(),
+            (asi_result.asi, confidence_result.confidence, final_val),
+        );
         if final_val >= 6.0 {
-            log::info!("⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})", theme.title, svi, asi_result.asi, confidence_result.confidence, final_val);
+            log::info!(
+                "⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})",
+                theme.title,
+                svi,
+                asi_result.asi,
+                confidence_result.confidence,
+                final_val
+            );
         }
-        if svi < 7 { continue; }
-        let theme_context: String = theme.articles.iter()
-            .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
-            .collect::<Vec<_>>().join("\n");
-        match crate::premium::generate_premium_report(theme, &theme_context, api_key, &config.llm, config.prompts.as_ref()).await {
+        if svi < 7 {
+            continue;
+        }
+        let theme_context: String = theme
+            .articles
+            .iter()
+            .map(|a| {
+                format!(
+                    "- [{}] {}: {}",
+                    a.source,
+                    a.title,
+                    a.summary.as_deref().unwrap_or("")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        match crate::premium::generate_premium_report(
+            theme,
+            &theme_context,
+            api_key,
+            &config.llm,
+            config.prompts.as_ref(),
+        )
+        .await
+        {
             Ok(report) => {
                 if let Ok(html) = crate::renderer::render_premium_report(&report) {
                     let slug = theme.title.to_lowercase().replace(' ', "-");
@@ -143,7 +187,13 @@ pub async fn agent_publish(
                 }
                 if let Some(sub) = &config.substack {
                     if sub.enabled {
-                        if let Err(e) = crate::premium::push_to_substack(&report, &sub.api_key, &sub.publication_url).await {
+                        if let Err(e) = crate::premium::push_to_substack(
+                            &report,
+                            &sub.api_key,
+                            &sub.publication_url,
+                        )
+                        .await
+                        {
                             log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
                         }
                     }
@@ -161,15 +211,16 @@ pub async fn agent_publish(
     // Belief Engine Phase B
     let mut belief_engine = crate::engine::belief::BeliefEngineV2::new();
     if let Some(ref config_beliefs) = config.beliefs {
-        let core_beliefs: Vec<crate::engine::belief::CoreBelief> = config_beliefs.iter().map(|b| {
-            crate::engine::belief::CoreBelief {
+        let core_beliefs: Vec<crate::engine::belief::CoreBelief> = config_beliefs
+            .iter()
+            .map(|b| crate::engine::belief::CoreBelief {
                 id: b.id.clone(),
                 statement: b.statement.clone(),
                 confidence: b.confidence,
                 category: b.category.clone(),
                 history: vec![],
-            }
-        }).collect();
+            })
+            .collect();
         belief_engine.load_from_config(&core_beliefs);
         belief_engine.update_from_analyses(&analyses, today);
         let recent = belief_engine.recent_changes(5);
@@ -181,7 +232,11 @@ pub async fn agent_publish(
 
     // 合成摘要
     let summary = crate::clusterer::synthesize(&themes, &analyses);
-    log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
+    log::info!(
+        "✅ 聚类完成: {} 个主题, {} 篇文章",
+        summary.theme_count,
+        summary.total_articles
+    );
     catalog.save_step(7, "summary", &summary)?;
 
     // Markdown 输出（通过 MarkdownPublisher）
@@ -204,25 +259,42 @@ pub async fn agent_publish(
         asi_scores: HashMap::new(),
         editor_notes: vec![],
         belief_notes_html: String::new(),
-        css_content: String::new(), articles: vec![], watchlist_count: 0,
+        css_content: String::new(),
+        articles: vec![],
+        watchlist_count: 0,
         mdx_output_dir: None,
         output_dir: PathBuf::from(&config.output.vault_path),
+        reflections: vec![],
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
     log::info!("📝 Markdown 输出: {} 个主题", themes.len());
 
     // 认知校准
     let calibration_text = if !analyses.is_empty() {
-        let calibration_input: Vec<crate::llm::VerticalAnalysis> = analyses.iter()
-            .map(|ta| crate::llm::VerticalAnalysis { category: ta.theme_title.clone(), articles: vec![] })
+        let calibration_input: Vec<crate::llm::VerticalAnalysis> = analyses
+            .iter()
+            .map(|ta| crate::llm::VerticalAnalysis {
+                category: ta.theme_title.clone(),
+                articles: vec![],
+            })
             .collect();
-        crate::agent::calibration::calibrate(&calibration_input, api_key, &config.llm, config.prompts.as_ref(), "en").await?
+        crate::agent::calibration::calibrate(
+            &calibration_input,
+            api_key,
+            &config.llm,
+            config.prompts.as_ref(),
+            "en",
+        )
+        .await?
     } else {
         String::new()
     };
     catalog.save_step(8, "calibration", &calibration_text)?;
-    log::info!("📝 分析主题: {} 个, 信号: {} 条", analyses.len(),
-        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len());
+    log::info!(
+        "📝 分析主题: {} 个, 信号: {} 条",
+        analyses.len(),
+        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len()
+    );
 
     // Change Detection + Memory Engine
     let memory_for_linking = {
@@ -235,7 +307,9 @@ pub async fn agent_publish(
     };
 
     let editor_notes = crate::agent::editor::analyze_personal_impact(
-        &question_matches, &analyses, memory_for_linking.theses(),
+        &question_matches,
+        &analyses,
+        memory_for_linking.theses(),
     );
     if !editor_notes.is_empty() {
         log::info!("👤 Editor Agent: {} 项个人影响分析", editor_notes.len());
@@ -245,15 +319,33 @@ pub async fn agent_publish(
     let chronicle = if chronicle_path.exists() {
         match ChronicleDb::load(&chronicle_path) {
             Ok(c) => Some(c),
-            Err(e) => { log::warn!("⚠️ Chronicle 加载失败: {}", e); None }
+            Err(e) => {
+                log::warn!("⚠️ Chronicle 加载失败: {}", e);
+                None
+            }
         }
-    } else { None };
-    let recent_entries: Vec<ChronicleEntry> = chronicle.as_ref()
+    } else {
+        None
+    };
+    let recent_entries: Vec<ChronicleEntry> = chronicle
+        .as_ref()
         .map(|c| c.sorted().into_iter().take(50).collect())
         .unwrap_or_default();
-    let change_summary = if config.news_layer.as_ref().map(|n| n.llm_change_detection).unwrap_or(false) {
-        crate::clusterer::detect_changes_llm(&recent_entries, &analyses, api_key, &config.llm).await
-            .inspect(|cs| log::info!("🧠 LLM change detection: {} conflicts, {} reinforced", cs.conflicts.len(), cs.reinforced.len()))
+    let change_summary = if config
+        .news_layer
+        .as_ref()
+        .map(|n| n.llm_change_detection)
+        .unwrap_or(false)
+    {
+        crate::clusterer::detect_changes_llm(&recent_entries, &analyses, api_key, &config.llm)
+            .await
+            .inspect(|cs| {
+                log::info!(
+                    "🧠 LLM change detection: {} conflicts, {} reinforced",
+                    cs.conflicts.len(),
+                    cs.reinforced.len()
+                )
+            })
             .unwrap_or_else(|| {
                 log::warn!("⚠️ LLM change detection failed, falling back to rule-based");
                 crate::clusterer::detect_changes_rule(&recent_entries, &analyses)
@@ -273,27 +365,40 @@ pub async fn agent_publish(
         });
     }
     if !change_summary.conflicts.is_empty() || !change_summary.reinforced.is_empty() {
-        log::info!("🔄 Change Detection: {} 冲突, {} 强化, {} 新信号",
-            change_summary.conflicts.len(), change_summary.reinforced.len(), change_summary.new_signals.len());
+        log::info!(
+            "🔄 Change Detection: {} 冲突, {} 强化, {} 新信号",
+            change_summary.conflicts.len(),
+            change_summary.reinforced.len(),
+            change_summary.new_signals.len()
+        );
     }
 
     // Chronicle 构建
     let db_dir = data_dir.join(&today[..7]);
-    fs::create_dir_all(&db_dir).unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
+    fs::create_dir_all(&db_dir)
+        .unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
     let mut chronicle = ChronicleDb::load(&chronicle_path)?;
 
     for a in &analyses_zh {
         let entities = extract_entities(a);
         chronicle.push(ChronicleEntry {
-            date: today.to_string(), topic: a.theme_title.clone(), headline: a.bluf.clone(),
-            entities, signal_strength: a.signal_strength, language: "zh".into(),
+            date: today.to_string(),
+            topic: a.theme_title.clone(),
+            headline: a.bluf.clone(),
+            entities,
+            signal_strength: a.signal_strength,
+            language: "zh".into(),
         });
     }
     for (analysis, _) in analyses.iter().zip(themes.iter()) {
         let entities = extract_entities(analysis);
         chronicle.push(ChronicleEntry {
-            date: today.to_string(), topic: analysis.theme_title.clone(), headline: analysis.bluf.clone(),
-            entities, signal_strength: analysis.signal_strength, language: "en".into(),
+            date: today.to_string(),
+            topic: analysis.theme_title.clone(),
+            headline: analysis.bluf.clone(),
+            entities,
+            signal_strength: analysis.signal_strength,
+            language: "en".into(),
         });
     }
     chronicle.save(&chronicle_path)?;
@@ -301,14 +406,20 @@ pub async fn agent_publish(
     // Decay Agent
     if let Some(ref g) = config.graveyard {
         if g.enabled {
-            match crate::agent::decay::run_maintenance(db, &new_articles, api_key, &config.llm, g).await {
+            match crate::agent::decay::run_maintenance(db, &new_articles, api_key, &config.llm, g)
+                .await
+            {
                 Ok(_) => log::info!("🪦 Decay Agent 维护完成"),
                 Err(e) => log::warn!("⚠️ Decay Agent 失败: {}", e),
             }
         }
     }
 
-    db.record_report(today, &format!("Daily brief - {} topics", analyses.len()), total_new)?;
+    db.record_report(
+        today,
+        &format!("Daily brief - {} topics", analyses.len()),
+        total_new,
+    )?;
 
     let entity_db_path = data_dir.join("entity_db.json");
     if let Err(e) = entity_db.save_to_file(&entity_db_path.to_string_lossy()) {
@@ -321,8 +432,16 @@ pub async fn agent_publish(
         let memory_path = PathBuf::from(&config.output.vault_path).join("memory_db.json");
         let mut memory = MemoryEngine::new(memory_path.clone());
         if let Err(e) = memory.load() {
-            let backup = format!("{}.corrupt.{}.json", memory_path.to_string_lossy(), chrono::Utc::now().format("%Y%m%d_%H%M%S"));
-            log::warn!("⚠️ Memory Engine 加载失败 ({}), 备份到 {} 后重建", e, backup);
+            let backup = format!(
+                "{}.corrupt.{}.json",
+                memory_path.to_string_lossy(),
+                chrono::Utc::now().format("%Y%m%d_%H%M%S")
+            );
+            log::warn!(
+                "⚠️ Memory Engine 加载失败 ({}), 备份到 {} 后重建",
+                e,
+                backup
+            );
             let _ = std::fs::rename(&memory_path, &backup);
         }
         if let Err(e) = memory.update_from_analysis(today, &themes, &analyses) {
@@ -336,14 +455,26 @@ pub async fn agent_publish(
                 crate::hermes::analyze_trends(&trends, &mut memory, today);
             }
             crate::hermes::discover_theses(&analyses, &chronicle, &mut memory, today);
-            log::info!("🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)", memory.theses().len(), memory.theses().len() - before);
+            log::info!(
+                "🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
+                memory.theses().len(),
+                memory.theses().len() - before
+            );
         }
 
         // Meta Layer: Outcome 检测 & Reflection 生成
         for thesis in memory.theses().to_owned() {
             if thesis.status == ThesisStatus::Retired {
-                let challenge = thesis.evidences.iter().filter(|e| e.stance == Stance::Challenges).count();
-                let support = thesis.evidences.iter().filter(|e| e.stance == Stance::Supports).count();
+                let challenge = thesis
+                    .evidences
+                    .iter()
+                    .filter(|e| e.stance == Stance::Challenges)
+                    .count();
+                let support = thesis
+                    .evidences
+                    .iter()
+                    .filter(|e| e.stance == Stance::Supports)
+                    .count();
                 if challenge > support {
                     let outcome = Outcome {
                         id: format!("outcome-{}", chrono::Utc::now().timestamp()),
@@ -352,7 +483,10 @@ pub async fn agent_publish(
                         actual: format!("被证伪 (S={}, C={})", support, challenge),
                         result: OutcomeType::Refuted,
                         recorded_at: today.to_string(),
-                        deviation_analysis: Some(format!("挑战证据 ({}) 超过支持证据 ({})", challenge, support)),
+                        deviation_analysis: Some(format!(
+                            "挑战证据 ({}) 超过支持证据 ({})",
+                            challenge, support
+                        )),
                     };
                     if let Err(e) = memory.record_outcome(outcome) {
                         log::warn!("⚠️ Outcome 记录失败: {}", e);
@@ -366,7 +500,12 @@ pub async fn agent_publish(
                             related_events: vec![],
                             data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
                         });
-                        log::info!("🧠 Meta Layer: Thesis '{}' → Refuted (S={}, C={})", thesis.title, support, challenge);
+                        log::info!(
+                            "🧠 Meta Layer: Thesis '{}' → Refuted (S={}, C={})",
+                            thesis.title,
+                            support,
+                            challenge
+                        );
                     }
                 }
             }
@@ -392,7 +531,11 @@ pub async fn agent_publish(
                         related_events: vec![],
                         data: serde_json::json!({"thesis_title": thesis.title, "evidence_count": thesis.evidences.len()}),
                     });
-                    log::info!("🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)", thesis.title, thesis.evidences.len());
+                    log::info!(
+                        "🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)",
+                        thesis.title,
+                        thesis.evidences.len()
+                    );
                 }
             }
         }
@@ -406,9 +549,12 @@ pub async fn agent_publish(
         outcome_notifications_html = if recent_outcomes.is_empty() {
             String::new()
         } else {
-            format!(r#"<div style="margin-top:0.75rem;padding:0.5rem;background:#fef2f2;border-radius:0.25rem;border-left:3px solid #ef4444">
+            format!(
+                r#"<div style="margin-top:0.75rem;padding:0.5rem;background:#fef2f2;border-radius:0.25rem;border-left:3px solid #ef4444">
   <div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.25rem">🎯 判断更新</div>
-  {}</div>"#, recent_outcomes.join(""))
+  {}</div>"#,
+                recent_outcomes.join("")
+            )
         };
 
         if let Err(e) = memory.save() {
@@ -441,6 +587,7 @@ pub async fn agent_publish(
                 watchlist_count: 0,
                 mdx_output_dir: Some(PathBuf::from(mdx_out)),
                 output_dir: vault_base.clone(),
+                reflections: memory.all_reflections().to_vec(),
             };
             if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
                 log::warn!("⚠️ MDX 输出失败: {}", e);
@@ -460,7 +607,17 @@ pub async fn agent_publish(
         }
     }
 
-    println!("\n✅ EN 简报: {}", vault_base.join("en").join(&today[..7]).join("index.html").display());
-    println!("✅ 看板: {}", vault_base.join("en").join("index.html").display());
+    println!(
+        "\n✅ EN 简报: {}",
+        vault_base
+            .join("en")
+            .join(&today[..7])
+            .join("index.html")
+            .display()
+    );
+    println!(
+        "✅ 看板: {}",
+        vault_base.join("en").join("index.html").display()
+    );
     Ok(())
 }

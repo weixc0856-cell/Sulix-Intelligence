@@ -151,9 +151,9 @@ pub async fn generate_premium_report(
     let stage1_prompt = prompts
         .map(|p| p.get_diplomat(STAGE1_WHAT_CHANGED))
         .unwrap_or(STAGE1_WHAT_CHANGED);
-    let stage1_raw = llm::call_with_retry_raw(
-        &client, api_key, llm_config, stage1_prompt, &stage1_input,
-    ).await?;
+    let stage1_raw =
+        llm::call_with_retry_raw(&client, api_key, llm_config, stage1_prompt, &stage1_input)
+            .await?;
     let stage1_json: serde_json::Value = llm::parse_json_lenient(&stage1_raw)?;
     stage1_output = stage1_json["bluf"]
         .as_str()
@@ -169,9 +169,9 @@ pub async fn generate_premium_report(
     let stage2_prompt = prompts
         .map(|p| p.get_architect(STAGE2_WHY_IT_MATTERS))
         .unwrap_or(STAGE2_WHY_IT_MATTERS);
-    let stage2_raw = llm::call_with_retry_raw(
-        &client, api_key, llm_config, stage2_prompt, &stage2_input,
-    ).await?;
+    let stage2_raw =
+        llm::call_with_retry_raw(&client, api_key, llm_config, stage2_prompt, &stage2_input)
+            .await?;
     let stage2_json: serde_json::Value = llm::parse_json_lenient(&stage2_raw)?;
     let geopolitical = stage2_json["geopolitical_impact"]
         .as_str()
@@ -192,9 +192,9 @@ pub async fn generate_premium_report(
     let stage3_prompt = prompts
         .map(|p| p.get_quant(STAGE3_WHAT_TO_DO))
         .unwrap_or(STAGE3_WHAT_TO_DO);
-    let stage3_raw = llm::call_with_retry_raw(
-        &client, api_key, llm_config, stage3_prompt, &stage3_input,
-    ).await?;
+    let stage3_raw =
+        llm::call_with_retry_raw(&client, api_key, llm_config, stage3_prompt, &stage3_input)
+            .await?;
     let stage3_json: serde_json::Value = llm::parse_json_lenient(&stage3_raw)?;
 
     let executive_summary = stage3_json["executive_summary"]
@@ -213,17 +213,26 @@ pub async fn generate_premium_report(
             format!(
                 "Base ({:.0}%): {}",
                 scenarios["base"]["probability"].as_f64().unwrap_or(0.5) * 100.0,
-                scenarios["base"]["description"].as_str().unwrap_or("Status quo")
+                scenarios["base"]["description"]
+                    .as_str()
+                    .unwrap_or("Status quo")
             ),
             format!(
                 "Adverse ({:.0}%): {}",
                 scenarios["adverse"]["probability"].as_f64().unwrap_or(0.25) * 100.0,
-                scenarios["adverse"]["description"].as_str().unwrap_or("Deterioration")
+                scenarios["adverse"]["description"]
+                    .as_str()
+                    .unwrap_or("Deterioration")
             ),
             format!(
                 "Aggressive ({:.0}%): {}",
-                scenarios["aggressive"]["probability"].as_f64().unwrap_or(0.15) * 100.0,
-                scenarios["aggressive"]["description"].as_str().unwrap_or("Crisis")
+                scenarios["aggressive"]["probability"]
+                    .as_f64()
+                    .unwrap_or(0.15)
+                    * 100.0,
+                scenarios["aggressive"]["description"]
+                    .as_str()
+                    .unwrap_or("Crisis")
             ),
         ]
     };

@@ -2,9 +2,7 @@
 
 use anyhow::Result;
 
-use crate::clusterer::{
-    AdverseScenario, Assumption, FactBaseEntry, Theme, ThemeAnalysis,
-};
+use crate::clusterer::{AdverseScenario, Assumption, FactBaseEntry, Theme, ThemeAnalysis};
 use crate::config::LlmConfig;
 use crate::llm;
 
@@ -286,14 +284,27 @@ Output JSON Schema:
     // 解析盲点
     let blind_spots: Vec<String> = parsed["blind_spots"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     // 解析预警信号
     let early_warnings: Vec<String> = parsed["early_warnings"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
-    Ok((hidden_assumptions, adverse_scenario, blind_spots, early_warnings))
+    Ok((
+        hidden_assumptions,
+        adverse_scenario,
+        blind_spots,
+        early_warnings,
+    ))
 }

@@ -94,7 +94,8 @@ pub async fn scan_and_triage(
                             .unwrap_or("Context Update");
                         // 验证 tag 是否为预期的 4 个值之一，防止 LLM 拼写错误
                         let tag = match tag {
-                            "Structural Shift" | "Competitive Signal" | "Context Update" | "Noise" => tag,
+                            "Structural Shift" | "Competitive Signal" | "Context Update"
+                            | "Noise" => tag,
                             other => {
                                 log::warn!("⚠️ Scan Agent: unknown relevance tag '{other}' from LLM, defaulting to 'Context Update'");
                                 "Context Update"
@@ -227,21 +228,35 @@ mod tests {
 
     fn make_mock(title: &str, importance: u8, relevance: &str) -> llm::AnalyzedArticle {
         llm::AnalyzedArticle {
-            title: title.to_string(), url: String::new(), importance,
+            title: title.to_string(),
+            url: String::new(),
+            importance,
             relevance: relevance.to_string(),
-            time_horizon: String::new(), action: String::new(), confidence: String::new(),
-            judgment: String::new(), summary: String::new(), strategic_level: String::new(),
-            blue_rebuttal: String::new(), arbitration: String::new(), evidence_type: String::new(),
+            time_horizon: String::new(),
+            action: String::new(),
+            confidence: String::new(),
+            judgment: String::new(),
+            summary: String::new(),
+            strategic_level: String::new(),
+            blue_rebuttal: String::new(),
+            arbitration: String::new(),
+            evidence_type: String::new(),
         }
     }
 
     fn make_article(title: &str, source: &str) -> Article {
         Article {
-            id: String::new(), title: title.to_string(), source: source.to_string(),
+            id: String::new(),
+            title: title.to_string(),
+            source: source.to_string(),
             url: "https://example.com".into(),
-            content: Some("test content".into()), summary: Some("test summary".into()),
-            published_at: None, category: String::new(),
-            wiki_summary: None, evidence_type: String::new(), is_internal: false,
+            content: Some("test content".into()),
+            summary: Some("test summary".into()),
+            published_at: None,
+            category: String::new(),
+            wiki_summary: None,
+            evidence_type: String::new(),
+            is_internal: false,
         }
     }
 
@@ -266,12 +281,26 @@ mod tests {
             make_mock("Mid", 5, "Competitive Signal"),
             make_mock("Low", 2, "Context Update"),
         ];
-        let mut insight = 0usize; let mut wl = 0; let mut sm = 0;
+        let mut insight = 0usize;
+        let mut wl = 0;
+        let mut sm = 0;
         for m in &mock_results {
-            let composite = if m.relevance == "Structural Shift" { ((m.importance as f32 * 1.0).round() as u8).max(7) } else { (m.importance as f32 * 1.0).round() as u8 };
-            if composite >= 7 { insight += 1; } else if composite >= 3 { wl += 1; } else { sm += 1; }
+            let composite = if m.relevance == "Structural Shift" {
+                ((m.importance as f32 * 1.0).round() as u8).max(7)
+            } else {
+                (m.importance as f32 * 1.0).round() as u8
+            };
+            if composite >= 7 {
+                insight += 1;
+            } else if composite >= 3 {
+                wl += 1;
+            } else {
+                sm += 1;
+            }
         }
-        assert_eq!(insight, 1); assert_eq!(wl, 1); assert_eq!(sm, 1);
+        assert_eq!(insight, 1);
+        assert_eq!(wl, 1);
+        assert_eq!(sm, 1);
     }
 
     #[test]

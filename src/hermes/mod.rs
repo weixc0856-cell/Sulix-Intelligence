@@ -4,15 +4,15 @@
 //!   - `detect_changes_rule`: 规则版，基于 topic 名称匹配 + 蓝军 adverse 输出
 //!   - `detect_changes_llm`: LLM 语义版，对比分析主题与历史 chronicle 条目
 
+mod conflicts;
 mod detector;
 mod trends;
-mod conflicts;
 
-pub use detector::detect_changes_rule;
-pub use detector::detect_changes_llm;
-pub use trends::analyze_trends;
 pub use conflicts::apply_conflicts;
 pub use conflicts::discover_theses;
+pub use detector::detect_changes_llm;
+pub use detector::detect_changes_rule;
+pub use trends::analyze_trends;
 
 use serde::{Deserialize, Serialize};
 

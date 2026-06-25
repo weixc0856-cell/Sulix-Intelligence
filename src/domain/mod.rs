@@ -11,28 +11,28 @@
 //! - outcome:     结果验证（判断 vs 现实）
 //! - reflection:  反思复盘（为什么对/错）
 
-pub mod theme;
-pub mod evidence;
-pub mod thesis;
-pub mod observation;
 pub mod action;
+pub mod evidence;
+pub mod observation;
 pub mod outcome;
 pub mod reflection;
+pub mod theme;
+pub mod thesis;
 
 // ===== 统一重导出 =====
 // 调用方可以直接 `use crate::domain::{Theme, Thesis, Evidence, ...}`
 
 #[allow(unused_imports)]
-pub use theme::*;
+pub use action::*;
 #[allow(unused_imports)]
 pub use evidence::*;
 #[allow(unused_imports)]
-pub use thesis::*;
-#[allow(unused_imports)]
 pub use observation::*;
-#[allow(unused_imports)]
-pub use action::*;
 #[allow(unused_imports)]
 pub use outcome::*;
 #[allow(unused_imports)]
 pub use reflection::*;
+#[allow(unused_imports)]
+pub use theme::*;
+#[allow(unused_imports)]
+pub use thesis::*;

@@ -62,21 +62,11 @@ pub fn evaluate_decisions(
     let total_delta: i8 = belief_updates.iter().map(|u| u.delta).sum();
     let challenge_count = belief_updates
         .iter()
-        .filter(|u| {
-            matches!(
-                u.evidence_type,
-                crate::belief_engine::Stance::Challenges
-            )
-        })
+        .filter(|u| matches!(u.evidence_type, crate::belief_engine::Stance::Challenges))
         .count();
     let support_count = belief_updates
         .iter()
-        .filter(|u| {
-            matches!(
-                u.evidence_type,
-                crate::belief_engine::Stance::Supports
-            )
-        })
+        .filter(|u| matches!(u.evidence_type, crate::belief_engine::Stance::Supports))
         .count();
 
     // 决策逻辑（决策支持系统风格）：

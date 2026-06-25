@@ -12,8 +12,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::clusterer::ThemeAnalysis;
-use crate::domain::thesis::Thesis;
 use crate::domain::evidence::Stance;
+use crate::domain::thesis::Thesis;
 use crate::question_engine::QuestionMatch;
 
 /// Editor 笔记：一条分析结果对你个人决策的影响
@@ -52,7 +52,14 @@ pub fn analyze_personal_impact(
     // 建立 analysis title → Thesis 的快速查找
     let thesis_by_title: std::collections::HashMap<&str, &Thesis> = theses
         .iter()
-        .filter(|t| matches!(t.status, crate::domain::thesis::ThesisStatus::Active | crate::domain::thesis::ThesisStatus::Strengthening | crate::domain::thesis::ThesisStatus::Weakening))
+        .filter(|t| {
+            matches!(
+                t.status,
+                crate::domain::thesis::ThesisStatus::Active
+                    | crate::domain::thesis::ThesisStatus::Strengthening
+                    | crate::domain::thesis::ThesisStatus::Weakening
+            )
+        })
         .map(|t| (t.title.as_str(), t))
         .collect();
 
@@ -64,11 +71,13 @@ pub fn analyze_personal_impact(
 
         // 找到与该分析相关的问题匹配
         let analysis_lower = theme_title.to_lowercase();
-        let theme_matches: Vec<&QuestionMatch> = question_matches.iter()
+        let theme_matches: Vec<&QuestionMatch> = question_matches
+            .iter()
             .filter(|qm| {
                 // 检查问题文本是否与主题相关
                 let q_lower = qm.question_text.to_lowercase();
-                analysis_lower.contains(&q_lower) || q_lower.contains(&analysis_lower)
+                analysis_lower.contains(&q_lower)
+                    || q_lower.contains(&analysis_lower)
                     || qm.relevance >= 5
             })
             .collect();
@@ -89,10 +98,16 @@ pub fn analyze_personal_impact(
 
             // 结合已有 Thesis 信息修正置信度变化
             let confidence_delta = if let Some(thesis) = existing_thesis {
-                let support_count = thesis.evidences.iter()
-                    .filter(|e| e.stance == Stance::Supports).count();
-                let challenge_count = thesis.evidences.iter()
-                    .filter(|e| e.stance == Stance::Challenges).count();
+                let support_count = thesis
+                    .evidences
+                    .iter()
+                    .filter(|e| e.stance == Stance::Supports)
+                    .count();
+                let challenge_count = thesis
+                    .evidences
+                    .iter()
+                    .filter(|e| e.stance == Stance::Challenges)
+                    .count();
                 // 如果已有大量证据，单日变化影响相对小
                 if (support_count + challenge_count) > 10 {
                     confidence_delta / 2
@@ -118,9 +133,15 @@ pub fn analyze_personal_impact(
 
             // 构建人类可读的影响描述
             let impact = if confidence_delta > 0 {
-                format!("强化了\u{2018}{}\u{2019}的判断 (+{})", qm.question_text, confidence_delta)
+                format!(
+                    "强化了\u{2018}{}\u{2019}的判断 (+{})",
+                    qm.question_text, confidence_delta
+                )
             } else if confidence_delta < 0 {
-                format!("挑战了\u{2018}{}\u{2019}的假设 ({})", qm.question_text, confidence_delta)
+                format!(
+                    "挑战了\u{2018}{}\u{2019}的假设 ({})",
+                    qm.question_text, confidence_delta
+                )
             } else {
                 format!("提供了\u{2018}{}\u{2019}的相关信息", qm.question_text)
             };
@@ -128,7 +149,10 @@ pub fn analyze_personal_impact(
             let rationale = if !qm.reasoning.is_empty() {
                 qm.reasoning.clone()
             } else {
-                format!("信号强度 {}, 证据类型: {}", analysis.signal_strength, qm.evidence_type)
+                format!(
+                    "信号强度 {}, 证据类型: {}",
+                    analysis.signal_strength, qm.evidence_type
+                )
             };
 
             notes.push(EditorNote {
@@ -186,11 +210,7 @@ pub fn render_editor_notes_html(notes: &[EditorNote]) -> String {
     </div>
   </div>
 "#,
-            action_emoji,
-            color,
-            note.impact,
-            note.recommended_action,
-            note.rationale,
+            action_emoji, color, note.impact, note.recommended_action, note.rationale,
         ));
     }
 

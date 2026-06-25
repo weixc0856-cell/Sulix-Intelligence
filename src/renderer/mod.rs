@@ -8,19 +8,19 @@
 //! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
 //! 当前活跃路径：render_html_report → render_trend_block → render_signal_markdown
 
-pub mod mdx;
+pub mod dashboard;
 pub mod helpers;
-pub mod seo;
 pub mod html;
 pub mod markdown;
+pub mod mdx;
 pub mod premium;
-pub mod dashboard;
 pub mod publisher;
+pub mod seo;
 
-pub use html::{render_html_report, render_archive_dashboard};
+pub use dashboard::{render_memory_dashboard, render_trend_block};
+pub use html::{render_archive_dashboard, render_html_report};
 pub use markdown::render_substack_markdown;
 pub use premium::render_premium_report;
-pub use dashboard::{render_trend_block, render_memory_dashboard};
 
 #[cfg(test)]
 mod tests {
@@ -47,10 +47,19 @@ mod tests {
 
     #[test]
     fn test_validate_url() {
-        assert_eq!(helpers::validate_url("https://example.com"), "https://example.com");
-        assert_eq!(helpers::validate_url("http://test.org/page"), "http://test.org/page");
+        assert_eq!(
+            helpers::validate_url("https://example.com"),
+            "https://example.com"
+        );
+        assert_eq!(
+            helpers::validate_url("http://test.org/page"),
+            "http://test.org/page"
+        );
         assert_eq!(helpers::validate_url(""), "#invalid-url");
         assert_eq!(helpers::validate_url("javascript:alert(1)"), "#invalid-url");
-        assert_eq!(helpers::validate_url("data:text/html,<script>"), "#invalid-url");
+        assert_eq!(
+            helpers::validate_url("data:text/html,<script>"),
+            "#invalid-url"
+        );
     }
 }

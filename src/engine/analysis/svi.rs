@@ -26,11 +26,7 @@ pub(super) fn map_to_scl(value: &str) -> String {
 }
 
 /// 计算战略异动指数 (SVI)，五维综合评分 0-10
-pub fn calculate_svi(
-    analysis: &ThemeAnalysis,
-    theme: &Theme,
-    sources: &[SourceConfig],
-) -> u8 {
+pub fn calculate_svi(analysis: &ThemeAnalysis, theme: &Theme, sources: &[SourceConfig]) -> u8 {
     let article_count = theme.articles.len() as f64;
     let mut source_counts: std::collections::HashMap<&str, usize> =
         std::collections::HashMap::new();

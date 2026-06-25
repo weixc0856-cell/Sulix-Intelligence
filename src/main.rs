@@ -36,11 +36,11 @@ mod llm;
 mod orchestrator;
 mod pipeline;
 mod premium;
+mod publishing;
 mod question_engine;
 mod renderer;
 mod source;
 mod twitter;
-mod publishing;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -153,7 +153,11 @@ async fn init() -> Result<(
                     entity_db_path.to_string_lossy(),
                     chrono::Utc::now().format("%Y%m%d_%H%M%S")
                 );
-                log::warn!("⚠️ EntitySanctionDb 加载失败 ({}), 备份到 {} 后重建", e, backup);
+                log::warn!(
+                    "⚠️ EntitySanctionDb 加载失败 ({}), 备份到 {} 后重建",
+                    e,
+                    backup
+                );
                 let _ = std::fs::rename(&entity_db_path, &backup);
                 entity::EntitySanctionDb::new()
             }
@@ -599,11 +603,7 @@ async fn agent_research(
         }
 
         // 收集 QuestionEngine 匹配结果供 ASI 使用
-        question_matches = ctx
-            .question_matches
-            .into_iter()
-            .flatten()
-            .collect();
+        question_matches = ctx.question_matches.into_iter().flatten().collect();
     }
 
     // 返回研究结果供 Publishing Agent 使用

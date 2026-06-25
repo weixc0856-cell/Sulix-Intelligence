@@ -13,9 +13,9 @@ use serde::Serialize;
 
 use crate::config::SourceConfig;
 
+pub mod reddit;
 pub mod rss;
 pub mod uspto;
-pub mod reddit;
 
 /// 统一信号结构（RSSHub DataItem 对应，含可选的数字指标字段）
 #[derive(Debug, Clone, Serialize)]

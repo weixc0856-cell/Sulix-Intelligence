@@ -95,7 +95,11 @@ impl MemoryEngine {
                 self.theses[idx].evidences.push(Evidence {
                     date: today.to_string(),
                     title: title.clone(),
-                    source: theme.sources.first().cloned().unwrap_or_else(|| "unknown".to_string()),
+                    source: theme
+                        .sources
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".to_string()),
                     summary: analysis.bluf.clone(),
                     stance: if analysis.signal_strength >= 3 {
                         Stance::Supports
@@ -116,7 +120,11 @@ impl MemoryEngine {
                     evidences: vec![Evidence {
                         date: today.to_string(),
                         title: title.clone(),
-                        source: theme.sources.first().cloned().unwrap_or_else(|| "unknown".to_string()),
+                        source: theme
+                            .sources
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "unknown".to_string()),
                         summary: analysis.bluf.clone(),
                         stance: Stance::Supports,
                         signal_strength: analysis.signal_strength,
@@ -169,8 +177,8 @@ impl MemoryEngine {
 
             // 如果单词数很少（1-2 个）且单词偏长（>5 字节，中文特征），
             // 使用字符级 Jaccard 相似度作为后备
-            let is_likely_cjk = words.iter().any(|w| w.len() > 5)
-                || target_words.iter().any(|w| w.len() > 5);
+            let is_likely_cjk =
+                words.iter().any(|w| w.len() > 5) || target_words.iter().any(|w| w.len() > 5);
             if is_likely_cjk && words.len() <= 2 && target_words.len() <= 2 {
                 // 字符级 Jaccard：计算 query 和 target 的字符交集/并集
                 let query_chars: std::collections::HashSet<char> = query.chars().collect();
@@ -254,7 +262,11 @@ impl MemoryEngine {
                     log::warn!("⚠️ retire_stale: 无法解析 today 日期 '{}'", today);
                 }
             } else {
-                log::warn!("⚠️ retire_stale: 无法解析 thesis.updated 日期 '{}' (id: {})", thesis.updated, thesis.id);
+                log::warn!(
+                    "⚠️ retire_stale: 无法解析 thesis.updated 日期 '{}' (id: {})",
+                    thesis.updated,
+                    thesis.id
+                );
             }
         }
     }
@@ -276,7 +288,10 @@ impl MemoryEngine {
 
     /// 获取某个 Thesis 的所有 Outcome 记录
     pub fn outcome_history(&self, thesis_id: &str) -> Vec<&Outcome> {
-        self.outcomes.iter().filter(|o| o.thesis_id == thesis_id).collect()
+        self.outcomes
+            .iter()
+            .filter(|o| o.thesis_id == thesis_id)
+            .collect()
     }
 
     /// 获取所有 Outcome 记录
@@ -289,11 +304,15 @@ impl MemoryEngine {
     /// 基于 Outcome 记录生成结构化反思：
     /// 什么判断错了、为什么错、学到了什么。
     pub fn generate_reflection(&self, thesis_id: &str) -> Result<Reflection> {
-        let thesis = self.theses.iter()
+        let thesis = self
+            .theses
+            .iter()
             .find(|t| t.id == thesis_id)
             .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", thesis_id))?;
 
-        let outcomes: Vec<&Outcome> = self.outcomes.iter()
+        let outcomes: Vec<&Outcome> = self
+            .outcomes
+            .iter()
             .filter(|o| o.thesis_id == thesis_id)
             .collect();
 
@@ -309,7 +328,9 @@ impl MemoryEngine {
             }
             OutcomeType::Refuted => {
                 // 从 Thesis 的 assumptions 推断错误原因
-                let wrong_assumptions: Vec<String> = thesis.assumptions.iter()
+                let wrong_assumptions: Vec<String> = thesis
+                    .assumptions
+                    .iter()
                     .filter(|a| a.load_bearing && a.evidence_strength == "weak")
                     .map(|a| a.text.clone())
                     .collect();
@@ -319,9 +340,7 @@ impl MemoryEngine {
                     format!("承重假设错误: {}", wrong_assumptions.join("; "))
                 }
             }
-            OutcomeType::Inconclusive => {
-                "证据不足，尚无法判定".to_string()
-            }
+            OutcomeType::Inconclusive => "证据不足，尚无法判定".to_string(),
         };
 
         let lessons = vec![
@@ -329,12 +348,40 @@ impl MemoryEngine {
             format!("错误原因: {}", error_reason),
         ];
 
+        let verdict = match latest.result {
+            OutcomeType::Confirmed => "confirmed",
+            OutcomeType::PartiallyConfirmed => "partially-confirmed",
+            OutcomeType::Refuted => "refuted",
+            OutcomeType::Inconclusive => "inconclusive",
+        };
+
+        let support_count = thesis
+            .evidences
+            .iter()
+            .filter(|e| e.stance == Stance::Supports)
+            .count();
+        let challenge_count = thesis
+            .evidences
+            .iter()
+            .filter(|e| e.stance == Stance::Challenges)
+            .count();
+        let total_ev = support_count + challenge_count;
+        let conf_val = if total_ev == 0 {
+            0.5
+        } else {
+            let ratio = support_count as f64 / total_ev as f64;
+            (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
+        };
+
         let reflection = Reflection {
             id: format!("reflection-{}", chrono::Utc::now().timestamp()),
             thesis_id: thesis_id.to_string(),
             outcome_id: latest.id.clone(),
+            verdict: verdict.to_string(),
             error_reason,
             lessons,
+            confidence_at_creation: conf_val,
+            confidence_now: conf_val,
             created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
         };
 
@@ -361,7 +408,8 @@ impl MemoryEngine {
 
     /// 按标题查找活跃 Thesis（可变引用），供 Hermes 写入 Evidence
     pub fn find_by_title_mut(&mut self, title: &str) -> Option<&mut Thesis> {
-        let pos = self.theses
+        let pos = self
+            .theses
             .iter()
             .enumerate()
             .filter(|(_, t)| t.status != ThesisStatus::Retired)
@@ -418,8 +466,8 @@ impl From<&MemoryEngine> for MemoryEngineData {
 mod tests {
     use super::*;
     use crate::domain::evidence::Stance;
-    use crate::domain::thesis::ThesisStatus;
     use crate::domain::theme::Assumption;
+    use crate::domain::thesis::ThesisStatus;
 
     fn make_theme(title: &str, sources: Vec<String>) -> Theme {
         Theme {
@@ -431,7 +479,12 @@ mod tests {
         }
     }
 
-    fn make_analysis(title: &str, bluf: &str, signal_strength: u8, assumptions: Vec<Assumption>) -> ThemeAnalysis {
+    fn make_analysis(
+        title: &str,
+        bluf: &str,
+        signal_strength: u8,
+        assumptions: Vec<Assumption>,
+    ) -> ThemeAnalysis {
         ThemeAnalysis {
             theme_id: "t1".into(),
             theme_title: title.into(),
@@ -515,9 +568,11 @@ mod tests {
         // 字符级 Jaccard: {"模","型","商","品","化","趋","势"} ∩ {"模","型","商","品","化"} = 5
         // ∪ = 7, 5/7 ≈ 0.71 >= 0.4
         let result = mem.match_thesis("模型商品化趋势");
-        assert!(result.is_some(),
+        assert!(
+            result.is_some(),
             "Chinese char-level Jaccard fallback should match: {:?}",
-            result);
+            result
+        );
     }
 
     #[test]
@@ -576,8 +631,11 @@ mod tests {
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
-        assert_eq!(status, ThesisStatus::Weakening,
-            "no recent evidence should produce Weakening, not Active");
+        assert_eq!(
+            status,
+            ThesisStatus::Weakening,
+            "no recent evidence should produce Weakening, not Active"
+        );
     }
 
     #[test]
@@ -624,16 +682,14 @@ mod tests {
             title: "test".into(),
             created: "2026-06-01".into(),
             updated: "2026-06-24".into(),
-            evidences: vec![
-                Evidence {
-                    date: "2026-06-24".into(),
-                    title: "challenge".into(),
-                    source: "test".into(),
-                    summary: "c1".into(),
-                    stance: Stance::Challenges,
-                    signal_strength: 7,
-                },
-            ],
+            evidences: vec![Evidence {
+                date: "2026-06-24".into(),
+                title: "challenge".into(),
+                source: "test".into(),
+                summary: "c1".into(),
+                stance: Stance::Challenges,
+                signal_strength: 7,
+            }],
             assumptions: vec![],
             status: ThesisStatus::Active,
         });
@@ -709,7 +765,11 @@ mod tests {
         let mut mem = make_memory();
         mem.force_thesis("AI Commoditization".into(), "2026-06-24", "first");
         mem.force_thesis("AI Commoditization".into(), "2026-06-24", "second");
-        assert_eq!(mem.theses.len(), 1, "duplicate force_thesis should not create second thesis");
+        assert_eq!(
+            mem.theses.len(),
+            1,
+            "duplicate force_thesis should not create second thesis"
+        );
     }
 
     #[test]
@@ -718,7 +778,8 @@ mod tests {
         let themes = vec![make_theme("AI Commoditization", vec!["source1".into()])];
         let analyses = vec![make_analysis("AI Commoditization", "test bluf", 7, vec![])];
 
-        mem.update_from_analysis("2026-06-24", &themes, &analyses).unwrap();
+        mem.update_from_analysis("2026-06-24", &themes, &analyses)
+            .unwrap();
         assert_eq!(mem.theses.len(), 1);
         assert_eq!(mem.theses[0].title, "AI Commoditization");
     }
@@ -730,9 +791,12 @@ mod tests {
         let themes = vec![make_theme("AI Commoditization", vec![])];
         let analyses = vec![make_analysis("AI Commoditization", "test bluf", 7, vec![])];
 
-        mem.update_from_analysis("2026-06-24", &themes, &analyses).unwrap();
-        assert_eq!(mem.theses[0].evidences[0].source, "unknown",
-            "empty source should fall back to sentinel");
+        mem.update_from_analysis("2026-06-24", &themes, &analyses)
+            .unwrap();
+        assert_eq!(
+            mem.theses[0].evidences[0].source, "unknown",
+            "empty source should fall back to sentinel"
+        );
     }
 
     #[test]
@@ -742,11 +806,17 @@ mod tests {
         let analyses = vec![make_analysis("AI Commoditization", "bluf", 7, vec![])];
 
         // 第一次更新创建 thesis
-        mem.update_from_analysis("2026-06-23", &themes, &analyses).unwrap();
+        mem.update_from_analysis("2026-06-23", &themes, &analyses)
+            .unwrap();
         // 第二次更新追加证据
-        mem.update_from_analysis("2026-06-24", &themes, &analyses).unwrap();
+        mem.update_from_analysis("2026-06-24", &themes, &analyses)
+            .unwrap();
 
         assert_eq!(mem.theses.len(), 1, "should not create duplicate");
-        assert_eq!(mem.theses[0].evidences.len(), 2, "should have 2 evidence entries");
+        assert_eq!(
+            mem.theses[0].evidences.len(),
+            2,
+            "should have 2 evidence entries"
+        );
     }
 }

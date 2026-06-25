@@ -37,4 +37,3 @@ pub struct Evidence {
     /// 当日 SVI 评分 1-10
     pub signal_strength: u8,
 }
-

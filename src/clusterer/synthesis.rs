@@ -46,7 +46,7 @@ pub fn synthesize(themes: &[Theme], analyses: &[ThemeAnalysis]) -> Summary {
 mod tests {
     use super::*;
     use crate::clusterer::Theme;
-    use crate::domain::theme::{ThemeAnalysis, Summary};
+    use crate::domain::theme::{Summary, ThemeAnalysis};
     use crate::fetcher::Article;
 
     fn make_theme(title: &str, article_count: usize) -> Theme {
@@ -54,12 +54,22 @@ mod tests {
             id: format!("t-{}", title),
             title: title.to_string(),
             summary: "test summary".into(),
-            articles: vec![Article {
-                id: String::new(), title: "test".into(), source: "test".into(), url: "".into(),
-                content: None, summary: None, published_at: None,
-                category: String::new(), wiki_summary: None,
-                evidence_type: String::new(), is_internal: false,
-            }; article_count],
+            articles: vec![
+                Article {
+                    id: String::new(),
+                    title: "test".into(),
+                    source: "test".into(),
+                    url: "".into(),
+                    content: None,
+                    summary: None,
+                    published_at: None,
+                    category: String::new(),
+                    wiki_summary: None,
+                    evidence_type: String::new(),
+                    is_internal: false,
+                };
+                article_count
+            ],
             sources: vec!["test".into()],
         }
     }
@@ -91,7 +101,11 @@ mod tests {
     #[test]
     fn test_synthesize_single_theme() {
         let themes = vec![make_theme("AI Commoditization", 3)];
-        let analyses = vec![make_analysis("AI Commoditization", "模型商品化加速", vec![])];
+        let analyses = vec![make_analysis(
+            "AI Commoditization",
+            "模型商品化加速",
+            vec![],
+        )];
         let summary = synthesize(&themes, &analyses);
         assert_eq!(summary.headline, "单主题深度分析");
         assert!(summary.narrative.contains("模型商品化加速"));
@@ -107,7 +121,11 @@ mod tests {
         ];
         let analyses = vec![
             make_analysis("AI Commoditization", "模型价格下降", vec![]),
-            make_analysis("Agent Market", "Agent 采用率上升", vec!["AI Commoditization".into()]),
+            make_analysis(
+                "Agent Market",
+                "Agent 采用率上升",
+                vec!["AI Commoditization".into()],
+            ),
         ];
         let summary = synthesize(&themes, &analyses);
         assert!(summary.headline.contains("2 个主题"));
@@ -128,7 +146,11 @@ mod tests {
     fn test_synthesize_connections_dedup() {
         let themes = vec![make_theme("Theme A", 1), make_theme("Theme B", 1)];
         let analyses = vec![
-            make_analysis("Theme A", "A", vec!["Connection X".into(), "Connection Y".into()]),
+            make_analysis(
+                "Theme A",
+                "A",
+                vec!["Connection X".into(), "Connection Y".into()],
+            ),
             make_analysis("Theme B", "B", vec!["Connection X".into()]),
         ];
         let summary = synthesize(&themes, &analyses);

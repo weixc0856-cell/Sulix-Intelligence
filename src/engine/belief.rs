@@ -74,7 +74,8 @@ impl BeliefEngineV2 {
 
     /// 获取最近 N 条更新
     pub fn recent_changes(&self, n: usize) -> Vec<(&CoreBelief, Option<&ConfidencePoint>)> {
-        let mut result: Vec<(&CoreBelief, Option<&ConfidencePoint>)> = self.beliefs
+        let mut result: Vec<(&CoreBelief, Option<&ConfidencePoint>)> = self
+            .beliefs
             .values()
             .filter_map(|b| {
                 let last = b.history.last();
@@ -85,7 +86,11 @@ impl BeliefEngineV2 {
                 }
             })
             .collect();
-        result.sort_by(|a, b| b.1.map(|p| p.date.as_str()).unwrap_or("").cmp(a.1.map(|p| p.date.as_str()).unwrap_or("")));
+        result.sort_by(|a, b| {
+            b.1.map(|p| p.date.as_str())
+                .unwrap_or("")
+                .cmp(a.1.map(|p| p.date.as_str()).unwrap_or(""))
+        });
         result.truncate(n);
         result
     }
@@ -100,7 +105,10 @@ impl BeliefEngineV2 {
             let text = format!("{} {}", analysis.bluf, analysis.impact).to_lowercase();
             for belief in self.beliefs.clone().values() {
                 let keywords: Vec<&str> = belief.statement.split_whitespace().collect();
-                let matches = keywords.iter().filter(|kw| text.contains(&kw.to_lowercase())).count();
+                let matches = keywords
+                    .iter()
+                    .filter(|kw| text.contains(&kw.to_lowercase()))
+                    .count();
                 if matches >= 2 {
                     let delta = if analysis.signal_strength >= 7 { 5 } else { 2 };
                     self.apply_update(&belief.id, delta, &analysis.bluf, today);
@@ -124,11 +132,23 @@ pub fn render_belief_changes_html(engine: &BeliefEngineV2) -> String {
 
     for (belief, point) in &changes {
         let delta_str = if let Some(pt) = point {
-            if pt.delta > 0 { format!("+{}", pt.delta) } else { pt.delta.to_string() }
-        } else { "0".into() };
+            if pt.delta > 0 {
+                format!("+{}", pt.delta)
+            } else {
+                pt.delta.to_string()
+            }
+        } else {
+            "0".into()
+        };
         let color = if let Some(pt) = point {
-            if pt.delta > 0 { "#16a34a" } else { "#dc2626" }
-        } else { "#a3a3a3" };
+            if pt.delta > 0 {
+                "#16a34a"
+            } else {
+                "#dc2626"
+            }
+        } else {
+            "#a3a3a3"
+        };
 
         html.push_str(&format!(
             r#"<div style="display:flex;align-items:flex-start;gap:0.375rem;padding:0.25rem 0;border-bottom:1px solid #f0f0f0">
@@ -180,7 +200,11 @@ mod tests {
     fn test_apply_update() {
         let mut engine = BeliefEngineV2::new();
         engine.load_from_config(&[CoreBelief {
-            id: "B1".into(), statement: "test".into(), confidence: 50, category: "T".into(), history: vec![],
+            id: "B1".into(),
+            statement: "test".into(),
+            confidence: 50,
+            category: "T".into(),
+            history: vec![],
         }]);
         engine.apply_update("B1", 10, "new evidence", "2026-06-25");
         assert_eq!(engine.beliefs["B1"].confidence, 60);
@@ -191,8 +215,20 @@ mod tests {
     fn test_recent_changes() {
         let mut engine = BeliefEngineV2::new();
         engine.load_from_config(&[
-            CoreBelief { id: "B1".into(), statement: "test1".into(), confidence: 50, category: "T".into(), history: vec![] },
-            CoreBelief { id: "B2".into(), statement: "test2".into(), confidence: 50, category: "T".into(), history: vec![] },
+            CoreBelief {
+                id: "B1".into(),
+                statement: "test1".into(),
+                confidence: 50,
+                category: "T".into(),
+                history: vec![],
+            },
+            CoreBelief {
+                id: "B2".into(),
+                statement: "test2".into(),
+                confidence: 50,
+                category: "T".into(),
+                history: vec![],
+            },
         ]);
         engine.apply_update("B1", 5, "ev", "2026-06-25");
         let changes = engine.recent_changes(5);

@@ -10,9 +10,7 @@
 // ===== 信念模型（从 domain 层导入）=====
 
 pub use crate::domain::evidence::Stance;
-pub use crate::domain::thesis::{
-    BeliefDb, BeliefStatement, BeliefUpdate,
-};
+pub use crate::domain::thesis::{BeliefDb, BeliefStatement, BeliefUpdate};
 
 impl BeliefDb {
     pub fn new(date: &str) -> Self {

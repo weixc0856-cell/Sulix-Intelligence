@@ -7,11 +7,11 @@
 
 // ===== 共享类型（由 domain 层提供）=====
 
+pub use crate::domain::evidence::FactBaseEntry;
 #[allow(unused_imports)]
 pub use crate::domain::theme::{
     AdverseScenario, Assumption, CausalChain, Summary, Theme, ThemeAnalysis,
 };
-pub use crate::domain::evidence::FactBaseEntry;
 
 // ===== 子模块声明 =====
 

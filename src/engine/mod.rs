@@ -4,6 +4,6 @@
 //! 未来：AnalysisEngine / HermesService
 
 pub mod analysis;
+pub mod belief;
 pub mod memory;
 pub mod premium;
-pub mod belief;

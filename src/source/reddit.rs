@@ -58,9 +58,17 @@ pub async fn fetch_reddit(config: &SourceConfig, _date_range: &str) -> Result<Ve
 
         // 构建摘要：取 selftext 前 200 字符
         let summary = if selftext.len() > 200 {
-            format!("{}... (score: {}, comments: {})", &selftext[..200], score, num_comments)
+            format!(
+                "{}... (score: {}, comments: {})",
+                &selftext[..200],
+                score,
+                num_comments
+            )
         } else if !selftext.is_empty() {
-            format!("{} (score: {}, comments: {})", selftext, score, num_comments)
+            format!(
+                "{} (score: {}, comments: {})",
+                selftext, score, num_comments
+            )
         } else {
             format!("Score: {}, Comments: {}", score, num_comments)
         };
@@ -70,7 +78,11 @@ pub async fn fetch_reddit(config: &SourceConfig, _date_range: &str) -> Result<Ve
         signals.push(RawSignal {
             id,
             title,
-            url: if url.starts_with("http") { url } else { reddit_url },
+            url: if url.starts_with("http") {
+                url
+            } else {
+                reddit_url
+            },
             content: Some(selftext),
             summary: Some(summary),
             published_at: Some(created),

@@ -91,7 +91,10 @@ fn keyword_match(analysis_text: &str, question: &Question) -> (u8, String) {
         0
     };
 
-    let reasoning = format!("关键词匹配度: {}/{} (ratio={:.2})", match_count, total_keywords, ratio);
+    let reasoning = format!(
+        "关键词匹配度: {}/{} (ratio={:.2})",
+        match_count, total_keywords, ratio
+    );
     (relevance, reasoning)
 }
 
@@ -103,7 +106,8 @@ async fn llm_semantic_match(
     api_key: &str,
     llm_config: &LlmConfig,
 ) -> Result<Option<(u8, String)>> {
-    let system_prompt = "You are a relevance judge. Given a user's concern question and a news analysis, determine:
+    let system_prompt =
+        "You are a relevance judge. Given a user's concern question and a news analysis, determine:
 1. Whether the analysis provides SUBSTANTIAL new information relevant to the question (yes/no)
 2. If yes, rate relevance 1-10
 3. The evidence type: Support (supports the premise), Challenge (challenges it), or Neutral
@@ -126,7 +130,8 @@ Output JSON only:
         analysis.signal_strength,
     );
 
-    let raw = llm::call_with_retry_raw(client, api_key, llm_config, system_prompt, &user_prompt).await?;
+    let raw =
+        llm::call_with_retry_raw(client, api_key, llm_config, system_prompt, &user_prompt).await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     let is_relevant = parsed["is_relevant"].as_bool().unwrap_or(false);
@@ -135,8 +140,14 @@ Output JSON only:
     }
 
     let relevance = parsed["relevance"].as_u64().unwrap_or(3).min(10) as u8;
-    let _evidence_type = parsed["evidence_type"].as_str().unwrap_or("Neutral").to_string();
-    let reasoning = parsed["reasoning"].as_str().unwrap_or("LLM 语义匹配").to_string();
+    let _evidence_type = parsed["evidence_type"]
+        .as_str()
+        .unwrap_or("Neutral")
+        .to_string();
+    let reasoning = parsed["reasoning"]
+        .as_str()
+        .unwrap_or("LLM 语义匹配")
+        .to_string();
 
     Ok(Some((relevance, format!("LLM: {}", reasoning))))
 }
@@ -204,10 +215,18 @@ pub async fn match_questions(
                 }
                 Ok(None) => {
                     // LLM 也认为不相关 → 跳过
-                    log::debug!("LLM: question '{}' not relevant to '{}'", question.text, analysis.theme_title);
+                    log::debug!(
+                        "LLM: question '{}' not relevant to '{}'",
+                        question.text,
+                        analysis.theme_title
+                    );
                 }
                 Err(e) => {
-                    log::warn!("⚠️ LLM semantic match failed for '{}': {}", question.text, e);
+                    log::warn!(
+                        "⚠️ LLM semantic match failed for '{}': {}",
+                        question.text,
+                        e
+                    );
                 }
             }
         }
@@ -301,15 +320,22 @@ mod tests {
             category: "Tech".into(),
             priority: 8,
         }];
-        let matches = match_questions_sync(&analysis, &questions, &reqwest::Client::new(), "test", &crate::config::LlmConfig {
-            api_key: Some("test".into()),
-            provider: "deepseek".into(),
-            model: "test".into(),
-            base_url: "https://test.com".into(),
-            max_tokens: 100,
-            temperature: 0.1,
-            perplexity_key: None,
-        }).unwrap();
+        let matches = match_questions_sync(
+            &analysis,
+            &questions,
+            &reqwest::Client::new(),
+            "test",
+            &crate::config::LlmConfig {
+                api_key: Some("test".into()),
+                provider: "deepseek".into(),
+                model: "test".into(),
+                base_url: "https://test.com".into(),
+                max_tokens: 100,
+                temperature: 0.1,
+                perplexity_key: None,
+            },
+        )
+        .unwrap();
         assert!(!matches.is_empty(), "Should match semiconductor topic");
     }
 
@@ -322,15 +348,22 @@ mod tests {
             category: "Macro".into(),
             priority: 6,
         }];
-        let matches = match_questions_sync(&analysis, &questions, &reqwest::Client::new(), "test", &crate::config::LlmConfig {
-            api_key: Some("test".into()),
-            provider: "deepseek".into(),
-            model: "test".into(),
-            base_url: "https://test.com".into(),
-            max_tokens: 100,
-            temperature: 0.1,
-            perplexity_key: None,
-        }).unwrap();
+        let matches = match_questions_sync(
+            &analysis,
+            &questions,
+            &reqwest::Client::new(),
+            "test",
+            &crate::config::LlmConfig {
+                api_key: Some("test".into()),
+                provider: "deepseek".into(),
+                model: "test".into(),
+                base_url: "https://test.com".into(),
+                max_tokens: 100,
+                temperature: 0.1,
+                perplexity_key: None,
+            },
+        )
+        .unwrap();
         assert!(matches.is_empty(), "Unrelated question should not match");
     }
 
@@ -348,7 +381,11 @@ mod tests {
             analysis.bluf, analysis.impact, analysis.supply_chain_impact
         );
         let (relevance, _reasoning) = keyword_match(&text, &question);
-        assert!(relevance >= 5, "Keyword match should be high for exact terms: {}", relevance);
+        assert!(
+            relevance >= 5,
+            "Keyword match should be high for exact terms: {}",
+            relevance
+        );
     }
 
     #[test]

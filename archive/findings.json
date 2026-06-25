@@ -1,0 +1,145 @@
+{
+  "findings": [
+    {
+      "severity": "P0",
+      "confidence": 10,
+      "file": "src/renderer.rs",
+      "line": 406,
+      "title": "No HTML escaping of LLM-generated content in HTML output",
+      "detail": "The HTML rendered by render_html_report() and render_archive_dashboard() interpolates LLM-generated strings directly via format!() without HTML entity escaping. Entity names are placed in <span> tags (line 406-408), headline/title/impact text is placed in innerHTML positions (lines 452-466), and source URLs go into href attributes (line 411). Attack vectors: (1) LLM prompt injection returns e.g. entity='</span><img src=x onerror=alert(1)>' in the JSON. (2) Malicious RSS feed URL containing single-quote attribute breakout like https://x.com/'><script> in the href. render_archive_dashboard() at lines 500-516 has the same issues with entity badges and headline text.",
+      "fix": "Use an HTML escaping library (e.g. html_escape crate or implement it) for all LLM-generated and RSS-originating strings before insertion into HTML. Escape: headline, category, sub, fact, impact_text, entity names, article titles, source names. For URLs, validate scheme is http/https only and URL-encode the value. Alternatively switch to a template engine like askama or maud that auto-escapes."
+    },
+    {
+      "severity": "P1",
+      "confidence": 10,
+      "file": "src/agent/editor.rs",
+      "line": 9,
+      "title": "Dead modules with broken import — would break compilation if wired in",
+      "detail": "Four agent files (editor.rs, synthesis.rs, verification.rs, orchestrator.rs) are not declared in agent/mod.rs and thus are entirely dead code. Worse, editor.rs imports 'BeliefStatement' from crate::config (line 9), but this type is never defined anywhere in config.rs or any other file. If someone tries to add pub mod editor to agent/mod.rs, the build fails with a missing-type error. These 4 files represent 700+ lines of dead code with a latent broken dependency.",
+      "fix": "Either: (a) delete the 4 unused files, (b) define BeliefStatement in config.rs and wire them into mod.rs if they are meant to be used, or (c) gate them behind a feature flag with clear documentation that they are experimental."
+    },
+    {
+      "severity": "P1",
+      "confidence": 9,
+      "file": "src/main.rs",
+      "line": 260,
+      "title": "Unused LLM API calls for zh_calibration and zh_summary computed but never used",
+      "detail": "On line 260, zh_calibration is computed via an LLM API call to agent::calibration::calibrate(). On line 267, zh_summary is computed via clusterer::synthesize(). Neither variable is ever read after assignment — they are assigned and immediately go out of scope. This wastes API tokens, adds latency (~2-5 seconds per LLM call), and has real monetary cost. Only the result of render_html_report (line 268) and the chronicle entries (lines 273-291) are actually used for the Chinese output.",
+      "fix": "Remove the unused zh_calibration and zh_summary computations on lines 260-267, or use them (e.g. inject calibration into the Chinese report, write zh_summary to a file)."
+    },
+    {
+      "severity": "P1",
+      "confidence": 9,
+      "file": "src/main.rs",
+      "line": 269,
+      "title": "Silent failure on fs::write for Chinese HTML report and latest copies",
+      "detail": "The Chinese HTML report write on line 269 uses .ok() which silently discards any I/O error: fs::write(zh_dir.join('index.html'), &zh_html).ok(). Similarly, the 'latest' copies on lines 297-298 use 'let _ = fs::write(...)' which also silently discards errors. If the disk is full, permissions are wrong, or the path is invalid, the user gets no error message and the files are simply missing with no trace in the logs.",
+      "fix": "Replace .ok() with ? to propagate errors, or at minimum log a warning on failure. For the latest copies (lines 297-298), propagate errors or log a warning."
+    },
+    {
+      "severity": "P1",
+      "confidence": 8,
+      "file": "src/fetcher.rs",
+      "line": 69,
+      "title": "Semaphore acquire unwrap() can panic and is silently swallowed",
+      "detail": "Line 69: let _permit = sem.acquire().await.unwrap(); If the semaphore is ever closed (e.g. due to an error in another part of the application), acquire() returns an error and unwrap() panics. While tokio::spawn catches this panic and handle.await.unwrap_or(None) on line 82 converts JoinError to None, the panic is still an abnormal termination that could mask bugs and makes debugging harder. The same pattern exists in enricher.rs line 41.",
+      "fix": "Replace unwrap() with match or if-let: if let Ok(permit) = sem.acquire().await { ... }. Or use expect() with a descriptive message to aid debugging if the panic path is intentional."
+    },
+    {
+      "severity": "P1",
+      "confidence": 8,
+      "file": "src/llm.rs",
+      "line": 368,
+      "title": "HTTP response error body silently lost on failure",
+      "detail": "Lines 368 and 423: let error_text = response.text().await.unwrap_or_default(); If reading the response body fails (e.g. connection reset mid-read), the error text is silently replaced with an empty string. The error returned to the caller will say something like 'DeepSeek API returned error (500): ' with no body content, making debugging of API issues extremely difficult.",
+      "fix": "Try to read the response text, but if that also fails, include the original failure info: let error_body = response.text().await.unwrap_or_else(|e| format!('<body read failed: {}>', e));"
+    },
+    {
+      "severity": "P2",
+      "confidence": 10,
+      "file": "src/renderer.rs",
+      "line": 24,
+      "title": "Unused function parameter: summary in render_analysis_report",
+      "detail": "The 'summary: &Summary' parameter of render_analysis_report() is never used anywhere in the function body. The compiler warns about this. This parameter was presumably intended to inject synthesis/summary data into the report, but it is completely ignored.",
+      "fix": "Either use the summary data (e.g. add '{{SUMMARY}}' to the ANALYSIS_TEMPLATE and pass summary.headline/narrative) or remove the parameter and update the caller."
+    },
+    {
+      "severity": "P2",
+      "confidence": 9,
+      "file": "src/renderer.rs",
+      "line": 172,
+      "title": "Unused function parameter: themes in build_topic_sections",
+      "detail": "The 'themes: &[Theme]' parameter of build_topic_sections() is never used in the function body. The function only iterates over analyses. The compiler warns about this.",
+      "fix": "Remove the themes parameter from build_topic_sections and update the single call site in render_analysis_report."
+    },
+    {
+      "severity": "P2",
+      "confidence": 8,
+      "file": "src/db.rs",
+      "line": 225,
+      "title": "LIKE wildcard in graveyard search keyword can cause unintended matches",
+      "detail": "line 225: let pattern = format!('%{}%', keyword); The keyword (article.title from RSS) is embedded into a LIKE pattern string. If an RSS article title contains '%' or '_', these become LIKE wildcards. '%' matches any sequence of characters, potentially matching hundreds of unrelated graveyard entries and causing false wakeup signals. '_' matches any single character. This is not SQL injection (the value is bound as a parameter) but is a logic bug causing false-positive matching.",
+      "fix": "Escape '%' and '_' in the keyword before formatting: keyword.replace('%', '\\%').replace('_', '\\_'). Then append ESCAPE '\\' to the SQL query, or better yet use full-text search (FTS5) for the graveyard."
+    },
+    {
+      "severity": "P2",
+      "confidence": 7,
+      "file": "src/main.rs",
+      "line": 251,
+      "title": "Silent error swallowing on fs::create_dir_all for chronicle and zh paths",
+      "detail": "Lines 251, 258, and 344 use .ok() to silently ignore failures from fs::create_dir_all(). If the data directory is unwritable, these silent failures cascade: the chronicle database JSON cannot be saved (line 335 returns error via ? and halts), the zh HTML cannot be written (line 269 silently fails), and the zh/index.html cannot be written (line 345 silently fails). The user sees no error until the pipeline breaks much later.",
+      "fix": "Propagate errors with ? for create_dir_all calls, or at minimum log a warning: fs::create_dir_all(&db_dir).map_err(|e| log::warn!('failed to create dir: {}', e)).ok();"
+    },
+    {
+      "severity": "P2",
+      "confidence": 9,
+      "file": "src/pipeline.rs",
+      "line": 100,
+      "title": "Articles without published_at sort to chronological bottom incorrectly",
+      "detail": "Lines 100-101: a.published_at.map(|d| d.naive_utc()).unwrap_or(chrono::NaiveDateTime::MIN) — articles without a published date get NaiveDateTime::MIN, sorting them to the very end of the list regardless of whether they are actually recent. Fresh articles from sources that don't provide timestamps (e.g. some Chinese RSS feeds or YouTube RSS) will always appear as the 'oldest' entries.",
+      "fix": "Instead of MIN, use the fetched_at timestamp (when available) as a fallback, or use Utc::now() for unsorted articles with a flag to mark them as 'timestamp unknown'."
+    },
+    {
+      "severity": "P3",
+      "confidence": 9,
+      "file": "src/enricher.rs",
+      "line": 115,
+      "title": "Hand-rolled URL encoding may mishandle non-ASCII characters",
+      "detail": "The urlencoding() function on line 115 manually percent-encodes bytes. For characters above U+007F, it encodes each individual UTF-8 byte. This is technically correct for URL paths but differs from the standard application/x-www-form-urlencoded encoding (which should be used for query parameters). More importantly, this introduces a maintenance burden and potential edge cases (e.g. characters that should be reserved in URLs like '#' or '?' are not encoded). The Wikipedia REST API paths used on lines 83-84 and 94-95 are paths, not query strings, so path-segment encoding is appropriate, but the hand-rolled implementation may miss edge cases.",
+      "fix": "Use the url crate's percent_encoding::percent_encode with the PATH_SEGMENT_ENCODE_SET, or the percent-encoding crate. This eliminates the 35-line hand-rolled function."
+    },
+    {
+      "severity": "P3",
+      "confidence": 8,
+      "file": "src/agent/scan.rs",
+      "line": 19,
+      "title": "Unused public enum and method in Scan Agent",
+      "detail": "The SignalTag enum (line 19) and its as_str() method (line 27) are fully defined but never used anywhere in the codebase. They appear to be vestigial from an earlier version of the scan logic. The comment references 'Layer 1: 4 classes of signal tags' but the actual v1.1 implementation uses string matching on LLM output (line 88) rather than Rust enum matching.",
+      "fix": "Remove the unused SignalTag enum and as_str() method, or refactor the scan logic to use typed enum matching instead of string comparison."
+    },
+    {
+      "severity": "P3",
+      "confidence": 9,
+      "file": "src/archive.rs",
+      "line": 67,
+      "title": "Two public methods on ChronicleDb are never called",
+      "detail": "sorted_by_lang() (line 67) and all_entities() (line 76) are public methods that are never invoked anywhere in the codebase. They were presumably intended for the archive dashboard or API but are unused. sorted_by_lang in particular has a logic issue: it filters to one language but the render_archive_dashboard is called once and passed all entries regardless of language.",
+      "fix": "Remove unused methods, or add a language-switching parameter to render_archive_dashboard and call sorted_by_lang() appropriately."
+    },
+    {
+      "severity": "P3",
+      "confidence": 7,
+      "file": "src/clusterer.rs",
+      "line": 267,
+      "title": "LLM JSON field fallbacks silently default to 'unknown' strings throughout clusterer",
+      "detail": "Multiple fields read from parsed LLM JSON use .as_str().unwrap_or(''), .as_u64().unwrap_or(5), or .as_bool().unwrap_or(false). If the LLM omits a field or uses the wrong type, the value silently defaults to a generic string like '待分析' or '发展中-推断' (line 267, 279, 280). This means malformed LLM output produces plausible-looking but incorrect analysis results with no warning. While graceful degradation is intentional, there is no logging of which fields defaulted.",
+      "fix": "Add log::warn! each time a default is used (gated behind a rate limiter to avoid log spam), or use a serde deserialization with strict validation and a fallback path that logs."
+    }
+  ],
+  "total_findings": 15,
+  "p0": 1,
+  "p1": 5,
+  "p2": 5,
+  "p3": 4,
+  "qa_score": 1.0
+}

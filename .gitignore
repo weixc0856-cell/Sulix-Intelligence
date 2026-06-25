@@ -19,15 +19,11 @@
 # CodeGraph 分析索引（可随时重新生成）
 /.codegraph/
 
-# 全项目审查报告（可随时重新生成）
-/FULL_REVIEW_REPORT.md
-/REVIEW-REPORT.md
-
 # 自动化分析产物
 /findings.json
 .ocodeignore
 
-# 博客文章内容（独立管理，不纳入主仓库）
+# 旧管线输出（content/posts/ 已被 output/daily/ 替代）
 /content/posts/
 /content/reports/
 
@@ -36,3 +32,7 @@
 /astro-frontend/dist/
 /astro-frontend/.astro/
 output/
+
+# 操作系统文件
+Thumbs.db
+.DS_Store
