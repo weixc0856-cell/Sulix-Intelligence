@@ -273,6 +273,28 @@ pub fn render_thesis_mdx(
         ));
         mdx.push_str(&format!("decision_horizon: \"{}\"\n", dec.horizon.as_str()));
     }
+    // Outcome / Historical Accuracy frontmatter
+    if !outcomes.is_empty() {
+        let total = outcomes.len();
+        let confirmed = outcomes
+            .iter()
+            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::Confirmed)
+            .count();
+        let partial = outcomes
+            .iter()
+            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::PartiallyConfirmed)
+            .count();
+        let invalidated = outcomes
+            .iter()
+            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::Invalidated)
+            .count();
+        let accuracy = (confirmed as f64 + partial as f64 * 0.5) / total as f64;
+        mdx.push_str(&format!("outcome_total: {}\n", total));
+        mdx.push_str(&format!("outcome_confirmed: {}\n", confirmed));
+        mdx.push_str(&format!("outcome_partial: {}\n", partial));
+        mdx.push_str(&format!("outcome_invalidated: {}\n", invalidated));
+        mdx.push_str(&format!("historical_accuracy: {:.2}\n", accuracy));
+    }
     mdx.push_str("---\n\n");
 
     mdx.push_str(&format!("## Status\n\n- **状态:** {:?}\n", thesis.status));

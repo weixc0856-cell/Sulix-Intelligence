@@ -266,6 +266,7 @@ pub async fn agent_publish(
         output_dir: PathBuf::from(&config.output.vault_path),
         reflections: vec![],
         thesis_decisions: vec![],
+        outcomes: vec![],
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
     log::info!("📝 Markdown 输出: {} 个主题", themes.len());
@@ -617,6 +618,7 @@ pub async fn agent_publish(
                 output_dir: vault_base.clone(),
                 reflections: memory.all_reflections().to_vec(),
                 thesis_decisions: thesis_decisions.clone(),
+                outcomes: memory.all_outcomes().to_vec(),
             };
             if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
                 log::warn!("⚠️ MDX 输出失败: {}", e);

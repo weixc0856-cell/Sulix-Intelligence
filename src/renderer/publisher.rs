@@ -22,6 +22,7 @@ use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
 use crate::config::SourceConfig;
 use crate::domain::reflection::Reflection;
 use crate::domain::thesis::Thesis;
+use crate::engine::memory::Outcome;
 use crate::engine::premium::PremiumReport;
 
 /// 发布上下文 — 所有发布器共享的数据
@@ -66,6 +67,8 @@ pub struct PublishContext {
     pub reflections: Vec<Reflection>,
     /// Decision Intelligence: Thesis → Decision 映射
     pub thesis_decisions: Vec<crate::engine::decision::ThesisDecision>,
+    /// Outcome 记录（用于 MDX frontmatter 中的 Historical Accuracy 展示）
+    pub outcomes: Vec<Outcome>,
 }
 
 /// 发布输出结果
@@ -242,9 +245,21 @@ impl Publisher for MdxPublisher {
             .iter()
             .map(|d| (d.thesis_id.as_str(), d))
             .collect();
+        // Build outcome lookup: thesis_id → Vec<Outcome>
+        let outcomes_map: std::collections::HashMap<&str, Vec<&Outcome>> = ctx
+            .outcomes
+            .iter()
+            .fold(std::collections::HashMap::new(), |mut map, o| {
+                map.entry(o.thesis_id.as_str()).or_default().push(o);
+                map
+            });
         for thesis in &ctx.theses {
             let decision = decision_map.get(thesis.id.as_str()).copied();
-            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &[], decision);
+            let thesis_outcomes: Vec<Outcome> = outcomes_map
+                .get(thesis.id.as_str())
+                .map(|v| v.iter().map(|o| (*o).clone()).collect())
+                .unwrap_or_default();
+            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
             let slug = thesis
                 .title
                 .to_lowercase()
