@@ -14,17 +14,8 @@ pub(crate) fn html_escape(s: &str) -> String {
     escaped
 }
 
-/// 验证 URL scheme 仅为 http/https
-#[allow(dead_code)]
-pub(crate) fn validate_url(url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        url.to_string()
-    } else {
-        "#invalid-url".to_string()
-    }
-}
-
 /// SVI 颜色色值
+/// TODO: 当前未被调用，保留为 MDX/前端未来配色参考
 #[allow(dead_code)]
 pub(crate) fn svi_color(svi: u8) -> &'static str {
     match svi {

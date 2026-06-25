@@ -306,17 +306,10 @@ pub struct DedupConfig {
     /// Jaccard 标题相似度阈值（超过此值判定为重复，默认 0.75）
     #[serde(default = "default_dedup_threshold")]
     pub title_similarity_threshold: f64,
-    /// 去重时间窗口（小时），0 表示不限制
-    #[serde(default = "default_dedup_window")]
-    #[allow(dead_code)]
-    pub window_hours: u32,
 }
 
 fn default_dedup_threshold() -> f64 {
     0.75
-}
-fn default_dedup_window() -> u32 {
-    0
 }
 
 /// Belief Engine Phase B: WayneOPC 核心信念配置

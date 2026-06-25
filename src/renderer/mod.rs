@@ -42,22 +42,4 @@ mod tests {
         );
         assert_eq!(helpers::html_escape("&&&"), "&amp;&amp;&amp;");
     }
-
-    #[test]
-    fn test_validate_url() {
-        assert_eq!(
-            helpers::validate_url("https://example.com"),
-            "https://example.com"
-        );
-        assert_eq!(
-            helpers::validate_url("http://test.org/page"),
-            "http://test.org/page"
-        );
-        assert_eq!(helpers::validate_url(""), "#invalid-url");
-        assert_eq!(helpers::validate_url("javascript:alert(1)"), "#invalid-url");
-        assert_eq!(
-            helpers::validate_url("data:text/html,<script>"),
-            "#invalid-url"
-        );
-    }
 }

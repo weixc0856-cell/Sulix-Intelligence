@@ -170,53 +170,6 @@ pub fn analyze_personal_impact(
     notes
 }
 
-/// 将 Editor 笔记渲染为 HTML 段落
-#[allow(dead_code)]
-pub fn render_editor_notes_html(notes: &[EditorNote]) -> String {
-    if notes.is_empty() {
-        return String::new();
-    }
-
-    let mut html = String::from(
-        r#"<div class="mt-6 pt-4 border-t border-neutral-200">
-  <span class="intel-label text-neutral-400 text-xs font-bold uppercase tracking-wider mb-3 block">📋 Editor's Note — What This Means For You</span>
-"#,
-    );
-
-    for note in notes {
-        let color = if note.confidence_delta > 0 {
-            "text-emerald-600"
-        } else if note.confidence_delta < 0 {
-            "text-red-600"
-        } else {
-            "text-neutral-500"
-        };
-        let action_emoji = match note.recommended_action.as_str() {
-            "Invest" | "Explore" => "💰",
-            "Exit" => "🚨",
-            _ => "👀",
-        };
-
-        html.push_str(&format!(
-            r#"  <div class="flex items-start gap-2 py-2 border-b border-neutral-100 last:border-0">
-    <span class="text-xs mt-0.5">{}</span>
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-2">
-        <span class="font-mono text-[10px] font-bold uppercase {}">{}</span>
-        <span class="text-xs text-neutral-400 font-mono">[{}]</span>
-      </div>
-      <p class="text-sm text-neutral-700 mt-0.5">{}</p>
-    </div>
-  </div>
-"#,
-            action_emoji, color, note.impact, note.recommended_action, note.rationale,
-        ));
-    }
-
-    html.push_str("</div>");
-    html
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,26 +239,5 @@ mod tests {
         let analysis = make_analysis("Unrelated Topic", 5);
         let notes = analyze_personal_impact(&[], &[analysis], &[]);
         assert!(notes.is_empty());
-    }
-
-    #[test]
-    fn test_render_html_empty() {
-        assert_eq!(render_editor_notes_html(&[]), "");
-    }
-
-    #[test]
-    fn test_render_html_with_notes() {
-        let notes = vec![EditorNote {
-            question_id: "q1".into(),
-            theme_title: "AI Commoditization".into(),
-            impact: "强化了'做应用还是做模型'的判断 (+2)".into(),
-            confidence_delta: 2,
-            recommended_action: "Explore".into(),
-            rationale: "信号强度 8, 证据类型: Support".into(),
-        }];
-        let html = render_editor_notes_html(&notes);
-        assert!(html.contains("Editor"));
-        assert!(html.contains("做应用还是做模型"));
-        assert!(html.contains("Explore"));
     }
 }

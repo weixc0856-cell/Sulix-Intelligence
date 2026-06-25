@@ -169,70 +169,6 @@ pub fn evaluate_decisions(
     decisions
 }
 
-/// 渲染行动建议到 HTML 区块
-///
-/// 高优先级（Exit / Execute）使用红色警告色块。
-#[allow(dead_code)]
-pub fn render_decision_html(decisions: &[Decision]) -> String {
-    let mut html = String::from(
-        "<div class=\"mt-8 pt-4 border-t border-neutral-200\">\n  \
-         <span class=\"intel-label text-neutral-400 text-xs font-bold uppercase tracking-wider mb-3 block\">\n    \
-         Recommendations\n  </span>\n"
-    );
-
-    for decision in decisions {
-        let border_color = if decision.is_high_priority {
-            "border-red-500 bg-red-50"
-        } else if decision.change_required {
-            "border-amber-400 bg-amber-50"
-        } else {
-            "border-neutral-200 bg-white"
-        };
-
-        let label = match decision.action_type {
-            ActionType::Observe => "👀 Observe",
-            ActionType::Explore => "🔍 Explore",
-            ActionType::Invest => "💰 Invest",
-            ActionType::Execute => "⚡ Execute",
-            ActionType::Exit => "🚨 Exit",
-        };
-
-        let text_color = if decision.is_high_priority {
-            "text-red-600"
-        } else {
-            "text-neutral-500"
-        };
-
-        html.push_str(&format!(
-            r#"  <div class="rounded-lg p-4 mb-3 border {}">
-    <div class="flex items-center justify-between mb-2">
-      <span class="text-xs font-bold uppercase tracking-wider {}">{}</span>
-      <span class="text-[10px] font-mono text-neutral-400">{}</span>
-    </div>
-    <p class="text-sm text-neutral-700 mb-2">{}</p>
-    <ul class="list-disc pl-4 space-y-1">
-      {}
-    </ul>
-  </div>
-"#,
-            border_color,
-            text_color,
-            label,
-            decision.time_horizon,
-            decision.domain,
-            decision
-                .actions
-                .iter()
-                .map(|a| format!("<li class=\"text-xs text-neutral-600\">{}</li>", a))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ));
-    }
-
-    html.push_str("</div>");
-    html
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,23 +219,6 @@ mod tests {
         let updates = vec![make_update(-6, false)];
         let decisions = evaluate_decisions(&updates, &[]);
         assert!(decisions.iter().any(|d| d.action_type == ActionType::Exit));
-    }
-
-    #[test]
-    fn test_render_exit_html() {
-        let decisions = vec![Decision {
-            domain: "半导体".into(),
-            action_type: ActionType::Exit,
-            change_required: true,
-            confidence: 0.8,
-            actions: vec!["重新评估".into()],
-            time_horizon: "立即".into(),
-            key_evidence: vec!["矛盾信号".into()],
-            is_high_priority: true,
-        }];
-        let html = render_decision_html(&decisions);
-        assert!(html.contains("Exit"));
-        assert!(html.contains("bg-red-50"));
     }
 
     #[test]

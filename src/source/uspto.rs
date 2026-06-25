@@ -27,9 +27,6 @@ struct UsptoItem {
     pub abstract_text: Vec<String>,
     #[serde(rename = "publicationDate")]
     pub pub_date: String,
-    #[serde(rename = "applicantName")]
-    #[allow(dead_code)]
-    pub applicants: Vec<String>,
 }
 
 /// 从 USPTO API 拉取并过滤专利信号
