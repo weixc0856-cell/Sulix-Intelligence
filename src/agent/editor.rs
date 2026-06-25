@@ -63,7 +63,7 @@ pub fn analyze_personal_impact(
         .map(|t| (t.title.as_str(), t))
         .collect();
 
-    for (analysis_idx, analysis) in analyses.iter().enumerate() {
+    for analysis in analyses.iter() {
         let theme_title = &analysis.theme_title;
 
         // 检查是否有对应的 Thesis（已有判断）
@@ -125,10 +125,8 @@ pub fn analyze_personal_impact(
                 "Explore".into()
             } else if confidence_delta <= -5 {
                 "Exit".into()
-            } else if confidence_delta <= -2 {
-                "Observe".into()
             } else {
-                "Observe".into()
+                "Observe".into() // -4 到 +1: 持有观察
             };
 
             // 构建人类可读的影响描述
@@ -173,6 +171,7 @@ pub fn analyze_personal_impact(
 }
 
 /// 将 Editor 笔记渲染为 HTML 段落
+#[allow(dead_code)]
 pub fn render_editor_notes_html(notes: &[EditorNote]) -> String {
     if notes.is_empty() {
         return String::new();

@@ -46,7 +46,7 @@ pub fn synthesize(themes: &[Theme], analyses: &[ThemeAnalysis]) -> Summary {
 mod tests {
     use super::*;
     use crate::clusterer::Theme;
-    use crate::domain::theme::{Summary, ThemeAnalysis};
+    use crate::domain::theme::ThemeAnalysis;
     use crate::fetcher::Article;
 
     fn make_theme(title: &str, article_count: usize) -> Theme {

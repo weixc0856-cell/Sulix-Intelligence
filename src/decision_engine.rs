@@ -172,6 +172,7 @@ pub fn evaluate_decisions(
 /// 渲染行动建议到 HTML 区块
 ///
 /// 高优先级（Exit / Execute）使用红色警告色块。
+#[allow(dead_code)]
 pub fn render_decision_html(decisions: &[Decision]) -> String {
     let mut html = String::from(
         "<div class=\"mt-8 pt-4 border-t border-neutral-200\">\n  \

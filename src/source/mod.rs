@@ -53,6 +53,7 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
 ///
 /// 仅包含 `show_attribution() == true` 的源（public == true 且 layer != 1）。
 /// 用于前端渲染时过滤内参源和私有源。
+#[allow(dead_code)]
 pub fn attributable_source_names(sources: &[SourceConfig]) -> HashSet<String> {
     sources
         .iter()

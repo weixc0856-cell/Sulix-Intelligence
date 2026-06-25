@@ -250,7 +250,7 @@ Output JSON Schema:
         analysis.analysis_paragraph,
     );
 
-    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, &prompt, &user_prompt).await?;
+    let raw = llm::call_with_retry_raw(&client, api_key, llm_config, prompt, &user_prompt).await?;
     let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
 
     // 解析隐藏假设

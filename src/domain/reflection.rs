@@ -45,6 +45,7 @@ pub struct Reflection {
 }
 
 /// 反思摘要（供外部展示用）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReflectionSummary {
     /// 论题标题

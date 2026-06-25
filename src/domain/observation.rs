@@ -11,6 +11,7 @@
 //! Observation 与 Article 的区别：
 //!   - Observation 是认知抽象的起点（"我注意到 X 发生了"）
 //!   - Article 是物理数据的载体（"某篇文章如此报道"）
+//!
 //!   一个 Observation 可以对应多篇 Article，一篇 Article 可以产生多个 Observation。
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,9 @@ use serde::{Deserialize, Serialize};
 /// Observation 不是"标题"或"摘要"，而是"观察者注意到什么变化"。
 /// 例如："OpenAI 发布 Agent SDK" 是一个 Observation，
 ///        而 "TechCrunch 报道 OpenAI 发布 Agent SDK" 才是 Article。
+/// 注意：当前管线通过 Article → Theme 路径，尚未实例化 Observation。
+/// 保留为领域冻结状态，待认知链路闭环后接入。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
     /// 唯一 ID

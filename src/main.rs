@@ -6,7 +6,6 @@
 //!   agent_research()  — 分流/聚类/分析/蓝军/认知引擎/BeliefDb
 //!   agent_publish()   — Premium 报告/HTML/Chronicle/看板
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;

@@ -42,6 +42,7 @@ pub struct SpecialTopic {
 }
 
 /// 阶段定义（可配置）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageDef {
     /// 阶段名称，如 "WhatChanged"
@@ -139,9 +140,6 @@ pub async fn generate_premium_report(
         .build()?;
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    let stage1_output; // single assignment below
-    let stage2_output; // single assignment below
-
     // ---- Stage 1: WhatChanged ----
     log::info!("📋 Stage 1 — WhatChanged: 识别核心变化...");
     let stage1_input = format!(
@@ -155,7 +153,7 @@ pub async fn generate_premium_report(
         llm::call_with_retry_raw(&client, api_key, llm_config, stage1_prompt, &stage1_input)
             .await?;
     let stage1_json: serde_json::Value = llm::parse_json_lenient(&stage1_raw)?;
-    stage1_output = stage1_json["bluf"]
+    let stage1_output = stage1_json["bluf"]
         .as_str()
         .unwrap_or("Analysis unavailable")
         .to_string();
@@ -181,7 +179,7 @@ pub async fn generate_premium_report(
         .as_str()
         .unwrap_or("")
         .to_string();
-    stage2_output = format!("{}\n\n{}", geopolitical, industry);
+    let stage2_output = format!("{}\n\n{}", geopolitical, industry);
 
     // ---- Stage 3: WhatToDo ----
     log::info!("📋 Stage 3 — WhatToDo: 合成行动建议...");

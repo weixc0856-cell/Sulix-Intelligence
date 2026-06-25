@@ -48,7 +48,7 @@ pub async fn fetch_reddit(config: &SourceConfig, _date_range: &str) -> Result<Ve
         let num_comments = data["num_comments"].as_i64().unwrap_or(0);
         let created_utc = data["created_utc"].as_f64().unwrap_or(0.0);
         let created = DateTime::from_timestamp(created_utc as i64, 0)
-            .unwrap_or_else(|| Utc::now())
+            .unwrap_or_else(Utc::now)
             .with_timezone(&FixedOffset::east_opt(0).unwrap());
 
         // 跳过分数过低的帖子

@@ -111,6 +111,7 @@ pub struct SourceConfig {
     pub layer: u8,
     /// 是否公开可展示。false 时前端不显示该源的 attribution 链接，但 LLM 仍完全吸收
     #[serde(default = "default_public")]
+    #[allow(dead_code)]
     pub public: bool,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -129,6 +130,7 @@ impl SourceConfig {
 
     /// 是否在前端展示 attribution 链接
     /// 仅当 public == true 且不为内参源（layer != 1）时才展示
+    #[allow(dead_code)]
     pub fn show_attribution(&self) -> bool {
         self.public && self.layer != 1
     }

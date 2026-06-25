@@ -14,9 +14,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::agent::editor::EditorNote;
 use crate::archive::{ChronicleDb, ChronicleEntry};
-use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
+use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
 use crate::decision_engine::Decision;
@@ -74,7 +73,7 @@ pub async fn agent_publish(
     today: &str,
     entity_db: &mut crate::entity::EntitySanctionDb,
     research: ResearchOutput,
-    source_statuses: Vec<(String, bool, usize)>,
+    _source_statuses: Vec<(String, bool, usize)>,
 ) -> Result<()> {
     const TREND_DAYS: i32 = 14;
 
@@ -102,7 +101,7 @@ pub async fn agent_publish(
         themes,
         analyses,
         analyses_zh,
-        decisions,
+        decisions: _decisions,
         triage,
         total_new,
         new_articles,

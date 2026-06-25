@@ -257,6 +257,7 @@ pub fn calculate_confidence(
     }
 }
 
+#[allow(dead_code)]
 impl ConfidenceResult {
     /// 创建一个默认的高置信度结果（用于缺乏数据时的合理默认值）
     pub fn high() -> Self {

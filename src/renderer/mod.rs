@@ -1,24 +1,22 @@
-//! 渲染模块 — 咨询级简报 + Economist 版式 HTML
+//! 渲染模块 — MDX 知识资产输出（主要）+ Substrack Markdown（次要）
 //!
+//! MDX 是主要输出格式（ADR-003），供 Astro 前端 Content Collections 消费。
 //! 字体授权声明（SIL Open Font License，100% 免费商用）:
 //! - Lora (serif, 大标题): SIL OFL, 免费商用
 //! - Inter (sans-serif, 正文): SIL OFL, 免费商用
 //! - JetBrains Mono (monospace, 日期/标签): SIL OFL, 免费商用
 //!
-//! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
-//! 当前活跃路径：render_html_report → render_trend_block → render_signal_markdown
+//! 已移除（第一代渲染器遗产）:
+//!   html.rs       → MDX 取代
+//!   dashboard.rs  → intel-web 前端职责
+//!   seo.rs        → Astro Head/Layout 组件职责
 
-pub mod dashboard;
 pub mod helpers;
-pub mod html;
 pub mod markdown;
 pub mod mdx;
 pub mod premium;
 pub mod publisher;
-pub mod seo;
 
-pub use dashboard::{render_memory_dashboard, render_trend_block};
-pub use html::{render_archive_dashboard, render_html_report};
 pub use markdown::render_substack_markdown;
 pub use premium::render_premium_report;
 

@@ -287,6 +287,7 @@ impl MemoryEngine {
     }
 
     /// 获取某个 Thesis 的所有 Outcome 记录
+    #[allow(dead_code)]
     pub fn outcome_history(&self, thesis_id: &str) -> Vec<&Outcome> {
         self.outcomes
             .iter()
@@ -303,6 +304,7 @@ impl MemoryEngine {
     ///
     /// 基于 Outcome 记录生成结构化反思：
     /// 什么判断错了、为什么错、学到了什么。
+    #[allow(dead_code)]
     pub fn generate_reflection(&self, thesis_id: &str) -> Result<Reflection> {
         let thesis = self
             .theses
@@ -389,6 +391,7 @@ impl MemoryEngine {
     }
 
     /// 保存反思记录
+    #[allow(dead_code)]
     pub fn save_reflection(&mut self, reflection: Reflection) {
         self.reflections.push(reflection);
     }

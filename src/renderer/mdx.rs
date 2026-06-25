@@ -12,8 +12,7 @@
 //! - 无需 HTML 模板引擎，无需 CSS
 
 use crate::clusterer::{Theme, ThemeAnalysis};
-use crate::domain::theme::Assumption;
-use crate::engine::memory::{Outcome, Reflection, Stance, Thesis, ThesisStatus};
+use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
 
 /// 转义 YAML 字符串中的特殊字符
@@ -38,7 +37,7 @@ pub fn render_daily_mdx(
     confidence: f64,
     editor_notes: &[crate::agent::editor::EditorNote],
 ) -> String {
-    let slug = theme
+    let _slug = theme
         .title
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
@@ -218,7 +217,7 @@ pub fn render_daily_mdx(
 
 /// 渲染 Thesis MDX（判断追踪更新）
 pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
-    let slug = thesis
+    let _slug = thesis
         .title
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
@@ -338,7 +337,7 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
 
 /// 渲染 Premium 研报 MDX
 pub fn render_research_mdx(report: &PremiumReport) -> String {
-    let slug = report
+    let _slug = report
         .theme_title
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
@@ -387,7 +386,7 @@ pub fn render_research_mdx(report: &PremiumReport) -> String {
 
 /// 渲染复盘反思 MDX
 pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> String {
-    let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
+    let _slug = format!("reflection-{}", reflection.id.replace(':', "-"));
 
     let mut mdx = String::new();
     mdx.push_str("---\n");

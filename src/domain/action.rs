@@ -42,6 +42,10 @@ pub enum ActionType {
 /// 行动建议
 ///
 /// 每一条 Action 对应一个具体的建议，附带置信度、时间视窗和依据。
+///
+/// 注意：Action 是终局对象（Observation → Thesis → Decision → Action → Outcome 闭环），
+/// 当前管线尚未构造 Action 实例，保留为领域冻结状态。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     /// 唯一 ID
@@ -60,6 +64,7 @@ pub struct Action {
     pub rationale: String,
 }
 
+#[allow(dead_code)]
 impl Action {
     /// 创建一个观察建议
     pub fn observe(description: &str, rationale: &str) -> Self {

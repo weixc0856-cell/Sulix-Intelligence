@@ -25,6 +25,7 @@ pub(crate) fn validate_url(url: &str) -> String {
 }
 
 /// SVI 颜色色值
+#[allow(dead_code)]
 pub(crate) fn svi_color(svi: u8) -> &'static str {
     match svi {
         9..=10 => "#dc2626",
@@ -36,6 +37,7 @@ pub(crate) fn svi_color(svi: u8) -> &'static str {
 }
 
 /// SVI 颜色表情
+#[allow(dead_code)]
 pub(crate) fn svi_emoji(svi: u8) -> &'static str {
     match svi {
         9..=10 => "🔴",

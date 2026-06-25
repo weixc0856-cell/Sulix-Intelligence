@@ -38,16 +38,14 @@ pub struct ConfidencePoint {
 }
 
 /// 信念引擎
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BeliefEngineV2 {
     pub beliefs: HashMap<String, CoreBelief>,
 }
 
 impl BeliefEngineV2 {
     pub fn new() -> Self {
-        Self {
-            beliefs: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// 从 config 加载信念
