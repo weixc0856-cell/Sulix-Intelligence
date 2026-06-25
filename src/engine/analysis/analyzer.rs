@@ -2,8 +2,9 @@
 
 use anyhow::Result;
 
-use crate::clusterer::{AdverseScenario, Assumption, FactBaseEntry, Theme, ThemeAnalysis};
 use crate::config::LlmConfig;
+use crate::domain::evidence::FactBaseEntry;
+use crate::domain::theme::{AdverseScenario, Assumption, Theme, ThemeAnalysis};
 use crate::llm;
 
 use super::causal::parse_causal_chain;
