@@ -23,6 +23,8 @@ pub struct ThesisDecision {
     pub thesis_id: String,
     pub thesis_title: String,
     pub decision_type: DecisionType,
+    /// 决策置信度（基于 evidence ratio），当前未在前端使用但保留用于未来 filtering
+    #[allow(dead_code)]
     pub confidence: f64,
     pub rationale: String,
     pub horizon: DecisionHorizon,
@@ -192,7 +194,6 @@ mod tests {
     use crate::domain::evidence::{Evidence, Stance};
     use crate::domain::outcome::{Outcome, OutcomeVerdict};
     use crate::domain::thesis::Thesis;
-    use std::path::PathBuf;
 
     fn make_thesis(id: &str, title: &str, status: ThesisStatus, evidence_count: usize) -> Thesis {
         Thesis {
@@ -237,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_strengthening_maps_to_build() {
-        let mut mem = make_memory(
+        let mem = make_memory(
             vec![make_thesis(
                 "t1",
                 "AI Market",
@@ -254,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_retired_with_invalidated_maps_to_exit() {
-        let mut mem = make_memory(
+        let mem = make_memory(
             vec![make_thesis("t1", "Failed Thesis", ThesisStatus::Retired, 3)],
             vec![Outcome {
                 id: "o1".into(),

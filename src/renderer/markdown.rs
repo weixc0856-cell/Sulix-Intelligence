@@ -1,16 +1,21 @@
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::premium::PremiumReport;
 
+/// YAML 双引号字符串值：转义 `\` 和 `"` 后包裹双引号
+fn yaml_quoted(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// 渲染信号为 Markdown + YAML frontmatter（用于 Astro Content Collections）
 ///
 /// Code Review: sources/entities 使用 serde_json 序列化防止 YAML 注入撕裂。
 pub fn render_signal_markdown(theme: &Theme, analysis: &ThemeAnalysis, date: &str) -> String {
     let svi_emoji_str = match analysis.signal_strength {
-        9..=10 => "🔴",
-        7..=8 => "🟠",
-        5..=6 => "🟡",
-        3..=4 => "🟢",
-        _ => "🔵",
+        9..=10 => "\u{1f534}",
+        7..=8 => "\u{1f7e0}",
+        5..=6 => "\u{1f7e1}",
+        3..=4 => "\u{1f7e2}",
+        _ => "\u{1f535}",
     };
 
     let source_names: Vec<&str> = theme.articles.iter().map(|a| a.source.as_str()).collect();
@@ -25,14 +30,14 @@ pub fn render_signal_markdown(theme: &Theme, analysis: &ThemeAnalysis, date: &st
 
     format!(
         r#"---
-title: "{title}"
+title: {title}
 date: "{date}"
 status: "published"
 svi: {svi}
 color_tag: "{emoji}"
 is_premium: {premium}
-slug: "{slug}"
-summary: "{summary}"
+slug: {slug}
+summary: {summary}
 sources: {sources}
 entities: {entities}
 tags: {tags}
@@ -55,7 +60,7 @@ author: "Diplomat · Architect · Quant"
 
 {analysis_para}
 "#,
-        title = theme.title,
+        title = yaml_quoted(&theme.title),
         date = date,
         svi = analysis.signal_strength,
         emoji = svi_emoji_str,
@@ -64,8 +69,8 @@ author: "Diplomat · Architect · Quant"
         } else {
             "false"
         },
-        slug = slug,
-        summary = analysis.bluf,
+        slug = yaml_quoted(&slug),
+        summary = yaml_quoted(&analysis.bluf),
         sources = json_sources,
         entities = json_entities,
         tags = json_tags,
@@ -98,19 +103,19 @@ date: {date}
 
 ---
 
-## 👤 Diplomat — Geopolitical Assessment
+## Diplomat — Geopolitical Assessment
 
 {diplomat}
 
 ---
 
-## 👤 Architect — Technical Impact
+## Architect — Technical Impact
 
 {architect}
 
 ---
 
-## 👤 Quant — Commercial Framework
+## Quant — Commercial Framework
 
 {quant}
 

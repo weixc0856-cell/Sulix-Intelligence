@@ -130,6 +130,7 @@ impl MemoryEngine {
     }
 
     /// 获取所有 Investigation 记录
+    #[allow(dead_code)]
     pub fn investigations(&self) -> &[Investigation] {
         &self.investigations
     }

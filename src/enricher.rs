@@ -32,10 +32,13 @@ pub async fn enrich_with_wikipedia(articles: &mut [Article], max_concurrency: us
         let client = client.clone();
 
         handles.push(tokio::spawn(async move {
-            let _permit = sem
-                .acquire()
-                .await
-                .expect("semaphore closed within pipeline context");
+            let _permit = match sem.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    log::warn!("Semaphore closed, skipping enrichment: {}", e);
+                    return None;
+                }
+            };
             match fetch_wiki_summary(&client, &title).await {
                 Ok(Some(summary)) => Some((i, summary)),
                 _ => None,
@@ -45,13 +48,16 @@ pub async fn enrich_with_wikipedia(articles: &mut [Article], max_concurrency: us
 
     let mut enriched = 0u32;
     for handle in handles {
-        if let Some((idx, summary)) = handle.await.unwrap_or(None) {
-            if !summary.is_empty() {
-                // 截断到 500 字以控制 token 消耗
-                let end = summary.floor_char_boundary(500);
-                articles[idx].wiki_summary = Some(summary[..end].to_string());
-                enriched += 1;
+        match handle.await {
+            Ok(Some((idx, summary))) => {
+                if !summary.is_empty() {
+                    let end = summary.floor_char_boundary(500);
+                    articles[idx].wiki_summary = Some(summary[..end].to_string());
+                    enriched += 1;
+                }
             }
+            Ok(None) => {}
+            Err(e) => log::warn!("Enrich task panicked or cancelled: {:?}", e),
         }
     }
 

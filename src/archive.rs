@@ -31,7 +31,14 @@ impl ChronicleDb {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
             let content = fs::read_to_string(path)?;
-            Ok(serde_json::from_str(&content).unwrap_or_else(|_| ChronicleDb { entries: vec![] }))
+            Ok(serde_json::from_str(&content).unwrap_or_else(|e| {
+                log::warn!(
+                    "ChronicleDb parse error at {:?}, returning empty: {}",
+                    path,
+                    e
+                );
+                ChronicleDb { entries: vec![] }
+            }))
         } else {
             Ok(ChronicleDb { entries: vec![] })
         }

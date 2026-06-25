@@ -124,9 +124,6 @@ pub async fn generate_investigation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::evidence::{Evidence, Stance};
-    use crate::domain::thesis::ThesisStatus;
-    use std::collections::HashMap;
 
     #[test]
     fn test_question_count_limit() {

@@ -38,3 +38,23 @@ pub(crate) fn svi_emoji(svi: u8) -> &'static str {
         _ => "🔵",
     }
 }
+
+/// 转义 YAML 字符串中的特殊字符
+///
+/// 保护措施:
+/// - 包含 `:`, `#`, `"`, `'` 时自动加引号并转义内部引号
+/// - YAML 关键字 (`true`, `false`, `null`, `yes`, `no`, `on`, `off`) 自动加引号防类型强制
+/// - 纯数字字符串自动加引号防类型强制
+pub(crate) fn yaml_escape(s: &str) -> String {
+    let needs_quoting = s.contains(':')
+        || s.contains('#')
+        || s.contains('"')
+        || s.contains('\'')
+        || matches!(s, "true" | "false" | "null" | "yes" | "no" | "on" | "off")
+        || s.chars().all(|c| c.is_numeric());
+    if needs_quoting {
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        s.to_string()
+    }
+}

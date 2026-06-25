@@ -13,33 +13,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-mod agent;
-
-mod archive;
-mod belief_engine;
-mod catalog;
-mod client;
-mod clusterer;
-mod config;
-mod db;
-mod decision_engine;
-mod design;
-mod domain;
-mod engine;
-mod enricher;
-mod entity;
-mod event_log;
-mod fetcher;
-mod hermes;
-mod llm;
-mod orchestrator;
-mod pipeline;
-mod premium;
-mod publishing;
-mod question_engine;
-mod renderer;
-mod source;
-mod twitter;
+use sulix_intel::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -282,7 +256,7 @@ async fn agent_signal(
     let vault_path = &config.output.vault_path;
     for article in &new_articles {
         if article.content.is_some() || article.summary.is_some() {
-            let signal = crate::source::RawSignal {
+            let signal = sulix_intel::source::RawSignal {
                 id: article.id.clone(),
                 title: article.title.clone(),
                 url: article.url.clone(),
@@ -532,9 +506,9 @@ async fn agent_research(
 
     // DiGraph 认知引擎 + BeliefDb
     let decisions;
-    let question_matches: Vec<crate::question_engine::QuestionMatch>;
+    let question_matches: Vec<sulix_intel::question_engine::QuestionMatch>;
     {
-        use crate::orchestrator::{
+        use sulix_intel::orchestrator::{
             blue_team_edge, BENode, BlueTeamNode, ClusterNode, DENode, DiGraph, GraphContext,
             QENode, RouteResult,
         };
@@ -576,8 +550,9 @@ async fn agent_research(
         // BeliefDb 持久化（含损坏备份保护）
         let belief_db_path = data_dir.join("belief_db.json");
         let mut belief_db = if belief_db_path.exists() {
-            match crate::belief_engine::BeliefDb::load_from_file(&belief_db_path.to_string_lossy())
-            {
+            match sulix_intel::belief_engine::BeliefDb::load_from_file(
+                &belief_db_path.to_string_lossy(),
+            ) {
                 Ok(db) => db,
                 Err(e) => {
                     let backup = format!(
@@ -587,11 +562,11 @@ async fn agent_research(
                     );
                     log::error!("⚠️ BeliefDb 加载失败 ({}), 备份到 {} 后重建", e, backup);
                     let _ = std::fs::rename(&belief_db_path, &backup);
-                    crate::belief_engine::BeliefDb::new(today)
+                    sulix_intel::belief_engine::BeliefDb::new(today)
                 }
             }
         } else {
-            let d = crate::belief_engine::BeliefDb::new(today);
+            let d = sulix_intel::belief_engine::BeliefDb::new(today);
             log::info!("🧠 BeliefDb 新实例");
             d
         };

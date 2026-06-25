@@ -15,15 +15,7 @@ use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::engine::decision::ThesisDecision;
 use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
-
-/// 转义 YAML 字符串中的特殊字符
-fn yaml_escape(s: &str) -> String {
-    if s.contains(':') || s.contains('#') || s.contains('"') || s.contains('\'') {
-        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-    } else {
-        s.to_string()
-    }
-}
+use crate::renderer::helpers::yaml_escape;
 
 /// 渲染每日信号 MDX
 ///

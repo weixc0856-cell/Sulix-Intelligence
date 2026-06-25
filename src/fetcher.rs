@@ -57,10 +57,13 @@ pub async fn enrich_articles_content(articles: &mut [Article], max_concurrency: 
     for (idx, url, client) in tasks {
         let sem = semaphore.clone();
         handles.push(tokio::spawn(async move {
-            let _permit = sem
-                .acquire()
-                .await
-                .expect("semaphore closed within pipeline context");
+            let _permit = match sem.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    log::warn!("Semaphore closed, skipping fetch [{}]: {}", url, e);
+                    return None;
+                }
+            };
             match fetch_article_content(&client, &url).await {
                 Ok(text) => Some((idx, text)),
                 Err(e) => {
@@ -73,11 +76,15 @@ pub async fn enrich_articles_content(articles: &mut [Article], max_concurrency: 
 
     let mut enriched_count = 0u32;
     for handle in handles {
-        if let Some((idx, text)) = handle.await.unwrap_or(None) {
-            if !text.is_empty() {
-                articles[idx].content = Some(text);
-                enriched_count += 1;
+        match handle.await {
+            Ok(Some((idx, text))) => {
+                if !text.is_empty() {
+                    articles[idx].content = Some(text);
+                    enriched_count += 1;
+                }
             }
+            Ok(None) => {}
+            Err(e) => log::warn!("Fetch task panicked or cancelled: {:?}", e),
         }
     }
 
