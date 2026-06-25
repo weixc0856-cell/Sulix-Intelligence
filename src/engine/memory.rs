@@ -438,16 +438,33 @@ impl MemoryEngine {
     /// 记录 Thesis 的实际结果
     ///
     /// 比较 Thesis 的 prediction 与 reality，记录偏差。
-    /// 同时触发置信度快照（OutcomeRecorded）。
+    /// 自动触发：
+    ///   - 置信度快照（OutcomeRecorded）
+    ///   - 反思复盘生成（LLM draft）
     pub fn record_outcome(&mut self, outcome: Outcome) -> Result<()> {
-        // 验证 thesis 存在并记录置信度快照
-        let idx = self
-            .theses
-            .iter()
-            .position(|t| t.id == outcome.thesis_id)
-            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", outcome.thesis_id))?;
+        // 验证 thesis 存在
+        if !self.theses.iter().any(|t| t.id == outcome.thesis_id) {
+            anyhow::bail!("Thesis '{}' not found", outcome.thesis_id);
+        }
+        let thesis_id = outcome.thesis_id.clone();
+        let description = outcome.description.clone();
         self.outcomes.push(outcome);
-        self.record_confidence_inner(idx, ConfidenceTrigger::OutcomeRecorded, "outcome recorded");
+
+        // 记录置信度快照
+        if let Some(idx) = self.theses.iter().position(|t| t.id == thesis_id) {
+            self.record_confidence_inner(
+                idx,
+                ConfidenceTrigger::OutcomeRecorded,
+                "outcome recorded",
+            );
+        }
+
+        // 自动生成反思复盘
+        if let Ok(reflection) = self.generate_reflection(&thesis_id) {
+            self.reflections.push(reflection);
+            log::info!("🧠 Meta Layer: {} — 反思复盘已生成", description);
+        }
+
         Ok(())
     }
 

@@ -272,6 +272,10 @@ pub fn render_thesis_mdx(
             yaml_escape(&dec.rationale)
         ));
         mdx.push_str(&format!("decision_horizon: \"{}\"\n", dec.horizon.as_str()));
+        mdx.push_str(&format!(
+            "decision_stability: \"{}\"\n",
+            dec.stability.label()
+        ));
     }
     // Outcome / Historical Accuracy frontmatter
     if !outcomes.is_empty() {

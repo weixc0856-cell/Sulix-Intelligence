@@ -12,7 +12,7 @@
 //!   Retired (Invalidated) → Exit
 //!   Retired (no outcome)  → Ignore
 
-use crate::domain::action::{DecisionHorizon, DecisionType};
+use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
 use crate::engine::memory::MemoryEngine;
 use crate::engine::memory::ThesisStatus;
@@ -27,6 +27,8 @@ pub struct ThesisDecision {
     pub rationale: String,
     pub horizon: DecisionHorizon,
     pub priority: u8,
+    /// 决策稳定性 — outcome history 驱动
+    pub stability: DecisionStability,
 }
 
 /// 将 Memory Engine 中的所有活跃 Thesis 映射为决策建议
@@ -140,6 +142,38 @@ fn map_thesis_to_decision(
     };
 
     let priority = decision_type.priority();
+
+    // 从 outcome history 计算决策稳定性
+    let thesis_outcomes: Vec<&crate::domain::outcome::Outcome> = memory
+        .all_outcomes()
+        .iter()
+        .filter(|o| o.thesis_id == thesis.id)
+        .collect();
+    let stability = if thesis_outcomes.is_empty() {
+        DecisionStability::Volatile
+    } else if thesis_outcomes
+        .iter()
+        .any(|o| o.verdict == OutcomeVerdict::Invalidated)
+    {
+        DecisionStability::Final
+    } else {
+        let confirmed = thesis_outcomes
+            .iter()
+            .filter(|o| {
+                matches!(
+                    o.verdict,
+                    OutcomeVerdict::Confirmed | OutcomeVerdict::PartiallyConfirmed
+                )
+            })
+            .count();
+        let total = thesis_outcomes.len();
+        if confirmed as f64 / total as f64 >= 0.5 {
+            DecisionStability::Stable
+        } else {
+            DecisionStability::Volatile
+        }
+    };
+
     ThesisDecision {
         thesis_id: thesis.id.clone(),
         thesis_title: thesis.title.clone(),
@@ -148,6 +182,7 @@ fn map_thesis_to_decision(
         rationale,
         horizon,
         priority,
+        stability,
     }
 }
 

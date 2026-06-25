@@ -75,6 +75,27 @@ impl DecisionHorizon {
     }
 }
 
+/// 决策稳定性 — outcome history 驱动的稳定度
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum DecisionStability {
+    /// 尚无 outcome，不稳定
+    Volatile,
+    /// 有 outcome 但 majority 为 confirmed/partial
+    Stable,
+    /// 已 invalidated 或 thesis 已 retired
+    Final,
+}
+
+impl DecisionStability {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Volatile => "volatile",
+            Self::Stable => "stable",
+            Self::Final => "final",
+        }
+    }
+}
+
 impl DecisionType {
     pub fn label(&self) -> &'static str {
         match self {
