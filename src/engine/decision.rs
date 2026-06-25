@@ -218,6 +218,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         }
     }
 

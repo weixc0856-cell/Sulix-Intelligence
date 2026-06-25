@@ -20,6 +20,7 @@ use crate::clusterer::{Theme, ThemeAnalysis};
 // ===== 数据模型（从 domain 层导入）=====
 
 pub use crate::domain::evidence::{Evidence, Stance};
+pub use crate::domain::investigation::Investigation;
 pub use crate::domain::outcome::{Outcome, OutcomeVerdict};
 pub use crate::domain::reflection::Reflection;
 pub use crate::domain::thesis::{
@@ -38,6 +39,9 @@ pub struct MemoryEngine {
     /// 所有 Reflection 记录（复盘分析）
     #[serde(default)]
     reflections: Vec<Reflection>,
+    /// 所有 Investigation 记录（Thesis 的问题集）
+    #[serde(default)]
+    investigations: Vec<Investigation>,
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
@@ -91,6 +95,7 @@ impl MemoryEngine {
             theses: Vec::new(),
             outcomes: Vec::new(),
             reflections: Vec::new(),
+            investigations: Vec::new(),
             memory_path,
         }
     }
@@ -103,6 +108,7 @@ impl MemoryEngine {
             self.theses = loaded.theses;
             self.outcomes = loaded.outcomes;
             self.reflections = loaded.reflections;
+            self.investigations = loaded.investigations;
         }
         Ok(())
     }
@@ -121,6 +127,18 @@ impl MemoryEngine {
     /// 获取所有 Thesis
     pub fn theses(&self) -> &[Thesis] {
         &self.theses
+    }
+
+    /// 获取所有 Investigation 记录
+    pub fn investigations(&self) -> &[Investigation] {
+        &self.investigations
+    }
+
+    /// 获取指定 Thesis 的 Investigation
+    pub fn get_investigation_for_thesis(&self, thesis_id: &str) -> Option<&Investigation> {
+        self.investigations
+            .iter()
+            .find(|inv| inv.thesis_id == thesis_id)
     }
 
     /// 核心更新：将当日分析结果融入信念系统
@@ -227,6 +245,7 @@ impl MemoryEngine {
                     merged_ids: vec![],
                     related_thesis_ids: vec![],
                     metadata: HashMap::new(),
+                    investigation_id: None,
                 };
                 self.theses.push(new_thesis);
                 let new_idx = self.theses.len() - 1;
@@ -628,6 +647,7 @@ impl MemoryEngine {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
     }
 
@@ -714,6 +734,8 @@ struct MemoryEngineData {
     outcomes: Vec<Outcome>,
     #[serde(default)]
     reflections: Vec<Reflection>,
+    #[serde(default)]
+    investigations: Vec<Investigation>,
 }
 
 impl From<&MemoryEngine> for MemoryEngineData {
@@ -722,6 +744,7 @@ impl From<&MemoryEngine> for MemoryEngineData {
             theses: mem.theses.clone(),
             outcomes: mem.outcomes.clone(),
             reflections: mem.reflections.clone(),
+            investigations: mem.investigations.clone(),
         }
     }
 }
@@ -796,6 +819,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // 完全匹配
@@ -820,6 +844,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -844,6 +869,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -874,6 +900,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -897,6 +924,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -928,6 +956,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -973,6 +1002,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1004,6 +1034,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1027,6 +1058,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // 超过 30 天 idle
@@ -1051,6 +1083,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // 仅 0 天 idle
@@ -1075,6 +1108,7 @@ mod tests {
             merged_ids: vec![],
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
+            investigation_id: None,
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过

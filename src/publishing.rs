@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::decision_engine::Decision;
 use crate::engine::decision::{map_theses_to_decisions, ThesisDecision};
+use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::{MemoryEngine, Outcome, OutcomeVerdict, Stance, ThesisStatus};
 use crate::renderer::publisher::Publisher;
 
@@ -462,6 +463,28 @@ pub async fn agent_publish(
                 memory.theses().len(),
                 memory.theses().len() - before
             );
+        }
+
+        // Investigation Engine: generate questions for new theses
+        for thesis in memory.theses().to_owned() {
+            if matches!(
+                thesis.status,
+                ThesisStatus::Active | ThesisStatus::Strengthening
+            ) && memory.get_investigation_for_thesis(&thesis.id).is_none()
+            {
+                match generate_investigation(&thesis, api_key, &config.llm, config.prompts.as_ref())
+                    .await
+                {
+                    Ok(inv) => {
+                        log::info!(
+                            "Investigation: '{}' -- {} questions",
+                            thesis.title,
+                            inv.questions.len()
+                        );
+                    }
+                    Err(e) => log::warn!("Investigation gen failed [{}]: {}", thesis.title, e),
+                }
+            }
         }
 
         // Meta Layer: Outcome 检测 & Reflection 生成

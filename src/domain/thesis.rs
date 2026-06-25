@@ -87,6 +87,9 @@ pub struct Thesis {
     /// 扩展元数据（复活事件、自定义标签等）
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+    /// 关联的调查 ID（Investigation Engine 生成）
+    #[serde(default)]
+    pub investigation_id: Option<String>,
 }
 
 /// 置信度快照 — 事件驱动，非 daily sampling
