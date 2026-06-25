@@ -12,6 +12,7 @@
 //! - 无需 HTML 模板引擎，无需 CSS
 
 use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::engine::decision::ThesisDecision;
 use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
 
@@ -216,20 +217,25 @@ pub fn render_daily_mdx(
 }
 
 /// 渲染 Thesis MDX（判断追踪更新）
-pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
+pub fn render_thesis_mdx(
+    thesis: &Thesis,
+    outcomes: &[Outcome],
+    decision: Option<&ThesisDecision>,
+) -> String {
     let _slug = thesis
         .title
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
         .replace(' ', "-");
 
-    let status_str = match thesis.status {
-        crate::domain::thesis::ThesisStatus::Proposed => "proposed",
-        crate::domain::thesis::ThesisStatus::Active
-        | crate::domain::thesis::ThesisStatus::Strengthening => "strengthening",
-        crate::domain::thesis::ThesisStatus::Weakening => "weakening",
-        crate::domain::thesis::ThesisStatus::Dormant => "dormant",
-        crate::domain::thesis::ThesisStatus::Retired => "retired",
+    // Thesis 前台状态: 简化映射，consulting-style labels
+    let (status_label, status_str) = match thesis.status {
+        crate::domain::thesis::ThesisStatus::Proposed => ("early-signal", "proposed"),
+        crate::domain::thesis::ThesisStatus::Active => ("developing", "active"),
+        crate::domain::thesis::ThesisStatus::Strengthening => ("established", "strengthening"),
+        crate::domain::thesis::ThesisStatus::Weakening => ("at-risk", "weakening"),
+        crate::domain::thesis::ThesisStatus::Dormant => ("under-review", "dormant"),
+        crate::domain::thesis::ThesisStatus::Retired => ("archived", "retired"),
     };
 
     let support = thesis
@@ -251,9 +257,22 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
     mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
     mdx.push_str("type: thesis\n");
     mdx.push_str(&format!("status: \"{}\"\n", status_str));
+    mdx.push_str(&format!("status_label: \"{}\"\n", status_label));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
     mdx.push_str(&format!("evidences: {}\n", support));
     mdx.push_str(&format!("challenges: {}\n", challenge));
+    // Decision Intelligence frontmatter
+    if let Some(dec) = decision {
+        mdx.push_str(&format!(
+            "decision: \"{}\"\n",
+            dec.decision_type.label().to_lowercase()
+        ));
+        mdx.push_str(&format!(
+            "decision_rationale: \"{}\"\n",
+            yaml_escape(&dec.rationale)
+        ));
+        mdx.push_str(&format!("decision_horizon: \"{}\"\n", dec.horizon.as_str()));
+    }
     mdx.push_str("---\n\n");
 
     mdx.push_str(&format!("## Status\n\n- **状态:** {:?}\n", thesis.status));

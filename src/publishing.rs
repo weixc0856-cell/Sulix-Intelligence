@@ -19,6 +19,7 @@ use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
 use crate::decision_engine::Decision;
+use crate::engine::decision::{map_theses_to_decisions, ThesisDecision};
 use crate::engine::memory::{MemoryEngine, Outcome, OutcomeVerdict, Stance, ThesisStatus};
 use crate::renderer::publisher::Publisher;
 
@@ -264,6 +265,7 @@ pub async fn agent_publish(
         mdx_output_dir: None,
         output_dir: PathBuf::from(&config.output.vault_path),
         reflections: vec![],
+        thesis_decisions: vec![],
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
     log::info!("📝 Markdown 输出: {} 个主题", themes.len());
@@ -558,6 +560,35 @@ pub async fn agent_publish(
             log::warn!("⚠️ Memory Engine 保存失败: {}", e);
         }
 
+        // Decision Intelligence: Thesis → Decision 映射
+        let thesis_decisions = map_theses_to_decisions(&memory);
+        if !thesis_decisions.is_empty() {
+            let high_priority: Vec<&ThesisDecision> = thesis_decisions
+                .iter()
+                .filter(|d| {
+                    matches!(
+                        d.decision_type,
+                        crate::domain::action::DecisionType::Exit
+                            | crate::domain::action::DecisionType::Build
+                    )
+                })
+                .collect();
+            if !high_priority.is_empty() {
+                log::info!(
+                    "🧠 Decision Intelligence: {} 个高优先级决策",
+                    high_priority.len()
+                );
+                for d in &high_priority {
+                    log::info!(
+                        "  - {:?}: {} ({})",
+                        d.decision_type,
+                        d.thesis_title,
+                        d.rationale
+                    );
+                }
+            }
+        }
+
         // MDX 输出（主要输出格式）
         if let Some(ref mdx_out) = config.output.mdx_dir {
             let mdx_ctx = crate::renderer::publisher::PublishContext {
@@ -585,6 +616,7 @@ pub async fn agent_publish(
                 mdx_output_dir: Some(PathBuf::from(mdx_out)),
                 output_dir: vault_base.clone(),
                 reflections: memory.all_reflections().to_vec(),
+                thesis_decisions: thesis_decisions.clone(),
             };
             if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
                 log::warn!("⚠️ MDX 输出失败: {}", e);

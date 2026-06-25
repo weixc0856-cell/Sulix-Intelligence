@@ -64,6 +64,8 @@ pub struct PublishContext {
     pub mdx_output_dir: Option<PathBuf>,
     /// Reflection 记录
     pub reflections: Vec<Reflection>,
+    /// Decision Intelligence: Thesis → Decision 映射
+    pub thesis_decisions: Vec<crate::engine::decision::ThesisDecision>,
 }
 
 /// 发布输出结果
@@ -231,8 +233,18 @@ impl Publisher for MdxPublisher {
         // 2. Thesis → output/thesis/
         let thesis_dir = mdx_dir.join("thesis");
         std::fs::create_dir_all(&thesis_dir)?;
+        // Build decision lookup: thesis_id → ThesisDecision
+        let decision_map: std::collections::HashMap<
+            &str,
+            &crate::engine::decision::ThesisDecision,
+        > = ctx
+            .thesis_decisions
+            .iter()
+            .map(|d| (d.thesis_id.as_str(), d))
+            .collect();
         for thesis in &ctx.theses {
-            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &[]);
+            let decision = decision_map.get(thesis.id.as_str()).copied();
+            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &[], decision);
             let slug = thesis
                 .title
                 .to_lowercase()

@@ -673,6 +673,20 @@ impl MemoryEngine {
             .sum();
         Some(score / total)
     }
+
+    // ===== Test helpers (only available in #[cfg(test)]) =====
+
+    /// 测试用：直接添加 Thesis（不经过 update_from_analysis）
+    #[cfg(test)]
+    pub(crate) fn test_add_thesis(&mut self, thesis: crate::domain::thesis::Thesis) {
+        self.theses.push(thesis);
+    }
+
+    /// 测试用：直接添加 Outcome（不经过管线）
+    #[cfg(test)]
+    pub(crate) fn test_add_outcome(&mut self, outcome: Outcome) {
+        self.outcomes.push(outcome);
+    }
 }
 
 /// JSON 持久化包装
