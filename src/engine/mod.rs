@@ -8,4 +8,5 @@ pub mod belief;
 pub mod decision;
 pub mod investigation;
 pub mod memory;
+pub mod pipeline_health;
 pub mod premium;

@@ -13,26 +13,45 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
+    let start = std::time::Instant::now();
     log::info!("🚀 Sulix Intelligence — 启动");
 
     // Agent 0: 初始化
     let (config, api_key, db, catalog, data_dir, today, mut entity_db) = init().await?;
 
+    let mut report = sulix_intel::engine::pipeline_health::PipelineReport::new(&today);
+
     // Signal Agent: 抓取 → 去重 → 丰富 → 实体提取
-    let Some((new_articles, source_statuses, entity_db_fetched)) =
-        agent_signal(&config, &api_key, &db, &catalog, &today, entity_db).await?
-    else {
+    let signal_result = agent_signal(&config, &api_key, &db, &catalog, &today, entity_db).await;
+    report.add_stage(
+        "agent_signal",
+        0,
+        0,
+        if signal_result.is_ok() {
+            StageStatus::Success
+        } else {
+            StageStatus::Failed
+        },
+    );
+
+    let Some((new_articles, source_statuses, entity_db_fetched)) = signal_result? else {
+        log::warn!("Pipeline: 0 new articles — done");
+        report.status = sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly;
+        report.add_stage("agent_research", 0, 0, StageStatus::Skipped);
+        report.add_stage("agent_publish", 0, 0, StageStatus::Skipped);
+        report.duration_seconds = start.elapsed().as_secs_f64();
+        let _ = report.save(&data_dir);
         return Ok(());
     };
     entity_db = entity_db_fetched;
 
-    // Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
-    let source_statuses_clone = source_statuses.clone();
+    // Research Agent: 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
     let research = agent_research(
         &config,
         &api_key,
@@ -41,9 +60,23 @@ async fn main() -> Result<()> {
         &data_dir,
         &today,
         new_articles,
-        source_statuses_clone,
+        source_statuses.clone(),
     )
     .await?;
+    let total_signals: usize = source_statuses.iter().map(|(_, _, c)| c).sum();
+    if research.themes.is_empty() {
+        report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
+    }
+    report.add_stage(
+        "agent_research",
+        total_signals,
+        research.themes.len(),
+        if research.themes.is_empty() {
+            StageStatus::Skipped
+        } else {
+            StageStatus::Success
+        },
+    );
 
     // Publishing Agent: Premium → 渲染 → Chronicle → 看板
     publishing::agent_publish(
@@ -58,8 +91,17 @@ async fn main() -> Result<()> {
         source_statuses,
     )
     .await?;
+    report.add_stage("agent_publish", 0, 0, StageStatus::Success);
 
-    log::info!("✅ Sulix Intelligence 执行完成");
+    report.duration_seconds = start.elapsed().as_secs_f64();
+    if let Err(e) = report.save(&data_dir) {
+        log::warn!("Pipeline report save failed: {}", e);
+    }
+
+    log::info!(
+        "✅ Sulix Intelligence 执行完成 ({:.1}s)",
+        report.duration_seconds
+    );
     Ok(())
 }
 
