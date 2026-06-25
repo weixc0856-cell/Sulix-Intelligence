@@ -75,13 +75,21 @@ impl PipelineReport {
         });
     }
 
-    /// 保存到文件
+    /// 保存到 data/YYYY-MM-DD/pipeline_report.json
     pub fn save(&self, data_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let dir = data_dir.join(&self.date);
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("pipeline_report.json");
+        self.save_as_json(&path)
+    }
+
+    /// 保存到指定路径（用于 vault 同步到前端）
+    pub fn save_as_json(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, json)?;
+        std::fs::write(path, json)?;
         Ok(())
     }
 }

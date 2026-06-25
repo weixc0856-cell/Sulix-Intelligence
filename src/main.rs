@@ -97,6 +97,10 @@ async fn main() -> Result<()> {
     if let Err(e) = report.save(&data_dir) {
         log::warn!("Pipeline report save failed: {}", e);
     }
+    // Also save to vault_path for frontend sync
+    if let Err(e) = report.save_as_json(&PathBuf::from(&config.output.vault_path).join("pipeline_report.json")) {
+        log::warn!("Pipeline report vault save failed: {}", e);
+    }
 
     log::info!(
         "✅ Sulix Intelligence 执行完成 ({:.1}s)",
