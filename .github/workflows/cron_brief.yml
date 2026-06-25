@@ -2,61 +2,73 @@ name: Sulix Intel Daily
 
 on:
   schedule:
-    # UTC 00:15 = 北京 08:15（提前 15 分钟对冲 GitHub 排队延迟）
+    # UTC 00:15 = 北京 08:15
     - cron: '15 0 * * *'
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  generate-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Engine Repository
         uses: actions/checkout@v4
+        with:
+          path: engine
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
+        with:
+          working-directory: engine
 
-      - name: Create config from template
-        run: cp config.example.toml config.toml
+      - name: Configure
+        working-directory: engine
+        run: |
+          cp config.example.toml config.toml
+          mkdir -p data
 
-      - name: Create data directories
-        run: mkdir -p data
-
-      - name: Run Sulix Intel Pipeline
+      - name: Run Sulix Pipeline
+        working-directory: engine
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          VAULT_PATH: "./DailyBrief"
+          VAULT_PATH: "./output"
         run: |
           cargo build --release
           cargo run --release
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Checkout Frontend Repository
+        uses: actions/checkout@v4
         with:
-          node-version: 22
-          cache: 'npm'
-          cache-dependency-path: astro-frontend/package-lock.json
+          repository: weixc0856-cell/Intel-Web
+          token: ${{ secrets.INTEL_WEB_PAT }}
+          path: frontend
 
-      - name: Build Astro Frontend
+      - name: Copy MDX Content to Frontend
         run: |
-          cd astro-frontend
+          mkdir -p frontend/src/content/daily
+          mkdir -p frontend/src/content/thesis
+          mkdir -p frontend/src/content/research
+          cp -r engine/output/daily/* frontend/src/content/daily/ 2>/dev/null || true
+          cp -r engine/output/thesis/* frontend/src/content/thesis/ 2>/dev/null || true
+          cp -r engine/output/research/* frontend/src/content/research/ 2>/dev/null || true
+
+      - name: Deploy Frontend to Cloudflare Pages
+        working-directory: frontend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
           npm ci
           npm run build
+          npx wrangler pages deploy dist/ --project-name=sulix-intel-frontend
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy astro-frontend/dist/ --project-name=sulix-intelligence
-
-      - name: Commit and Push
+      - name: Commit MDX to Engine Repo
+        working-directory: engine
         run: |
           git config user.name "Sulix-Bot"
           git config user.email "bot@sulix.com"
-          git add content/posts/
+          git add output/
           git diff --quiet && git diff --staged --quiet || \
             (git commit -m "chore(data): daily brief $(date +%Y-%m-%d)" && git push)

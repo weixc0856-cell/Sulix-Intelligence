@@ -99,10 +99,11 @@ pub async fn agent_publish(
         question_matches,
     } = research;
 
-    // Premium 深度研报
+    // Premium 深度研报 + ASI 评分收集
     let vault_base = PathBuf::from(&config.output.vault_path);
     let premium_dir = vault_base.join("premium");
     fs::create_dir_all(&premium_dir)?;
+    let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
         let svi = crate::clusterer::calculate_svi(analysis, theme, &config.sources);
         let asi_config = crate::engine::analysis::asi::AsiConfig::default();
@@ -125,6 +126,7 @@ pub async fn agent_publish(
             &confidence_config,
         );
         let final_val = crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
+        asi_score_map.insert(theme.title.clone(), (asi_result.asi, confidence_result.confidence, final_val));
         if final_val >= 6.0 {
             log::info!("⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})", theme.title, svi, asi_result.asi, confidence_result.confidence, final_val);
         }
@@ -203,6 +205,7 @@ pub async fn agent_publish(
         editor_notes: vec![],
         belief_notes_html: String::new(),
         css_content: String::new(), articles: vec![], watchlist_count: 0,
+        mdx_output_dir: None,
         output_dir: PathBuf::from(&config.output.vault_path),
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
@@ -412,9 +415,36 @@ pub async fn agent_publish(
             log::warn!("⚠️ Memory Engine 保存失败: {}", e);
         }
 
-        // TODO: 生成 Thesis MDX 供 Astro 展示
-        if memory.theses().len() > 0 {
-            log::info!("📊 Thesis: {} 个活跃", memory.theses().len());
+        // MDX 输出（主要输出格式）
+        if let Some(ref mdx_out) = config.output.mdx_dir {
+            let mdx_ctx = crate::renderer::publisher::PublishContext {
+                themes: themes.clone(),
+                analyses: analyses.clone(),
+                analyses_zh: vec![],
+                date: today.to_string(),
+                language: "en".into(),
+                calibration: None,
+                attributable_sources: vec![],
+                flash_headline: None,
+                change_summary: None,
+                theses: memory.theses().to_vec(),
+                report: None,
+                archive_entries: vec![],
+                archive_entries_zh: vec![],
+                source_statuses: vec![],
+                decisions: vec![],
+                asi_scores: asi_score_map.clone(),
+                editor_notes: editor_notes.clone(),
+                belief_notes_html: String::new(),
+                css_content: String::new(),
+                articles: vec![],
+                watchlist_count: 0,
+                mdx_output_dir: Some(PathBuf::from(mdx_out)),
+                output_dir: vault_base.clone(),
+            };
+            if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
+                log::warn!("⚠️ MDX 输出失败: {}", e);
+            }
         }
     }
     // 将置信度变化通知追加到 belief_notes_html

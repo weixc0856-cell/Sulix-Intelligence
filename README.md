@@ -10,64 +10,50 @@
 
 > **Fully Automated AI Think Tank — Personal Strategy OS for solo entrepreneurs.**
 
-Sulix Intelligence is a three-layer product built on a single Rust pipeline:
+Sulix Intelligence is a **cognitive engine** that processes raw signals into structured knowledge assets:
 
 ```
-                 Source Layer (21+ data sources)
-                      │
-               Signal Layer (SVI + Compliance + Clustering)
-                      │
-          ┌───────────┼────────────┐
-          │           │            │
-    News Layer  Research Layer  Memory Layer
-    (free)      (paid reports)  (private)
+Raw Signals → Cognitive Engine → MDX Knowledge Assets → Astro Frontend (separate repo)
 ```
-
-- **News Layer** → Bloomberg Terminal-style dashboard. Daily signal aggregation. Free.
-- **Research Layer** → Multi-agent deep research reports. $99-$4999. Paid.
-- **Memory Layer** → Belief tracking, contradiction detection, decision history. Private.
 
 **Answer:** Not "what happened" — but "does this change my decision for the next 6 months."
 
 ## Architecture
 
 ```
-                               Rust Pipeline
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-               Track 1:        Track 2:         Track 3:
-                 HTML          Markdown +       BeliefDb JSON
-                 (Obsidian)    Frontmatter      (Memory Layer)
-                    │               │               │
-                    ▼               ▼               │
-              DailyBrief/    Astro Frontend          │
-              Local view     intel.getsulix.com      │
-                                    │               │
-                                    ▼               ▼
-                              CF Pages          /memory/
-                              (public)         Dashboard
+                              Sulix-Intelligence (Engine)
+                                      │
+                          Rust Pipeline (Cognitive Engine)
+                          LLM Analysis + SVI/ASI + MemoryEngine
+                                      │
+                                  MDX Output
+                          output/{daily,thesis,research,memory}/
+                                      │
+                          GitHub Action (copy + commit)
+                                      │
+                              Intel-Web (Frontend)
+                          Astro + Content Collections + Tailwind
+                          intel.getsulix.com
 ```
-
-### Tech Stack
-
-| Layer | Stack |
-|-------|-------|
-| Backend | Rust + feed-rs + scraper + reqwest + tokio + rusqlite |
-| LLM | DeepSeek / OpenAI API (BYOK) |
-| Frontend | Astro + TypeScript + JetBrains Mono + Inter |
-| Cache | LayeredCache (memory HashMap + TTL) + CircuitBreaker |
-| Auth | Substack (Newsletter) + Stripe/LemonSqueezy (Research) |
-| Deploy | Cloudflare Pages + GitHub Actions |
-| Cost | ~$0/mo infrastructure + LLM API (~$3/mo) |
 
 ### Three Products
 
 | Product | Purpose | Format | Price |
 |---------|---------|--------|-------|
-| **News Layer** | User acquisition | Terminal Dashboard · Daily email | $0 |
-| **Research Layer** | Revenue | Multi-agent reports · PDF | $99-$4999 |
-| **Memory Layer** | Moat | Belief tracking · Decision history | Private |
+| **News Layer** | User acquisition | Daily MDX signals | $0 |
+| **Research Layer** | Revenue | Multi-agent reports · MDX | $99-$4999 |
+| **Memory Layer** | Moat | Thesis tracking · MDX | Private |
+
+### Tech Stack
+
+| Layer | Stack |
+|-------|-------|
+| Engine | Rust + feed-rs + scraper + reqwest + tokio + rusqlite |
+| LLM | DeepSeek / OpenAI API (BYOK) |
+| Knowledge Format | MDX (YAML frontmatter + Markdown) |
+| Frontend | Astro + TypeScript + Tailwind (in [Intel-Web](https://github.com/weixc0856-cell/Intel-Web)) |
+| Deploy | Cloudflare Pages + GitHub Actions |
+| Cost | ~$0/mo infrastructure + LLM API (~$3/mo) |
 
 ## Quick Start
 
@@ -79,22 +65,23 @@ cargo build --release
 
 # 2. Configure
 cp config.example.toml config.toml
-# Set your DeepSeek API key and data sources
+# Set your DeepSeek API key in [llm] section
+# Set mdx_dir = "output" in [output] section
 
 # 3. Run
 cargo run --release
 
 # Output:
-#   DailyBrief/en/YYYY-MM/index.html  → News Layer (local view)
-#   content/posts/                    → Astro Markdown
-#   data/belief_db.json              → Memory Layer
+#   output/daily/YYYY-MM-DD-slug.mdx    → Daily signals
+#   output/thesis/YYYY-MM-DD-slug.mdx   → Thesis tracking
+#   output/research/YYYY-MM-DD-slug.mdx → Premium reports
+#   data/belief_db.json                 → Memory Layer
 
-# 4. Build frontend
-cd astro-frontend
-npm install && npm run build
-
-# 5. Start frontend dev server
-npm run dev        # → http://localhost:4321
+# 4. Preview with frontend
+git clone https://github.com/weixc0856-cell/Intel-Web.git
+cd Intel-Web
+cp -r ../Sulix-Intelligence/output/* src/content/
+npm install && npm run dev  # → http://localhost:4321
 ```
 
 ## Pipeline
@@ -106,125 +93,147 @@ Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log)
   ↓
 Wikipedia Enrichment + Full-Text Extraction
   ↓
-EntitySanctionDb Extraction (entity → dedup → persist)
+EntitySanctionDb Extraction
   ↓
 Scan Agent v1.1 (4-class tags, 3-tier triage: Insight/Watchlist/Memory)
   ↓
-LLM Pre-dedup (semantic dedup before clustering)
+LLM Pre-dedup → Theme Clustering (≤5 themes)
   ↓
-Theme Clustering (≤5 themes, ≥2 articles each)
+Theme Analysis (BLUF / Impact / Geopolitical / Supply Chain / Causal Chains)
   ↓
-Founder Analysis (What happened / Why it matters / What changed / What to do / What to watch)
+ASI + Confidence Scoring
   ↓
-Causal Chain Extraction (A → B → C → D)
-  ↓
-Blue Team Verification (load-bearing assumptions, SVI downgrade)
+Blue Team Verification (load-bearing assumption challenge)
   ↓
 DiGraph Cognitive Engine (QE → Belief Engine → Decision Engine)
   ↓
-BeliefDb Snapshot (support/challenge/contradiction accumulation)
+Editor Agent (personal impact analysis)
   ↓
-Change Detection (rule or LLM: conflict/reinforce/irrelevant)
+Change Detection + Trend Layer
   ↓
-Trend Layer (14-day category trend: daily_category_stats SQLite table)
+MemoryEngine (Thesis + Evidence + Outcome + Reflection)
   ↓
-Dual-Track Emission: HTML (EN/ZH) + Markdown (Astro)
+MDX Output: daily/  thesis/  research/  memory/
 ```
+
+## MDX Knowledge Format
+
+Sulix generates MDX files with YAML frontmatter. Example `output/daily/2026-06-24-ai-agent.mdx`:
+
+```mdx
+---
+title: AI Agent Infrastructure Consolidation
+date: 2026-06-24
+svi: 8.7
+asi: 7.5
+confidence: 0.81
+type: daily
+sources: [Federal Register, SEC]
+entities: [TSMC, NVIDIA]
+---
+
+## BLUF
+
+One-sentence bottom line.
+
+## Analysis
+
+Detailed analysis with impact, geopolitical, supply chain.
+
+## Evidence
+
+| Evidence | Interpretation | Confidence |
+|----------|---------------|------------|
+
+## Assumptions
+
+- 🔴 Assumption text (evidence strength: weak)
+
+## Personal Impact
+
+- 👀 Q1: Strengthens your "build apps" thesis (+2) [Explore]
+```
+
+This format is:
+- **Git-friendly** — diff, review, history
+- **Astro-native** — `getCollection("daily")` directly
+- **Human-readable** — edit in any text editor
 
 ## Features
 
-| Feature | Layer | Status |
-|---------|-------|--------|
-| 29 data sources with Source Scoring (score 1-10 per source) | 0 | ✅ |
-| Compliance filter (A-stock codes + stock promotion) | 1 | ✅ |
-| SVI Strategic Volatility Index (source_score × recency × signal_strength) | 1 | ✅ |
-| Source Scoring (SourceConfig.score + recency factor in SVI) | 1 | ✅ |
-| LLM pre-dedup (semantic dedup before clustering) | 1 | ✅ |
-| Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log) | 1 | ✅ |
-| EntitySanctionDb extraction (14 entities: ARM, NVIDIA, OpenAI, etc.) | 1 | ✅ |
-| Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log) | 1 | ✅ |
-| Founder Analysis (What happened / Why it matters / What changed / What to do / What to watch) | 1 | ✅ |
-| Causal Chain (A → B → C → D extraction) | 1 | ✅ |
-| Blue Team verification (load-bearing assumption challenge, SVI downgrade) | 2 | ✅ |
-| DiGraph cognitive engine (QE → Belief Engine → Decision Engine) | 2 | ✅ |
-| Change Detection (rule + LLM: conflict/reinforce/irrelevant) | News | ✅ |
-| Trend Layer (14-day category trend in HTML) | News | ✅ |
-| Source Health monitor (per-source success/failure tracking) | News | ✅ |
-| Astro frontend (Sulix Daily layout: Top 3 + Next + Folded) | News | ✅ |
-| Research report system (priced tiers: free/premium/enterprise, Stripe-ready) | Research | ✅ |
-| Memory Dashboard (BeliefDb: support/challenge/contradiction tracking) | Memory | ✅ |
-| LLM Audit (AtomicU64 counters: calls, input tokens, output tokens) | Infra | ✅ |
-| Versioned pipeline (uuid_v7 + atomic write + resume) | Infra | ✅ |
-| LayeredCache + CircuitBreaker + RetryConfig | Infra | ✅ |
-| Substack API integration (Markdown → Draft API) | Biz | ✅ |
-| Bilingual EN/ZH (language-specific routing) | All | ✅ |
-| Serde deny_unknown_fields (strict config validation) | Sec | ✅ |
-| html_escape (37 usages across all render functions) | Sec | ✅ |
+| Feature | Status |
+|---------|--------|
+| 29 data sources with Source Scoring | ✅ |
+| SVI Strategic Volatility Index | ✅ |
+| ASI + Confidence scoring | ✅ |
+| Scan Agent 3-tier triage | ✅ |
+| Editor Agent (Personal Impact) | ✅ |
+| Blue Team verification | ✅ |
+| DiGraph Cognitive Engine | ✅ |
+| MemoryEngine (Thesis + Outcome + Reflection) | ✅ |
+| Belief Engine Phase B (WayneOPC) | ✅ |
+| Meta Layer (auto outcome detection) | ✅ |
+| MDX knowledge output | ✅ |
+| Twitter/X tweet pipeline | ✅ |
+| Reddit data source | ✅ |
+| Change Detection (rule + LLM) | ✅ |
+| Event Log (append-only audit trail) | ✅ |
+| Chronicle (history database) | ✅ |
+| Bilingual EN/ZH | ✅ |
+| LLM Audit counters | ✅ |
+| Substack API integration | ✅ |
 
-### Code Structure (54 files, 8 directories)
+### Code Structure (59+ files)
 
 ```
 src/
-├── domain/        — Core domain models (Theme → Thesis → Evidence)
-├── engine/        — Domain engines (analysis / memory / premium)
+├── domain/        — 7 domain models (Theme/Thesis/Evidence/Observation/Action/Outcome/Reflection)
+├── engine/        — Domain engines (analysis/memory/premium/belief)
 ├── hermes/        — Change detection + trends + conflicts
-├── renderer/      — Multi-format output (HTML / Markdown / Dashboard)
-├── clusterer/     — Theme clustering + synthesis + pre-dedup
-├── agent/         — Scan Agent + Calibration + Decay
-├── source/        — Source adapters (RSS / USPTO)
-├── event_log.rs   — PipelineEvent append-only log
-├── app_context.rs — Unified Arc-passing context
-└── main.rs        — Pipeline orchestration
+├── renderer/      — MDX output + HTML (debug) + Markdown
+├── clusterer/     — Theme clustering + synthesis
+├── agent/         — Scan Agent + Editor Agent + Calibration + Decay
+├── source/        — Source adapters (RSS/USPTO/Reddit)
+├── twitter.rs     — X/Twitter auto-tweet pipeline
+├── publishing.rs  — Publishing agent orchestration
+├── event_log.rs   — PipelineEvent audit log
+└── main.rs        — Pipeline orchestration (629 lines)
 ```
 
 ## Configuration
 
-`config.toml` key sections:
-
 | Section | Purpose |
 |---------|---------|
 | `[llm]` | API key, model, endpoint |
-| `[[sources]]` | RSS feeds with name, URL, category, layer, score (1-10), public |
-| `[prompts]` | Base + domain-specific system prompts |
-| `[prompts.vertical_overrides]` | Domain-specific analytical frameworks |
-| `[news_layer]` | LLM pre-dedup, Change Detection, RSSHub base URL |
-| `[questions]` | Active decision questions for Question Engine |
-| `[graveyard]` | Decay Agent settings (retention, compression) |
-
-### Source Layers
-
-| Layer | Name | Frontend Display |
-|-------|------|-----------------|
-| 1 | Internal intelligence (FT, Economist, Stratechery) | ❌ Hidden (LLM only) |
-| 2 | Official sources (Federal Register, SEC, arXiv) | ✅ Full attribution links |
-| 3 | Community (HN, GitHub) | ✅ Attribution links |
-| 4 | Market (A-stock) | ✅ Attribution links |
+| `[[sources]]` | Data sources with name, URL, category, layer, score |
+| `[prompts]` | System prompts for each analysis stage |
+| `[output]` | Output paths, including `mdx_dir` |
+| `[questions]` | Active decision questions |
+| `[beliefs]` | WayneOPC core beliefs (B1-B10) |
+| `[twitter]` | X/Twitter API config |
+| `[graveyard]` | Decay Agent settings |
 
 ## Deployment
 
-### Self-host RSSHub (optional, for Chinese sources)
+### Pipeline (cron)
 
 ```bash
-docker run -d --name rsshub -p 1200:1200 diygod/rsshub
-export RSSHUB_BASE_URL=http://localhost:1200
+# Daily (Linux/macOS)
+0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release
+
+# Daily (Windows)
+cargo run --release
 ```
 
 ### Frontend
 
-```bash
-cd astro-frontend
-npm run build
-# Output: dist/ → deploy to Cloudflare Pages
-```
-
-### Pipeline
+Frontend is a separate repo: [Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
 
 ```bash
-# Daily cron (Linux/macOS)
-0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release >> data/pipeline.log 2>&1
-
-# Daily cron (Windows Task Scheduler)
-cargo run --release
+git clone https://github.com/weixc0856-cell/Intel-Web.git
+cd Intel-Web
+cp -r ../Sulix-Intelligence/output/* src/content/
+npm install && npm run build
 ```
 
 ## License

@@ -8,6 +8,7 @@
 //! 抄 Reference/ 中 BCG/Deloitte/GS/McKinsey 报告结构
 //! 当前活跃路径：render_html_report → render_trend_block → render_signal_markdown
 
+pub mod mdx;
 pub mod helpers;
 pub mod seo;
 pub mod html;

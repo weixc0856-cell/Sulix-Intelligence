@@ -72,6 +72,9 @@ pub struct OutputConfig {
     /// 日期范围过滤: "d1"/"d3"/"w1"/"w2"/"m1"（默认 "d7" = 7天）
     #[serde(default = "default_date_range")]
     pub date_range: String,
+    /// MDX 输出目录（如 "output/"），None = 不生成 MDX
+    #[serde(default)]
+    pub mdx_dir: Option<String>,
 }
 
 fn default_date_range() -> String {

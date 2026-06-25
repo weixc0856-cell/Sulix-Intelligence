@@ -18,6 +18,10 @@
 //!   - EmailPublisher:    邮件摘要
 //!   - ApiPublisher:      JSON API 输出
 //!   - RssPublisher:      RSS Feed 输出
+//!
+//! 架构转变 (2026-06-24):
+//!   MDX 已成为主要输出格式。Rust 不再生成 HTML 页面，
+//!   HTML/Dashboard Publisher 保留用于本地开发调试。
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -62,6 +66,8 @@ pub struct PublishContext {
     /// 观察列表数量
     pub watchlist_count: usize,
     pub output_dir: PathBuf,
+    /// MDX 输出目录（如 output/），None = 不输出 MDX
+    pub mdx_output_dir: Option<PathBuf>,
 }
 
 /// 发布输出结果
@@ -316,6 +322,83 @@ impl Publisher for SeoPublisher {
                 label: format!("seo:{}", title),
             });
         }
+
+        Ok(outputs)
+    }
+}
+
+// ===== MdxPublisher =====
+
+pub struct MdxPublisher;
+
+impl MdxPublisher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Publisher for MdxPublisher {
+    fn name(&self) -> &str {
+        "MdxPublisher"
+    }
+
+    fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
+        let mdx_dir = match &ctx.mdx_output_dir {
+            Some(d) => d.clone(),
+            None => return Ok(vec![]),
+        };
+
+        let mut outputs = Vec::new();
+
+        // 1. Daily signals → output/daily/
+        let daily_dir = mdx_dir.join("daily");
+        std::fs::create_dir_all(&daily_dir)?;
+
+        for (theme, analysis) in ctx.themes.iter().zip(ctx.analyses.iter()) {
+            let asi = ctx.asi_scores.get(&theme.title).map(|s| s.0).unwrap_or(0.0);
+            let conf = ctx.asi_scores.get(&theme.title).map(|s| s.1).unwrap_or(0.0);
+            let mdx = crate::renderer::mdx::render_daily_mdx(
+                theme, analysis, asi, conf, &ctx.editor_notes,
+            );
+            let slug = theme.title.to_lowercase()
+                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                .replace(' ', "-");
+            let path = daily_dir.join(format!("{}-{}.mdx", ctx.date, slug));
+            std::fs::write(&path, &mdx)?;
+            outputs.push(PublishedOutput::File { path, content: mdx });
+        }
+
+        // 2. Thesis → output/thesis/
+        let thesis_dir = mdx_dir.join("thesis");
+        std::fs::create_dir_all(&thesis_dir)?;
+        for thesis in &ctx.theses {
+            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &[]);
+            let slug = thesis.title.to_lowercase()
+                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                .replace(' ', "-");
+            let path = thesis_dir.join(format!("{}-{}.mdx", thesis.updated, slug));
+            std::fs::write(&path, &mdx)?;
+            outputs.push(PublishedOutput::File { path, content: mdx });
+        }
+
+        // 3. Premium research → output/research/
+        if let Some(ref report) = ctx.report {
+            let research_dir = mdx_dir.join("research");
+            std::fs::create_dir_all(&research_dir)?;
+            let mdx = crate::renderer::mdx::render_research_mdx(report);
+            let slug = report.theme_title.to_lowercase()
+                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                .replace(' ', "-");
+            let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
+            std::fs::write(&path, &mdx)?;
+            outputs.push(PublishedOutput::File { path, content: mdx });
+        }
+
+        log::info!("📝 MDX 输出: {} daily, {} thesis{}",
+            ctx.themes.len(),
+            ctx.theses.len(),
+            if ctx.report.is_some() { ", 1 research" } else { "" },
+        );
 
         Ok(outputs)
     }
