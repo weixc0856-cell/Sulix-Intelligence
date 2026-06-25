@@ -33,6 +33,7 @@ fn yaml_escape(s: &str) -> String {
 pub fn render_daily_mdx(
     theme: &Theme,
     analysis: &ThemeAnalysis,
+    today: &str,
     asi: f64,
     confidence: f64,
     editor_notes: &[crate::agent::editor::EditorNote],
@@ -69,7 +70,7 @@ pub fn render_daily_mdx(
     // YAML frontmatter
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&theme.title)));
-    mdx.push_str(&format!("date: {}\n", analysis.theme_id)); // use date if available
+    mdx.push_str(&format!("date: \"{}\"\n", today));
     mdx.push_str(&format!("svi: {}\n", analysis.signal_strength));
     mdx.push_str(&format!("asi: {:.2}\n", asi));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
@@ -178,7 +179,7 @@ pub fn render_thesis_mdx(thesis: &Thesis, outcomes: &[Outcome]) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&thesis.title)));
-    mdx.push_str(&format!("date: {}\n", thesis.updated));
+    mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
     mdx.push_str("type: thesis\n");
     mdx.push_str(&format!("thesis_status: {:?}\n", thesis.status));
     mdx.push_str(&format!("evidence_count: {}\n", thesis.evidences.len()));
@@ -245,9 +246,10 @@ pub fn render_research_mdx(report: &PremiumReport) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&report.theme_title)));
-    mdx.push_str(&format!("date: {}\n", report.date));
+    mdx.push_str(&format!("date: \"{}\"\n", report.date));
+
     mdx.push_str("type: research\n");
-    mdx.push_str(&format!("sources:\n"));
+    mdx.push_str("sources:\n");
     for s in &report.sources {
         mdx.push_str(&format!("  - {}\n", yaml_escape(s)));
     }
@@ -289,7 +291,7 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: \"Reflection: {}\"\n", yaml_escape(thesis_title)));
-    mdx.push_str(&format!("date: {}\n", reflection.created_at));
+    mdx.push_str(&format!("date: \"{}\"\n", reflection.created_at));
     mdx.push_str("type: memory\n");
     mdx.push_str(&format!("thesis: {}\n", yaml_escape(thesis_title)));
     mdx.push_str("---\n\n");

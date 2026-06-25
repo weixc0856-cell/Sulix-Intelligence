@@ -358,7 +358,7 @@ impl Publisher for MdxPublisher {
             let asi = ctx.asi_scores.get(&theme.title).map(|s| s.0).unwrap_or(0.0);
             let conf = ctx.asi_scores.get(&theme.title).map(|s| s.1).unwrap_or(0.0);
             let mdx = crate::renderer::mdx::render_daily_mdx(
-                theme, analysis, asi, conf, &ctx.editor_notes,
+                theme, analysis, &ctx.date, asi, conf, &ctx.editor_notes,
             );
             let slug = theme.title.to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
