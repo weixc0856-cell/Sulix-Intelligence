@@ -287,11 +287,7 @@ impl Publisher for MdxPublisher {
             std::fs::create_dir_all(&research_dir)?;
             for report in &ctx.reports {
                 let mdx = crate::renderer::mdx::render_research_mdx(report);
-                let slug = report
-                    .theme_title
-                    .to_lowercase()
-                    .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                    .replace(' ', "-");
+                let slug = ascii_slug(&report.theme_title);
                 let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
                 std::fs::write(&path, &mdx)?;
                 outputs.push(PublishedOutput::File { path, content: mdx });

@@ -9,11 +9,14 @@ on:
 jobs:
   generate-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Engine Repository
         uses: actions/checkout@v4
         with:
           path: engine
+          token: ${{ secrets.INTEL_WEB_PAT }}
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
