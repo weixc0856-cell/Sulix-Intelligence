@@ -198,7 +198,7 @@ impl MdxPublisher {
 
 /// ASCII-safe slug: drop non-ASCII, lowercase, spaces → hyphens, collapse hyphens.
 fn ascii_slug(title: &str) -> String {
-    let s = title
+    title
         .chars()
         .filter(|c| c.is_ascii())
         .collect::<String>()
@@ -206,12 +206,14 @@ fn ascii_slug(title: &str) -> String {
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
         .split_whitespace()
         .collect::<Vec<_>>()
-        .join("-");
-    if s.is_empty() {
-        "untitled".to_string()
-    } else {
-        s
-    }
+        .join("-")
+}
+
+/// Stable short ID from thesis.id (e.g. "thesis-1750000001" → "75000000").
+/// Used as fallback when ascii_slug returns empty (pure non-ASCII titles).
+fn short_id_from_thesis(thesis_id: &str) -> String {
+    let digits = thesis_id.trim_start_matches("thesis-");
+    digits.get(digits.len().saturating_sub(8)..).unwrap_or(digits).to_string()
 }
 
 impl Publisher for MdxPublisher {
@@ -275,7 +277,12 @@ impl Publisher for MdxPublisher {
                 .map(|v| v.iter().map(|o| (*o).clone()).collect())
                 .unwrap_or_default();
             let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
-            let slug = ascii_slug(&thesis.title);
+            let slug_base = ascii_slug(&thesis.title);
+            let slug = if slug_base.is_empty() {
+                short_id_from_thesis(&thesis.id)
+            } else {
+                slug_base
+            };
             let path = thesis_dir.join(format!("{}-{}.md", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });

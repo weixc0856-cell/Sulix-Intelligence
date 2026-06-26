@@ -295,17 +295,17 @@ impl MemoryEngine {
                 return true;
             }
 
-            // 如果单词数很少（1-2 个）且单词偏长（>5 字节，中文特征），
-            // 使用字符级 Jaccard 相似度作为后备
+            // 如果含有多字节词（中文特征），使用字符级 Jaccard 相似度作为后备。
+            // 阈值 0.3（比英文宽松），因为中文同一 topic 在 LLM 输出里变异度高。
             let is_likely_cjk =
                 words.iter().any(|w| w.len() > 5) || target_words.iter().any(|w| w.len() > 5);
-            if is_likely_cjk && words.len() <= 2 && target_words.len() <= 2 {
+            if is_likely_cjk {
                 // 字符级 Jaccard：计算 query 和 target 的字符交集/并集
                 let query_chars: std::collections::HashSet<char> = query.chars().collect();
                 let target_chars: std::collections::HashSet<char> = target.chars().collect();
                 let intersection = query_chars.intersection(&target_chars).count();
                 let union = query_chars.union(&target_chars).count();
-                if union > 0 && intersection as f64 / union as f64 >= 0.4 {
+                if union > 0 && intersection as f64 / union as f64 >= 0.3 {
                     return true;
                 }
             }

@@ -264,6 +264,7 @@ pub fn render_thesis_mdx(
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&thesis.title)));
     mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
+    mdx.push_str(&format!("created: \"{}\"\n", thesis.created));
     mdx.push_str(&format!("summary: {}\n", yaml_escape(summary)));
     mdx.push_str(&format!("status: \"{}\"\n", status_str));
     mdx.push_str(&format!("status_label: \"{}\"\n", status_label));
