@@ -63,6 +63,7 @@ jobs:
           mkdir -p frontend/src/content/investigation
           cp -r engine/output/investigation/* frontend/src/content/investigation/ 2>/dev/null || true
           cp engine/output/pipeline_report.json frontend/public/pipeline_report.json 2>/dev/null || true
+          cp engine/output/manifest.json frontend/public/manifest.json 2>/dev/null || true
 
       - name: Build Frontend
         working-directory: frontend

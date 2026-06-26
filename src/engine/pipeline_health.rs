@@ -69,6 +69,52 @@ pub enum PipelineStatus {
     StoppedEarly,
 }
 
+/// Content Manifest — 全站内容状态的权威数据源
+///
+/// 写入 output/manifest.json，作为 pipeline_report.json 的补充。
+/// 前端所有统计（首页、Status 页、ContextPanel）应从此读取，
+/// 而非遍历 content 目录（content 目录长期积累后会很大）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentManifest {
+    /// 递增版本号（每次 CI 运行 +1）
+    pub version: u32,
+    /// 生成时间（ISO 8601）
+    pub generated_at: String,
+    /// 当日日期（YYYY-MM-DD）
+    pub date: String,
+    /// 今日新增信号数
+    pub daily_today: usize,
+    /// 当前 active assessments 数
+    pub assessments_active: usize,
+    /// 当前 investigations 数
+    pub investigations: usize,
+    /// 有 decision 的 assessments 数
+    pub decisions: usize,
+    /// 历史天数（daily 目录中的唯一日期数）
+    pub archive_days: usize,
+    /// 全部 daily 文件数（历史累计）
+    pub total_signals: usize,
+    /// 全部 thesis 文件数（历史累计）
+    pub total_assessments: usize,
+    /// 管线健康状态
+    pub pipeline_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pipeline_observation_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pipeline_signal_count: Option<usize>,
+}
+
+impl ContentManifest {
+    pub fn save_as_json(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+}
+
 impl PipelineReport {
     /// 创建新报告
     pub fn new(date: &str) -> Self {

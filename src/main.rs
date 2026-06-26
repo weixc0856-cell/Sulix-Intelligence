@@ -150,9 +150,66 @@ async fn main() -> Result<()> {
             if count > 0 { report.investigation_count = Some(count); }
         }
 
-        // decision_count: 从 thesis MDX 中 grep "^decision:" 行数（简化近似）
-        // 直接用 assessment_count 的 ~70% 作为估算，或后续精确统计
-        // 当前先不设（由 assessment_count 传达信息已足够）
+        // 生成 Content Manifest（全站内容权威数据源）
+        // output/manifest.json → CI 复制到 frontend/public/manifest.json
+        let count_md = |dir: &std::path::Path| -> usize {
+            std::fs::read_dir(dir)
+                .map(|d| d.filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                    .count())
+                .unwrap_or(0)
+        };
+        let count_unique_dates = |dir: &std::path::Path| -> usize {
+            let dates: std::collections::HashSet<String> = std::fs::read_dir(dir)
+                .map(|d| d.filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        e.file_name().to_str()
+                            .and_then(|n| n.get(..10))
+                            .filter(|s| s.chars().nth(4) == Some('-'))
+                            .map(|s| s.to_string())
+                    })
+                    .collect())
+                .unwrap_or_default();
+            dates.len()
+        };
+
+        let total_signals = count_md(&mdx_path.join("daily"));
+        let total_assessments = count_md(&mdx_path.join("thesis"));
+        let investigations = count_md(&mdx_path.join("investigation"));
+        let archive_days = count_unique_dates(&mdx_path.join("daily"));
+
+        let manifest_path = mdx_path.join("manifest.json");
+        let prev_version = std::fs::read_to_string(&manifest_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v["version"].as_u64())
+            .unwrap_or(0) as u32;
+
+        let manifest = sulix_intel::engine::pipeline_health::ContentManifest {
+            version: prev_version + 1,
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            date: today.to_string(),
+            daily_today: new_article_count,
+            assessments_active: total_assessments,
+            investigations,
+            decisions: 0, // populated in future when decision tracking is more precise
+            archive_days,
+            total_signals,
+            total_assessments,
+            pipeline_status: match &report.status {
+                sulix_intel::engine::pipeline_health::PipelineStatus::Success => "healthy".to_string(),
+                sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput => "no_output".to_string(),
+                _ => "failed".to_string(),
+            },
+            pipeline_observation_count: report.observation_count,
+            pipeline_signal_count: report.signal_count,
+        };
+        if let Err(e) = manifest.save_as_json(&manifest_path) {
+            log::warn!("⚠️ Content manifest save failed: {}", e);
+        } else {
+            log::info!("📋 Content manifest v{}: {} signals ({} days), {} assessments, {} investigations",
+                manifest.version, total_signals, archive_days, total_assessments, investigations);
+        }
     }
 
     report.duration_seconds = start.elapsed().as_secs_f64();
