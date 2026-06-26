@@ -9,18 +9,15 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
 use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
-/// 蓝军验证降级幅度：承重假设证据弱时 signal_strength 减少的值
-const WEAK_BEARING_PENALTY: u8 = 2;
-
 /// 信号源抓取状态（替代 (String, bool, usize) 元组）
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct SourceStatus {
     name: String,
     fetch_success: bool,
@@ -74,11 +71,6 @@ async fn main() -> Result<()> {
         }
         m
     };
-    // 预先计算元组列表，避免后面两处重复转换
-    let statuses_as_tuples: Vec<(String, bool, usize)> = source_statuses
-        .iter()
-        .map(|s| (s.name.clone(), s.fetch_success, s.signal_count))
-        .collect();
     let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
 
     let research = agent_research(
@@ -89,7 +81,6 @@ async fn main() -> Result<()> {
         &data_dir,
         &today,
         new_articles,
-        statuses_as_tuples.clone(),
     )
     .await?;
     // 填充报告聚合字段（前端消费稳定接口）
@@ -123,7 +114,6 @@ async fn main() -> Result<()> {
         &today,
         &mut entity_db,
         research,
-        statuses_as_tuples,
     )
     .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
@@ -186,6 +176,7 @@ async fn main() -> Result<()> {
             .unwrap_or(0) as u32;
 
         let manifest = sulix_intel::engine::pipeline_health::ContentManifest {
+            contract_version: 1,
             version: prev_version + 1,
             generated_at: chrono::Utc::now().to_rfc3339(),
             date: today.to_string(),
@@ -203,12 +194,28 @@ async fn main() -> Result<()> {
             },
             pipeline_observation_count: report.observation_count,
             pipeline_signal_count: report.signal_count,
+            output_counts: None,
+            frontend_content_dir: config.output.frontend_content_dir.clone(),
         };
         if let Err(e) = manifest.save_as_json(&manifest_path) {
             log::warn!("⚠️ Content manifest save failed: {}", e);
         } else {
             log::info!("📋 Content manifest v{}: {} signals ({} days), {} assessments, {} investigations",
                 manifest.version, total_signals, archive_days, total_assessments, investigations);
+        }
+
+        // Sync manifest.json to frontend public/ directory if content_dir configured
+        if let Some(ref fe_dir) = config.output.frontend_content_dir {
+            let fe_root = std::path::Path::new(fe_dir);
+            let public_dir = fe_root.parent()
+                .map(|p| p.join("public"))
+                .unwrap_or_else(|| std::path::PathBuf::from("public"));
+            let fe_manifest_path = public_dir.join("manifest.json");
+            if let Err(e) = manifest.save_as_json(&fe_manifest_path) {
+                log::warn!("⚠️ Frontend manifest sync failed: {}", e);
+            } else {
+                log::info!("📋 Manifest synced to frontend: {}", fe_manifest_path.display());
+            }
         }
     }
 
@@ -220,6 +227,9 @@ async fn main() -> Result<()> {
     if let Err(e) = report.save_as_json(&PathBuf::from(&config.output.vault_path).join("pipeline_report.json")) {
         log::warn!("Pipeline report vault save failed: {}", e);
     }
+
+    // Phase 0: Validate output contract — ensure frontend has everything it needs
+    validate_output_contract(&config, &report).await;
 
     log::info!(
         "✅ Sulix Intelligence 执行完成 ({:.1}s)",
@@ -279,40 +289,18 @@ async fn init() -> Result<(
 
     // 加载 EntitySanctionDb
     let entity_db_path = data_dir.join("entity_db.json");
-    let entity_db = if entity_db_path.exists() {
-        match entity::EntitySanctionDb::load_from_file(&entity_db_path.to_string_lossy()) {
-            Ok(db) => {
-                log::info!("🗃️ EntitySanctionDb 已加载: {} 个实体", db.sanctioned.len());
-                db
-            }
-            Err(e) => {
-                let backup = format!(
-                    "{}.corrupt.{}",
-                    entity_db_path.to_string_lossy(),
-                    chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                );
-                log::warn!(
-                    "⚠️ EntitySanctionDb 加载失败 ({}), 备份到 {} 后重建",
-                    e,
-                    backup
-                );
-                let _ = std::fs::rename(&entity_db_path, &backup);
-                entity::EntitySanctionDb::new()
-            }
-        }
-    } else {
-        log::info!("🗃️ EntitySanctionDb 新实例");
-        entity::EntitySanctionDb::new()
-    };
-
-    // 写入设计令牌 CSS
-    let vault_base = PathBuf::from(&config.output.vault_path);
-    fs::create_dir_all(&vault_base)?;
-    fs::write(
-        vault_base.join("design.css"),
-        sulix_intel::design::generate_full_css(),
-    )?;
-    log::info!("🎨 design.css 已生成");
+    let entity_db = storage::with_corrupt_recovery(
+        &entity_db_path,
+        |p| {
+            let db = entity::EntitySanctionDb::load_from_file(&p.to_string_lossy())?;
+            log::info!("🗃️ EntitySanctionDb 已加载: {} 个实体", db.sanctioned.len());
+            Ok(db)
+        },
+        || {
+            log::info!("🗃️ EntitySanctionDb 新实例");
+            entity::EntitySanctionDb::new()
+        },
+    );
 
     Ok((config, api_key, db, catalog, data_dir, today, entity_db))
 }
@@ -494,12 +482,14 @@ use publishing::ResearchOutput;
 
 // ===== Pipeline Step: 主题分析 + 蓝军验证 =====
 
-/// 对单个主题执行分析（英文或中文）并进行蓝军验证。
+/// 对单个主题执行分析（英文或中文）。
 ///
 /// Pipeline Step 封装：让"主题分析"成为可测试、可替换的独立步骤。
 /// - analyze_theme 失败 → 跳过（返回 None），避免整个管线崩溃
 /// - challenge_theme 失败 → 继续（使用无蓝军分析）
-/// - 承重假设证据弱 → 降低 signal_strength（`WEAK_BEARING_PENALTY`）
+/// 
+/// 注意：蓝军降级（signal_strength 扣减）已移至 BlueTeamNode 执行，
+/// 此处不再处理。这样保证了降级逻辑在 Graph 编排内原子化执行。
 async fn analyze_and_validate(
     theme: &clusterer::Theme,
     api_key: &str,
@@ -507,14 +497,14 @@ async fn analyze_and_validate(
     prompts: Option<&config::PromptsConfig>,
     language: &str,
 ) -> Option<clusterer::ThemeAnalysis> {
-    let mut analysis = match clusterer::analyze_theme(theme, api_key, llm_config, language, prompts).await {
+    let mut analysis = match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts).await {
         Ok(a) => a,
         Err(e) => {
             log::warn!("⚠️ 主题分析失败 [{}|{}]: {}", language, theme.title, e);
             return None;
         }
     };
-    match clusterer::challenge_theme(&analysis, api_key, llm_config, prompts).await {
+    match crate::engine::analysis::challenge_theme(&analysis, api_key, llm_config, prompts).await {
         Ok((assumptions, adverse, next_tests, open_questions)) => {
             analysis.assumptions = assumptions;
             analysis.adverse = adverse;
@@ -522,11 +512,6 @@ async fn analyze_and_validate(
             analysis.open_questions = open_questions;
         }
         Err(e) => log::warn!("⚠️ 蓝军验证失败 [{}|{}], 使用无蓝军分析: {}", language, theme.title, e),
-    }
-    let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
-    if weak_bearing && analysis.signal_strength >= WEAK_BEARING_PENALTY {
-        analysis.signal_strength -= WEAK_BEARING_PENALTY;
-        log::info!("🔵 蓝军降级: {} (承重假设证据弱)", theme.title);
     }
     Some(analysis)
 }
@@ -541,10 +526,9 @@ async fn agent_research(
     api_key: &str,
     _db: &db::Database,
     catalog: &catalog::DataCatalog,
-    data_dir: &Path,
-    today: &str,
+    _data_dir: &Path,
+    _today: &str,
     new_articles: Vec<fetcher::Article>,
-    _source_statuses: Vec<(String, bool, usize)>,
 ) -> Result<ResearchOutput> {
     // 分组 + Scan Agent
     let grouped = llm::group_by_category(&new_articles);
@@ -600,9 +584,7 @@ async fn agent_research(
             themes: vec![],
             analyses: vec![],
             analyses_zh: vec![],
-            decisions: vec![],
             triage,
-            total_new,
             new_articles: vec![],
             question_matches: vec![],
         });
@@ -669,12 +651,11 @@ async fn agent_research(
     }
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
-    // DiGraph 认知引擎 + BeliefDb
-    let decisions;
+    // DiGraph 认知引擎
     let question_matches: Vec<sulix_intel::question_engine::QuestionMatch>;
     {
         use sulix_intel::orchestrator::{
-            blue_team_edge, BENode, BlueTeamNode, ClusterNode, DENode, DiGraph, GraphContext,
+            blue_team_edge, BlueTeamNode, ClusterNode, DiGraph, GraphContext,
             QENode, RouteResult,
         };
         let mut ctx = GraphContext::new(config.clone(), api_key.to_string());
@@ -685,60 +666,15 @@ async fn agent_research(
         graph.add_node(Box::new(ClusterNode { name: "Cluster" }));
         graph.add_node(Box::new(BlueTeamNode { name: "BlueTeam" }));
         graph.add_node(Box::new(QENode { name: "QE" }));
-        graph.add_node(Box::new(BENode { name: "BE" }));
-        graph.add_node(Box::new(DENode { name: "DE" }));
         graph.add_edge(
             "Cluster",
             "BlueTeam",
             Arc::new(|_| RouteResult::ProceedTo("BlueTeam".into())),
         );
         graph.add_edge("BlueTeam", "QE", blue_team_edge("QE"));
-        graph.add_edge(
-            "QE",
-            "BE",
-            Arc::new(|_| RouteResult::ProceedTo("BE".into())),
-        );
-        graph.add_edge(
-            "BE",
-            "DE",
-            Arc::new(|_| RouteResult::ProceedTo("DE".into())),
-        );
         graph.set_entry("Cluster");
         if let Err(e) = graph.run(&mut ctx) {
             log::warn!("⚠️ GraphFlow 认知引擎异常: {}", e);
-        }
-        decisions = ctx.decisions;
-        if !decisions.is_empty() {
-            log::info!("🧠 DiGraph 认知引擎: {} 个决策项", decisions.len());
-        }
-
-        // BeliefDb 持久化（含损坏备份保护）
-        let belief_db_path = data_dir.join("belief_db.json");
-        let mut belief_db = if belief_db_path.exists() {
-            match sulix_intel::belief_engine::BeliefDb::load_from_file(
-                &belief_db_path.to_string_lossy(),
-            ) {
-                Ok(db) => db,
-                Err(e) => {
-                    let backup = format!(
-                        "{}.corrupt.{}",
-                        belief_db_path.to_string_lossy(),
-                        chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                    );
-                    log::error!("⚠️ BeliefDb 加载失败 ({}), 备份到 {} 后重建", e, backup);
-                    let _ = std::fs::rename(&belief_db_path, &backup);
-                    sulix_intel::belief_engine::BeliefDb::new(today)
-                }
-            }
-        } else {
-            let d = sulix_intel::belief_engine::BeliefDb::new(today);
-            log::info!("🧠 BeliefDb 新实例");
-            d
-        };
-        belief_db.snapshot_date = today.to_string();
-        belief_db.apply_updates(&ctx.belief_updates);
-        if let Err(e) = belief_db.save_to_file(&belief_db_path.to_string_lossy()) {
-            log::warn!("⚠️ BeliefDb 保存失败: {}", e);
         }
 
         // 收集 QuestionEngine 匹配结果供 ASI 使用
@@ -750,12 +686,94 @@ async fn agent_research(
         themes,
         analyses,
         analyses_zh,
-        decisions,
         triage,
-        total_new,
         new_articles,
         question_matches,
     })
+}
+
+// ===== Phase 0: Output Contract Validation =====
+
+/// Validate that all required output artifacts exist and are internally consistent.
+///
+/// This is the **contract enforcement layer** between sulix-engine and sulix-web.
+/// It checks:
+///   1. Manifest file exists and is valid JSON
+///   2. At least one MDX output directory has content (daily / thesis / research)
+///   3. Pipeline report is not in Failed state
+///
+/// Non-fatal: warnings are logged but the pipeline does not fail.
+async fn validate_output_contract(
+    config: &config::Config,
+    report: &sulix_intel::engine::pipeline_health::PipelineReport,
+) {
+    let mut issues: Vec<String> = Vec::new();
+
+    // 1. Check manifest exists
+    if let Some(ref mdx_out) = config.output.mdx_dir {
+        let manifest_path = std::path::PathBuf::from(mdx_out).join("manifest.json");
+        if !manifest_path.exists() {
+            issues.push(format!("Manifest not found: {}", manifest_path.display()));
+        } else {
+            match std::fs::read_to_string(&manifest_path) {
+                Ok(content) => {
+                    if serde_json::from_str::<serde_json::Value>(&content).is_err() {
+                        issues.push(format!("Manifest is not valid JSON: {}", manifest_path.display()));
+                    }
+                }
+                Err(e) => issues.push(format!("Manifest unreadable: {}: {}", manifest_path.display(), e)),
+            }
+        }
+
+        // 2. Check MDX output directories have content
+        let required_dirs = ["daily", "thesis", "research", "investigation"];
+        for dir_name in &required_dirs {
+            let dir_path = std::path::PathBuf::from(mdx_out).join(dir_name);
+            if dir_path.exists() {
+                if let Ok(entries) = std::fs::read_dir(&dir_path) {
+                    let md_count = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                        .count();
+                    if md_count == 0 {
+                        issues.push(format!("MDX dir '{}' exists but contains 0 .md files", dir_name));
+                    }
+                }
+            } else {
+                // Only warn if the pipeline completed successfully — zero-output runs are fine
+                if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::Success {
+                    issues.push(format!("MDX dir '{}' does not exist", dir_name));
+                }
+            }
+        }
+    }
+
+    // 3. Check pipeline report isn't Failed
+    if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure
+        || report.status == sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly
+    {
+        issues.push(format!("Pipeline finished with status: {:?}", report.status));
+    }
+
+    // 4. Check frontend content sync if configured
+    if let Some(ref fe_dir) = config.output.frontend_content_dir {
+        let fe_path = std::path::Path::new(fe_dir);
+        if !fe_path.exists() {
+            issues.push(format!(
+                "Frontend content dir configured but does not exist: {}",
+                fe_dir
+            ));
+        }
+    }
+
+    if issues.is_empty() {
+        log::info!("✅ Output contract validation passed");
+    } else {
+        log::warn!("⚠️ Output contract issues:");
+        for issue in &issues {
+            log::warn!("  - {}", issue);
+        }
+    }
 }
 
 // ===== [agent_publish moved to src/publishing.rs] =====

@@ -37,8 +37,12 @@ pub enum OutcomeVerdict {
 
 /// 结果记录：判断的验证
 ///
-/// v2 精简后，只保留核心字段。description 概括偏差分析，
-/// verdict 替代多字段对比。
+/// v3: 添加最小归因模型（§4.2）。让 Outcome 从"记录结果"升级为"学习和归因结果"。
+///
+/// 归因字段：
+///   - expected_signal: 当初判断时期望的信号方向
+///   - actual_signal: 实际观察到的情况
+///   - delta: 期望 vs 实际的偏差（一句话概括）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Outcome {
     /// 唯一 ID
@@ -56,4 +60,13 @@ pub struct Outcome {
     /// 触发此判定的证据 ID 列表
     #[serde(default)]
     pub supporting_evidence: Vec<String>,
+    /// 当初判断时期望的信号方向（归因模型: 预期）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub expected_signal: String,
+    /// 实际观察到的情况（归因模型: 实际）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub actual_signal: String,
+    /// 期望 vs 实际的偏差（归因模型: delta，一句话概括）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub delta: String,
 }

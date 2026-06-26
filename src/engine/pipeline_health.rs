@@ -71,11 +71,23 @@ pub enum PipelineStatus {
 
 /// Content Manifest — 全站内容状态的权威数据源
 ///
-/// 写入 output/manifest.json，作为 pipeline_report.json 的补充。
+/// 这是 sulix-engine ↔ sulix-web 之间的**唯一契约文件**。
+/// 写入 output/manifest.json，并同步到 frontend/public/manifest.json。
+///
 /// 前端所有统计（首页、Status 页、ContextPanel）应从此读取，
 /// 而非遍历 content 目录（content 目录长期积累后会很大）。
+///
+/// # Contract Versioning
+///
+/// `contract_version` 指示本契约的 schema 版本：
+///   - v1: 初始版本（2025-06-26）
+///
+/// 前端应根据 contract_version 决定如何解析此文件。
+/// 新增字段必须为 Option，保持向后兼容。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentManifest {
+    /// 契约 schema 版本（前端根据此版本决定解析策略）
+    pub contract_version: u32,
     /// 递增版本号（每次 CI 运行 +1）
     pub version: u32,
     /// 生成时间（ISO 8601）
@@ -102,6 +114,12 @@ pub struct ContentManifest {
     pub pipeline_observation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipeline_signal_count: Option<usize>,
+    /// 写入的 MDX 文件总数（按类型分）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_counts: Option<std::collections::HashMap<String, usize>>,
+    /// 前端内容目录（如有配置，manifest 被同步到此目录）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontend_content_dir: Option<String>,
 }
 
 impl ContentManifest {

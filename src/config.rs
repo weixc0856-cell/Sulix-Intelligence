@@ -75,6 +75,12 @@ pub struct OutputConfig {
     /// MDX 输出目录（如 "output/"），None = 不生成 MDX
     #[serde(default)]
     pub mdx_dir: Option<String>,
+    /// 前端 content 目录（如 "../intel-web/src/content/"）。
+    /// 设置后，MDX 文件会直接写入前端可消费的 Astro Content Collections 目录，
+    /// 同时 manifest.json 也会同步到此目录下的 manifest.json。
+    /// 不设置则沿用旧的 CI 复制模式。
+    #[serde(default)]
+    pub frontend_content_dir: Option<String>,
 }
 
 fn default_date_range() -> String {
@@ -130,7 +136,7 @@ impl SourceConfig {
 
     /// 是否在前端展示 attribution 链接
     /// 仅当 public == true 且不为内参源（layer != 1）时才展示
-    #[allow(dead_code)]
+    #[doc(hidden)]
     pub fn show_attribution(&self) -> bool {
         self.public && self.layer != 1
     }
@@ -196,7 +202,6 @@ fn default_compression_enabled() -> bool {
 /// 通过 accessor 方法（get_*）传入默认值，由调用方在各自的模块中维护。
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code)]
 pub struct PromptsConfig {
     #[serde(default)]
     pub base: Option<String>,
@@ -220,7 +225,6 @@ pub struct PromptsConfig {
     pub quant: Option<String>,
 }
 
-#[allow(dead_code)]
 impl PromptsConfig {
     pub fn get_scan_agent<'a>(&'a self, default: &'a str) -> &'a str {
         self.scan_agent.as_deref().unwrap_or(default)

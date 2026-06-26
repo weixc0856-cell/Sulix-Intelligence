@@ -45,28 +45,13 @@ pub fn render_daily_mdx(
         .collect::<Vec<_>>()
         .join("\n");
 
+    let known = crate::entity::known_entities();
     let entities: Vec<String> = analysis
         .fact_base
         .iter()
         .flat_map(|fb| fb.evidence.split_whitespace())
         .map(|w| w.to_uppercase())
-        .filter(|w| {
-            [
-                "TSMC",
-                "ASML",
-                "NVIDIA",
-                "OPENAI",
-                "ANTHROPIC",
-                "GOOGLE",
-                "META",
-                "MICROSOFT",
-                "INTEL",
-                "AMD",
-                "ARM",
-                "HBM",
-            ]
-            .contains(&w.as_str())
-        })
+        .filter(|w| known.contains(&w.as_str()))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();

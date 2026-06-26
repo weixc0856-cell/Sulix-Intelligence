@@ -27,6 +27,11 @@ temperature = 0.1
 vault_path = "./DailyBrief"
 # MDX 输出目录（CI 里会写到 ./output/，然后被 cp 到 frontend/src/content/）
 mdx_dir = "./output"
+# 前端 Content Collections 目录（可选）
+# 设置后，manifest.json 也会被同步到此目录所在的 public/manifest.json。
+# 例如：frontend_content_dir = "../intel-web/src/content/"
+# Phase 0: 消除 CI 复制 gap，让 engine 直接写入前端可消费的位置。
+# frontend_content_dir = "../intel-web/src/content/"
 
 [storage]
 data_dir = "./data"

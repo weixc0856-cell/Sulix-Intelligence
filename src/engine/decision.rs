@@ -381,6 +381,9 @@ mod tests {
                 verdict: OutcomeVerdict::Invalidated,
                 date: "2026-06-25".into(),
                 supporting_evidence: vec![],
+                expected_signal: String::new(),
+                actual_signal: String::new(),
+                delta: String::new(),
             }],
         );
         let decisions = map_theses_to_decisions(&mem);

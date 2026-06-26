@@ -53,22 +53,14 @@ impl InvestigationRegistry {
         }
     }
 
-    /// Load from file, or return empty registry if not found
+    /// Load from file, or return empty registry if not found (delegates to generic helper)
     pub fn load_or_new(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        crate::engine::registry::load_or_new(path)
     }
 
-    /// Persist to file
+    /// Persist to file (delegates to generic helper)
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        crate::engine::registry::save_json(self, path)
     }
 
     /// Find the currently active INV-ID for a given ASM

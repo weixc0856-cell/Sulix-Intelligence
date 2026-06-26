@@ -1,12 +1,17 @@
 //! Publishing Agent — 发布阶段
 //!
-//! 从 main.rs 拆分。负责：
-//! - Premium 报告生成
-//! - 变更检测 & EventLog
-//! - HTML/Markdown 渲染（通过 Publisher trait）
-//! - Chronicle 构建 & 看板
-//! - Memory Engine 信念追踪
-//! - Decay Agent 记忆墓地维护
+//! 从 main.rs 拆分。按 Publish Stages Contract 组织：
+//!
+//!   Preprocess → Generate → Infer → Persist → Emit
+//!
+//! 每阶段有明确的输入/输出契约，agent_publish() 仅作为协调器。
+//!
+//! # Contract
+//! - Preprocess: 加载所有持久化状态（EventLog, Chronicle, Memory）
+//! - Generate:   Premium 报告 + ASI 评分 + 合成摘要 + 认知校准 + Change Detection
+//! - Infer:      Memory Engine 更新 + Hermes 分析 + Outcome 检测 + Decision Intelligence
+//! - Persist:    所有 JSON/SQLite 持久化 + Decay Agent
+//! - Emit:       MDX/Markdown 渲染 + 输出
 
 use std::collections::HashMap;
 use std::fs;
@@ -18,58 +23,83 @@ use crate::archive::{ChronicleDb, ChronicleEntry};
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
-use crate::decision_engine::Decision;
 use crate::engine::decision::{map_theses_to_decisions, ThesisDecision};
 use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::{MemoryEngine, Outcome, OutcomeVerdict, Stance, ThesisStatus};
 use crate::renderer::publisher::Publisher;
+use crate::storage;
 
 /// Research Agent 的输出（传递给 Publishing Agent）
 pub struct ResearchOutput {
     pub themes: Vec<Theme>,
     pub analyses: Vec<ThemeAnalysis>,
     pub analyses_zh: Vec<ThemeAnalysis>,
-    pub decisions: Vec<Decision>,
     pub triage: crate::agent::scan::TriageResult,
-    pub total_new: usize,
     pub new_articles: Vec<crate::fetcher::Article>,
     pub question_matches: Vec<crate::question_engine::QuestionMatch>,
 }
 
-/// Extract entities from analysis fact_base (deduplicated entity list per analysis)
-fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
-    let known_entities = [
-        "TSMC",
-        "ASML",
-        "NVIDIA",
-        "OPENAI",
-        "ANTHROPIC",
-        "GOOGLE",
-        "META",
-        "MICROSOFT",
-        "INTEL",
-        "AMD",
-        "ARM",
-        "HBM",
-    ];
-    let mut entities = Vec::new();
-    for fb in &analysis.fact_base {
-        for word in fb.evidence.split_whitespace() {
-            let upper = word.to_uppercase();
-            if known_entities.contains(&upper.as_str()) && !entities.contains(&upper) {
-                entities.push(upper);
-            }
-        }
-    }
-    entities
+// ===== 5-Stage Contract: Data Structures =====
+
+/// Stage 1: Preprocess 装载的所有持久化状态
+#[allow(dead_code)] // fields are consumed by downstream stages
+struct StateBundle {
+    event_log: crate::event_log::EventLog,
+    event_log_path: PathBuf,
+    chronicle: Option<ChronicleDb>,
+    chronicle_path: PathBuf,
+    memory_for_linking: MemoryEngine,
+    memory_path: PathBuf,
+    registry: crate::engine::registry::AssessmentRegistry,
+    registry_path: PathBuf,
+    inv_registry: crate::engine::investigation_registry::InvestigationRegistry,
+    inv_registry_path: PathBuf,
 }
 
-/// Premium 报告 → 合成摘要 → Markdown 输出 → 变更检测 → HTML 渲染 → Chronicle → Decay Agent
+/// Stage 2: Generate 阶段产出的所有内容
+#[allow(dead_code)]
+struct GeneratedAssets {
+    asi_score_map: HashMap<String, (f64, f64, f64)>,
+    premium_reports: Vec<crate::engine::premium::PremiumReport>,
+    belief_notes_html: String,
+    belief_engine: crate::engine::belief::BeliefEngineV2,
+    editor_notes: Vec<crate::agent::editor::EditorNote>,
+    change_summary: crate::hermes::ChangeSummary,
+    calibration_text: String,
+    summary: crate::clusterer::Summary,
+}
+
+/// Stage 3: Infer 阶段产出的认知状态
+#[allow(dead_code)]
+struct InferredState {
+    memory: MemoryEngine,
+    thesis_decisions: Vec<ThesisDecision>,
+    outcome_notifications_html: String,
+    premium_reports: Vec<crate::engine::premium::PremiumReport>,
+    asi_score_map: HashMap<String, (f64, f64, f64)>,
+    editor_notes: Vec<crate::agent::editor::EditorNote>,
+    beliefs_html: String,
+}
+
+/// Stage 4: Persist 阶段写入的路径（供 Emit 消费）
+#[allow(dead_code)]
+struct PersistedPaths {
+    event_log_path: PathBuf,
+    entity_db_path: PathBuf,
+}
+
+// ===== Contract Constants =====
+
 /// 记录 ASI 分数的最低 SVI（用于 info 日志）
 const SVI_MIN_LOG: f64 = 6.0;
 /// 生成 premium 研报的最低 SVI
 const SVI_MIN_PREMIUM: u8 = 7;
+/// Trend 查询天数
+const TREND_DAYS: i32 = 14;
 
+// ===== Agent Publish: Coordinator =====
+
+/// Publishing Agent 主入口 — 5-stage coordinator
 #[allow(clippy::too_many_arguments)]
 pub async fn agent_publish(
     config: &Config,
@@ -80,251 +110,60 @@ pub async fn agent_publish(
     today: &str,
     entity_db: &mut crate::entity::EntitySanctionDb,
     research: ResearchOutput,
-    _source_statuses: Vec<(String, bool, usize)>,
 ) -> Result<()> {
-    const TREND_DAYS: i32 = 14;
-
-    // 初始化事件日志（含损坏备份保护）
-    let event_log_path = data_dir.join("event_log.json");
-    let mut event_log = if event_log_path.exists() {
-        match crate::event_log::EventLog::load_from_file(&event_log_path.to_string_lossy()) {
-            Ok(log) => log,
-            Err(e) => {
-                let backup = format!(
-                    "{}.corrupt.{}",
-                    event_log_path.to_string_lossy(),
-                    chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                );
-                log::warn!("⚠️ EventLog 加载失败 ({}), 备份到 {} 后重建", e, backup);
-                let _ = std::fs::rename(&event_log_path, &backup);
-                crate::event_log::EventLog::new()
-            }
-        }
-    } else {
-        crate::event_log::EventLog::new()
-    };
-
-    let ResearchOutput {
-        themes,
-        analyses,
-        analyses_zh,
-        decisions: _decisions,
-        triage,
-        total_new,
-        new_articles,
-        question_matches,
-    } = research;
-
-    // Premium 深度研报 + ASI 评分收集
     let vault_base = PathBuf::from(&config.output.vault_path);
-    let premium_dir = vault_base.join("premium");
-    fs::create_dir_all(&premium_dir)?;
-    let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
-    let mut premium_reports: Vec<crate::engine::premium::PremiumReport> = vec![];
-    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
-        let svi = crate::clusterer::calculate_svi(analysis, theme, &config.sources);
-        let asi_config = crate::engine::analysis::asi::AsiConfig::default();
-        let max_days_old = chrono::Utc::now()
-            .date_naive()
-            .signed_duration_since(
-                chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
-                    .unwrap_or_else(|_| chrono::Utc::now().date_naive()),
-            )
-            .num_days()
-            .max(0);
-        let asi_result = crate::engine::analysis::asi::calculate_asi(
-            &question_matches,
-            analysis.signal_strength,
-            max_days_old,
-            &asi_config,
-        );
-        let confidence_config = crate::engine::analysis::asi::ConfidenceConfig::default();
-        let confidence_result = crate::engine::analysis::asi::calculate_confidence(
-            &analysis.evidence_level,
-            analysis.signal_strength,
-            theme.sources.len(),
-            &confidence_config,
-        );
-        let final_val =
-            crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
-        asi_score_map.insert(
-            theme.title.clone(),
-            (asi_result.asi, confidence_result.confidence, final_val),
-        );
-        if final_val >= SVI_MIN_LOG {
-            log::info!(
-                "⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})",
-                theme.title,
-                svi,
-                asi_result.asi,
-                confidence_result.confidence,
-                final_val
-            );
-        }
-        if svi < SVI_MIN_PREMIUM {
-            continue;
-        }
-        let theme_context: String = theme
-            .articles
-            .iter()
-            .map(|a| {
-                format!(
-                    "- [{}] {}: {}",
-                    a.source,
-                    a.title,
-                    a.summary.as_deref().unwrap_or("")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        match crate::premium::generate_premium_report(
-            theme,
-            &theme_context,
-            api_key,
-            &config.llm,
-            config.prompts.as_ref(),
-        )
-        .await
-        {
-            Ok(report) => {
-                if let Ok(html) = crate::renderer::render_premium_report(&report) {
-                    let slug = theme.title.to_lowercase().replace(' ', "-");
-                    fs::write(premium_dir.join(format!("{}.html", slug)), &html)?;
-                    log::info!("📖 Premium: {} → {}.html", theme.title, slug);
-                }
-                if let Some(sub) = &config.substack {
-                    if sub.enabled {
-                        if let Err(e) = crate::premium::push_to_substack(
-                            &report,
-                            &sub.api_key,
-                            &sub.publication_url,
-                        )
-                        .await
-                        {
-                            log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
-                        }
-                    }
-                }
-                premium_reports.push(report);
-            }
-            Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
+
+    // Stage 1: Preprocess — load all persistent state
+    let mut state = publish_preprocess(data_dir, config).await;
+
+    // Stage 2: Generate — content creation (no state mutation)
+    let (themes, analyses, analyses_zh, new_articles, question_matches, triage) = research.destructure();
+    let generated = publish_generate(
+        config, api_key, today, &themes, &analyses, &analyses_zh,
+        &question_matches, &new_articles, &triage, &state,
+    ).await?;
+    catalog.save_step(7, "summary", &generated.summary)?;
+    catalog.save_step(8, "calibration", &generated.calibration_text)?;
+
+    // Stage 3: Infer — run cognitive engines (Memory, Hermes, Decision)
+    let mut inferred = publish_infer(
+        config, api_key, today, data_dir,
+        &themes, &analyses, &analyses_zh, &new_articles, &triage,
+        &generated, &mut state, db,
+    ).await?;
+
+    // Stage 4: Persist — write all state to disk
+    let _persisted = publish_persist(
+        db, data_dir, today, entity_db,
+        &mut state, &mut inferred, config,
+    ).await;
+
+    // Stage 5: Emit — render MDX/Markdown output
+    publish_emit(
+        config, today, vault_base.clone(),
+        &themes, &analyses, &new_articles, &triage,
+        &inferred, &generated,
+    ).await?;
+
+    // Final logging
+    log::info!("📊 {}", crate::llm::llm_audit_summary());
+    if !state.event_log.all().is_empty() {
+        if let Err(e) = state.event_log.save_to_file(&state.event_log_path.to_string_lossy()) {
+            log::warn!("⚠️ EventLog 保存失败: {}", e);
         }
     }
 
-    // Twitter/X 推文
-    if let Some(ref twitter_config) = config.twitter {
-        crate::twitter::publish_tweets(&themes, &analyses, twitter_config).await;
-    }
+    println!("\n✅ EN 简报: {}", vault_base.join("en").join(&today[..7]).join("index.html").display());
+    println!("✅ 看板: {}", vault_base.join("en").join("index.html").display());
+    Ok(())
+}
 
-    // Belief Engine Phase B
-    let mut belief_engine = crate::engine::belief::BeliefEngineV2::new();
-    if let Some(ref config_beliefs) = config.beliefs {
-        let core_beliefs: Vec<crate::engine::belief::CoreBelief> = config_beliefs
-            .iter()
-            .map(|b| crate::engine::belief::CoreBelief {
-                id: b.id.clone(),
-                statement: b.statement.clone(),
-                confidence: b.confidence,
-                category: b.category.clone(),
-                history: vec![],
-            })
-            .collect();
-        belief_engine.load_from_config(&core_beliefs);
-        belief_engine.update_from_analyses(&analyses, today);
-        let recent = belief_engine.recent_changes(5);
-        if !recent.is_empty() {
-            log::info!("🎯 Belief Engine: {} 项信念更新", recent.len());
-        }
-    }
-    let mut belief_notes_html = crate::engine::belief::render_belief_changes_html(&belief_engine);
+// ===== Stage 1: Preprocess =====
 
-    // 合成摘要
-    let summary = crate::clusterer::synthesize(&themes, &analyses);
-    log::info!(
-        "✅ 聚类完成: {} 个主题, {} 篇文章",
-        summary.theme_count,
-        summary.total_articles
-    );
-    catalog.save_step(7, "summary", &summary)?;
-
-    // Markdown 输出（通过 MarkdownPublisher）
-    let md_ctx = crate::renderer::publisher::PublishContext {
-        themes: themes.clone(),
-        analyses: analyses.clone(),
-        analyses_zh: vec![],
-        date: today.to_string(),
-        language: "en".into(),
-        calibration: None,
-        attributable_sources: vec![],
-        flash_headline: None,
-        change_summary: None,
-        theses: vec![],
-        reports: vec![],
-        archive_entries: vec![],
-        archive_entries_zh: vec![],
-        source_statuses: vec![],
-        decisions: vec![],
-        canonical_decisions: vec![],
-        asi_scores: HashMap::new(),
-        editor_notes: vec![],
-        belief_notes_html: String::new(),
-        css_content: String::new(),
-        articles: vec![],
-        watchlist_count: 0,
-        mdx_output_dir: None,
-        output_dir: PathBuf::from(&config.output.vault_path),
-        reflections: vec![],
-        thesis_decisions: vec![],
-        outcomes: vec![],
-    };
-    crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
-    log::info!("📝 Markdown 输出: {} 个主题", themes.len());
-
-    // 认知校准
-    let calibration_text = if !analyses.is_empty() {
-        let calibration_input: Vec<crate::llm::VerticalAnalysis> = analyses
-            .iter()
-            .map(|ta| crate::llm::VerticalAnalysis {
-                category: ta.theme_title.clone(),
-                articles: vec![],
-            })
-            .collect();
-        crate::agent::calibration::calibrate(
-            &calibration_input,
-            api_key,
-            &config.llm,
-            config.prompts.as_ref(),
-            "en",
-        )
-        .await?
-    } else {
-        String::new()
-    };
-    catalog.save_step(8, "calibration", &calibration_text)?;
-    log::info!(
-        "📝 分析主题: {} 个, 信号: {} 条",
-        analyses.len(),
-        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len()
-    );
-
-    // Change Detection + Memory Engine
-    let memory_for_linking = {
-        let mem_path = PathBuf::from(&config.output.vault_path).join("memory_db.json");
-        let mut mem = MemoryEngine::new(mem_path);
-        if let Err(e) = mem.load() {
-            log::warn!("⚠️ Memory Engine 加载失败（用于冲突链接）: {}", e);
-        }
-        mem
-    };
-
-    let editor_notes = crate::agent::editor::analyze_personal_impact(
-        &question_matches,
-        &analyses,
-        memory_for_linking.theses(),
-    );
-    if !editor_notes.is_empty() {
-        log::info!("👤 Editor Agent: {} 项个人影响分析", editor_notes.len());
-    }
+/// Preprocess: 加载所有持久化状态（EventLog, Chronicle, Memory）
+async fn publish_preprocess(data_dir: &Path, config: &Config) -> StateBundle {
+    let event_log_path = data_dir.join("event_log.json");
+    let event_log = load_or_new_event_log(&event_log_path);
 
     let chronicle_path = data_dir.join("database.json");
     let chronicle = if chronicle_path.exists() {
@@ -338,447 +177,645 @@ pub async fn agent_publish(
     } else {
         None
     };
-    let recent_entries: Vec<ChronicleEntry> = chronicle
-        .as_ref()
+
+    let memory_path = PathBuf::from(&config.output.vault_path).join("memory_db.json");
+    let mut memory_for_linking = MemoryEngine::new(memory_path.clone());
+    if let Err(e) = memory_for_linking.load() {
+        log::warn!("⚠️ Memory Engine 加载失败（用于冲突链接）: {}", e);
+    }
+
+    let registry_path = PathBuf::from(&config.output.vault_path).join("assessment_registry.json");
+    let registry = crate::engine::registry::AssessmentRegistry::load_or_new(&registry_path);
+
+    let inv_registry_path = PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
+    let inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(&inv_registry_path);
+
+    StateBundle {
+        event_log, event_log_path,
+        chronicle, chronicle_path,
+        memory_for_linking, memory_path,
+        registry, registry_path,
+        inv_registry, inv_registry_path,
+    }
+}
+
+fn load_or_new_event_log(path: &Path) -> crate::event_log::EventLog {
+    storage::with_corrupt_recovery(
+        path,
+        |p| crate::event_log::EventLog::load_from_file(&p.to_string_lossy()),
+        crate::event_log::EventLog::new,
+    )
+}
+
+// ===== Stage 2: Generate =====
+
+// ===== Stage 2: Generate =====
+
+/// Generate: Premium 报告 + ASI 评分 + 合成摘要 + 认知校准 + Change Detection
+async fn publish_generate(
+    config: &Config,
+    api_key: &str,
+    today: &str,
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    _analyses_zh: &[ThemeAnalysis],
+    question_matches: &[crate::question_engine::QuestionMatch],
+    _new_articles: &[crate::fetcher::Article],
+    triage: &crate::agent::scan::TriageResult,
+    state: &StateBundle,
+) -> Result<GeneratedAssets> {
+    let vault_base = PathBuf::from(&config.output.vault_path);
+    let premium_dir = vault_base.join("premium");
+    fs::create_dir_all(&premium_dir)?;
+
+    // Premium 深度研报 + ASI 评分收集
+    let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
+    let mut premium_reports: Vec<crate::engine::premium::PremiumReport> = vec![];
+    for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        let svi = crate::engine::analysis::calculate_svi(analysis, theme, &config.sources);
+        let asi_config = crate::engine::analysis::asi::AsiConfig::default();
+        let max_days_old = chrono::Utc::now()
+            .date_naive()
+            .signed_duration_since(
+                chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+                    .unwrap_or_else(|_| chrono::Utc::now().date_naive()),
+            )
+            .num_days()
+            .max(0);
+        let asi_result = crate::engine::analysis::asi::calculate_asi(
+            question_matches,
+            analysis.signal_strength,
+            max_days_old,
+            &asi_config,
+        );
+        let confidence_config = crate::engine::analysis::asi::ConfidenceConfig::default();
+        let confidence_result = crate::engine::analysis::asi::calculate_confidence(
+            &analysis.evidence_level,
+            analysis.signal_strength,
+            theme.sources.len(),
+            &confidence_config,
+        );
+        let final_val = crate::engine::analysis::asi::final_value(svi, &asi_result, &confidence_result);
+        asi_score_map.insert(
+            theme.title.clone(),
+            (asi_result.asi, confidence_result.confidence, final_val),
+        );
+        if final_val >= SVI_MIN_LOG {
+            log::info!(
+                "⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})",
+                theme.title, svi, asi_result.asi, confidence_result.confidence, final_val
+            );
+        }
+        if svi < SVI_MIN_PREMIUM {
+            continue;
+        }
+        let theme_context: String = theme.articles.iter()
+            .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        match crate::premium::generate_premium_report(
+            theme, &theme_context, api_key, &config.llm, config.prompts.as_ref(),
+        ).await {
+            Ok(report) => {
+                if let Ok(html) = crate::renderer::render_premium_report(&report) {
+                    let slug = theme.title.to_lowercase().replace(' ', "-");
+                    fs::write(premium_dir.join(format!("{}.html", slug)), &html)?;
+                    log::info!("📖 Premium: {} → {}.html", theme.title, slug);
+                }
+                if let Some(ref sub) = config.substack {
+                    if sub.enabled {
+                        if let Err(e) = crate::premium::push_to_substack(
+                            &report, &sub.api_key, &sub.publication_url,
+                        ).await {
+                            log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
+                        }
+                    }
+                }
+                premium_reports.push(report);
+            }
+            Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
+        }
+    }
+
+    // Twitter/X 推文
+    if let Some(ref twitter_config) = config.twitter {
+        crate::twitter::publish_tweets(themes, analyses, twitter_config).await;
+    }
+
+    // Belief Engine Phase B
+    let mut belief_engine = crate::engine::belief::BeliefEngineV2::new();
+    if let Some(ref config_beliefs) = config.beliefs {
+        let core_beliefs: Vec<crate::engine::belief::CoreBelief> = config_beliefs.iter()
+            .map(|b| crate::engine::belief::CoreBelief {
+                id: b.id.clone(), statement: b.statement.clone(),
+                confidence: b.confidence, category: b.category.clone(), history: vec![],
+            })
+            .collect();
+        belief_engine.load_from_config(&core_beliefs);
+        belief_engine.update_from_analyses(analyses, today);
+        let recent = belief_engine.recent_changes(5);
+        if !recent.is_empty() {
+            log::info!("🎯 Belief Engine: {} 项信念更新", recent.len());
+        }
+    }
+    let belief_notes_html = crate::engine::belief::render_belief_changes_html(&belief_engine);
+
+    // 合成摘要
+    let summary = crate::clusterer::synthesize(themes, analyses);
+    log::info!("✅ 聚类完成: {} 个主题, {} 篇文章", summary.theme_count, summary.total_articles);
+
+    // Markdown 输出 （保留，但将在 Emit 阶段执行）
+    // 认知校准
+    let calibration_text = if !analyses.is_empty() {
+        let calibration_input: Vec<crate::llm::VerticalAnalysis> = analyses.iter()
+            .map(|ta| crate::llm::VerticalAnalysis {
+                category: ta.theme_title.clone(), articles: vec![],
+            })
+            .collect();
+        crate::agent::calibration::calibrate(
+            &calibration_input, api_key, &config.llm, config.prompts.as_ref(), "en",
+        ).await?
+    } else {
+        String::new()
+    };
+    log::info!("📝 分析主题: {} 个, 信号: {} 条",
+        analyses.len(),
+        themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len(),
+    );
+
+    // Editor Notes
+    let editor_notes = crate::agent::editor::analyze_personal_impact(
+        question_matches, analyses, state.memory_for_linking.theses(),
+    );
+    if !editor_notes.is_empty() {
+        log::info!("👤 Editor Agent: {} 项个人影响分析", editor_notes.len());
+    }
+
+    // Change Detection
+    let recent_entries: Vec<ChronicleEntry> = state.chronicle.as_ref()
         .map(|c| c.sorted().into_iter().take(50).collect())
         .unwrap_or_default();
-    let change_summary = if config
-        .news_layer
-        .as_ref()
-        .map(|n| n.llm_change_detection)
-        .unwrap_or(false)
-    {
-        crate::clusterer::detect_changes_llm(&recent_entries, &analyses, api_key, &config.llm)
+    let change_summary = if config.news_layer.as_ref().map(|n| n.llm_change_detection).unwrap_or(false) {
+        crate::hermes::detect_changes_llm(&recent_entries, analyses, api_key, &config.llm)
             .await
-            .inspect(|cs| {
-                log::info!(
-                    "🧠 LLM change detection: {} conflicts, {} reinforced",
-                    cs.conflicts.len(),
-                    cs.reinforced.len()
-                )
-            })
+            .inspect(|cs| log::info!("🧠 LLM change detection: {} conflicts, {} reinforced", cs.conflicts.len(), cs.reinforced.len()))
             .unwrap_or_else(|| {
                 log::warn!("⚠️ LLM change detection failed, falling back to rule-based");
-                crate::clusterer::detect_changes_rule(&recent_entries, &analyses)
+                crate::hermes::detect_changes_rule(&recent_entries, analyses)
             })
     } else {
-        crate::clusterer::detect_changes_rule(&recent_entries, &analyses)
+        crate::hermes::detect_changes_rule(&recent_entries, analyses)
     };
-    for conflict in &change_summary.conflicts {
-        event_log.push(crate::event_log::PipelineEvent {
-            id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+    if !change_summary.conflicts.is_empty() || !change_summary.reinforced.is_empty() {
+        log::info!("🔄 Change Detection: {} 冲突, {} 强化, {} 新信号",
+            change_summary.conflicts.len(), change_summary.reinforced.len(), change_summary.new_signals.len());
+    }
+
+    Ok(GeneratedAssets {
+        asi_score_map, premium_reports,
+        belief_notes_html, belief_engine,
+        editor_notes, change_summary,
+        calibration_text, summary,
+    })
+}
+
+// ===== Stage 3: Infer =====
+
+/// Infer: Memory Engine 更新 + Hermes 分析 + Outcome 检测 + Decision Intelligence
+async fn publish_infer(
+    config: &Config,
+    api_key: &str,
+    today: &str,
+    _data_dir: &Path,
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    analyses_zh: &[ThemeAnalysis],
+    new_articles: &[crate::fetcher::Article],
+    _triage: &crate::agent::scan::TriageResult,
+    generated: &GeneratedAssets,
+    state: &mut StateBundle,
+    db: &Database,
+) -> Result<InferredState> {
+    // Push conflict events to EventLog
+    for conflict in &generated.change_summary.conflicts {
+        state.event_log.push(crate::event_log::PipelineEvent {
+            id: format!("evt-{}-{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
             event_type: crate::event_log::PipelineEventType::ConflictDetected,
             timestamp: chrono::Utc::now().to_rfc3339(),
             description: format!("{}: {}", conflict.topic, conflict.today_signal),
-            thesis_id: memory_for_linking.find_by_title(&conflict.topic).map(|t| t.id.clone()),
+            thesis_id: state.memory_for_linking.find_by_title(&conflict.topic).map(|t| t.id.clone()),
             related_events: vec![],
             data: serde_json::json!({"topic": conflict.topic, "prior_belief": conflict.prior_belief}),
         });
     }
-    if !change_summary.conflicts.is_empty() || !change_summary.reinforced.is_empty() {
-        log::info!(
-            "🔄 Change Detection: {} 冲突, {} 强化, {} 新信号",
-            change_summary.conflicts.len(),
-            change_summary.reinforced.len(),
-            change_summary.new_signals.len()
-        );
-    }
 
     // Chronicle 构建
-    let db_dir = data_dir.join(&today[..7]);
-    fs::create_dir_all(&db_dir)
-        .unwrap_or_else(|e| log::warn!("无法创建数据目录 {:?}: {}", db_dir, e));
+    let chronicle_path = state.chronicle_path.clone();
     let mut chronicle = ChronicleDb::load(&chronicle_path)?;
-
-    for a in &analyses_zh {
-        let entities = extract_entities(a);
+    for a in analyses_zh {
         chronicle.push(ChronicleEntry {
             date: today.to_string(),
             topic: a.theme_title.clone(),
             headline: a.bluf.clone(),
-            entities,
+            entities: extract_entities(a),
             signal_strength: a.signal_strength,
             language: "zh".into(),
         });
     }
-    for (analysis, _) in analyses.iter().zip(themes.iter()) {
-        let entities = extract_entities(analysis);
+    for analysis in analyses.iter() {
         chronicle.push(ChronicleEntry {
             date: today.to_string(),
             topic: analysis.theme_title.clone(),
             headline: analysis.bluf.clone(),
-            entities,
+            entities: extract_entities(analysis),
             signal_strength: analysis.signal_strength,
             language: "en".into(),
         });
     }
+
+    // Memory Engine 信念追踪 + Hermes 分析
+    let mut memory = MemoryEngine::new(state.memory_path.clone());
+    if let Err(e) = memory.load() {
+        let backup = format!("{}.corrupt.{}.json",
+            state.memory_path.to_string_lossy(),
+            chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+        log::warn!("⚠️ Memory Engine 加载失败 ({}), 备份到 {} 后重建", e, backup);
+        let _ = std::fs::rename(&state.memory_path, &backup);
+    }
+
+    if let Err(e) = memory.update_from_analysis_with_registry(today, themes, analyses, &mut state.registry) {
+        log::warn!("⚠️ Memory Engine 更新失败: {}", e);
+    } else {
+        let before = memory.theses().len();
+        if !generated.change_summary.conflicts.is_empty() {
+            crate::hermes::apply_conflicts(&generated.change_summary, &mut memory, today);
+        }
+        if let Ok(trends) = db.get_trend(TREND_DAYS) {
+            crate::hermes::analyze_trends(&trends, &mut memory, today);
+        }
+        crate::hermes::discover_theses(analyses, &chronicle, &mut memory, today);
+        log::info!("🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
+            memory.theses().len(), memory.theses().len() - before);
+    }
+
+    // Investigation Engine
+    for thesis in memory.theses().to_owned() {
+        if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening) { continue; }
+        let Some(ref asm_id) = thesis.assessment_id else { continue; };
+        if !memory.should_regenerate_investigation(&thesis.id) { continue; }
+        match generate_investigation(&thesis, api_key, &config.llm, config.prompts.as_ref()).await {
+            Ok(mut inv) => {
+                let inv_id = if let Some(old_id) = state.inv_registry.find_active_by_asm(asm_id) {
+                    state.inv_registry.supersede_and_register(&old_id, asm_id, &thesis.id, today)
+                } else {
+                    state.inv_registry.register(asm_id, &thesis.id, today)
+                };
+                inv.id = inv_id.clone();
+                memory.upsert_investigation(inv);
+                memory.set_investigation_id(&thesis.id, &inv_id);
+                log::info!("🔍 Investigation {} generated for ASM {}", inv_id, asm_id);
+            }
+            Err(e) => log::warn!("Investigation gen failed [{}]: {}", thesis.title, e),
+        }
+    }
+
+    // Investigation Reports -> MDX (emit to disk within Infer for data locality)
+    if let Some(ref mdx_out) = config.output.mdx_dir {
+        let inv_dir = std::path::Path::new(mdx_out).join("investigation");
+        if let Err(e) = std::fs::create_dir_all(&inv_dir) {
+            log::warn!("⚠️ Cannot create investigation dir: {}", e);
+        } else {
+            for thesis in memory.theses() {
+                if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening) {
+                    continue;
+                }
+                let slug = slug_from_thesis(thesis);
+                let report = crate::engine::investigation::derive_investigation_report(
+                    thesis, today, None,
+                );
+                let mdx = crate::renderer::mdx::render_investigation_mdx(
+                    &report, &slug, thesis.investigation_id.as_deref(),
+                );
+                if let Err(e) = std::fs::write(inv_dir.join(format!("{}.md", slug)), &mdx) {
+                    log::warn!("⚠️ Investigation MDX write failed [{}]: {}", thesis.title, e);
+                }
+            }
+        }
+    }
+
+    // Meta Layer: Outcome 检测 & Reflection 生成
+    for thesis in memory.theses().to_owned() {
+        if thesis.status == ThesisStatus::Retired {
+            let challenge = thesis.evidences.iter().filter(|e| e.stance == Stance::Challenges).count();
+            let support = thesis.evidences.iter().filter(|e| e.stance == Stance::Supports).count();
+            if challenge > support {
+                let outcome = Outcome {
+                    id: format!("outcome-{}", chrono::Utc::now().timestamp()),
+                    thesis_id: thesis.id.clone(),
+                    description: format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
+                    verdict: OutcomeVerdict::Invalidated,
+                    date: today.to_string(),
+                    supporting_evidence: vec![],
+                    expected_signal: String::new(),
+                    actual_signal: format!("挑战证据({})超过支持证据({})", challenge, support),
+                    delta: "预期被推翻".to_string(),
+                };
+                if let Err(e) = memory.record_outcome(outcome) {
+                    log::warn!("⚠️ Outcome 记录失败: {}", e);
+                } else {
+                    state.event_log.push(crate::event_log::PipelineEvent {
+                        id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
+                        event_type: crate::event_log::PipelineEventType::ThesisRefuted,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        description: format!("论题 '{}' 被证伪", thesis.title),
+                        thesis_id: Some(thesis.id.clone()),
+                        related_events: vec![],
+                        data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
+                    });
+                    log::info!("🧠 Meta Layer: Thesis '{}' → Invalidated (S={}, C={})", thesis.title, support, challenge);
+                }
+            }
+        }
+        if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
+            let outcome = Outcome {
+                id: format!("outcome-{}", chrono::Utc::now().timestamp()),
+                thesis_id: thesis.id.clone(),
+                description: format!("证据持续积累 ({} 条)", thesis.evidences.len()),
+                verdict: OutcomeVerdict::PartiallyConfirmed,
+                date: today.to_string(),
+                supporting_evidence: vec![],
+                expected_signal: String::new(),
+                actual_signal: format!("{}条支持证据", thesis.evidences.len()),
+                delta: "方向正确，持续验证中".to_string(),
+            };
+            if let Err(e) = memory.record_outcome(outcome) {
+                log::warn!("⚠️ Outcome 记录失败: {}", e);
+            } else {
+                state.event_log.push(crate::event_log::PipelineEvent {
+                    id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
+                    event_type: crate::event_log::PipelineEventType::OutcomeRecorded,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    description: format!("论题 '{}' 获得证据强化", thesis.title),
+                    thesis_id: Some(thesis.id.clone()),
+                    related_events: vec![],
+                    data: serde_json::json!({"thesis_title": thesis.title, "evidence_count": thesis.evidences.len()}),
+                });
+                log::info!("🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)", thesis.title, thesis.evidences.len());
+            }
+        }
+    }
+
+    // 生成置信度变化通知
+    let outcome_notifications_html = {
+        let recent_outcomes: Vec<_> = memory.all_outcomes().iter().rev().take(3).map(|o| {
+            let icon = match o.verdict {
+                OutcomeVerdict::Confirmed => "✅",
+                OutcomeVerdict::PartiallyConfirmed => "🟡",
+                OutcomeVerdict::Invalidated => "❌",
+                OutcomeVerdict::Unknown => "❓",
+            };
+            format!(r#"<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #f0f0f0;font-size:0.75rem">
+  <span>{}</span><div><strong>{}</strong></div>
+</div>"#, icon, o.description)
+        }).collect();
+        if recent_outcomes.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<div style="margin-top:0.75rem;padding:0.5rem;background:#fef2f2;border-radius:0.25rem;border-left:3px solid #ef4444">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.25rem">🎯 判断更新</div>
+  {}</div>"#, recent_outcomes.join(""))
+        }
+    };
+
+    // Decision Intelligence
+    let thesis_decisions_raw = map_theses_to_decisions(&memory);
+
+    // Stability Layer v1: smooth decisions before recording
+    let history_map = crate::engine::stability::build_decision_history_map(&memory);
+    let consecutive_map = crate::engine::stability::build_consecutive_days_map(&memory);
+    let thesis_decisions = crate::engine::stability::stability_gate(
+        thesis_decisions_raw,
+        &history_map,
+        &consecutive_map,
+    );
+
+    for d in &thesis_decisions {
+        memory.record_decision(&d.thesis_id, today, &d.decision_type.label().to_lowercase(), d.confidence);
+    }
+
+    // Log high-priority decisions
+    let high_priority: Vec<&ThesisDecision> = thesis_decisions.iter()
+        .filter(|d| matches!(d.decision_type, crate::domain::action::DecisionType::Exit | crate::domain::action::DecisionType::Build))
+        .collect();
+    if !high_priority.is_empty() {
+        log::info!("🧠 Decision Intelligence: {} 个高优先级决策", high_priority.len());
+        for d in &high_priority {
+            log::info!("  - {:?}: {} ({})", d.decision_type, d.thesis_title, d.rationale);
+        }
+    }
+
+    // Save chronicle to disk (part of Infer since Chronicle feeds into future runs)
     chronicle.save(&chronicle_path)?;
 
-    // Decay Agent
+    // Decay Agent (runs after all infer logic so state is current)
     if let Some(ref g) = config.graveyard {
         if g.enabled {
-            match crate::agent::decay::run_maintenance(db, &new_articles, api_key, &config.llm, g)
-                .await
-            {
+            match crate::agent::decay::run_maintenance(db, new_articles, api_key, &config.llm, g).await {
                 Ok(_) => log::info!("🪦 Decay Agent 维护完成"),
                 Err(e) => log::warn!("⚠️ Decay Agent 失败: {}", e),
             }
         }
     }
 
-    db.record_report(
-        today,
-        &format!("Daily brief - {} topics", analyses.len()),
-        total_new,
-    )?;
+    // 将置信度变化通知追加到 belief_notes_html
+    let mut beliefs_html = generated.belief_notes_html.clone();
+    if !outcome_notifications_html.is_empty() {
+        beliefs_html.push_str(&outcome_notifications_html);
+    }
 
+    Ok(InferredState {
+        memory,
+        thesis_decisions,
+        outcome_notifications_html,
+        premium_reports: generated.premium_reports.clone(),
+        asi_score_map: generated.asi_score_map.clone(),
+        editor_notes: generated.editor_notes.clone(),
+        beliefs_html,
+    })
+}
+
+// ===== Stage 4: Persist =====
+
+/// Persist: 所有持久化写入（Memory, Registry, EntityDb, Decision, EventLog, SQLite report）
+async fn publish_persist(
+    db: &Database,
+    data_dir: &Path,
+    today: &str,
+    entity_db: &mut crate::entity::EntitySanctionDb,
+    state: &mut StateBundle,
+    inferred: &mut InferredState,
+    config: &Config,
+) -> PersistedPaths {
+    // Memory Engine save
+    if let Err(e) = inferred.memory.save() {
+        log::warn!("⚠️ Memory Engine 保存失败: {}", e);
+    }
+
+    // Assessment Registry save
+    if let Err(e) = state.registry.save(&state.registry_path) {
+        log::warn!("⚠️ Assessment Registry 保存失败: {}", e);
+    } else {
+        log::info!("📋 Assessment Registry: {} assessments, next ID: ASM-{:04}",
+            state.registry.assessments.len(), state.registry.next_id);
+    }
+
+    // Decision Registry save
+    let dec_registry_path = PathBuf::from(&config.output.vault_path).join("decision_registry.json");
+    let mut dec_registry = crate::engine::decision_registry::DecisionRegistry::load_or_new(&dec_registry_path);
+    {
+        let theses_snapshot: Vec<_> = inferred.memory.theses().iter()
+            .map(|t| (t.id.clone(), t.assessment_id.clone()))
+            .collect();
+        for td in &inferred.thesis_decisions {
+            if let Some((_, Some(asm_id))) = theses_snapshot.iter().find(|(id, _)| id == &td.thesis_id) {
+                inferred.memory.record_or_update_decision(td, asm_id, today, &mut dec_registry);
+            }
+        }
+    }
+    if let Err(e) = dec_registry.save(&dec_registry_path) {
+        log::warn!("⚠️ Decision Registry 保存失败: {}", e);
+    } else {
+        log::info!("🎯 Decision Registry: {} decisions, next ID: DEC-{:04}",
+            dec_registry.decisions.len(), dec_registry.next_id);
+    }
+
+    // Investigation Registry save
+    if let Err(e) = state.inv_registry.save(&state.inv_registry_path) {
+        log::warn!("⚠️ Investigation Registry 保存失败: {}", e);
+    } else {
+        log::info!("📋 Investigation Registry: {} investigations, next ID: INV-{:04}",
+            state.inv_registry.investigations.len(), state.inv_registry.next_id);
+    }
+
+    // EntitySanctionDb save
     let entity_db_path = data_dir.join("entity_db.json");
     if let Err(e) = entity_db.save_to_file(&entity_db_path.to_string_lossy()) {
         log::warn!("⚠️ EntitySanctionDb 保存失败: {}", e);
     }
 
-    // Memory Engine 信念追踪 + Hermes 分析
-    let outcome_notifications_html: String;
-    {
-        let memory_path = PathBuf::from(&config.output.vault_path).join("memory_db.json");
-        let mut memory = MemoryEngine::new(memory_path.clone());
-        if let Err(e) = memory.load() {
-            let backup = format!(
-                "{}.corrupt.{}.json",
-                memory_path.to_string_lossy(),
-                chrono::Utc::now().format("%Y%m%d_%H%M%S")
-            );
-            log::warn!(
-                "⚠️ Memory Engine 加载失败 ({}), 备份到 {} 后重建",
-                e,
-                backup
-            );
-            let _ = std::fs::rename(&memory_path, &backup);
-        }
-        // 加载 Assessment Registry（给每个判断分配稳定 ASM-ID）
-        let registry_path = PathBuf::from(&config.output.vault_path).join("assessment_registry.json");
-        let mut registry = crate::engine::registry::AssessmentRegistry::load_or_new(&registry_path);
+    // SQLite report
+    if let Err(e) = db.record_report(today, &format!("Daily brief - {} topics", inferred.memory.theses().len()), 0) {
+        log::warn!("⚠️ DB report 记录失败: {}", e);
+    }
 
-        if let Err(e) = memory.update_from_analysis_with_registry(today, &themes, &analyses, &mut registry) {
-            log::warn!("⚠️ Memory Engine 更新失败: {}", e);
-        } else {
-            let before = memory.theses().len();
-            if !change_summary.conflicts.is_empty() {
-                crate::hermes::apply_conflicts(&change_summary, &mut memory, today);
-            }
-            if let Ok(trends) = db.get_trend(TREND_DAYS) {
-                crate::hermes::analyze_trends(&trends, &mut memory, today);
-            }
-            crate::hermes::discover_theses(&analyses, &chronicle, &mut memory, today);
-            log::info!(
-                "🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
-                memory.theses().len(),
-                memory.theses().len() - before
-            );
-        }
+    PersistedPaths {
+        event_log_path: state.event_log_path.clone(),
+        entity_db_path,
+    }
+}
 
-        // Investigation Engine: generate questions for active theses (with regeneration guard)
-        let inv_registry_path = PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
-        let mut inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(&inv_registry_path);
-        for thesis in memory.theses().to_owned() {
-            if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening) {
-                continue;
-            }
-            // Skip if no ASM-ID yet (can't register in registry without canonical link)
-            let Some(ref asm_id) = thesis.assessment_id else { continue; };
-            // Guard: only generate if needed (first time or >33% new evidence)
-            if !memory.should_regenerate_investigation(&thesis.id) {
-                continue;
-            }
-            match generate_investigation(&thesis, api_key, &config.llm, config.prompts.as_ref())
-                .await
-            {
-                Ok(mut inv) => {
-                    let inv_id = if let Some(old_id) = inv_registry.find_active_by_asm(asm_id) {
-                        inv_registry.supersede_and_register(&old_id, asm_id, &thesis.id, today)
-                    } else {
-                        inv_registry.register(asm_id, &thesis.id, today)
-                    };
-                    inv.id = inv_id.clone();
-                    memory.upsert_investigation(inv);
-                    memory.set_investigation_id(&thesis.id, &inv_id);
-                    log::info!("🔍 Investigation {} generated for ASM {}", inv_id, asm_id);
-                }
-                Err(e) => log::warn!("Investigation gen failed [{}]: {}", thesis.title, e),
-            }
-        }
-        if let Err(e) = inv_registry.save(&inv_registry_path) {
-            log::warn!("⚠️ Investigation Registry 保存失败: {}", e);
-        } else {
-            log::info!("📋 Investigation Registry: {} investigations, next ID: INV-{:04}",
-                inv_registry.investigations.len(), inv_registry.next_id);
-        }
+// ===== Stage 5: Emit =====
 
-        // Derive Investigation Reports for all active theses (no LLM — data derivation only)
-        // Write to output/investigation/ for frontend Investigation pages
-        if let Some(ref mdx_out) = config.output.mdx_dir {
-            let inv_dir = std::path::Path::new(mdx_out).join("investigation");
-            if let Err(e) = std::fs::create_dir_all(&inv_dir) {
-                log::warn!("⚠️ Cannot create investigation dir: {}", e);
-            } else {
-                for thesis in memory.theses() {
-                    if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening) {
-                        continue;
-                    }
-                    // ASCII slug: same logic as renderer/publisher.rs::ascii_slug
-                    let slug_base: String = thesis.title.chars()
-                        .filter(|c| c.is_ascii())
-                        .collect::<String>()
-                        .to_lowercase()
-                        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join("-");
-                    let slug = if slug_base.is_empty() {
-                        thesis.id.trim_start_matches("thesis-")
-                            .get(..8).unwrap_or(&thesis.id).to_string()
-                    } else { slug_base };
-                    let report = crate::engine::investigation::derive_investigation_report(
-                        thesis,
-                        today,
-                        None, // TODO: pass decision rationale when available
-                    );
-                    let inv_id = thesis.investigation_id.as_deref();
-                    let mdx = crate::renderer::mdx::render_investigation_mdx(&report, &slug, inv_id);
-                    let path = inv_dir.join(format!("{}.md", slug));
-                    if let Err(e) = std::fs::write(&path, &mdx) {
-                        log::warn!("⚠️ Investigation MDX write failed [{}]: {}", thesis.title, e);
-                    }
-                }
-                log::info!("🔍 Investigation reports written: {} active theses", memory.theses().iter().filter(|t| matches!(t.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening)).count());
-            }
-        }
+/// Emit: Markdown + MDX 渲染 + 输出
+async fn publish_emit(
+    config: &Config,
+    today: &str,
+    vault_base: PathBuf,
+    themes: &[Theme],
+    analyses: &[ThemeAnalysis],
+    new_articles: &[crate::fetcher::Article],
+    _triage: &crate::agent::scan::TriageResult,
+    inferred: &InferredState,
+    _generated: &GeneratedAssets,
+) -> Result<()> {
+    // Markdown 输出
+    let md_ctx = crate::renderer::publisher::PublishContext {
+        themes: themes.to_vec(),
+        analyses: analyses.to_vec(),
+        date: today.to_string(),
+        theses: vec![],
+        reports: vec![],
+        canonical_decisions: vec![],
+        asi_scores: HashMap::new(),
+        editor_notes: vec![],
+        belief_notes_html: String::new(),
+        articles: vec![],
+        mdx_output_dir: None,
+        output_dir: vault_base.clone(),
+        reflections: vec![],
+        thesis_decisions: vec![],
+        outcomes: vec![],
+    };
+    crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
+    log::info!("📝 Markdown 输出: {} 个主题", themes.len());
 
-        // Meta Layer: Outcome 检测 & Reflection 生成
-        for thesis in memory.theses().to_owned() {
-            if thesis.status == ThesisStatus::Retired {
-                let challenge = thesis
-                    .evidences
-                    .iter()
-                    .filter(|e| e.stance == Stance::Challenges)
-                    .count();
-                let support = thesis
-                    .evidences
-                    .iter()
-                    .filter(|e| e.stance == Stance::Supports)
-                    .count();
-                if challenge > support {
-                    let outcome = Outcome {
-                        id: format!("outcome-{}", chrono::Utc::now().timestamp()),
-                        thesis_id: thesis.id.clone(),
-                        description: format!(
-                            "被证伪: 挑战证据 ({}) 超过支持证据 ({})",
-                            challenge, support
-                        ),
-                        verdict: OutcomeVerdict::Invalidated,
-                        date: today.to_string(),
-                        supporting_evidence: vec![],
-                    };
-                    if let Err(e) = memory.record_outcome(outcome) {
-                        log::warn!("⚠️ Outcome 记录失败: {}", e);
-                    } else {
-                        event_log.push(crate::event_log::PipelineEvent {
-                            id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
-                            event_type: crate::event_log::PipelineEventType::ThesisRefuted,
-                            timestamp: chrono::Utc::now().to_rfc3339(),
-                            description: format!("论题 '{}' 被证伪", thesis.title),
-                            thesis_id: Some(thesis.id.clone()),
-                            related_events: vec![],
-                            data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
-                        });
-                        log::info!(
-                            "🧠 Meta Layer: Thesis '{}' → Invalidated (S={}, C={})",
-                            thesis.title,
-                            support,
-                            challenge
-                        );
-                    }
-                }
-            }
-            if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
-                let outcome = Outcome {
-                    id: format!("outcome-{}", chrono::Utc::now().timestamp()),
-                    thesis_id: thesis.id.clone(),
-                    description: format!("证据持续积累 ({} 条)", thesis.evidences.len()),
-                    verdict: OutcomeVerdict::PartiallyConfirmed,
-                    date: today.to_string(),
-                    supporting_evidence: vec![],
-                };
-                if let Err(e) = memory.record_outcome(outcome) {
-                    log::warn!("⚠️ Outcome 记录失败: {}", e);
-                } else {
-                    event_log.push(crate::event_log::PipelineEvent {
-                        id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
-                        event_type: crate::event_log::PipelineEventType::OutcomeRecorded,
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                        description: format!("论题 '{}' 获得证据强化", thesis.title),
-                        thesis_id: Some(thesis.id.clone()),
-                        related_events: vec![],
-                        data: serde_json::json!({"thesis_title": thesis.title, "evidence_count": thesis.evidences.len()}),
-                    });
-                    log::info!(
-                        "🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)",
-                        thesis.title,
-                        thesis.evidences.len()
-                    );
-                }
-            }
-        }
-        // 生成置信度变化通知
-        let recent_outcomes: Vec<_> = memory.all_outcomes().iter().rev().take(3).map(|o| {
-            let icon = match o.verdict { OutcomeVerdict::Confirmed => "✅", OutcomeVerdict::PartiallyConfirmed => "🟡", OutcomeVerdict::Invalidated => "❌", OutcomeVerdict::Unknown => "❓" };
-            format!(r#"<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #f0f0f0;font-size:0.75rem">
-  <span>{}</span><div><strong>{}</strong></div>
-</div>"#, icon, o.description)
-        }).collect();
-        outcome_notifications_html = if recent_outcomes.is_empty() {
-            String::new()
-        } else {
-            format!(
-                r#"<div style="margin-top:0.75rem;padding:0.5rem;background:#fef2f2;border-radius:0.25rem;border-left:3px solid #ef4444">
-  <div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.25rem">🎯 判断更新</div>
-  {}</div>"#,
-                recent_outcomes.join("")
-            )
+    // MDX 输出（主要输出格式）
+    if let Some(ref mdx_out) = config.output.mdx_dir {
+        let mdx_ctx = crate::renderer::publisher::PublishContext {
+            themes: themes.to_vec(),
+            analyses: analyses.to_vec(),
+            date: today.to_string(),
+            theses: inferred.memory.theses().to_vec(),
+            reports: inferred.premium_reports.clone(),
+            canonical_decisions: inferred.memory.all_decisions().to_vec(),
+            asi_scores: inferred.asi_score_map.clone(),
+            editor_notes: inferred.editor_notes.clone(),
+            belief_notes_html: inferred.beliefs_html.clone(),
+            articles: new_articles.to_vec(),
+            mdx_output_dir: Some(PathBuf::from(mdx_out)),
+            output_dir: vault_base.clone(),
+            reflections: inferred.memory.all_reflections().to_vec(),
+            thesis_decisions: inferred.thesis_decisions.clone(),
+            outcomes: inferred.memory.all_outcomes().to_vec(),
         };
-
-        // Decision Intelligence: Thesis → Decision 映射（含 Decision Smoothing）
-        // 注意：必须在 memory.save() 之前完成，以便把 decision_history 一并持久化
-        let thesis_decisions = map_theses_to_decisions(&memory);
-        // 把今日决策写回 thesis.decision_history（Stability Layer 持久化）
-        for d in &thesis_decisions {
-            memory.record_decision(
-                &d.thesis_id,
-                today,
-                &d.decision_type.label().to_lowercase(),
-                d.confidence,
-            );
-        }
-
-        if let Err(e) = memory.save() {
-            log::warn!("⚠️ Memory Engine 保存失败: {}", e);
-        }
-
-        // 保存 Assessment Registry（持久化 ASM-ID 分配）
-        if let Err(e) = registry.save(&registry_path) {
-            log::warn!("⚠️ Assessment Registry 保存失败: {}", e);
-        } else {
-            log::info!("📋 Assessment Registry: {} assessments, next ID: ASM-{:04}",
-                registry.assessments.len(), registry.next_id);
-        }
-
-        // Decision Registry: 为每个有 ASM-ID 的 Thesis 分配 canonical DEC-XXXX
-        let dec_registry_path = PathBuf::from(&config.output.vault_path).join("decision_registry.json");
-        let mut dec_registry = crate::engine::decision_registry::DecisionRegistry::load_or_new(&dec_registry_path);
-        {
-            let theses_snapshot: Vec<_> = memory.theses().iter()
-                .map(|t| (t.id.clone(), t.assessment_id.clone()))
-                .collect();
-            for td in &thesis_decisions {
-                if let Some((_, Some(asm_id))) = theses_snapshot.iter().find(|(id, _)| id == &td.thesis_id) {
-                    memory.record_or_update_decision(td, asm_id, today, &mut dec_registry);
-                }
-            }
-        }
-        if let Err(e) = dec_registry.save(&dec_registry_path) {
-            log::warn!("⚠️ Decision Registry 保存失败: {}", e);
-        } else {
-            log::info!("🎯 Decision Registry: {} decisions, next ID: DEC-{:04}",
-                dec_registry.decisions.len(), dec_registry.next_id);
-        }
-
-        if !thesis_decisions.is_empty() {
-            let high_priority: Vec<&ThesisDecision> = thesis_decisions
-                .iter()
-                .filter(|d| {
-                    matches!(
-                        d.decision_type,
-                        crate::domain::action::DecisionType::Exit
-                            | crate::domain::action::DecisionType::Build
-                    )
-                })
-                .collect();
-            if !high_priority.is_empty() {
-                log::info!(
-                    "🧠 Decision Intelligence: {} 个高优先级决策",
-                    high_priority.len()
-                );
-                for d in &high_priority {
-                    log::info!(
-                        "  - {:?}: {} ({})",
-                        d.decision_type,
-                        d.thesis_title,
-                        d.rationale
-                    );
-                }
-            }
-        }
-
-        // MDX 输出（主要输出格式）
-        if let Some(ref mdx_out) = config.output.mdx_dir {
-            let mdx_ctx = crate::renderer::publisher::PublishContext {
-                themes: themes.clone(),
-                analyses: analyses.clone(),
-                analyses_zh: vec![],
-                date: today.to_string(),
-                language: "en".into(),
-                calibration: None,
-                attributable_sources: vec![],
-                flash_headline: None,
-                change_summary: None,
-                theses: memory.theses().to_vec(),
-                reports: std::mem::take(&mut premium_reports),
-                archive_entries: vec![],
-                archive_entries_zh: vec![],
-                source_statuses: vec![],
-                decisions: vec![],
-                canonical_decisions: memory.all_decisions().to_vec(),
-                asi_scores: asi_score_map.clone(),
-                editor_notes: editor_notes.clone(),
-                belief_notes_html: String::new(),
-                css_content: String::new(),
-                articles: new_articles.clone(),
-                watchlist_count: triage.watchlist.len(),
-                mdx_output_dir: Some(PathBuf::from(mdx_out)),
-                output_dir: vault_base.clone(),
-                reflections: memory.all_reflections().to_vec(),
-                thesis_decisions: thesis_decisions.clone(),
-                outcomes: memory.all_outcomes().to_vec(),
-            };
-            if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
-                log::warn!("⚠️ MDX 输出失败: {}", e);
-            }
-        }
-    }
-    // 将置信度变化通知追加到 belief_notes_html
-    if !outcome_notifications_html.is_empty() {
-        belief_notes_html.push_str(&outcome_notifications_html);
-    }
-
-    log::info!("📊 {}", crate::llm::llm_audit_summary());
-
-    if !event_log.all().is_empty() {
-        if let Err(e) = event_log.save_to_file(&event_log_path.to_string_lossy()) {
-            log::warn!("⚠️ EventLog 保存失败: {}", e);
+        if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
+            log::warn!("⚠️ MDX 输出失败: {}", e);
         }
     }
 
-    println!(
-        "\n✅ EN 简报: {}",
-        vault_base
-            .join("en")
-            .join(&today[..7])
-            .join("index.html")
-            .display()
-    );
-    println!(
-        "✅ 看板: {}",
-        vault_base.join("en").join("index.html").display()
-    );
     Ok(())
+}
+
+// ===== Helpers =====
+
+/// Extract entities from analysis fact_base (deduplicated entity list per analysis)
+fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
+    let known = crate::entity::known_entities();
+    let mut entities = Vec::new();
+    for fb in &analysis.fact_base {
+        for word in fb.evidence.split_whitespace() {
+            let upper = word.to_uppercase();
+            if known.contains(&upper.as_str()) && !entities.contains(&upper) {
+                entities.push(upper);
+            }
+        }
+    }
+    entities
+}
+
+/// Generate a slug from a thesis for investigation report filenames.
+fn slug_from_thesis(thesis: &crate::domain::thesis::Thesis) -> String {
+    let slug_base: String = thesis.title.chars()
+        .filter(|c| c.is_ascii())
+        .collect::<String>()
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug_base.is_empty() {
+        thesis.id.trim_start_matches("thesis-")
+            .get(..8).unwrap_or(&thesis.id).to_string()
+    } else {
+        slug_base
+    }
+}
+
+// ===== ResearchOutput destructure helper =====
+impl ResearchOutput {
+    fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::question_engine::QuestionMatch>, crate::agent::scan::TriageResult) {
+        (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.question_matches, self.triage)
+    }
 }

@@ -1,4 +1,4 @@
-//! 行动建议领域模型
+﻿//! 行动建议领域模型
 //!
 //! Action 是 Sulix 对用户的输出——不是替用户决策，而是提供决策支持。
 //!
@@ -116,60 +116,6 @@ impl DecisionType {
             Self::Learn => 4,
             Self::Monitor => 5,
             Self::Ignore => 6,
-        }
-    }
-}
-
-/// 行动建议
-///
-/// 每一条 Action 对应一个具体的建议，附带置信度、时间视窗和依据。
-///
-/// 注意：Action 是终局对象（Observation → Thesis → Decision → Action → Outcome 闭环），
-/// 当前管线尚未构造 Action 实例，保留为领域冻结状态。
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Action {
-    /// 唯一 ID
-    pub id: String,
-    /// 行动类型
-    pub action_type: ActionType,
-    /// 关联的 Thesis ID（可选）
-    pub thesis_id: Option<String>,
-    /// 行动描述——"建议做什么"
-    pub description: String,
-    /// 置信度 0.0-1.0
-    pub confidence: f64,
-    /// 时间视窗
-    pub time_horizon: String,
-    /// 建议依据
-    pub rationale: String,
-}
-
-#[allow(dead_code)]
-impl Action {
-    /// 创建一个观察建议
-    pub fn observe(description: &str, rationale: &str) -> Self {
-        Self {
-            id: String::new(),
-            action_type: ActionType::Observe,
-            thesis_id: None,
-            description: description.to_string(),
-            confidence: 0.6,
-            time_horizon: "持续".into(),
-            rationale: rationale.to_string(),
-        }
-    }
-
-    /// 创建一个退出建议（最高优先级）
-    pub fn exit(description: &str, rationale: &str) -> Self {
-        Self {
-            id: String::new(),
-            action_type: ActionType::Exit,
-            thesis_id: None,
-            description: description.to_string(),
-            confidence: 0.8,
-            time_horizon: "立即".into(),
-            rationale: rationale.to_string(),
         }
     }
 }

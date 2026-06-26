@@ -1,0 +1,65 @@
+{
+  "theses": [
+    {
+      "id": "thesis-1782436041",
+      "title": "芯片技术",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "芯片技术",
+          "source": "OpenAI Blog",
+          "summary": "AI推理专用芯片的定制化趋势已确认，将加速推理成本下降，而IBM亚1纳米技术是长期利好但短期不改变策略。",
+          "stance": "Supports",
+          "signal_strength": 5
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "Jalapeño芯片的量产将顺利实现且成本下降显著。",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "定制推理芯片将挑战通用GPU的长期主导地位。",
+          "load_bearing": true,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "IBM亚1纳米技术短期内不影响策略，长期利好。",
+          "load_bearing": false,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "OpenAI与Broadcom的合作无供应链或技术难题。",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "推理成本下降会直接推动AI应用层爆发。",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    }
+  ],
+  "outcomes": [],
+  "reflections": [],
+  "investigations": []
+}

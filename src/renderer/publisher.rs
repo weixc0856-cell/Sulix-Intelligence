@@ -6,7 +6,6 @@
 //! 当前活跃实现：
 //!   - MdxPublisher:      核心输出，生成 MDX 供 Astro Content Collections
 //!   - MarkdownPublisher: 备用 Substrack Markdown 输出
-//!   - PremiumPublisher:  深度研报（HTML，用于本地预览）
 //!
 //! 已移除（第一代遗产）:
 //!   - HtmlPublisher       → MDX 取代
@@ -17,9 +16,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::archive::ChronicleEntry;
-use crate::clusterer::{ChangeSummary, Theme, ThemeAnalysis};
-use crate::config::SourceConfig;
+use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::domain::reflection::Reflection;
 use crate::domain::thesis::Thesis;
 use crate::engine::memory::Outcome;
@@ -27,39 +24,25 @@ use crate::engine::premium::PremiumReport;
 
 /// 发布上下文 — 所有发布器共享的数据
 ///
-/// 注意：多个字段当前仅在 MdxPublisher 中被读取。
-/// 其余字段由 publishing.rs 填充但对于活跃发布器不可见——待 P3 清理。
-#[allow(dead_code)]
+/// 仅包含活跃发布器（MdxPublisher / MarkdownPublisher）实际读取的字段。
+/// 已移除字段（Phase 1 清理）：
+///   calibration, attributable_sources, flash_headline, change_summary,
+///   archive_entries, archive_entries_zh, source_statuses, decisions,
+///   css_content, analyses_zh, language, watchlist_count
 pub struct PublishContext {
     pub themes: Vec<Theme>,
     pub analyses: Vec<ThemeAnalysis>,
-    /// 中文分析（可选）
-    pub analyses_zh: Vec<ThemeAnalysis>,
     pub date: String,
-    pub language: String,
-    pub calibration: Option<String>,
-    pub attributable_sources: Vec<SourceConfig>,
-    pub flash_headline: Option<String>,
-    pub change_summary: Option<ChangeSummary>,
     pub theses: Vec<Thesis>,
     pub reports: Vec<PremiumReport>,
-    pub archive_entries: Vec<ChronicleEntry>,
-    /// 中文编年史条目（可选）
-    pub archive_entries_zh: Vec<ChronicleEntry>,
-    pub source_statuses: Vec<(String, bool, usize)>,
-    pub decisions: Vec<crate::decision_engine::Decision>,
     /// ASI/Confidence 评分 per theme_title → (asi, confidence, final)
     pub asi_scores: HashMap<String, (f64, f64, f64)>,
     /// Editor Agent 分析结果（个人影响分析）
     pub editor_notes: Vec<crate::agent::editor::EditorNote>,
     /// Belief Engine HTML 区块
     pub belief_notes_html: String,
-    /// 内联 CSS 内容（从 design.css 读取）
-    pub css_content: String,
     /// 今日原始文章列表（用于 Signal Feed 板块）
     pub articles: Vec<crate::fetcher::Article>,
-    /// 观察列表数量
-    pub watchlist_count: usize,
     pub output_dir: PathBuf,
     /// MDX 输出目录（如 output/），None = 不输出 MDX
     pub mdx_output_dir: Option<PathBuf>,
@@ -133,51 +116,6 @@ impl Publisher for MarkdownPublisher {
             });
         }
 
-        Ok(outputs)
-    }
-}
-
-// ===== PremiumPublisher =====
-
-#[allow(dead_code)]
-pub struct PremiumPublisher;
-
-impl Default for PremiumPublisher {
-    fn default() -> Self {
-        Self
-    }
-}
-
-#[allow(dead_code)]
-impl PremiumPublisher {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[allow(dead_code)]
-impl Publisher for PremiumPublisher {
-    fn name(&self) -> &str {
-        "PremiumPublisher"
-    }
-
-    fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
-        let mut outputs = Vec::new();
-        for report in &ctx.reports {
-            let html = crate::renderer::premium::render_premium_report(report)?;
-            let slug = report
-                .theme_title
-                .to_lowercase()
-                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                .replace(' ', "-");
-            outputs.push(PublishedOutput::File {
-                path: ctx
-                    .output_dir
-                    .join("premium")
-                    .join(format!("{}-{}.html", ctx.date, slug)),
-                content: html,
-            });
-        }
         Ok(outputs)
     }
 }

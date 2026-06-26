@@ -13,7 +13,31 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+/// Generic helper: load JSON from file, return default on failure/missing.
+///
+/// Shared by AssessmentRegistry, DecisionRegistry, InvestigationRegistry
+/// to eliminate copy-pasted load_or_new implementations.
+pub fn load_or_new<T: DeserializeOwned + Default>(path: &Path) -> T {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Generic helper: serialize + write JSON to file, creating parent dirs.
+///
+/// Shared by AssessmentRegistry, DecisionRegistry, InvestigationRegistry
+/// to eliminate copy-pasted save implementations.
+pub fn save_json<T: Serialize>(value: &T, path: &Path) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(value)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
 
 /// 单个 Assessment 的注册记录
 #[derive(Debug, Clone, Serialize, Deserialize)]

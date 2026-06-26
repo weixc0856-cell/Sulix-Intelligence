@@ -1,4 +1,4 @@
-//! Scan Agent — 信号初筛模块（Gate v1.1 保真版）
+﻿//! Scan Agent — 信号初筛模块（Gate v1.1 保真版）
 //!
 //! v1.1 核心变化：
 //! - Layer 0: 不评分，只结构化（保真接收）
@@ -26,19 +26,6 @@ pub struct TriageResult {
     pub signal_memory: Vec<Article>,
 }
 
-/// 矛盾追踪记录（Phase 2 完整实现，Phase 1 仅结构体定义）
-///
-/// 当新文章与已有信念冲突时，强制保留而非过滤。
-/// 待 Phase B (Belief Engine) 接入后启用完整逻辑。
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct ContradictionRecord {
-    pub article_id: String,
-    pub belief_key: String,
-    pub contradicts: bool,
-    pub retained: bool,
-    pub created_at: String,
-}
 
 /// 对分组后的文章执行信号标记和三层分流（v1.1）
 pub async fn scan_and_triage(

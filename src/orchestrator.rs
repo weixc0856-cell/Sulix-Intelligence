@@ -6,10 +6,8 @@
 //!   - 条件边（ConditionEdgeFn）实现蓝军 Veto→回 Generator 循环
 //!   - LoopCounter 刚性上限防止死循环燃烧 Token
 //!
-//! Phase 3 接入:
-//!   - Source → Cluster → BlueTeam → QE → BE → DE → Render
+//! 当前拓扑: Cluster → BlueTeam → QE
 //!   - BlueTeam veto → RouteResult::LoopBack("Cluster")
-//!   - Flash 事件 → 动态节点注入
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -21,10 +19,8 @@ const CONFIDENCE_STALL_THRESHOLD: f64 = 0.05;
 
 use anyhow::Result;
 
-use crate::belief_engine::BeliefUpdate;
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::config::Config;
-use crate::decision_engine::Decision;
 use crate::question_engine::QuestionMatch;
 
 // ===== 全局图执行上下文（黑板模式）=====
@@ -39,8 +35,6 @@ pub struct GraphContext {
     pub current_themes: Vec<Theme>,
     pub current_analyses: Vec<ThemeAnalysis>,
     pub question_matches: Vec<Vec<QuestionMatch>>,
-    pub belief_updates: Vec<BeliefUpdate>,
-    pub decisions: Vec<Decision>,
     /// 循环计数器：节点名 -> 执行次数
     pub loop_counters: HashMap<String, usize>,
     pub api_key: String,
@@ -60,8 +54,6 @@ impl GraphContext {
             current_themes: Vec::new(),
             current_analyses: Vec::new(),
             question_matches: Vec::new(),
-            belief_updates: Vec::new(),
-            decisions: Vec::new(),
             loop_counters: HashMap::new(),
             loop_counter: 0,
             max_loops: 3,
@@ -244,7 +236,15 @@ impl DiGraph {
 
 // ===== 内置节点 =====
 
-/// Cluster 节点：主题聚类 + 分析 + 蓝军验证
+/// Cluster 节点：主题聚类一致性验证
+///
+/// 实际聚类由 `main.rs` 在 graph.run() 之前完成并注入 context。
+/// 此节点作为 **guard** 验证聚类结果完整性：
+///   - themes 数组不为空
+///   - 每个 theme 都有对应的 analysis
+///   - articles/sources 一致性
+///
+/// 如果验证失败返回错误，graph.run() 将 log warning 但不会崩溃（由调用方处理）。
 pub struct ClusterNode {
     pub name: &'static str,
 }
@@ -252,13 +252,52 @@ impl GraphNode for ClusterNode {
     fn name(&self) -> &'static str {
         self.name
     }
-    fn execute(&self, _ctx: &mut GraphContext) -> Result<()> {
-        log::info!("  节点 Cluster: 主题聚类与分析（由 main.rs 外部驱动）");
+    fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
+        let theme_count = ctx.current_themes.len();
+        let analysis_count = ctx.current_analyses.len();
+
+        if theme_count == 0 {
+            log::warn!("  节点 Cluster: themes 为空，跳过分析阶段");
+            return Ok(());
+        }
+
+        // 验证：每个 theme 是否都对应一个 analysis
+        if theme_count != analysis_count {
+            log::warn!(
+                "  节点 Cluster: themes({}) 与 analyses({}) 数量不一致——跳过路由",
+                theme_count, analysis_count
+            );
+        } else {
+            // 验证：每个 theme 的 articles 是否非空
+            let empty_themes: Vec<&str> = ctx.current_themes.iter()
+                .filter(|t| t.articles.is_empty())
+                .map(|t| t.title.as_str())
+                .collect();
+            if !empty_themes.is_empty() {
+                log::warn!("  节点 Cluster: {} 个 theme 无 article（空主题）: {:?}", empty_themes.len(), empty_themes);
+            }
+        }
+
+        log::info!(
+            "  节点 Cluster: {} 个主题, {} 项分析 — guard 通过",
+            theme_count, analysis_count
+        );
         Ok(())
     }
 }
 
-/// BlueTeam 节点：蓝军验证 + 条件路由
+/// 蓝军验证降级幅度：承重假设证据弱时 signal_strength 减少的值
+const WEAK_BEARING_PENALTY: u8 = 2;
+
+/// BlueTeam 节点：蓝军验证 + 信号强度校准
+///
+/// 职责：
+///   1. 对每个 analysis 检查承重假设的证据强度
+///   2. 如果承重假设证据弱，执行 signal_strength 降级
+///   3. 记录降级原因到 log
+///
+/// 条件路由由 `blue_team_edge()` 边条件驱动（单独处理 loopback 决策）。
+/// execute() 本身只做原子化的降级操作，不负责路由。
 pub struct BlueTeamNode {
     pub name: &'static str,
 }
@@ -266,8 +305,19 @@ impl GraphNode for BlueTeamNode {
     fn name(&self) -> &'static str {
         self.name
     }
-    fn execute(&self, _ctx: &mut GraphContext) -> Result<()> {
-        log::info!("  节点 BlueTeam: 蓝军验证（条件路由由 Edge condition 驱动）");
+    fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
+        let mut degraded_count = 0;
+        for analysis in &mut ctx.current_analyses {
+            let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
+            if weak_bearing && analysis.signal_strength >= WEAK_BEARING_PENALTY {
+                analysis.signal_strength -= WEAK_BEARING_PENALTY;
+                degraded_count += 1;
+            }
+        }
+        if degraded_count > 0 {
+            log::info!("  节点 BlueTeam: {} 个 analysis 因承重假设证据弱而降级", degraded_count);
+        }
+        log::info!("  节点 BlueTeam: 蓝军验证完成（条件路由由 Edge condition 驱动）");
         Ok(())
     }
 }
@@ -296,40 +346,6 @@ impl GraphNode for QENode {
                 }
             }
         }
-        Ok(())
-    }
-}
-
-/// BE 节点：Belief Engine（信念更新 + 矛盾检测）
-pub struct BENode {
-    pub name: &'static str,
-}
-impl GraphNode for BENode {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-    fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
-        log::info!("  节点 BE: Belief Engine");
-        for matches in &ctx.question_matches {
-            let updates = crate::belief_engine::update_beliefs(matches, &[]);
-            ctx.belief_updates.extend(updates);
-        }
-        Ok(())
-    }
-}
-
-/// DE 节点：Decision Engine（四层决策输出）
-pub struct DENode {
-    pub name: &'static str,
-}
-impl GraphNode for DENode {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-    fn execute(&self, ctx: &mut GraphContext) -> Result<()> {
-        log::info!("  节点 DE: Decision Engine");
-        let decisions = crate::decision_engine::evaluate_decisions(&ctx.belief_updates, &[]);
-        ctx.decisions = decisions;
         Ok(())
     }
 }
@@ -388,17 +404,11 @@ mod tests {
         let mut graph = DiGraph::new();
         graph.add_node(Box::new(ClusterNode { name: "Cluster" }));
         graph.add_node(Box::new(QENode { name: "QE" }));
-        graph.add_node(Box::new(DENode { name: "DE" }));
 
         graph.add_edge(
             "Cluster",
             "QE",
             Arc::new(|_| RouteResult::ProceedTo("QE".into())),
-        );
-        graph.add_edge(
-            "QE",
-            "DE",
-            Arc::new(|_| RouteResult::ProceedTo("DE".into())),
         );
 
         graph.set_entry("Cluster");

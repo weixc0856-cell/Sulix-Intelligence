@@ -14,7 +14,6 @@
 pub mod action;
 pub mod evidence;
 pub mod investigation;
-pub mod observation;
 pub mod outcome;
 pub mod reflection;
 pub mod theme;
@@ -29,8 +28,6 @@ pub use action::*;
 pub use evidence::*;
 #[allow(unused_imports)]
 pub use investigation::*;
-#[allow(unused_imports)]
-pub use observation::*;
 #[allow(unused_imports)]
 pub use outcome::*;
 #[allow(unused_imports)]

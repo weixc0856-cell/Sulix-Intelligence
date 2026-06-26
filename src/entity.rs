@@ -15,6 +15,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// 已知实体白名单 — 统一来源
+///
+/// 所有模块（publishing.rs / mdx.rs 等）通过此函数获取实体列表，
+/// 而非各自维护重复的硬编码数组。
+pub fn known_entities() -> &'static [&'static str] {
+    &[
+        "TSMC", "ASML", "NVIDIA", "OPENAI", "ANTHROPIC",
+        "GOOGLE", "META", "MICROSOFT", "INTEL", "AMD", "ARM", "HBM",
+    ]
+}
+
 /// 实体类型（OpenCTI 字符串常量模式）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EntityType {
