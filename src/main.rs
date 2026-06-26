@@ -488,16 +488,29 @@ async fn agent_research(
             theme.title,
             theme.articles.len()
         );
-        let mut analysis =
+        let analysis_result =
             clusterer::analyze_theme(theme, api_key, &config.llm, "en", config.prompts.as_ref())
-                .await?;
-        let (assumptions, adverse, next_tests, open_questions) =
-            clusterer::challenge_theme(&analysis, api_key, &config.llm, config.prompts.as_ref())
-                .await?;
-        analysis.assumptions = assumptions;
-        analysis.adverse = adverse;
-        analysis.next_tests = next_tests;
-        analysis.open_questions = open_questions;
+                .await;
+        let mut analysis = match analysis_result {
+            Ok(a) => a,
+            Err(e) => {
+                log::warn!("⚠️ 主题分析失败 [{}], 跳过: {}", theme.title, e);
+                continue;
+            }
+        };
+        match clusterer::challenge_theme(&analysis, api_key, &config.llm, config.prompts.as_ref())
+            .await
+        {
+            Ok((assumptions, adverse, next_tests, open_questions)) => {
+                analysis.assumptions = assumptions;
+                analysis.adverse = adverse;
+                analysis.next_tests = next_tests;
+                analysis.open_questions = open_questions;
+            }
+            Err(e) => {
+                log::warn!("⚠️ 蓝军验证失败 [{}], 使用无蓝军分析: {}", theme.title, e);
+            }
+        }
         let weak_bearing = analysis
             .assumptions
             .iter()
