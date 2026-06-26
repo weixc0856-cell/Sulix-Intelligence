@@ -21,6 +21,22 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI治理",
+          "source": "Simon Willison",
+          "summary": "德国裁定谷歌对AI概述错误负责，结合OpenAI推动标准，表明AI治理进入法律责任明确化阶段，创始人需重新评估AI部署风险。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -50,16 +66,36 @@
           "evidence_strength": "moderate"
         }
       ],
-      "status": "Active",
+      "status": "Strengthening",
       "confidence_history": [
         {
           "date": "2026-06-26",
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "StatusChange",
+          "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
-      "status_history": [],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-06-26",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 3)"
+        }
+      ],
       "parent_id": null,
       "merged_ids": [],
       "related_thesis_ids": [],
@@ -171,9 +207,139 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null
+    },
+    {
+      "id": "thesis-1782443023",
+      "title": "硬件创新",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "硬件创新",
+          "source": "Hacker News - Front Page",
+          "summary": "专用AI推理芯片（如Jalapeño）的推出短期内将降低LLM部署成本，而IBM的0.7nm技术是长期利好，但6个月内无需改变策略。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "Jalapeño芯片能够在6个月内进入市场并大规模降低推理成本",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "IBM的0.7nm技术商业化需要数年且不会影响短期策略",
+          "load_bearing": false,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "创始人能够有效评估Jalapeño等专用芯片的性价比",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    },
+    {
+      "id": "thesis-1782443023",
+      "title": "Agent能力",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "Agent能力",
+          "source": "OpenAI Blog",
+          "summary": "Agent能力正从实验走向产品化，创始人应立即将自主代理纳入产品路线图和运营策略。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "两大巨头的代理能力已足够成熟，能够快速产品化并被市场广泛接受",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "开发者愿意放弃传统中间件和RPA工具，转而采用代理集成",
+          "load_bearing": true,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "代理的推理和任务执行可靠性达到产品级标准，错误率低",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "创始人团队有能力和资源在6个月内将代理集成到产品路线图中",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "6个月内没有出现重大技术挫折、监管障碍或伦理争议",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
     }
   ],
-  "outcomes": [],
-  "reflections": [],
+  "outcomes": [
+    {
+      "id": "outcome-1782443065",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    }
+  ],
+  "reflections": [
+    {
+      "id": "reflection-1782443065",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782443065",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    }
+  ],
   "investigations": []
 }
