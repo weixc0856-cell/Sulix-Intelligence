@@ -60,6 +60,7 @@ async fn main() -> Result<()> {
     entity_db = entity_db_fetched;
 
     // Research Agent: 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
+    let new_article_count = new_articles.len(); // 保存在 new_articles 被 move 前
     let research = agent_research(
         &config,
         &api_key,
@@ -72,6 +73,10 @@ async fn main() -> Result<()> {
     )
     .await?;
     let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
+    // 填充报告聚合字段（前端消费稳定接口）
+    report.observation_count = Some(total_signals);
+    report.signal_count = Some(new_article_count);
+    report.theme_count = Some(research.themes.len());
     if research.themes.is_empty() {
         report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
     }

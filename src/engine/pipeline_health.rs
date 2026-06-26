@@ -7,10 +7,25 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// 管线运行报告
+///
+/// 顶层聚合字段（`observation_count` 等）是前端消费的稳定接口。
+/// 前端不应直接解析 `stages` 内部来获取计数——stages 是内部审计用途。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineReport {
     pub date: String,
     pub duration_seconds: f64,
+    /// 原始抓取信号总数（所有源之和，去重前）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observation_count: Option<usize>,
+    /// 去重后今日新增信号数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_count: Option<usize>,
+    /// 聚类后主题数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_count: Option<usize>,
+    /// 有 decision 标签的 thesis 数
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision_count: Option<usize>,
     pub stages: Vec<PipelineStage>,
     pub status: PipelineStatus,
 }
@@ -51,6 +66,10 @@ impl PipelineReport {
         Self {
             date: date.to_string(),
             duration_seconds: 0.0,
+            observation_count: None,
+            signal_count: None,
+            theme_count: None,
+            decision_count: None,
             stages: Vec::new(),
             status: PipelineStatus::Success,
         }

@@ -338,8 +338,7 @@ impl MemoryEngine {
             .iter()
             .filter(|e| {
                 chrono::NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
-                    .map(|d| (today_date - d).num_days())
-                    .map_or(false, |diff| (0..=7).contains(&diff))
+                    .is_ok_and(|d| (0..=7).contains(&(today_date - d).num_days()))
             })
             .collect();
 
