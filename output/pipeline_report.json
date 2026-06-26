@@ -1,6 +1,6 @@
 {
   "date": "2026-06-26",
-  "duration_seconds": 300.329854009,
+  "duration_seconds": 263.239075744,
   "stages": [
     {
       "name": "agent_signal",
@@ -11,7 +11,7 @@
     {
       "name": "agent_research",
       "input_count": 43,
-      "output_count": 3,
+      "output_count": 2,
       "status": "Success"
     },
     {

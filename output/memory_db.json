@@ -53,6 +53,14 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -113,6 +121,18 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -143,6 +163,14 @@
           "summary": "AI芯片定制化（如OpenAI Jalapeño）与工艺突破（IBM 0.7nm）并行，但短期内对初创公司的直接影响有限，长期看算力成本将下降但竞争加剧。",
           "stance": "Supports",
           "signal_strength": 4
+        },
+        {
+          "date": "2026-06-26",
+          "title": "芯片技术",
+          "source": "Hacker News - Front Page",
+          "summary": "OpenAI与Broadcom的定制度推理芯片Jalapeño将降低LLM推理成本，推动AI应用爆发；IBM的亚1纳米芯片虽革命性但商业化尚远，6个月内无直接影响。",
+          "stance": "Supports",
+          "signal_strength": 6
         }
       ],
       "assumptions": [
@@ -167,16 +195,30 @@
           "evidence_strength": "moderate"
         }
       ],
-      "status": "Active",
+      "status": "Strengthening",
       "confidence_history": [
         {
           "date": "2026-06-26",
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "StatusChange",
+          "reason": "daily update"
         }
       ],
-      "status_history": [],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-06-26",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 2)"
+        }
+      ],
       "parent_id": null,
       "merged_ids": [],
       "related_thesis_ids": [],
@@ -275,6 +317,12 @@
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -440,6 +488,12 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -514,6 +568,59 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null
+    },
+    {
+      "id": "thesis-1782447212",
+      "title": "AI智能体",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "AI智能体",
+          "source": "OpenAI Blog",
+          "summary": "AI智能体获得计算机使用能力，将从根本上改变用户与软件交互的方式，SaaS产品的入口将从图形界面转向智能体API。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "假设所有SaaS产品都可以并且应该被AI智能体以编程方式调用",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设AI智能体的计算机使用能力已经足够成熟和可靠，能处理复杂任务",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设用户会迅速放弃传统GUI交互，转向智能体交互",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设智能体厂商会推动标准化接口，且SaaS公司有能力快速适应",
+          "load_bearing": true,
+          "evidence_strength": "moderate"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
     }
   ],
   "outcomes": [
@@ -559,6 +666,38 @@
     },
     {
       "id": "outcome-1782444438",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782447269",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (7 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782447269",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782447269",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782447269",
       "thesis_id": "thesis-1782443578",
       "description": "证据持续积累 (2 条)",
       "verdict": "PartiallyConfirmed",
@@ -641,6 +780,62 @@
       "id": "reflection-1782444438",
       "thesis_id": "thesis-1782443578",
       "outcome_id": "outcome-1782444438",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782447269",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782447269",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (7 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782447269",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782447269",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782447269",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782447269",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782447269",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782447269",
       "verdict": "partially-confirmed",
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
