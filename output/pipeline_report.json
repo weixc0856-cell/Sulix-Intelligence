@@ -1,13 +1,13 @@
 {
   "date": "2026-06-26",
-  "duration_seconds": 301.180489863,
+  "duration_seconds": 279.423053749,
   "observation_count": 43,
   "signal_count": 43,
   "theme_count": 2,
   "category_counts": {
-    "AI": 22,
+    "Regulatory Compliance": 1,
     "AI Competition": 20,
-    "Regulatory Compliance": 1
+    "AI": 22
   },
   "stages": [
     {
