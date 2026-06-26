@@ -587,12 +587,23 @@ pub async fn agent_publish(
             )
         };
 
+        // Decision Intelligence: Thesis → Decision 映射（含 Decision Smoothing）
+        // 注意：必须在 memory.save() 之前完成，以便把 decision_history 一并持久化
+        let thesis_decisions = map_theses_to_decisions(&memory);
+        // 把今日决策写回 thesis.decision_history（Stability Layer 持久化）
+        for d in &thesis_decisions {
+            memory.record_decision(
+                &d.thesis_id,
+                today,
+                &d.decision_type.label().to_lowercase(),
+                d.confidence,
+            );
+        }
+
         if let Err(e) = memory.save() {
             log::warn!("⚠️ Memory Engine 保存失败: {}", e);
         }
 
-        // Decision Intelligence: Thesis → Decision 映射
-        let thesis_decisions = map_theses_to_decisions(&memory);
         if !thesis_decisions.is_empty() {
             let high_priority: Vec<&ThesisDecision> = thesis_decisions
                 .iter()

@@ -277,6 +277,16 @@ pub fn render_thesis_mdx(
     if confidence_delta.abs() > 0.005 {
         mdx.push_str(&format!("confidence_delta: {:.3}\n", confidence_delta));
     }
+    // 决策连续天数（Stability Layer：前端显示 "Stable N days"）
+    if !thesis.decision_history.is_empty() {
+        let last_type = thesis.decision_history.last().map(|s| s.decision_type.as_str()).unwrap_or("");
+        let decision_days = thesis.decision_history.iter().rev()
+            .take_while(|s| s.decision_type == last_type)
+            .count();
+        if decision_days >= 2 {
+            mdx.push_str(&format!("decision_days: {}\n", decision_days));
+        }
+    }
     // Decision Intelligence frontmatter
     if let Some(dec) = decision {
         mdx.push_str(&format!(

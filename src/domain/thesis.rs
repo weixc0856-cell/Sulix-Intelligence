@@ -90,6 +90,23 @@ pub struct Thesis {
     /// 关联的调查 ID（Investigation Engine 生成）
     #[serde(default)]
     pub investigation_id: Option<String>,
+    /// 决策历史（Stability Layer：防止日间决策抖动）
+    #[serde(default)]
+    pub decision_history: Vec<DecisionSnapshot>,
+}
+
+/// 决策快照 — 每日记录，供 Decision Smoothing 使用
+///
+/// 存储 thesis 在某一天被系统赋予的决策类型，
+/// 用于判断决策是否稳定（连续 3 天相同 → Stable）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionSnapshot {
+    /// 日期，格式 YYYY-MM-DD
+    pub date: String,
+    /// 决策类型（小写），如 "build"、"monitor"、"exit"
+    pub decision_type: String,
+    /// 计算决策时的置信度
+    pub confidence: f64,
 }
 
 /// 置信度快照 — 事件驱动，非 daily sampling

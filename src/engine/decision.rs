@@ -47,7 +47,12 @@ pub fn map_theses_to_decisions(memory: &MemoryEngine) -> Vec<ThesisDecision> {
     decisions
 }
 
-/// 将单个 Thesis 映射为决策建议
+/// 将单个 Thesis 映射为决策建议（含 Decision Smoothing）
+///
+/// Decision Smoothing 原则：
+/// - EXIT 永远立即生效（风险管理优先）
+/// - 其他决策类型：若与历史不同，需连续 2 天出现才允许切换
+/// - 连续 3 天相同决策 → Stable；否则 Volatile
 fn map_thesis_to_decision(
     thesis: &crate::domain::thesis::Thesis,
     memory: &MemoryEngine,
@@ -61,7 +66,7 @@ fn map_thesis_to_decision(
         .iter()
         .any(|o| o.thesis_id == thesis.id && o.verdict == OutcomeVerdict::Invalidated);
 
-    let (decision_type, horizon, rationale) = match status {
+    let (raw_type, horizon, rationale) = match status {
         ThesisStatus::Proposed => (
             DecisionType::Learn,
             DecisionHorizon::OneEightyDays,
@@ -133,38 +138,83 @@ fn map_thesis_to_decision(
     // Compute confidence from evidence ratio (canonical: engine/memory.rs)
     let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
 
-    let priority = decision_type.priority();
-
-    // 从 outcome history 计算决策稳定性
-    let thesis_outcomes: Vec<&crate::domain::outcome::Outcome> = memory
-        .all_outcomes()
-        .iter()
-        .filter(|o| o.thesis_id == thesis.id)
-        .collect();
-    let stability = if thesis_outcomes.is_empty() {
-        DecisionStability::Volatile
-    } else if thesis_outcomes
-        .iter()
-        .any(|o| o.verdict == OutcomeVerdict::Invalidated)
-    {
-        DecisionStability::Final
+    // ── Decision Smoothing ──────────────────────────────────────────────
+    // EXIT 永远立即生效，不受 smoothing 影响
+    let decision_type = if raw_type == DecisionType::Exit {
+        raw_type
     } else {
-        let confirmed = thesis_outcomes
-            .iter()
-            .filter(|o| {
-                matches!(
-                    o.verdict,
-                    OutcomeVerdict::Confirmed | OutcomeVerdict::PartiallyConfirmed
-                )
-            })
-            .count();
-        let total = thesis_outcomes.len();
-        if confirmed as f64 / total as f64 >= 0.5 {
-            DecisionStability::Stable
-        } else {
-            DecisionStability::Volatile
+        let raw_label = raw_type.label().to_lowercase();
+        let history = &thesis.decision_history;
+        match history.last() {
+            // 没有历史 → 新 thesis，直接用原始决策
+            None => raw_type,
+            // 与昨天相同 → 继续
+            Some(last) if last.decision_type == raw_label => raw_type,
+            // 与昨天不同 → 检查是否连续 2 天出现新决策（2-day hysteresis）
+            Some(_) => {
+                let consistent_new = history
+                    .iter()
+                    .rev()
+                    .take(2)
+                    .filter(|s| s.decision_type == raw_label)
+                    .count()
+                    >= 2;
+                if consistent_new {
+                    raw_type // 连续 2 天 → 允许切换
+                } else {
+                    // 只有 1 天 → 抑制翻转，用历史中最近的决策
+                    parse_decision_type(&history.last().unwrap().decision_type)
+                        .unwrap_or(raw_type)
+                }
+            }
         }
     };
+    // ─────────────────────────────────────────────────────────────────
+
+    let priority = decision_type.priority();
+
+    // ── Stability — 结合决策连续性 + outcome history ──────────────────
+    let final_label = decision_type.label().to_lowercase();
+    let stability = if decision_type == DecisionType::Exit {
+        DecisionStability::Final
+    } else {
+        // 决策连续性：连续 3 天相同 → Stable
+        let consecutive_days = thesis
+            .decision_history
+            .iter()
+            .rev()
+            .take_while(|s| s.decision_type == final_label)
+            .count();
+        if consecutive_days >= 3 {
+            DecisionStability::Stable
+        } else {
+            // 次级：outcome 历史确认也可以 Stable
+            let thesis_outcomes: Vec<&crate::domain::outcome::Outcome> = memory
+                .all_outcomes()
+                .iter()
+                .filter(|o| o.thesis_id == thesis.id)
+                .collect();
+            if !thesis_outcomes.is_empty() {
+                let confirmed = thesis_outcomes
+                    .iter()
+                    .filter(|o| {
+                        matches!(
+                            o.verdict,
+                            OutcomeVerdict::Confirmed | OutcomeVerdict::PartiallyConfirmed
+                        )
+                    })
+                    .count();
+                if confirmed as f64 / thesis_outcomes.len() as f64 >= 0.5 {
+                    DecisionStability::Stable
+                } else {
+                    DecisionStability::Volatile
+                }
+            } else {
+                DecisionStability::Volatile
+            }
+        }
+    };
+    // ─────────────────────────────────────────────────────────────────
 
     ThesisDecision {
         thesis_id: thesis.id.clone(),
@@ -175,6 +225,19 @@ fn map_thesis_to_decision(
         horizon,
         priority,
         stability,
+    }
+}
+
+/// 将小写字符串解析为 DecisionType（用于 decision_history 查找）
+fn parse_decision_type(s: &str) -> Option<DecisionType> {
+    match s {
+        "build" => Some(DecisionType::Build),
+        "invest" => Some(DecisionType::Invest),
+        "monitor" => Some(DecisionType::Monitor),
+        "learn" => Some(DecisionType::Learn),
+        "ignore" => Some(DecisionType::Ignore),
+        "exit" => Some(DecisionType::Exit),
+        _ => None,
     }
 }
 
@@ -210,6 +273,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         }
     }
 

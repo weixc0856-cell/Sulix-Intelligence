@@ -247,6 +247,7 @@ impl MemoryEngine {
                     related_thesis_ids: vec![],
                     metadata: HashMap::new(),
                     investigation_id: None,
+                    decision_history: vec![],
                 };
                 self.theses.push(new_thesis);
                 let new_idx = self.theses.len() - 1;
@@ -499,6 +500,28 @@ impl MemoryEngine {
         &self.outcomes
     }
 
+    /// 记录今日决策到 thesis.decision_history（Stability Layer 持久化）
+    ///
+    /// 在 publishing.rs 的 map_theses_to_decisions() 之后调用，
+    /// 确保决策历史在 memory.save() 前写入。
+    pub fn record_decision(&mut self, thesis_id: &str, today: &str, decision_type: &str, confidence: f64) {
+        if let Some(thesis) = self.theses.iter_mut().find(|t| t.id == thesis_id) {
+            // 避免同一天重复写入
+            let already_today = thesis.decision_history.last()
+                .is_some_and(|s| s.date == today);
+            if !already_today {
+                thesis.decision_history.push(crate::domain::thesis::DecisionSnapshot {
+                    date: today.to_string(),
+                    decision_type: decision_type.to_string(),
+                    confidence,
+                });
+            }
+            // 只保留最近 30 天（防止无限增长）
+            let keep_from = thesis.decision_history.len().saturating_sub(30);
+            thesis.decision_history.drain(..keep_from);
+        }
+    }
+
     /// 生成 Thesis 的反思复盘
     ///
     /// 基于 Outcome 记录生成结构化反思：
@@ -646,6 +669,7 @@ impl MemoryEngine {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
     }
 
@@ -818,6 +842,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // 完全匹配
@@ -843,6 +868,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -868,6 +894,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -899,6 +926,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -923,6 +951,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -955,6 +984,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1001,6 +1031,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1033,6 +1064,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1057,6 +1089,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // 超过 30 天 idle
@@ -1082,6 +1115,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // 仅 0 天 idle
@@ -1107,6 +1141,7 @@ mod tests {
             related_thesis_ids: vec![],
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
+            decision_history: vec![],
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过
