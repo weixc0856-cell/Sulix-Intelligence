@@ -58,6 +58,10 @@ impl BeliefDb {
 /// 对每个信念检查新的 QuestionMatch 是否与之相关。
 /// 如果 evidence_type == Challenge 且 delta < -3:
 /// 标记为 contradiction（强制保留而非丢弃）。
+///
+/// 暂时未使用 — Belief Graph 功能已冻结，待未来 Phase B 启用。
+/// 当前使用版本：`src/engine/belief.rs::BeliefEngineV2`
+#[allow(dead_code)]
 pub fn update_beliefs(
     question_matches: &[crate::question_engine::QuestionMatch],
     current_beliefs: &[BeliefStatement],

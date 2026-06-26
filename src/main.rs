@@ -16,6 +16,9 @@ use std::path::PathBuf;
 use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
+/// 蓝军验证降级幅度：承重假设证据弱时 signal_strength 减少的值
+const WEAK_BEARING_PENALTY: u8 = 2;
+
 /// 信号源抓取状态（替代 (String, bool, usize) 元组）
 #[derive(Debug, Clone)]
 struct SourceStatus {
@@ -71,6 +74,13 @@ async fn main() -> Result<()> {
         }
         m
     };
+    // 预先计算元组列表，避免后面两处重复转换
+    let statuses_as_tuples: Vec<(String, bool, usize)> = source_statuses
+        .iter()
+        .map(|s| (s.name.clone(), s.fetch_success, s.signal_count))
+        .collect();
+    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
+
     let research = agent_research(
         &config,
         &api_key,
@@ -79,10 +89,9 @@ async fn main() -> Result<()> {
         &data_dir,
         &today,
         new_articles,
-        source_statuses.iter().map(|s| (s.name.clone(), s.fetch_success, s.signal_count)).collect(),
+        statuses_as_tuples.clone(),
     )
     .await?;
-    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
     // 填充报告聚合字段（前端消费稳定接口）
     report.observation_count = Some(total_signals);
     report.signal_count = Some(new_article_count);
@@ -114,7 +123,7 @@ async fn main() -> Result<()> {
         &today,
         &mut entity_db,
         research,
-        source_statuses.iter().map(|s| (s.name.clone(), s.fetch_success, s.signal_count)).collect(),
+        statuses_as_tuples,
     )
     .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
@@ -399,6 +408,45 @@ async fn agent_signal(
 
 use publishing::ResearchOutput;
 
+// ===== Pipeline Step: 主题分析 + 蓝军验证 =====
+
+/// 对单个主题执行分析（英文或中文）并进行蓝军验证。
+///
+/// Pipeline Step 封装：让"主题分析"成为可测试、可替换的独立步骤。
+/// - analyze_theme 失败 → 跳过（返回 None），避免整个管线崩溃
+/// - challenge_theme 失败 → 继续（使用无蓝军分析）
+/// - 承重假设证据弱 → 降低 signal_strength（`WEAK_BEARING_PENALTY`）
+async fn analyze_and_validate(
+    theme: &clusterer::Theme,
+    api_key: &str,
+    llm_config: &config::LlmConfig,
+    prompts: Option<&config::PromptsConfig>,
+    language: &str,
+) -> Option<clusterer::ThemeAnalysis> {
+    let mut analysis = match clusterer::analyze_theme(theme, api_key, llm_config, language, prompts).await {
+        Ok(a) => a,
+        Err(e) => {
+            log::warn!("⚠️ 主题分析失败 [{}|{}]: {}", language, theme.title, e);
+            return None;
+        }
+    };
+    match clusterer::challenge_theme(&analysis, api_key, llm_config, prompts).await {
+        Ok((assumptions, adverse, next_tests, open_questions)) => {
+            analysis.assumptions = assumptions;
+            analysis.adverse = adverse;
+            analysis.next_tests = next_tests;
+            analysis.open_questions = open_questions;
+        }
+        Err(e) => log::warn!("⚠️ 蓝军验证失败 [{}|{}], 使用无蓝军分析: {}", language, theme.title, e),
+    }
+    let weak_bearing = analysis.assumptions.iter().any(|a| a.load_bearing && a.evidence_strength == "weak");
+    if weak_bearing && analysis.signal_strength >= WEAK_BEARING_PENALTY {
+        analysis.signal_strength -= WEAK_BEARING_PENALTY;
+        log::info!("🔵 蓝军降级: {} (承重假设证据弱)", theme.title);
+    }
+    Some(analysis)
+}
+
 // ===== Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb =====
 
 /// Scan Agent 分流 → LLM 预去重 → 聚类 → 主题分析 → 蓝军验证 → DiGraph 引擎 → BeliefDb
@@ -506,46 +554,13 @@ async fn agent_research(
     };
     catalog.save_step(5, "themes", &themes)?;
 
-    // 主题分析 + 蓝军验证
+    // 主题分析 + 蓝军验证（英文）
     let mut analyses = Vec::new();
     for theme in &themes {
-        log::info!(
-            "🔍 分析主题: {} ({} 条证据)",
-            theme.title,
-            theme.articles.len()
-        );
-        let analysis_result =
-            clusterer::analyze_theme(theme, api_key, &config.llm, "en", config.prompts.as_ref())
-                .await;
-        let mut analysis = match analysis_result {
-            Ok(a) => a,
-            Err(e) => {
-                log::warn!("⚠️ 主题分析失败 [{}], 跳过: {}", theme.title, e);
-                continue;
-            }
-        };
-        match clusterer::challenge_theme(&analysis, api_key, &config.llm, config.prompts.as_ref())
-            .await
-        {
-            Ok((assumptions, adverse, next_tests, open_questions)) => {
-                analysis.assumptions = assumptions;
-                analysis.adverse = adverse;
-                analysis.next_tests = next_tests;
-                analysis.open_questions = open_questions;
-            }
-            Err(e) => {
-                log::warn!("⚠️ 蓝军验证失败 [{}], 使用无蓝军分析: {}", theme.title, e);
-            }
+        log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
+        if let Some(a) = analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "en").await {
+            analyses.push(a);
         }
-        let weak_bearing = analysis
-            .assumptions
-            .iter()
-            .any(|a| a.load_bearing && a.evidence_strength == "weak");
-        if weak_bearing && analysis.signal_strength >= 3 {
-            analysis.signal_strength -= 2;
-            log::info!("🔵 蓝军降级: {} (承重假设证据弱)", theme.title);
-        }
-        analyses.push(analysis);
     }
     catalog.save_step(6, "theme_analyses", &analyses)?;
 
@@ -562,29 +577,8 @@ async fn agent_research(
     // 中文分析
     let mut analyses_zh = Vec::new();
     for theme in &themes {
-        match clusterer::analyze_theme(theme, api_key, &config.llm, "zh", config.prompts.as_ref())
-            .await
-        {
-            Ok(mut a) => {
-                if let Ok((assumptions, adverse, next_tests, open_questions)) =
-                    clusterer::challenge_theme(&a, api_key, &config.llm, config.prompts.as_ref())
-                        .await
-                {
-                    a.assumptions = assumptions;
-                    a.adverse = adverse;
-                    a.next_tests = next_tests;
-                    a.open_questions = open_questions;
-                }
-                let weak = a
-                    .assumptions
-                    .iter()
-                    .any(|x| x.load_bearing && x.evidence_strength == "weak");
-                if weak && a.signal_strength >= 3 {
-                    a.signal_strength -= 2;
-                }
-                analyses_zh.push(a);
-            }
-            Err(e) => log::warn!("⚠️ 中文分析失败 [{}]: {}", theme.title, e),
+        if let Some(a) = analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "zh").await {
+            analyses_zh.push(a);
         }
     }
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());

@@ -14,6 +14,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+/// DiGraph 循环节点最大执行次数（防止蓝军无限回退燃烧 Token）
+const MAX_LOOP_ITERATIONS: usize = 3;
+/// 置信度停滞检测阈值（相邻两轮 confidence diff < 阈值 → 停滞）
+const CONFIDENCE_STALL_THRESHOLD: f64 = 0.05;
+
 use anyhow::Result;
 
 use crate::belief_engine::BeliefUpdate;
@@ -68,7 +73,7 @@ impl GraphContext {
     pub fn increment_loop(&mut self, node: &str) -> bool {
         let count = self.loop_counters.entry(node.to_string()).or_insert(0);
         *count += 1;
-        *count > 3 // 硬上限 3 次
+        *count > MAX_LOOP_ITERATIONS
     }
 }
 
@@ -215,7 +220,7 @@ impl DiGraph {
                                 let len = ctx.confidence_history.len();
                                 let last = ctx.confidence_history[len - 1];
                                 let prev = ctx.confidence_history[len - 2];
-                                if (last - prev).abs() < 0.05_f64 {
+                                if (last - prev).abs() < CONFIDENCE_STALL_THRESHOLD {
                                     log::warn!(
                                         "🛑 GraphFlow: 置信度停滞 ({} -> {})，触发熔断",
                                         prev,
@@ -346,7 +351,7 @@ pub fn blue_team_edge(next: &str) -> ConditionEdgeFn {
         });
         if any_weak {
             let cluster_loops = ctx.loop_counters.get("ClusterNode").copied().unwrap_or(0);
-            if cluster_loops < 3 {
+            if cluster_loops < MAX_LOOP_ITERATIONS {
                 return RouteResult::LoopBack("ClusterNode".to_string());
             }
         }
