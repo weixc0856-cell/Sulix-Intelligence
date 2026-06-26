@@ -287,6 +287,23 @@ pub fn render_thesis_mdx(
             mdx.push_str(&format!("decision_days: {}\n", decision_days));
         }
     }
+    // 来源归因（top-3 不重复来源，供前端"4 independent sources"展示）
+    {
+        let mut seen = std::collections::HashSet::new();
+        let unique_sources: Vec<String> = thesis.evidences.iter()
+            .filter_map(|e| {
+                let s = e.source.trim().to_string();
+                if !s.is_empty() && seen.insert(s.clone()) { Some(s) } else { None }
+            })
+            .take(3)
+            .collect();
+        if !unique_sources.is_empty() {
+            mdx.push_str("sources:\n");
+            for s in &unique_sources {
+                mdx.push_str(&format!("  - {}\n", yaml_escape(s)));
+            }
+        }
+    }
     // 证伪条件（First Principle: Falsifiability）
     if !thesis.falsification_conditions.is_empty() {
         mdx.push_str("falsification_conditions:\n");
