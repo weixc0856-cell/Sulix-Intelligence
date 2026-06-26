@@ -51,26 +51,28 @@ pub enum DecisionType {
     Exit,
 }
 
-/// 决策时间尺度
+/// 决策时间尺度 — variants produce machine-readable codes via as_str()
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DecisionHorizon {
-    /// 立即行动
+    /// immediate — 立即行动
     Immediate,
-    /// 30 天内
+    /// 30d — 30 天内
     ThirtyDays,
-    /// 90 天内
+    /// 90d — 90 天内
     NinetyDays,
-    /// 180 天内
+    /// 180d — 180 天内
     OneEightyDays,
 }
 
 impl DecisionHorizon {
+    /// Returns a machine-readable horizon code.
+    /// Display values are handled by the frontend translation layer.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Immediate => "立即",
-            Self::ThirtyDays => "30天内",
-            Self::NinetyDays => "90天内",
-            Self::OneEightyDays => "180天内",
+            Self::Immediate => "immediate",
+            Self::ThirtyDays => "30d",
+            Self::NinetyDays => "90d",
+            Self::OneEightyDays => "180d",
         }
     }
 }

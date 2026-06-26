@@ -633,7 +633,6 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
     let reflection_title = format!("Reflection: {}", thesis_title);
     mdx.push_str(&format!("title: {}\n", yaml_escape(&reflection_title)));
     mdx.push_str(&format!("date: \"{}\"\n", reflection.created_at));
-    mdx.push_str("type: reflection\n");
     mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_title)));
     mdx.push_str(&format!("verdict: \"{}\"\n", reflection.verdict));
     mdx.push_str(&format!(
@@ -777,4 +776,118 @@ pub fn render_decision_mdx(dec: &crate::engine::decision::DecisionRecord) -> Str
         mdx.push('\n');
     }
     mdx
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use crate::domain::reflection::Reflection;
+    use crate::domain::investigation::InvestigationReport;
+    use crate::engine::decision::DecisionRecord;
+    use crate::engine::premium::PremiumReport;
+
+    #[test]
+    fn test_research_mdx_frontmatter() {
+        let report = PremiumReport {
+            theme_title: "AI Governance 2026".into(),
+            date: "2026-06-26".into(),
+            executive_summary: "Summary text".into(),
+            geopolitical_assessment: "Geo text".into(),
+            technical_impact: "Tech text".into(),
+            commercial_framework: "Commerce text".into(),
+            risk_scenarios: vec!["Risk 1".into()],
+            sources: vec!["Source 1".into()],
+        };
+        let mdx = render_research_mdx(&report);
+        assert!(mdx.starts_with("---\n"));
+        assert!(mdx.contains("title: AI Governance 2026"));
+        assert!(mdx.contains("date: \"2026-06-26\""));
+        assert!(mdx.contains("stage: \"what-to-do\""));
+        assert!(mdx.contains("is_premium: true"));
+        assert!(mdx.contains("---\n\n"));
+        assert!(mdx.contains("Executive Summary"));
+        assert!(mdx.contains("Summary text"));
+    }
+
+    #[test]
+    fn test_reflection_mdx_frontmatter() {
+        let reflection = Reflection {
+            id: "ref:test-001".into(),
+            thesis_id: "thesis-001".into(),
+            outcome_id: "out-001".into(),
+            verdict: "confirmed".into(),
+            error_reason: "".into(),
+            lessons: vec!["Lesson 1".into(), "Lesson 2".into()],
+            confidence_at_creation: 0.75,
+            confidence_now: 0.85,
+            created_at: "2026-06-26".into(),
+        };
+        let mdx = render_reflection_mdx(&reflection, "Test Thesis");
+        assert!(mdx.starts_with("---\n"));
+        assert!(mdx.contains("title: \"Reflection: Test Thesis\""));
+        assert!(mdx.contains("date: \"2026-06-26\""));
+        assert!(mdx.contains("thesis_ref: Test Thesis"));
+        assert!(mdx.contains("verdict: \"confirmed\""));
+        assert!(mdx.contains("confidence_at_creation: 0.75"));
+        assert!(mdx.contains("confidence_now: 0.85"));
+        // type: reflection should NOT be present (removed in P5.1)
+        assert!(!mdx.contains("type: reflection"));
+    }
+
+    #[test]
+    fn test_investigation_mdx_frontmatter() {
+        let report = InvestigationReport {
+            thesis_id: "thesis-001".into(),
+            thesis_title: "AI Governance".into(),
+            date: "2026-06-26".into(),
+            core_question: "Will AI governance frameworks converge?".into(),
+            supporting_evidence: vec!["EU AI Act enacted".into()],
+            counter_evidence: vec!["US lags behind".into()],
+            key_unknowns: vec!["China approach unclear".into()],
+            falsification_conditions: vec!["No convergence by 2027".into()],
+            preliminary_conclusion: "Likely to converge".into(),
+        };
+        let mdx = render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"));
+        assert!(mdx.starts_with("---\n"));
+        assert!(mdx.contains("title: \"Investigation: AI Governance\""));
+        assert!(mdx.contains("date: \"2026-06-26\""));
+        assert!(mdx.contains("inv_id: \"INV-001\""));
+        assert!(mdx.contains("status: \"active\""));
+        assert!(mdx.contains("question: Will AI governance frameworks converge?"));
+        assert!(mdx.contains("thesis_ref: \"ASM-001\""));
+        assert!(mdx.contains("supporting_count: 1"));
+        assert!(mdx.contains("counter_count: 1"));
+    }
+
+    #[test]
+    fn test_decision_mdx_frontmatter() {
+        let dec = DecisionRecord {
+            id: "DEC-001".into(),
+            asm_id: "ASM-001".into(),
+            thesis_id: "thesis-001".into(),
+            decision_type: "build".into(),
+            horizon: "90d".into(),
+            confidence: 0.82,
+            stability: "stable".into(),
+            rationale: "Strong evidence base".into(),
+            state: crate::engine::decision::DecisionState::Active,
+            created: "2026-06-01".into(),
+            updated: "2026-06-26".into(),
+            outcome_ids: vec![],
+            decision_history: vec![],
+        };
+        let mdx = render_decision_mdx(&dec);
+        assert!(mdx.starts_with("---\n"));
+        assert!(mdx.contains("title: \"Decision DEC-001: BUILD\""));
+        assert!(mdx.contains("dec_id: \"DEC-001\""));
+        assert!(mdx.contains("asm_id: \"ASM-001\""));
+        assert!(mdx.contains("decision: \"build\""));
+        assert!(mdx.contains("horizon: \"90d\""));
+        assert!(mdx.contains("confidence: 0.82"));
+        assert!(mdx.contains("stability: \"stable\""));
+        assert!(mdx.contains("state: \"active\""));
+        assert!(mdx.contains("created: \"2026-06-01\""));
+        assert!(mdx.contains("updated: \"2026-06-26\""));
+        assert!(mdx.contains("rationale: Strong evidence base"));
+    }
 }

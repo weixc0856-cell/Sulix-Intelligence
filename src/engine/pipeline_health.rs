@@ -127,9 +127,9 @@ pub struct ContentManifest {
     /// 写入的 MDX 文件总数（按类型分）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_counts: Option<std::collections::HashMap<String, usize>>,
-    /// 前端内容目录（如有配置，manifest 被同步到此目录）
+    /// 前端 public 目录（如有配置，manifest 被同步到此目录）
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub frontend_content_dir: Option<String>,
+    pub frontend_public_dir: Option<String>,
     /// 管线运行时长（秒），从 PipelineReport 合并
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_seconds: Option<f64>,

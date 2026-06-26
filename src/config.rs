@@ -72,15 +72,13 @@ pub struct OutputConfig {
     /// 日期范围过滤: "d1"/"d3"/"w1"/"w2"/"m1"（默认 "d7" = 7天）
     #[serde(default = "default_date_range")]
     pub date_range: String,
-    /// MDX 输出目录（如 "output/"），None = 不生成 MDX
+    /// MDX 输出目录 — 直接写入前端 Content Collections（如 "D:/Project/intel-web/src/content"）
     #[serde(default)]
     pub mdx_dir: Option<String>,
-    /// 前端 content 目录（如 "../intel-web/src/content/"）。
-    /// 设置后，MDX 文件会直接写入前端可消费的 Astro Content Collections 目录，
-    /// 同时 manifest.json 也会同步到此目录下的 manifest.json。
-    /// 不设置则沿用旧的 CI 复制模式。
+    /// 前端 public 目录 — manifest.json + pipeline_report.json 同步到此
+    ///（如 "D:/Project/intel-web/public"）
     #[serde(default)]
-    pub frontend_content_dir: Option<String>,
+    pub frontend_public_dir: Option<String>,
 }
 
 fn default_date_range() -> String {

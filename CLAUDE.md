@@ -25,15 +25,18 @@ src/
 │   ├── mdx.rs        ← MDX 知识资产渲染器 (主要输出格式)
 │   ├── publisher.rs  ← Publisher trait + MdxPublisher
 │   ├── helpers.rs    ← html_escape + yaml_escape
-│   └── markdown.rs   ← Substack Markdown
+│   ├── markdown.rs   ← Substack Markdown
+│   └── premium.rs    ← Premium 研报 HTML 渲染
 ├── agent/            ← Scan Agent + Editor Agent + Calibration + Decay
 ├── clusterer/        ← 聚类 + 共享类型
 ├── source/           ← 源适配器 (RSS/USPTO/Reddit)
-├── decision_engine.rs ← 旧 Decision Engine (deprecated, 被 engine/decision 替代)
-├── belief_engine.rs  ← 旧 BeliefDb (deprecated, 被 MemoryEngine 替代)
-├── question_engine.rs ← 旧 Question Engine (frozen, #![allow(dead_code)])
+├── question_engine.rs ← 问答引擎 (关键词/LLM 匹配，与 orchestrator DiGraph 集成)
 ├── publishing.rs     ← Publishing Agent 编排 (含 Investigation + Decision Intelligence)
 ├── event_log.rs      ← PipelineEvent 审计日志
+├── orchestrator.rs   ← DiGraph 认知编排引擎
+├── llm.rs            ← LLM 调用 + JSON 解析
+├── config.rs         ← 配置加载
+├── db.rs             ← SQLite 数据库
 └── main.rs           ← 管线编排 (use sulix_intel::*, 无 mod 声明)
 ```
 
@@ -62,7 +65,10 @@ cargo run --release     # 运行完整管线
 output/
 ├── daily/       ← 每日信号 MDX (每个 theme 一个文件, 含 Personal Impact)
 ├── thesis/      ← 判断追踪 MDX (含 Decision/Stability/Outcome 元数据)
+├── assessment/  ← ASM-XXXX 规范命名判断文件 (与 thesis 内容一致)
+├── decision/    ← DEC-XXXX 独立决策记录
 ├── research/    ← Premium 研报 MDX
+├── investigation/ ← INV-XXXX 调研记录
 └── reflection/  ← 复盘反思 MDX (自动生成, Outcome 驱动)
 ```
 

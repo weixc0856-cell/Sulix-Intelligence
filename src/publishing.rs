@@ -61,9 +61,6 @@ struct GeneratedAssets {
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     premium_reports: Vec<crate::engine::premium::PremiumReport>,
     belief_notes_html: String,
-    /// 由 publish_generate 构造并传递给 publish_infer 用于最终的 beliefs_html 渲染，不再单独引用
-    #[allow(dead_code)]
-    belief_engine: crate::engine::belief::BeliefEngineV2,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     change_summary: crate::hermes::ChangeSummary,
     calibration_text: String,
@@ -74,9 +71,6 @@ struct GeneratedAssets {
 struct InferredState {
     memory: MemoryEngine,
     thesis_decisions: Vec<ThesisDecision>,
-    /// 置信度变更通知 HTML，当前保留在 InferredState 供未来 Emit 阶段使用
-    #[allow(dead_code)]
-    outcome_notifications_html: String,
     premium_reports: Vec<crate::engine::premium::PremiumReport>,
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
@@ -274,7 +268,7 @@ async fn publish_generate(
             .map(|a| format!("- [{}] {}: {}", a.source, a.title, a.summary.as_deref().unwrap_or("")))
             .collect::<Vec<_>>()
             .join("\n");
-        match crate::premium::generate_premium_report(
+        match crate::engine::premium::generate_premium_report(
             theme, &theme_context, api_key, &config.llm, config.prompts.as_ref(),
         ).await {
             Ok(report) => {
@@ -285,7 +279,7 @@ async fn publish_generate(
                 }
                 if let Some(ref sub) = config.substack {
                     if sub.enabled {
-                        if let Err(e) = crate::premium::push_to_substack(
+                        if let Err(e) = crate::engine::premium::push_to_substack(
                             &report, &sub.api_key, &sub.publication_url,
                         ).await {
                             log::warn!("⚠️ Substack push failed [{}]: {}", theme.title, e);
@@ -374,7 +368,7 @@ async fn publish_generate(
 
     Ok(GeneratedAssets {
         asi_score_map, premium_reports,
-        belief_notes_html, belief_engine,
+        belief_notes_html,
         editor_notes, change_summary,
         calibration_text, summary,
     })
@@ -634,7 +628,6 @@ async fn publish_infer(
     Ok(InferredState {
         memory,
         thesis_decisions,
-        outcome_notifications_html,
         premium_reports: generated.premium_reports.clone(),
         asi_score_map: generated.asi_score_map.clone(),
         editor_notes: generated.editor_notes.clone(),
@@ -813,5 +806,112 @@ impl ResearchOutput {
     #[allow(clippy::type_complexity)]
     fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::question_engine::QuestionMatch>, crate::agent::scan::TriageResult) {
         (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.question_matches, self.triage)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::evidence::FactBaseEntry;
+
+    fn make_analysis(fact_base: Vec<FactBaseEntry>) -> ThemeAnalysis {
+        ThemeAnalysis {
+            theme_id: "test-001".into(),
+            theme_title: "Test Theme".into(),
+            bluf: "".into(),
+            impact: "".into(),
+            geopolitical_fact: "".into(),
+            supply_chain_impact: "".into(),
+            analysis_paragraph: "".into(),
+            evidence_level: "strong".into(),
+            signal_strength: 5,
+            fact_base,
+            connections: vec![],
+            source_urls: vec![],
+            assumptions: vec![],
+            adverse: None,
+            next_tests: vec![],
+            open_questions: vec![],
+            chains: vec![],
+            what_to_do: "".into(),
+            what_to_watch: "".into(),
+            falsification_conditions: vec![],
+        }
+    }
+
+    #[test]
+    fn test_extract_entities_known_entity() {
+        let analysis = make_analysis(vec![
+            FactBaseEntry {
+                evidence: "TSMC is expanding capacity".into(),
+                interpretation: "".into(),
+                confidence: "high".into(),
+            },
+        ]);
+        let entities = extract_entities(&analysis);
+        assert_eq!(entities, vec!["TSMC"]);
+    }
+
+    #[test]
+    fn test_extract_entities_empty_fact_base() {
+        let analysis = make_analysis(vec![]);
+        let entities = extract_entities(&analysis);
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn test_extract_entities_deduplication() {
+        let analysis = make_analysis(vec![
+            FactBaseEntry {
+                evidence: "TSMC and NVIDIA both expanding".into(),
+                interpretation: "".into(),
+                confidence: "high".into(),
+            },
+            FactBaseEntry {
+                evidence: "TSMC leads the market".into(),
+                interpretation: "".into(),
+                confidence: "medium".into(),
+            },
+        ]);
+        let entities = extract_entities(&analysis);
+        assert_eq!(entities.len(), 2);
+        assert!(entities.contains(&"TSMC".to_string()));
+        assert!(entities.contains(&"NVIDIA".to_string()));
+    }
+
+    #[test]
+    fn test_extract_entities_no_known_entities() {
+        let analysis = make_analysis(vec![
+            FactBaseEntry {
+                evidence: "Some random company is growing".into(),
+                interpretation: "".into(),
+                confidence: "low".into(),
+            },
+        ]);
+        let entities = extract_entities(&analysis);
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn test_research_output_destructure() {
+        let output = ResearchOutput {
+            themes: vec![],
+            analyses: vec![],
+            analyses_zh: vec![],
+            new_articles: vec![],
+            question_matches: vec![],
+            triage: crate::agent::scan::TriageResult {
+                insight: vec![],
+                watchlist: vec![],
+                signal_memory: vec![],
+            },
+        };
+        let (t, a, az, art, qm, tr) = output.destructure();
+        assert!(t.is_empty());
+        assert!(a.is_empty());
+        assert!(az.is_empty());
+        assert!(art.is_empty());
+        assert!(qm.is_empty());
+        assert!(tr.insight.is_empty());
     }
 }
