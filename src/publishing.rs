@@ -264,6 +264,7 @@ pub async fn agent_publish(
         archive_entries_zh: vec![],
         source_statuses: vec![],
         decisions: vec![],
+        canonical_decisions: vec![],
         asi_scores: HashMap::new(),
         editor_notes: vec![],
         belief_notes_html: String::new(),
@@ -655,6 +656,26 @@ pub async fn agent_publish(
                 registry.assessments.len(), registry.next_id);
         }
 
+        // Decision Registry: 为每个有 ASM-ID 的 Thesis 分配 canonical DEC-XXXX
+        let dec_registry_path = PathBuf::from(&config.output.vault_path).join("decision_registry.json");
+        let mut dec_registry = crate::engine::decision_registry::DecisionRegistry::load_or_new(&dec_registry_path);
+        {
+            let theses_snapshot: Vec<_> = memory.theses().iter()
+                .map(|t| (t.id.clone(), t.assessment_id.clone()))
+                .collect();
+            for td in &thesis_decisions {
+                if let Some((_, Some(asm_id))) = theses_snapshot.iter().find(|(id, _)| id == &td.thesis_id) {
+                    memory.record_or_update_decision(td, asm_id, today, &mut dec_registry);
+                }
+            }
+        }
+        if let Err(e) = dec_registry.save(&dec_registry_path) {
+            log::warn!("⚠️ Decision Registry 保存失败: {}", e);
+        } else {
+            log::info!("🎯 Decision Registry: {} decisions, next ID: DEC-{:04}",
+                dec_registry.decisions.len(), dec_registry.next_id);
+        }
+
         if !thesis_decisions.is_empty() {
             let high_priority: Vec<&ThesisDecision> = thesis_decisions
                 .iter()
@@ -700,6 +721,7 @@ pub async fn agent_publish(
                 archive_entries_zh: vec![],
                 source_statuses: vec![],
                 decisions: vec![],
+                canonical_decisions: memory.all_decisions().to_vec(),
                 asi_scores: asi_score_map.clone(),
                 editor_notes: editor_notes.clone(),
                 belief_notes_html: String::new(),

@@ -6,6 +6,7 @@
 pub mod analysis;
 pub mod belief;
 pub mod decision;
+pub mod decision_registry;
 pub mod investigation;
 pub mod memory;
 pub mod pipeline_health;

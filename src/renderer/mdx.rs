@@ -203,6 +203,7 @@ pub fn render_thesis_mdx(
     thesis: &Thesis,
     outcomes: &[Outcome],
     decision: Option<&ThesisDecision>,
+    decision_record: Option<&crate::engine::decision::DecisionRecord>,
 ) -> String {
     let _slug = thesis
         .title
@@ -269,6 +270,9 @@ pub fn render_thesis_mdx(
     mdx.push_str(&format!("created: \"{}\"\n", thesis.created));
     if let Some(ref asm_id) = thesis.assessment_id {
         mdx.push_str(&format!("assessment_id: \"{}\"\n", asm_id));
+    }
+    if let Some(dec) = decision_record {
+        mdx.push_str(&format!("dec_id: \"{}\"\n", dec.id));
     }
     // 管理生命周期事件（最近 5 条，逆序）
     if !thesis.lifecycle_events.is_empty() {
@@ -732,5 +736,52 @@ pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str) -> Str
     mdx.push_str("## Preliminary Conclusion\n\n");
     mdx.push_str(&format!("{}\n", report.preliminary_conclusion));
 
+    mdx
+}
+
+/// 渲染 canonical Decision MDX (DEC-XXXX standalone file)
+///
+/// 输出到 output/decision/DEC-XXXX.md
+pub fn render_decision_mdx(dec: &crate::engine::decision::DecisionRecord) -> String {
+    let mut mdx = String::new();
+    mdx.push_str("---\n");
+    mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Decision {}: {}", dec.id, dec.decision_type.to_uppercase()))));
+    mdx.push_str(&format!("dec_id: \"{}\"\n", dec.id));
+    mdx.push_str(&format!("asm_id: \"{}\"\n", dec.asm_id));
+    mdx.push_str(&format!("decision: \"{}\"\n", dec.decision_type));
+    mdx.push_str(&format!("horizon: \"{}\"\n", dec.horizon));
+    mdx.push_str(&format!("confidence: {:.2}\n", dec.confidence));
+    mdx.push_str(&format!("stability: \"{}\"\n", dec.stability));
+    let state_str = match &dec.state {
+        crate::engine::decision::DecisionState::Active => "active".to_string(),
+        crate::engine::decision::DecisionState::Archived { reason } => format!("archived: {}", reason),
+        crate::engine::decision::DecisionState::Superseded { by } => format!("superseded-by: {}", by),
+        crate::engine::decision::DecisionState::Expired => "expired".to_string(),
+    };
+    mdx.push_str(&format!("state: \"{}\"\n", state_str));
+    mdx.push_str(&format!("created: \"{}\"\n", dec.created));
+    mdx.push_str(&format!("updated: \"{}\"\n", dec.updated));
+    mdx.push_str(&format!("rationale: {}\n", yaml_escape(&dec.rationale)));
+    if !dec.decision_history.is_empty() {
+        mdx.push_str("transitions:\n");
+        for t in &dec.decision_history {
+            mdx.push_str(&format!(
+                "  - date: \"{}\" from: \"{}\" to: \"{}\" confidence: {:.2}\n",
+                t.date, t.from, t.to, t.confidence
+            ));
+        }
+    }
+    mdx.push_str("---\n\n");
+    mdx.push_str(&format!("## Decision {}\n\n", dec.id));
+    mdx.push_str(&format!("**{}** — Linked to [{}]\n\n", dec.decision_type.to_uppercase(), dec.asm_id));
+    mdx.push_str(&format!("Confidence: {:.0}%  |  Horizon: {}  |  Stability: {}\n\n", dec.confidence * 100.0, dec.horizon, dec.stability));
+    mdx.push_str(&format!("> {}\n\n", dec.rationale));
+    if dec.decision_history.len() > 1 {
+        mdx.push_str("## Transition History\n\n");
+        for t in &dec.decision_history {
+            mdx.push_str(&format!("- `{}` {} → {} ({:.0}% confidence)\n", t.date, t.from, t.to, t.confidence * 100.0));
+        }
+        mdx.push('\n');
+    }
     mdx
 }

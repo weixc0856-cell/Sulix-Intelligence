@@ -42,6 +42,9 @@ pub struct MemoryEngine {
     /// 所有 Investigation 记录（Thesis 的问题集）
     #[serde(default)]
     investigations: Vec<Investigation>,
+    /// 所有 Canonical Decision 记录（DEC-XXXX）
+    #[serde(default)]
+    decisions: Vec<crate::engine::decision::DecisionRecord>,
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
@@ -96,6 +99,7 @@ impl MemoryEngine {
             outcomes: Vec::new(),
             reflections: Vec::new(),
             investigations: Vec::new(),
+            decisions: Vec::new(),
             memory_path,
         }
     }
@@ -109,6 +113,7 @@ impl MemoryEngine {
             self.outcomes = loaded.outcomes;
             self.reflections = loaded.reflections;
             self.investigations = loaded.investigations;
+            self.decisions = loaded.decisions;
         }
         Ok(())
     }
@@ -563,6 +568,77 @@ impl MemoryEngine {
         }
     }
 
+    /// 获取所有 canonical Decision 记录
+    pub fn all_decisions(&self) -> &[crate::engine::decision::DecisionRecord] {
+        &self.decisions
+    }
+
+    /// 创建或更新 canonical Decision 对象（DEC-XXXX）
+    ///
+    /// 仅为有 assessment_id (ASM-XXXX) 的 Thesis 分配 DEC-ID。
+    /// Registry 以 asm_id 为主键；thesis_id 仅用于内部引用。
+    pub fn record_or_update_decision(
+        &mut self,
+        thesis_decision: &crate::engine::decision::ThesisDecision,
+        asm_id: &str,
+        today: &str,
+        registry: &mut crate::engine::decision_registry::DecisionRegistry,
+    ) {
+        use crate::engine::decision::{DecisionRecord, DecisionState, DecisionTransition};
+
+        let type_str = thesis_decision.decision_type.label().to_lowercase();
+        let horizon_str = thesis_decision.horizon.as_str().to_string();
+        let stability_str = thesis_decision.stability.label().to_lowercase();
+
+        let dec_id = registry.find_by_asm(asm_id).unwrap_or_else(|| {
+            registry.register(asm_id, &thesis_decision.thesis_id, today, &type_str)
+        });
+
+        registry.update_type(&dec_id, &type_str, today);
+
+        if let Some(rec) = self.decisions.iter_mut().find(|d| d.id == dec_id) {
+            // Update in place — push transition if type changed
+            if rec.decision_type != type_str {
+                rec.decision_history.push(DecisionTransition {
+                    date: today.to_string(),
+                    from: rec.decision_type.clone(),
+                    to: type_str.clone(),
+                    confidence: thesis_decision.confidence,
+                    trigger: "evidence-update".to_string(),
+                });
+            }
+            rec.decision_type = type_str;
+            rec.horizon = horizon_str;
+            rec.confidence = thesis_decision.confidence;
+            rec.rationale = thesis_decision.rationale.clone();
+            rec.stability = stability_str;
+            rec.updated = today.to_string();
+        } else {
+            // New canonical Decision
+            self.decisions.push(DecisionRecord {
+                id: dec_id,
+                asm_id: asm_id.to_string(),
+                thesis_id: thesis_decision.thesis_id.clone(),
+                decision_type: type_str.clone(),
+                horizon: horizon_str,
+                confidence: thesis_decision.confidence,
+                rationale: thesis_decision.rationale.clone(),
+                stability: stability_str,
+                state: DecisionState::Active,
+                created: today.to_string(),
+                updated: today.to_string(),
+                outcome_ids: vec![],
+                decision_history: vec![DecisionTransition {
+                    date: today.to_string(),
+                    from: "initial".to_string(),
+                    to: type_str,
+                    confidence: thesis_decision.confidence,
+                    trigger: "evidence-update".to_string(),
+                }],
+            });
+        }
+    }
+
     /// Registry-aware 版本：分配 Assessment ID 后再 update_from_analysis
     ///
     /// 在 publishing.rs 中调用（有 registry 时），替代 update_from_analysis。
@@ -846,6 +922,8 @@ struct MemoryEngineData {
     reflections: Vec<Reflection>,
     #[serde(default)]
     investigations: Vec<Investigation>,
+    #[serde(default)]
+    decisions: Vec<crate::engine::decision::DecisionRecord>,
 }
 
 impl From<&MemoryEngine> for MemoryEngineData {
@@ -855,6 +933,7 @@ impl From<&MemoryEngine> for MemoryEngineData {
             outcomes: mem.outcomes.clone(),
             reflections: mem.reflections.clone(),
             investigations: mem.investigations.clone(),
+            decisions: mem.decisions.clone(),
         }
     }
 }

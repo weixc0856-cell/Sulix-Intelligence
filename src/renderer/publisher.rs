@@ -69,6 +69,8 @@ pub struct PublishContext {
     pub thesis_decisions: Vec<crate::engine::decision::ThesisDecision>,
     /// Outcome 记录（用于 MDX frontmatter 中的 Historical Accuracy 展示）
     pub outcomes: Vec<Outcome>,
+    /// Canonical Decision records (DEC-XXXX)
+    pub canonical_decisions: Vec<crate::engine::decision::DecisionRecord>,
 }
 
 /// 发布输出结果
@@ -254,8 +256,10 @@ impl Publisher for MdxPublisher {
         // Legacy: also write to output/thesis/ for backward compat during transition
         let thesis_dir = mdx_dir.join("thesis");
         let assessment_dir = mdx_dir.join("assessment");
+        let decision_dir = mdx_dir.join("decision");
         std::fs::create_dir_all(&thesis_dir)?;
         std::fs::create_dir_all(&assessment_dir)?;
+        std::fs::create_dir_all(&decision_dir)?;
         // Build decision lookup: thesis_id → ThesisDecision
         let decision_map: std::collections::HashMap<
             &str,
@@ -264,6 +268,15 @@ impl Publisher for MdxPublisher {
             .thesis_decisions
             .iter()
             .map(|d| (d.thesis_id.as_str(), d))
+            .collect();
+        // Build canonical Decision record lookup: asm_id → DecisionRecord
+        let dec_record_map: std::collections::HashMap<
+            &str,
+            &crate::engine::decision::DecisionRecord,
+        > = ctx
+            .canonical_decisions
+            .iter()
+            .map(|d| (d.asm_id.as_str(), d))
             .collect();
         // Build outcome lookup: thesis_id → Vec<Outcome>
         let outcomes_map: std::collections::HashMap<&str, Vec<&Outcome>> = ctx
@@ -275,11 +288,13 @@ impl Publisher for MdxPublisher {
             });
         for thesis in &ctx.theses {
             let decision = decision_map.get(thesis.id.as_str()).copied();
+            let dec_record = thesis.assessment_id.as_deref()
+                .and_then(|asm_id| dec_record_map.get(asm_id).copied());
             let thesis_outcomes: Vec<Outcome> = outcomes_map
                 .get(thesis.id.as_str())
                 .map(|v| v.iter().map(|o| (*o).clone()).collect())
                 .unwrap_or_default();
-            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
+            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision, dec_record);
 
             // Primary: stable ASM-ID filename (if assessment_id assigned)
             if let Some(ref asm_id) = thesis.assessment_id {
@@ -298,6 +313,14 @@ impl Publisher for MdxPublisher {
             let path = thesis_dir.join(format!("{}-{}.md", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
+        }
+
+        // Write output/decision/DEC-XXXX.md (standalone canonical Decision files)
+        for dec in &ctx.canonical_decisions {
+            let dec_mdx = crate::renderer::mdx::render_decision_mdx(dec);
+            let dec_path = decision_dir.join(format!("{}.md", dec.id));
+            std::fs::write(&dec_path, &dec_mdx)?;
+            outputs.push(PublishedOutput::File { path: dec_path, content: dec_mdx });
         }
 
         // 3. Premium research → output/research/

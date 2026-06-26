@@ -12,10 +12,70 @@
 //!   Retired (Invalidated) → Exit
 //!   Retired (no outcome)  → Ignore
 
+use serde::{Deserialize, Serialize};
+
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
 use crate::engine::memory::MemoryEngine;
 use crate::engine::memory::ThesisStatus;
+
+// ===== Canonical Decision Object (DEC-XXXX) =====
+
+/// Administrative lifecycle state of a canonical Decision object
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "state", content = "detail")]
+pub enum DecisionState {
+    #[default]
+    Active,
+    Archived { reason: String },
+    Superseded { by: String }, // by DEC-XXXX
+    Expired,
+}
+
+/// Full transition event: from → to (richer than DecisionSnapshot)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionTransition {
+    pub date: String,
+    /// Previous decision_type label or "initial"
+    pub from: String,
+    /// New decision_type label
+    pub to: String,
+    pub confidence: f64,
+    /// What triggered the change: "evidence-update", "outcome", "manual"
+    pub trigger: String,
+}
+
+/// Canonical Decision object with stable DEC-XXXX ID
+///
+/// One DEC per active Assessment. ID is stable; decision_type evolves.
+/// Links to ASM-XXXX (primary), thesis_id (internal reference only).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionRecord {
+    /// Stable canonical ID, e.g. "DEC-0001"
+    pub id: String,
+    /// Primary link to canonical Assessment (ASM-XXXX)
+    pub asm_id: String,
+    /// Internal reference — thesis-XXXX ephemeral ID
+    pub thesis_id: String,
+    /// Current decision type label (lowercase): "build", "monitor", etc.
+    pub decision_type: String,
+    /// Time horizon string: "30d", "90d", "180d", "immediate"
+    pub horizon: String,
+    pub confidence: f64,
+    pub rationale: String,
+    /// Stability label: "volatile", "stable", "final"
+    pub stability: String,
+    #[serde(default)]
+    pub state: DecisionState,
+    pub created: String,
+    pub updated: String,
+    /// Reserved for OUT-XXXX links (future)
+    #[serde(default)]
+    pub outcome_ids: Vec<String>,
+    /// Type transition log (from → to events)
+    #[serde(default)]
+    pub decision_history: Vec<DecisionTransition>,
+}
 
 /// Thesis → Decision 映射结果
 #[derive(Debug, Clone)]
