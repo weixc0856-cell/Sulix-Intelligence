@@ -45,6 +45,14 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -87,6 +95,12 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -267,6 +281,12 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [],
@@ -369,6 +389,14 @@
           "summary": "OpenAI自研推理芯片和IBM突破亚1纳米制程，共同指向AI硬件正加速向专用化和极致能效演进，短期降低大模型推理成本，长期改变芯片供应格局。",
           "stance": "Supports",
           "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI芯片",
+          "source": "Hacker News - Front Page",
+          "summary": "定制AI芯片（如OpenAI Jalapeño）和先进制程（IBM 0.7nm）将加速降低AI推理成本，但短期内量产有限，创始人应优先关注现有可用的推理优化方案，而非等待下一代芯片。",
+          "stance": "Supports",
+          "signal_strength": 6
         }
       ],
       "assumptions": [
@@ -393,16 +421,36 @@
           "evidence_strength": "weak"
         }
       ],
-      "status": "Active",
+      "status": "Strengthening",
       "confidence_history": [
         {
           "date": "2026-06-26",
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "StatusChange",
+          "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
-      "status_history": [],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-06-26",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 2)"
+        }
+      ],
       "parent_id": null,
       "merged_ids": [],
       "related_thesis_ids": [],
@@ -492,6 +540,30 @@
       "verdict": "PartiallyConfirmed",
       "date": "2026-06-26",
       "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782444438",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (6 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782444438",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782444438",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
     }
   ],
   "reflections": [
@@ -527,6 +599,48 @@
       "id": "reflection-1782443632",
       "thesis_id": "thesis-1782443023",
       "outcome_id": "outcome-1782443632",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782444438",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782444438",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (6 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782444438",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782444438",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782444438",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782444438",
       "verdict": "partially-confirmed",
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
