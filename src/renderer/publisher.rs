@@ -56,27 +56,13 @@ pub struct PublishContext {
     pub canonical_decisions: Vec<crate::engine::decision::DecisionRecord>,
 }
 
-/// 发布输出结果
-pub enum PublishedOutput {
-    /// 内存字符串（如 HTML 片段）
-    #[allow(dead_code)]
-    Inline { content: String, label: String },
-    /// 写入文件（builder 侧写入磁盘，返回值暂未消费）
-    #[allow(dead_code)]
-    File { path: PathBuf, content: String },
-}
-
 /// 发布器 Trait
 ///
 /// 每个输出格式实现此 trait。
-/// publish() 接收共享上下文，返回零个或多个输出。
+/// publish() 接收共享上下文，将结果直接写入磁盘。
 pub trait Publisher {
-    /// 发布器名称（用于日志和调试）
-    #[allow(dead_code)]
-    fn name(&self) -> &str;
-
     /// 执行发布
-    fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>>;
+    fn publish(&self, ctx: &PublishContext) -> Result<()>;
 }
 
 // ===== MarkdownPublisher =====
@@ -96,13 +82,7 @@ impl MarkdownPublisher {
 }
 
 impl Publisher for MarkdownPublisher {
-    fn name(&self) -> &str {
-        "MarkdownPublisher"
-    }
-
-    fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
-        let mut outputs = Vec::new();
-
+    fn publish(&self, ctx: &PublishContext) -> Result<()> {
         for (theme, analysis) in ctx.themes.iter().zip(ctx.analyses.iter()) {
             let slug = theme
                 .title
@@ -110,13 +90,11 @@ impl Publisher for MarkdownPublisher {
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
             let md = crate::renderer::markdown::render_signal_markdown(theme, analysis, &ctx.date);
-            outputs.push(PublishedOutput::File {
-                path: PathBuf::from("content/posts").join(format!("{}-{}.md", ctx.date, slug)),
-                content: md,
-            });
+            let path = PathBuf::from("content/posts").join(format!("{}-{}.md", ctx.date, slug));
+            std::fs::write(&path, &md)?;
         }
 
-        Ok(outputs)
+        Ok(())
     }
 }
 
@@ -137,7 +115,7 @@ impl MdxPublisher {
 }
 
 /// ASCII-safe slug: drop non-ASCII, lowercase, spaces → hyphens, collapse hyphens.
-fn ascii_slug(title: &str) -> String {
+pub(crate) fn ascii_slug(title: &str) -> String {
     title
         .chars()
         .filter(|c| c.is_ascii())
@@ -151,23 +129,17 @@ fn ascii_slug(title: &str) -> String {
 
 /// Stable short ID from thesis.id (e.g. "thesis-1750000001" → "75000000").
 /// Used as fallback when ascii_slug returns empty (pure non-ASCII titles).
-fn short_id_from_thesis(thesis_id: &str) -> String {
+pub(crate) fn short_id_from_thesis(thesis_id: &str) -> String {
     let digits = thesis_id.trim_start_matches("thesis-");
     digits.get(digits.len().saturating_sub(8)..).unwrap_or(digits).to_string()
 }
 
 impl Publisher for MdxPublisher {
-    fn name(&self) -> &str {
-        "MdxPublisher"
-    }
-
-    fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
+    fn publish(&self, ctx: &PublishContext) -> Result<()> {
         let mdx_dir = match &ctx.mdx_output_dir {
             Some(d) => d.clone(),
-            None => return Ok(vec![]),
+            None => return Ok(()),
         };
-
-        let mut outputs = Vec::new();
 
         // 1. Daily signals → output/daily/
         let daily_dir = mdx_dir.join("daily");
@@ -187,7 +159,6 @@ impl Publisher for MdxPublisher {
             let slug = ascii_slug(&theme.title);
             let path = daily_dir.join(format!("{}-{}.md", ctx.date, slug));
             std::fs::write(&path, &mdx)?;
-            outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
         // 2. Assessment → output/assessment/ (stable ASM-ID filenames)
@@ -238,7 +209,6 @@ impl Publisher for MdxPublisher {
             if let Some(ref asm_id) = thesis.assessment_id {
                 let asm_path = assessment_dir.join(format!("{}.md", asm_id));
                 std::fs::write(&asm_path, &mdx)?;
-                outputs.push(PublishedOutput::File { path: asm_path, content: mdx.clone() });
             }
 
             // Fallback / legacy: date+slug filename in output/thesis/ (old format)
@@ -250,7 +220,6 @@ impl Publisher for MdxPublisher {
             };
             let path = thesis_dir.join(format!("{}-{}.md", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
-            outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
         // Write output/decision/DEC-XXXX.md (standalone canonical Decision files)
@@ -258,7 +227,6 @@ impl Publisher for MdxPublisher {
             let dec_mdx = crate::renderer::mdx::render_decision_mdx(dec);
             let dec_path = decision_dir.join(format!("{}.md", dec.id));
             std::fs::write(&dec_path, &dec_mdx)?;
-            outputs.push(PublishedOutput::File { path: dec_path, content: dec_mdx });
         }
 
         // 3. Premium research → output/research/
@@ -270,7 +238,6 @@ impl Publisher for MdxPublisher {
                 let slug = ascii_slug(&report.theme_title);
                 let path = research_dir.join(format!("{}-{}.md", ctx.date, slug));
                 std::fs::write(&path, &mdx)?;
-                outputs.push(PublishedOutput::File { path, content: mdx });
             }
         }
 
@@ -289,7 +256,6 @@ impl Publisher for MdxPublisher {
                 let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
                 let path = reflection_dir.join(format!("{}.md", slug));
                 std::fs::write(&path, &mdx)?;
-                outputs.push(PublishedOutput::File { path, content: mdx });
             }
         }
 
@@ -300,7 +266,6 @@ impl Publisher for MdxPublisher {
             let mdx = crate::renderer::mdx::render_digest_mdx(&ctx.articles, &ctx.date);
             let path = digest_dir.join(format!("{}.md", ctx.date));
             std::fs::write(&path, &mdx)?;
-            outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
         log::info!(
@@ -312,6 +277,6 @@ impl Publisher for MdxPublisher {
             ctx.articles.len(),
         );
 
-        Ok(outputs)
+        Ok(())
     }
 }

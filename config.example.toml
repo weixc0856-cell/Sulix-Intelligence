@@ -29,9 +29,8 @@ vault_path = "./DailyBrief"
 mdx_dir = "./output"
 # 前端 Content Collections 目录（可选）
 # 设置后，manifest.json 也会被同步到此目录所在的 public/manifest.json。
-# 例如：frontend_content_dir = "../intel-web/src/content/"
-# Phase 0: 消除 CI 复制 gap，让 engine 直接写入前端可消费的位置。
-# frontend_content_dir = "../intel-web/src/content/"
+# 引擎直接写入前端 content 目录，消除 CI 复制 gap（路径相对于项目根目录）
+frontend_content_dir = "../intel-web/src/content/"
 
 [storage]
 data_dir = "./data"
@@ -68,7 +67,6 @@ type = "rss"
 url = "https://www.federalregister.gov/api/v1/documents.rss?conditions[agencies][]=commerce-department&conditions[term]=semiconductor"
 category = "Regulatory Compliance"
 layer = 2
-public = true
 enabled = true
 
 [[sources]]
@@ -77,7 +75,6 @@ type = "rss"
 url = "https://hnrss.org/frontpage"
 category = "AI Competition"
 layer = 3
-public = true
 enabled = true
 
 # AI 生态核心源示例（使用 Direct RSS，非 RSSHub）
@@ -88,7 +85,6 @@ url = "https://openai.com/news/rss.xml"
 category = "AI"
 layer = 2
 score = 10
-public = true
 enabled = true
 
 [[sources]]
@@ -98,7 +94,6 @@ url = "https://www.anthropic.com/rss.xml"
 category = "AI"
 layer = 2
 score = 10
-public = true
 enabled = true
 
 [[sources]]
@@ -108,7 +103,6 @@ url = "https://deepmind.google/blog/rss.xml"
 category = "AI"
 layer = 2
 score = 10
-public = true
 enabled = true
 
 [[sources]]
@@ -118,7 +112,6 @@ url = "https://simonwillison.net/atom/everything/"
 category = "AI"
 layer = 2
 score = 8
-public = true
 enabled = true
 
 [[sources]]
@@ -128,7 +121,6 @@ url = "https://a16z.com/feed/"
 category = "投资"
 layer = 2
 score = 8
-public = true
 enabled = true
 
 [prompts]

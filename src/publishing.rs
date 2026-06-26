@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 
@@ -42,7 +43,6 @@ pub struct ResearchOutput {
 // ===== 5-Stage Contract: Data Structures =====
 
 /// Stage 1: Preprocess 装载的所有持久化状态
-#[allow(dead_code)] // fields are consumed by downstream stages
 struct StateBundle {
     event_log: crate::event_log::EventLog,
     event_log_path: PathBuf,
@@ -57,11 +57,12 @@ struct StateBundle {
 }
 
 /// Stage 2: Generate 阶段产出的所有内容
-#[allow(dead_code)]
 struct GeneratedAssets {
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     premium_reports: Vec<crate::engine::premium::PremiumReport>,
     belief_notes_html: String,
+    /// 由 publish_generate 构造并传递给 publish_infer 用于最终的 beliefs_html 渲染，不再单独引用
+    #[allow(dead_code)]
     belief_engine: crate::engine::belief::BeliefEngineV2,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     change_summary: crate::hermes::ChangeSummary,
@@ -70,27 +71,26 @@ struct GeneratedAssets {
 }
 
 /// Stage 3: Infer 阶段产出的认知状态
-#[allow(dead_code)]
 struct InferredState {
     memory: MemoryEngine,
     thesis_decisions: Vec<ThesisDecision>,
+    /// 置信度变更通知 HTML，当前保留在 InferredState 供未来 Emit 阶段使用
+    #[allow(dead_code)]
     outcome_notifications_html: String,
     premium_reports: Vec<crate::engine::premium::PremiumReport>,
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     beliefs_html: String,
-}
-
-/// Stage 4: Persist 阶段写入的路径（供 Emit 消费）
-#[allow(dead_code)]
-struct PersistedPaths {
-    event_log_path: PathBuf,
-    entity_db_path: PathBuf,
+    /// 待 Emit 阶段写入的 Investigation Reports (slug, report, assessment_id, inv_id)
+    investigation_reports: Vec<(String, crate::domain::investigation::InvestigationReport, Option<String>, Option<String>)>,
 }
 
 // ===== Contract Constants =====
 
 /// 记录 ASI 分数的最低 SVI（用于 info 日志）
+/// 单调递增事件 ID 计数器（替代易碰撞的 timestamp_nanos_opt 拼接）
+static EVENT_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 const SVI_MIN_LOG: f64 = 6.0;
 /// 生成 premium 研报的最低 SVI
 const SVI_MIN_PREMIUM: u8 = 7;
@@ -133,7 +133,7 @@ pub async fn agent_publish(
     ).await?;
 
     // Stage 4: Persist — write all state to disk
-    let _persisted = publish_persist(
+    publish_persist(
         db, data_dir, today, entity_db,
         &mut state, &mut inferred, config,
     ).await;
@@ -212,6 +212,7 @@ fn load_or_new_event_log(path: &Path) -> crate::event_log::EventLog {
 // ===== Stage 2: Generate =====
 
 /// Generate: Premium 报告 + ASI 评分 + 合成摘要 + 认知校准 + Change Detection
+#[allow(clippy::too_many_arguments)]
 async fn publish_generate(
     config: &Config,
     api_key: &str,
@@ -382,6 +383,7 @@ async fn publish_generate(
 // ===== Stage 3: Infer =====
 
 /// Infer: Memory Engine 更新 + Hermes 分析 + Outcome 检测 + Decision Intelligence
+#[allow(clippy::too_many_arguments)]
 async fn publish_infer(
     config: &Config,
     api_key: &str,
@@ -399,9 +401,7 @@ async fn publish_infer(
     // Push conflict events to EventLog
     for conflict in &generated.change_summary.conflicts {
         state.event_log.push(crate::event_log::PipelineEvent {
-            id: format!("evt-{}-{}",
-                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
-                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
+            id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
             event_type: crate::event_log::PipelineEventType::ConflictDetected,
             timestamp: chrono::Utc::now().to_rfc3339(),
             description: format!("{}: {}", conflict.topic, conflict.today_signal),
@@ -481,28 +481,24 @@ async fn publish_infer(
         }
     }
 
-    // Investigation Reports -> MDX (emit to disk within Infer for data locality)
-    if let Some(ref mdx_out) = config.output.mdx_dir {
-        let inv_dir = std::path::Path::new(mdx_out).join("investigation");
-        if let Err(e) = std::fs::create_dir_all(&inv_dir) {
-            log::warn!("⚠️ Cannot create investigation dir: {}", e);
-        } else {
-            for thesis in memory.theses() {
-                if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening) {
-                    continue;
-                }
-                let slug = slug_from_thesis(thesis);
-                let report = crate::engine::investigation::derive_investigation_report(
-                    thesis, today, None,
-                );
-                let mdx = crate::renderer::mdx::render_investigation_mdx(
-                    &report, &slug, thesis.investigation_id.as_deref(),
-                );
-                if let Err(e) = std::fs::write(inv_dir.join(format!("{}.md", slug)), &mdx) {
-                    log::warn!("⚠️ Investigation MDX write failed [{}]: {}", thesis.title, e);
-                }
-            }
+    // Build investigation reports for Emit stage (不再在此写盘，移至 Stage 5)
+    let mut investigation_reports = Vec::new();
+    for thesis in memory.theses() {
+        if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening) {
+            continue;
         }
+        let slug = {
+            let slug_base = crate::renderer::publisher::ascii_slug(&thesis.title);
+            if slug_base.is_empty() {
+                crate::renderer::publisher::short_id_from_thesis(&thesis.id)
+            } else {
+                slug_base
+            }
+        };
+        let report = crate::engine::investigation::derive_investigation_report(
+            thesis, today, None,
+        );
+        investigation_reports.push((slug, report, thesis.assessment_id.clone(), thesis.investigation_id.clone()));
     }
 
     // Meta Layer: Outcome 检测 & Reflection 生成
@@ -526,7 +522,7 @@ async fn publish_infer(
                     log::warn!("⚠️ Outcome 记录失败: {}", e);
                 } else {
                     state.event_log.push(crate::event_log::PipelineEvent {
-                        id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
+                        id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
                         event_type: crate::event_log::PipelineEventType::ThesisRefuted,
                         timestamp: chrono::Utc::now().to_rfc3339(),
                         description: format!("论题 '{}' 被证伪", thesis.title),
@@ -554,7 +550,7 @@ async fn publish_infer(
                 log::warn!("⚠️ Outcome 记录失败: {}", e);
             } else {
                 state.event_log.push(crate::event_log::PipelineEvent {
-                    id: format!("evt-{}-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), chrono::Utc::now().timestamp()),
+                    id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
                     event_type: crate::event_log::PipelineEventType::OutcomeRecorded,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     description: format!("论题 '{}' 获得证据强化", thesis.title),
@@ -643,6 +639,7 @@ async fn publish_infer(
         asi_score_map: generated.asi_score_map.clone(),
         editor_notes: generated.editor_notes.clone(),
         beliefs_html,
+        investigation_reports,
     })
 }
 
@@ -657,7 +654,7 @@ async fn publish_persist(
     state: &mut StateBundle,
     inferred: &mut InferredState,
     config: &Config,
-) -> PersistedPaths {
+) {
     // Memory Engine save
     if let Err(e) = inferred.memory.save() {
         log::warn!("⚠️ Memory Engine 保存失败: {}", e);
@@ -668,7 +665,7 @@ async fn publish_persist(
         log::warn!("⚠️ Assessment Registry 保存失败: {}", e);
     } else {
         log::info!("📋 Assessment Registry: {} assessments, next ID: ASM-{:04}",
-            state.registry.assessments.len(), state.registry.next_id);
+            state.registry.assessments.len(), state.registry.core.next_id);
     }
 
     // Decision Registry save
@@ -688,7 +685,7 @@ async fn publish_persist(
         log::warn!("⚠️ Decision Registry 保存失败: {}", e);
     } else {
         log::info!("🎯 Decision Registry: {} decisions, next ID: DEC-{:04}",
-            dec_registry.decisions.len(), dec_registry.next_id);
+            dec_registry.decisions.len(), dec_registry.core.next_id);
     }
 
     // Investigation Registry save
@@ -696,7 +693,7 @@ async fn publish_persist(
         log::warn!("⚠️ Investigation Registry 保存失败: {}", e);
     } else {
         log::info!("📋 Investigation Registry: {} investigations, next ID: INV-{:04}",
-            state.inv_registry.investigations.len(), state.inv_registry.next_id);
+            state.inv_registry.investigations.len(), state.inv_registry.core.next_id);
     }
 
     // EntitySanctionDb save
@@ -710,15 +707,12 @@ async fn publish_persist(
         log::warn!("⚠️ DB report 记录失败: {}", e);
     }
 
-    PersistedPaths {
-        event_log_path: state.event_log_path.clone(),
-        entity_db_path,
-    }
 }
 
 // ===== Stage 5: Emit =====
 
 /// Emit: Markdown + MDX 渲染 + 输出
+#[allow(clippy::too_many_arguments)]
 async fn publish_emit(
     config: &Config,
     today: &str,
@@ -773,6 +767,24 @@ async fn publish_emit(
         if let Err(e) = crate::renderer::publisher::MdxPublisher::new().publish(&mdx_ctx) {
             log::warn!("⚠️ MDX 输出失败: {}", e);
         }
+
+        // Investigation MDX（Stage 5 Emit 阶段统一写入，不再在 Infer 阶段写盘）
+        if !inferred.investigation_reports.is_empty() {
+            let inv_dir = std::path::Path::new(mdx_out).join("investigation");
+            if let Err(e) = std::fs::create_dir_all(&inv_dir) {
+                log::warn!("⚠️ Cannot create investigation dir: {}", e);
+            } else {
+                for (slug, report, assessment_id, inv_id) in &inferred.investigation_reports {
+                    let mdx = crate::renderer::mdx::render_investigation_mdx(
+                        report, slug, assessment_id.as_deref(), inv_id.as_deref(),
+                    );
+                    if let Err(e) = std::fs::write(inv_dir.join(format!("{}.md", slug)), &mdx) {
+                        log::warn!("⚠️ Investigation MDX write failed [{}]: {}", slug, e);
+                    }
+                }
+                log::info!("📝 Investigation MDX: {} 篇", inferred.investigation_reports.len());
+            }
+        }
     }
 
     Ok(())
@@ -795,26 +807,10 @@ fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
     entities
 }
 
-/// Generate a slug from a thesis for investigation report filenames.
-fn slug_from_thesis(thesis: &crate::domain::thesis::Thesis) -> String {
-    let slug_base: String = thesis.title.chars()
-        .filter(|c| c.is_ascii())
-        .collect::<String>()
-        .to_lowercase()
-        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-");
-    if slug_base.is_empty() {
-        thesis.id.trim_start_matches("thesis-")
-            .get(..8).unwrap_or(&thesis.id).to_string()
-    } else {
-        slug_base
-    }
-}
 
 // ===== ResearchOutput destructure helper =====
 impl ResearchOutput {
+    #[allow(clippy::type_complexity)]
     fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::question_engine::QuestionMatch>, crate::agent::scan::TriageResult) {
         (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.question_matches, self.triage)
     }

@@ -10,6 +10,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::registry::RegistryCore;
+
 /// Registry entry for a canonical Decision
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionEntry {
@@ -28,7 +30,8 @@ pub struct DecisionEntry {
 /// Decision Registry — maps DEC-XXXX → DecisionEntry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionRegistry {
-    pub next_id: u32,
+    #[serde(flatten)]
+    pub core: RegistryCore,
     /// DEC-ID → DecisionEntry
     pub decisions: HashMap<String, DecisionEntry>,
 }
@@ -42,7 +45,7 @@ impl Default for DecisionRegistry {
 impl DecisionRegistry {
     pub fn new() -> Self {
         Self {
-            next_id: 1,
+            core: RegistryCore::new(),
             decisions: HashMap::new(),
         }
     }
@@ -73,8 +76,8 @@ impl DecisionRegistry {
         today: &str,
         decision_type: &str,
     ) -> String {
-        let dec_id = format!("DEC-{:04}", self.next_id);
-        self.next_id += 1;
+        let dec_id = format!("DEC-{:04}", self.core.next_id);
+        self.core.next_id += 1;
         self.decisions.insert(
             dec_id.clone(),
             DecisionEntry {
@@ -134,6 +137,6 @@ mod tests {
         let id2 = reg.register("ASM-0002", "t2", "2026-06-26", "build");
         assert_eq!(id1, "DEC-0001");
         assert_eq!(id2, "DEC-0002");
-        assert_eq!(reg.next_id, 3);
+        assert_eq!(reg.core.next_id, 3);
     }
 }

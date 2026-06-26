@@ -39,14 +39,8 @@ pub struct BurialEntry {
 #[derive(Debug, Clone)]
 pub struct GraveyardEntry {
     pub id: String,
-    #[allow(dead_code)]
-    pub article_id: String,
     pub title: String,
     pub category: String,
-    #[allow(dead_code)]
-    pub compressed_content: String,
-    #[allow(dead_code)]
-    pub buried_at: String,
 }
 
 /// 数据库句柄
@@ -273,7 +267,7 @@ impl Database {
         let escaped = keyword.replace('%', "\\%").replace('_', "\\_");
         let pattern = format!("%{}%", escaped);
         let mut stmt = self.conn.prepare(
-            "SELECT id, article_id, title, category, compressed_content, buried_at
+            "SELECT id, title, category
              FROM knowledge_graveyard
              WHERE title LIKE ?1 ESCAPE '\\' AND category = ?2
              ORDER BY buried_at DESC
@@ -282,11 +276,8 @@ impl Database {
         let rows = stmt.query_map(params![pattern, category], |row| {
             Ok(GraveyardEntry {
                 id: row.get(0)?,
-                article_id: row.get(1)?,
-                title: row.get(2)?,
-                category: row.get(3)?,
-                compressed_content: row.get(4)?,
-                buried_at: row.get(5)?,
+                title: row.get(1)?,
+                category: row.get(2)?,
             })
         })?;
         let mut result = Vec::new();

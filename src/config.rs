@@ -115,10 +115,6 @@ pub struct SourceConfig {
     /// 信息源层级：1=内参学习（不挂公开链接）, 2=官方权威源, 3=极客社区, 4=市场数据
     #[serde(default = "default_layer")]
     pub layer: u8,
-    /// 是否公开可展示。false 时前端不显示该源的 attribution 链接，但 LLM 仍完全吸收
-    #[serde(default = "default_public")]
-    #[allow(dead_code)]
-    pub public: bool,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
     /// 源权重 1-10：10=官方权威源（OpenAI Blog, BIS），1=社交噪音（Reddit, Twitter）
@@ -134,12 +130,6 @@ impl SourceConfig {
         self.layer == 1
     }
 
-    /// 是否在前端展示 attribution 链接
-    /// 仅当 public == true 且不为内参源（layer != 1）时才展示
-    #[doc(hidden)]
-    pub fn show_attribution(&self) -> bool {
-        self.public && self.layer != 1
-    }
 }
 
 fn default_layer() -> u8 {
@@ -151,10 +141,6 @@ fn default_source_score() -> u8 {
 }
 
 fn default_enabled() -> bool {
-    true
-}
-
-fn default_public() -> bool {
     true
 }
 

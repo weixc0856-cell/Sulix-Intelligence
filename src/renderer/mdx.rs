@@ -671,7 +671,7 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
 /// 结构：Core Question → Supporting Evidence → Counter Evidence
 ///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
 /// 输出到 output/investigation/{slug}.md
-pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str, inv_id: Option<&str>) -> String {
+pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str, assessment_id: Option<&str>, inv_id: Option<&str>) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Investigation: {}", report.thesis_title))));
@@ -681,7 +681,9 @@ pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str, inv_id
     }
     mdx.push_str("status: \"active\"\n");
     mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
-    mdx.push_str(&format!("thesis_ref: \"{}\"\n", slug));
+    // thesis_ref: 优先用稳定的 ASM-ID，fallback 到 title-derived slug
+    let thesis_ref = assessment_id.unwrap_or(slug);
+    mdx.push_str(&format!("thesis_ref: \"{}\"\n", yaml_escape(thesis_ref)));
     if !report.supporting_evidence.is_empty() {
         mdx.push_str(&format!("supporting_count: {}\n", report.supporting_evidence.len()));
     }

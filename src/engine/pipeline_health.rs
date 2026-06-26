@@ -6,6 +6,16 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// 私有辅助：将序列化值写入 JSON 文件（创建父目录）
+fn write_json_to_file<T: Serialize>(value: &T, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(value)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
 /// 管线运行报告
 ///
 /// 顶层聚合字段（`observation_count` 等）是前端消费的稳定接口。
@@ -120,16 +130,17 @@ pub struct ContentManifest {
     /// 前端内容目录（如有配置，manifest 被同步到此目录）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frontend_content_dir: Option<String>,
+    /// 管线运行时长（秒），从 PipelineReport 合并
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<f64>,
+    /// 各阶段运行详情，从 PipelineReport 合并
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stages: Option<Vec<PipelineStage>>,
 }
 
 impl ContentManifest {
-    pub fn save_as_json(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+    pub fn save_as_json(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        write_json_to_file(self, path)
     }
 }
 
@@ -180,11 +191,6 @@ impl PipelineReport {
 
     /// 保存到指定路径（用于 vault 同步到前端）
     pub fn save_as_json(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        write_json_to_file(self, path)
     }
 }

@@ -72,16 +72,4 @@ impl ChronicleDb {
         sorted
     }
 
-    /// 按语言过滤并排序
-    #[allow(dead_code)]
-    pub fn sorted_by_lang(&self, lang: &str) -> Vec<ChronicleEntry> {
-        let mut filtered: Vec<ChronicleEntry> = self
-            .entries
-            .iter()
-            .filter(|e| e.language == lang)
-            .cloned()
-            .collect();
-        filtered.sort_by(|a, b| b.date.cmp(&a.date));
-        filtered
-    }
 }

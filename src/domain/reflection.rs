@@ -44,17 +44,4 @@ pub struct Reflection {
     pub created_at: String,
 }
 
-/// 反思摘要（供外部展示用）
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReflectionSummary {
-    /// 论题标题
-    pub thesis_title: String,
-    /// 预期 vs 实际
-    pub expected: String,
-    pub actual: String,
-    /// 结果
-    pub result: String,
-    /// 核心教训
-    pub key_lesson: String,
-}
+

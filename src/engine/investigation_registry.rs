@@ -15,6 +15,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::registry::RegistryCore;
+
 /// Registry entry — identity and mapping only, no business data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvestigationEntry {
@@ -34,7 +36,8 @@ pub struct InvestigationEntry {
 /// Only one should be "active" at a time per ASM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvestigationRegistry {
-    pub next_id: u32,
+    #[serde(flatten)]
+    pub core: RegistryCore,
     /// INV-ID → InvestigationEntry
     pub investigations: HashMap<String, InvestigationEntry>,
 }
@@ -48,7 +51,7 @@ impl Default for InvestigationRegistry {
 impl InvestigationRegistry {
     pub fn new() -> Self {
         Self {
-            next_id: 1,
+            core: RegistryCore::new(),
             investigations: HashMap::new(),
         }
     }
@@ -73,8 +76,8 @@ impl InvestigationRegistry {
 
     /// Register a new Investigation for an ASM, return INV-ID
     pub fn register(&mut self, asm_id: &str, thesis_id: &str, today: &str) -> String {
-        let inv_id = format!("INV-{:04}", self.next_id);
-        self.next_id += 1;
+        let inv_id = format!("INV-{:04}", self.core.next_id);
+        self.core.next_id += 1;
         self.investigations.insert(
             inv_id.clone(),
             InvestigationEntry {
@@ -145,6 +148,6 @@ mod tests {
         let id2 = reg.register("ASM-0002", "t2", "2026-06-26");
         assert_eq!(id1, "INV-0001");
         assert_eq!(id2, "INV-0002");
-        assert_eq!(reg.next_id, 3);
+        assert_eq!(reg.core.next_id, 3);
     }
 }

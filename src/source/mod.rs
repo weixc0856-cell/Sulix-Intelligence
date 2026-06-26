@@ -4,7 +4,7 @@
 //! 加新源：在 match 中增加一个分支即可。
 //! 不使用 trait（避免 async_trait 依赖），直接用函数分发。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::Result;
@@ -47,19 +47,6 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
         "reddit" => reddit::fetch_reddit(config, date_range).await,
         other => Err(anyhow::anyhow!("未知源类型: {}", other)),
     }
-}
-
-/// 构建可展示 attribution 链接的源名称集合
-///
-/// 仅包含 `show_attribution() == true` 的源（public == true 且 layer != 1）。
-/// 用于前端渲染时过滤内参源和私有源。
-#[allow(dead_code)]
-pub fn attributable_source_names(sources: &[SourceConfig]) -> HashSet<String> {
-    sources
-        .iter()
-        .filter(|s| s.show_attribution())
-        .map(|s| s.name.clone())
-        .collect()
 }
 
 /// 从 Vault 的 .flash/ 目录加载人工注入的特殊专题

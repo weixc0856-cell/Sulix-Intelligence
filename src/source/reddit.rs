@@ -115,7 +115,6 @@ mod tests {
             category: "AI".into(),
             keywords: None,
             exclude_keywords: None,
-            public: true,
         };
         assert_eq!(config.source_type, "reddit");
         assert_eq!(config.category, "AI");

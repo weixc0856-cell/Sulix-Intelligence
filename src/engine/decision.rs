@@ -84,7 +84,6 @@ pub struct ThesisDecision {
     pub thesis_title: String,
     pub decision_type: DecisionType,
     /// 决策置信度（基于 evidence ratio），当前未在前端使用但保留用于未来 filtering
-    #[allow(dead_code)]
     pub confidence: f64,
     pub rationale: String,
     pub horizon: DecisionHorizon,

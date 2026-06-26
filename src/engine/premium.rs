@@ -41,19 +41,6 @@ pub struct SpecialTopic {
     pub locked_sources: Option<Vec<String>>,
 }
 
-/// 阶段定义（可配置）
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StageDef {
-    /// 阶段名称，如 "WhatChanged"
-    pub name: String,
-    /// 阶段描述，如 "What happened and why does it matter?"
-    pub description: String,
-    /// 可选的 LLM prompt 模板覆盖
-    #[serde(default)]
-    pub custom_prompt: Option<String>,
-}
-
 // ===== Stage 1: WhatChanged =====
 
 const STAGE1_WHAT_CHANGED: &str = r#"You are a senior strategic analyst. Your job is to answer one question:

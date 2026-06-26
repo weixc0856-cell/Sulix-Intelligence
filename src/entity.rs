@@ -47,7 +47,6 @@ pub enum EntityType {
     Unknown,
 }
 
-#[allow(dead_code)]
 impl EntityType {
     /// OpenCTI 风格实体类型字符串常量
     pub const ORGANIZATION: &'static str = "Organization";
@@ -93,7 +92,6 @@ pub enum RelationshipType {
     CausalLink,
 }
 
-#[allow(dead_code)]
 impl RelationshipType {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -183,7 +181,6 @@ impl Default for EntitySanctionDb {
     }
 }
 
-#[allow(dead_code)]
 impl EntitySanctionDb {
     pub fn new() -> Self {
         Self {
@@ -203,6 +200,7 @@ impl EntitySanctionDb {
     }
 
     /// 按类型查询已确认实体
+    #[allow(dead_code)]
     pub fn get_by_type(&self, entity_type: &EntityType) -> Vec<&Entity> {
         self.sanctioned
             .values()
@@ -211,6 +209,7 @@ impl EntitySanctionDb {
     }
 
     /// 为实体增加关系
+    #[allow(dead_code)]
     pub fn add_relationship(&mut self, entity_id: &str, relationship: Relationship) -> Option<()> {
         if let Some(entity) = self.sanctioned.get_mut(entity_id) {
             entity.relationships.push(relationship);

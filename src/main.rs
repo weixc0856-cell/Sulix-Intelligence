@@ -15,14 +15,6 @@ use std::path::PathBuf;
 use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
-/// 信号源抓取状态（替代 (String, bool, usize) 元组）
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct SourceStatus {
-    name: String,
-    fetch_success: bool,
-    signal_count: usize,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -48,7 +40,7 @@ async fn main() -> Result<()> {
         },
     );
 
-    let Some((new_articles, source_statuses, entity_db_fetched)) = signal_result? else {
+    let Some((new_articles, total_signals, entity_db_fetched)) = signal_result? else {
         log::warn!("Pipeline: 0 new articles — done");
         report.status = sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly;
         report.add_stage("agent_research", 0, 0, StageStatus::Skipped);
@@ -71,7 +63,6 @@ async fn main() -> Result<()> {
         }
         m
     };
-    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
 
     let research = agent_research(
         &config,
@@ -183,19 +174,22 @@ async fn main() -> Result<()> {
             daily_today: new_article_count,
             assessments_active: total_assessments,
             investigations,
-            decisions: 0, // populated in future when decision tracking is more precise
+            decisions: report.decision_count.unwrap_or(0),
             archive_days,
             total_signals,
             total_assessments,
             pipeline_status: match &report.status {
                 sulix_intel::engine::pipeline_health::PipelineStatus::Success => "healthy".to_string(),
                 sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput => "no_output".to_string(),
-                _ => "failed".to_string(),
+                sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly => "stopped_early".to_string(),
+                sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure => "failed".to_string(),
             },
             pipeline_observation_count: report.observation_count,
             pipeline_signal_count: report.signal_count,
             output_counts: None,
             frontend_content_dir: config.output.frontend_content_dir.clone(),
+            duration_seconds: Some(report.duration_seconds),
+            stages: Some(report.stages.clone()),
         };
         if let Err(e) = manifest.save_as_json(&manifest_path) {
             log::warn!("⚠️ Content manifest save failed: {}", e);
@@ -319,7 +313,7 @@ async fn agent_signal(
 ) -> Result<
     Option<(
         Vec<fetcher::Article>,
-        Vec<SourceStatus>,
+        usize,  // total_signals
         entity::EntitySanctionDb,
     )>,
 > {
@@ -328,18 +322,17 @@ async fn agent_signal(
     let enabled_sources: Vec<&config::SourceConfig> =
         config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
-    let mut source_statuses: Vec<SourceStatus> = Vec::new();
+    let mut total_signals: usize = 0;
     let date_range = &config.output.date_range;
     for sc in &enabled_sources {
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
-                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: true, signal_count: signals.len() });
+                total_signals += signals.len();
                 all_signals.append(&mut signals);
             }
             Err(e) => {
                 log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e);
-                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: false, signal_count: 0 });
             }
         }
     }
@@ -475,7 +468,7 @@ async fn agent_signal(
         entity_db.unsanctioned.len()
     );
 
-    Ok(Some((new_articles, source_statuses, entity_db)))
+    Ok(Some((new_articles, total_signals, entity_db)))
 }
 
 use publishing::ResearchOutput;

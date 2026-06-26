@@ -39,6 +39,27 @@ pub fn save_json<T: Serialize>(value: &T, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 注册表核心：单调 ID 分配
+///
+/// 嵌入 AssessmentRegistry / DecisionRegistry / InvestigationRegistry
+/// 消除 new() / Default / next_id 字段的重复定义。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryCore {
+    pub next_id: u32,
+}
+
+impl RegistryCore {
+    pub fn new() -> Self {
+        Self { next_id: 1 }
+    }
+}
+
+impl Default for RegistryCore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// 单个 Assessment 的注册记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssessmentEntry {
@@ -56,8 +77,9 @@ pub struct AssessmentEntry {
 /// Assessment Registry — 全量注册表
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssessmentRegistry {
-    /// 下一个可用 ID 序号（单调递增）
-    pub next_id: u32,
+    /// 注册表核心（单调 ID 分配）
+    #[serde(flatten)]
+    pub core: RegistryCore,
     /// ASM-ID → AssessmentEntry 映射
     pub assessments: HashMap<String, AssessmentEntry>,
 }
@@ -71,27 +93,19 @@ impl Default for AssessmentRegistry {
 impl AssessmentRegistry {
     pub fn new() -> Self {
         Self {
-            next_id: 1,
+            core: RegistryCore::new(),
             assessments: HashMap::new(),
         }
     }
 
-    /// 从文件加载；文件不存在则返回空 Registry
+    /// 从文件加载；文件不存在则返回空 Registry（委托给通用 helper）
     pub fn load_or_new(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        load_or_new(path)
     }
 
-    /// 持久化到文件
+    /// 持久化到文件（委托给通用 helper）
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        save_json(self, path)
     }
 
     /// 查找与 title 相似的已有 Assessment，返回 ASM-ID（若找到）
@@ -113,8 +127,8 @@ impl AssessmentRegistry {
 
     /// 注册新 Assessment，返回分配的 ASM-ID
     pub fn register(&mut self, title: &str, today: &str, thesis_id: &str) -> String {
-        let asm_id = format!("ASM-{:04}", self.next_id);
-        self.next_id += 1;
+        let asm_id = format!("ASM-{:04}", self.core.next_id);
+        self.core.next_id += 1;
         self.assessments.insert(
             asm_id.clone(),
             AssessmentEntry {
@@ -198,7 +212,7 @@ mod tests {
         let id2 = reg.register("Topic B", "2026-06-26", "t2");
         assert_eq!(id1, "ASM-0001");
         assert_eq!(id2, "ASM-0002");
-        assert_eq!(reg.next_id, 3);
+        assert_eq!(reg.core.next_id, 3);
     }
 
     #[test]

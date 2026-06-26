@@ -134,12 +134,6 @@ impl MemoryEngine {
         &self.theses
     }
 
-    /// 获取所有 Investigation 记录
-    #[allow(dead_code)]
-    pub fn investigations(&self) -> &[Investigation] {
-        &self.investigations
-    }
-
     /// 获取指定 Thesis 的活跃 Investigation（按 state=active 优先，fallback 到任意）
     pub fn get_investigation_for_thesis(&self, thesis_id: &str) -> Option<&Investigation> {
         self.investigations
@@ -566,15 +560,6 @@ impl MemoryEngine {
         Ok(())
     }
 
-    /// 获取某个 Thesis 的所有 Outcome 记录
-    #[allow(dead_code)]
-    pub fn outcome_history(&self, thesis_id: &str) -> Vec<&Outcome> {
-        self.outcomes
-            .iter()
-            .filter(|o| o.thesis_id == thesis_id)
-            .collect()
-    }
-
     /// 获取所有 Outcome 记录
     pub fn all_outcomes(&self) -> &[Outcome] {
         &self.outcomes
@@ -803,12 +788,6 @@ impl MemoryEngine {
         Ok(reflection)
     }
 
-    /// 保存反思记录
-    #[allow(dead_code)]
-    pub fn save_reflection(&mut self, reflection: Reflection) {
-        self.reflections.push(reflection);
-    }
-
     /// 获取所有反思记录
     pub fn all_reflections(&self) -> &[Reflection] {
         &self.reflections
@@ -872,64 +851,6 @@ impl MemoryEngine {
     }
 
     // ===== Public API: 置信度 & 状态 =====
-
-    /// 记录置信度快照（公开 API，按 thesis_id）
-    #[allow(dead_code)]
-    pub fn record_confidence(
-        &mut self,
-        thesis_id: &str,
-        trigger: ConfidenceTrigger,
-        reason: &str,
-    ) -> Result<()> {
-        let idx = self
-            .theses
-            .iter()
-            .position(|t| t.id == thesis_id)
-            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", thesis_id))?;
-        self.record_confidence_inner(idx, trigger, reason);
-        Ok(())
-    }
-
-    /// 记录状态变更（公开 API，按 thesis_id）
-    #[allow(dead_code)]
-    pub fn record_status_transition(
-        &mut self,
-        thesis_id: &str,
-        new_status: ThesisStatus,
-        trigger: TransitionTrigger,
-        description: &str,
-    ) -> Result<()> {
-        let idx = self
-            .theses
-            .iter()
-            .position(|t| t.id == thesis_id)
-            .ok_or_else(|| anyhow::anyhow!("Thesis '{}' not found", thesis_id))?;
-        self.record_status_transition_inner(idx, new_status, trigger, description);
-        Ok(())
-    }
-
-    /// 计算 Thesis 的历史正确率
-    #[allow(dead_code)]
-    pub fn historical_accuracy(&self, thesis_id: &str) -> Option<f64> {
-        let outcomes: Vec<&Outcome> = self
-            .outcomes
-            .iter()
-            .filter(|o| o.thesis_id == thesis_id)
-            .collect();
-        if outcomes.is_empty() {
-            return None;
-        }
-        let total = outcomes.len() as f64;
-        let score: f64 = outcomes
-            .iter()
-            .map(|o| match o.verdict {
-                OutcomeVerdict::Confirmed => 1.0,
-                OutcomeVerdict::PartiallyConfirmed => 0.5,
-                OutcomeVerdict::Invalidated | OutcomeVerdict::Unknown => 0.0,
-            })
-            .sum();
-        Some(score / total)
-    }
 
     // ===== Test helpers (only available in #[cfg(test)]) =====
 
