@@ -125,6 +125,22 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI代理应用",
+          "source": "OpenAI Blog",
+          "summary": "AI代理正快速成熟，创始人应在6个月内将代理集成到产品或工作流中，否则可能被采用代理的竞争对手超越。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -275,6 +291,24 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -297,6 +331,12 @@
           "decision_type": "build",
           "confidence": 0.9
         }
+      ],
+      "falsification_conditions": [
+        "OpenAI或Google发布官方报告称代理在实际企业部署中错误率超过30%",
+        "Meta宣布其Llama 4在代理任务基准上落后现有闭源模型50%",
+        "连续两个季度企业AI代理采用率下降（如Gartner调查显示）",
+        "欧盟或美国出台严格法规，限制代理在关键行业（如医疗、金融）的使用"
       ]
     },
     {
@@ -320,6 +360,14 @@
           "summary": "OpenAI与Broadcom的定制度推理芯片Jalapeño将降低LLM推理成本，推动AI应用爆发；IBM的亚1纳米芯片虽革命性但商业化尚远，6个月内无直接影响。",
           "stance": "Supports",
           "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "芯片技术发展",
+          "source": "OpenAI Blog",
+          "summary": "芯片技术双重突破（OpenAI定制推理芯片+IBM亚1nm制程）将加速AI推理成本下降，但6个月内对创始人策略影响有限，主要作为长期趋势信号。",
+          "stance": "Supports",
+          "signal_strength": 3
         }
       ],
       "assumptions": [
@@ -373,7 +421,13 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null,
-      "decision_history": []
+      "decision_history": [],
+      "falsification_conditions": [
+        "OpenAI宣布Jalapeño芯片推理成本低于NVIDIA H100 50%以上且立即商用。",
+        "台积电或三星发布公告称0.7nm制程量产时间提前至2027年Q1。",
+        "AWS、Google或Microsoft宣布基于IBM 0.7nm芯片的AI实例预定。",
+        "NVIDIA紧急下调下一代AI芯片价格超过30%。"
+      ]
     },
     {
       "id": "thesis-1782441697",
@@ -449,7 +503,8 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null,
-      "decision_history": []
+      "decision_history": [],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782443023",
@@ -564,6 +619,18 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -586,7 +653,8 @@
           "decision_type": "build",
           "confidence": 0.9
         }
-      ]
+      ],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782443023",
@@ -683,7 +751,8 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null,
-      "decision_history": []
+      "decision_history": [],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782443578",
@@ -819,6 +888,18 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -841,7 +922,8 @@
           "decision_type": "build",
           "confidence": 0.9
         }
-      ]
+      ],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782443578",
@@ -922,7 +1004,8 @@
       "related_thesis_ids": [],
       "metadata": {},
       "investigation_id": null,
-      "decision_history": []
+      "decision_history": [],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782447212",
@@ -982,7 +1065,8 @@
           "decision_type": "monitor",
           "confidence": 0.9
         }
-      ]
+      ],
+      "falsification_conditions": []
     },
     {
       "id": "thesis-1782457975",
@@ -995,6 +1079,14 @@
           "title": "AI责任标准",
           "source": "Simon Willison",
           "summary": "德国法院裁定谷歌对AI概述错误承担责任，强化了AI责任归属原则，创始人需立即将责任机制纳入产品设计。",
+          "stance": "Supports",
+          "signal_strength": 5
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI安全与责任",
+          "source": "Simon Willison",
+          "summary": "AI责任法律风险正在上升，德国裁定Google为AI概述错误负责，叠加提示注入等技术漏洞，创始人需立即审视自身AI产品的法律责任框架。",
           "stance": "Supports",
           "signal_strength": 5
         }
@@ -1021,16 +1113,36 @@
           "evidence_strength": "moderate"
         }
       ],
-      "status": "Active",
+      "status": "Strengthening",
       "confidence_history": [
         {
           "date": "2026-06-26",
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "StatusChange",
+          "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
-      "status_history": [],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-06-26",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 2)"
+        }
+      ],
       "parent_id": null,
       "merged_ids": [],
       "related_thesis_ids": [],
@@ -1042,6 +1154,12 @@
           "decision_type": "monitor",
           "confidence": 0.9
         }
+      ],
+      "falsification_conditions": [
+        "欧盟或美国发布明确判例或法规豁免AI部署者对输出错误的严格责任",
+        "OpenAI或Google发布可证明的、能可靠区分系统角色与用户输入的模型安全更新",
+        "主要云平台承诺承担因AI输出错误导致的全部法律责任（法律赔偿额下降）",
+        "连续两个季度未出现高知名度AI责任诉讼案件"
       ]
     }
   ],
@@ -1345,6 +1463,70 @@
     {
       "id": "outcome-1782460311",
       "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (17 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (3 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782462967",
+      "thesis_id": "thesis-1782457975",
       "description": "证据持续积累 (2 条)",
       "verdict": "PartiallyConfirmed",
       "date": "2026-06-26",
@@ -1874,6 +2056,118 @@
       "id": "reflection-1782460311",
       "thesis_id": "thesis-1782443578",
       "outcome_id": "outcome-1782460311",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (17 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (3 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782462967",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782462967",
+      "thesis_id": "thesis-1782457975",
+      "outcome_id": "outcome-1782462967",
       "verdict": "partially-confirmed",
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
