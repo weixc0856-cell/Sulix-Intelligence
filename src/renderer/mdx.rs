@@ -274,7 +274,7 @@ pub fn render_thesis_mdx(
                 LifecycleEventKind::Invalidated { reason } => format!("Invalidated: {}", reason),
             };
             mdx.push_str(&format!(
-                "  - date: \"{}\" event: {}\n",
+                "  - date: \"{}\"\n    event: {}\n",
                 ev.date,
                 yaml_escape(&event_str)
             ));
