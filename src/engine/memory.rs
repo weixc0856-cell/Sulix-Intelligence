@@ -330,18 +330,16 @@ impl MemoryEngine {
     fn recompute_status(&self, idx: usize, today: &str) -> ThesisStatus {
         let thesis = &self.theses[idx];
 
-        // 7 天窗口
+        // 7 天窗口（today 只解析一次，放循环外避免重复解析）
+        let today_date = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Local::now().date_naive());
         let recent: Vec<&Evidence> = thesis
             .evidences
             .iter()
             .filter(|e| {
-                if let Ok(d) = chrono::NaiveDate::parse_from_str(&e.date, "%Y-%m-%d") {
-                    if let Ok(t) = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d") {
-                        let diff = (t - d).num_days();
-                        return (0..=7).contains(&diff);
-                    }
-                }
-                false
+                chrono::NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
+                    .map(|d| (today_date - d).num_days())
+                    .map_or(false, |diff| (0..=7).contains(&diff))
             })
             .collect();
 

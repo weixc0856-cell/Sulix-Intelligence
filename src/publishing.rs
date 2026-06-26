@@ -65,6 +65,11 @@ fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
 }
 
 /// Premium 报告 → 合成摘要 → Markdown 输出 → 变更检测 → HTML 渲染 → Chronicle → Decay Agent
+/// 记录 ASI 分数的最低 SVI（用于 info 日志）
+const SVI_MIN_LOG: f64 = 6.0;
+/// 生成 premium 研报的最低 SVI
+const SVI_MIN_PREMIUM: u8 = 7;
+
 #[allow(clippy::too_many_arguments)]
 pub async fn agent_publish(
     config: &Config,
@@ -146,7 +151,7 @@ pub async fn agent_publish(
             theme.title.clone(),
             (asi_result.asi, confidence_result.confidence, final_val),
         );
-        if final_val >= 6.0 {
+        if final_val >= SVI_MIN_LOG {
             log::info!(
                 "⭐ ASI: {} (SVI={}, ASI={:.2}, Confidence={:.2}, final={:.1})",
                 theme.title,
@@ -156,7 +161,7 @@ pub async fn agent_publish(
                 final_val
             );
         }
-        if svi < 7 {
+        if svi < SVI_MIN_PREMIUM {
             continue;
         }
         let theme_context: String = theme

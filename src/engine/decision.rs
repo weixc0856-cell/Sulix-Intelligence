@@ -130,18 +130,8 @@ fn map_thesis_to_decision(
         }
     };
 
-    // Compute confidence from evidence ratio
-    let total = thesis.evidences.len() as f64;
-    let confidence = if total == 0.0 {
-        0.5
-    } else {
-        let support = thesis
-            .evidences
-            .iter()
-            .filter(|e| e.stance == crate::domain::evidence::Stance::Supports)
-            .count() as f64;
-        (support / total).clamp(0.0, 1.0)
-    };
+    // Compute confidence from evidence ratio (canonical: engine/memory.rs)
+    let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
 
     let priority = decision_type.priority();
 

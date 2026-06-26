@@ -16,6 +16,14 @@ use std::path::PathBuf;
 use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
+/// 信号源抓取状态（替代 (String, bool, usize) 元组）
+#[derive(Debug, Clone)]
+struct SourceStatus {
+    name: String,
+    fetch_success: bool,
+    signal_count: usize,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -60,10 +68,10 @@ async fn main() -> Result<()> {
         &data_dir,
         &today,
         new_articles,
-        source_statuses.clone(),
+        source_statuses.iter().map(|s| (s.name.clone(), s.fetch_success, s.signal_count)).collect(),
     )
     .await?;
-    let total_signals: usize = source_statuses.iter().map(|(_, _, c)| c).sum();
+    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
     if research.themes.is_empty() {
         report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
     }
@@ -88,7 +96,7 @@ async fn main() -> Result<()> {
         &today,
         &mut entity_db,
         research,
-        source_statuses,
+        source_statuses.iter().map(|s| (s.name.clone(), s.fetch_success, s.signal_count)).collect(),
     )
     .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
@@ -212,7 +220,7 @@ async fn agent_signal(
 ) -> Result<
     Option<(
         Vec<fetcher::Article>,
-        Vec<(String, bool, usize)>,
+        Vec<SourceStatus>,
         entity::EntitySanctionDb,
     )>,
 > {
@@ -221,18 +229,18 @@ async fn agent_signal(
     let enabled_sources: Vec<&config::SourceConfig> =
         config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
-    let mut source_statuses: Vec<(String, bool, usize)> = Vec::new();
+    let mut source_statuses: Vec<SourceStatus> = Vec::new();
     let date_range = &config.output.date_range;
     for sc in &enabled_sources {
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
-                source_statuses.push((sc.name.clone(), true, signals.len()));
+                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: true, signal_count: signals.len() });
                 all_signals.append(&mut signals);
             }
             Err(e) => {
                 log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e);
-                source_statuses.push((sc.name.clone(), false, 0));
+                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: false, signal_count: 0 });
             }
         }
     }
