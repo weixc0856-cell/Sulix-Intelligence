@@ -70,6 +70,6 @@ jobs:
         run: |
           git config user.name "Sulix-Bot"
           git config user.email "bot@sulix.com"
-          git add output/
+          git add -f output/
           git diff --quiet && git diff --staged --quiet || \
             (git commit -m "chore(data): daily brief $(date +%Y-%m-%d)" && git push)
