@@ -275,6 +275,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         }
     }
 

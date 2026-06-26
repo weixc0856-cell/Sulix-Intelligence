@@ -454,7 +454,11 @@ pub async fn agent_publish(
             );
             let _ = std::fs::rename(&memory_path, &backup);
         }
-        if let Err(e) = memory.update_from_analysis(today, &themes, &analyses) {
+        // 加载 Assessment Registry（给每个判断分配稳定 ASM-ID）
+        let registry_path = PathBuf::from(&config.output.vault_path).join("assessment_registry.json");
+        let mut registry = crate::engine::registry::AssessmentRegistry::load_or_new(&registry_path);
+
+        if let Err(e) = memory.update_from_analysis_with_registry(today, &themes, &analyses, &mut registry) {
             log::warn!("⚠️ Memory Engine 更新失败: {}", e);
         } else {
             let before = memory.theses().len();
@@ -641,6 +645,14 @@ pub async fn agent_publish(
 
         if let Err(e) = memory.save() {
             log::warn!("⚠️ Memory Engine 保存失败: {}", e);
+        }
+
+        // 保存 Assessment Registry（持久化 ASM-ID 分配）
+        if let Err(e) = registry.save(&registry_path) {
+            log::warn!("⚠️ Assessment Registry 保存失败: {}", e);
+        } else {
+            log::info!("📋 Assessment Registry: {} assessments, next ID: ASM-{:04}",
+                registry.assessments.len(), registry.next_id);
         }
 
         if !thesis_decisions.is_empty() {

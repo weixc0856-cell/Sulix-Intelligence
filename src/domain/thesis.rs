@@ -96,6 +96,11 @@ pub struct Thesis {
     /// 证伪条件：哪些具体信号/事件会使该判断失效（First Principle: Falsifiability）
     #[serde(default)]
     pub falsification_conditions: Vec<String>,
+    /// 稳定 Assessment ID（ASM-XXXX 格式）
+    /// 由 Assessment Registry 分配，不随 LLM 重命名或重聚类而变化
+    /// 是 Assessment 的公开永久身份标识
+    #[serde(default)]
+    pub assessment_id: Option<String>,
 }
 
 /// 决策快照 — 每日记录，供 Decision Smoothing 使用

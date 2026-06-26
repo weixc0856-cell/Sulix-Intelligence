@@ -250,9 +250,12 @@ impl Publisher for MdxPublisher {
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
-        // 2. Thesis → output/thesis/
+        // 2. Assessment → output/assessment/ (stable ASM-ID filenames)
+        // Legacy: also write to output/thesis/ for backward compat during transition
         let thesis_dir = mdx_dir.join("thesis");
+        let assessment_dir = mdx_dir.join("assessment");
         std::fs::create_dir_all(&thesis_dir)?;
+        std::fs::create_dir_all(&assessment_dir)?;
         // Build decision lookup: thesis_id → ThesisDecision
         let decision_map: std::collections::HashMap<
             &str,
@@ -277,6 +280,15 @@ impl Publisher for MdxPublisher {
                 .map(|v| v.iter().map(|o| (*o).clone()).collect())
                 .unwrap_or_default();
             let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
+
+            // Primary: stable ASM-ID filename (if assessment_id assigned)
+            if let Some(ref asm_id) = thesis.assessment_id {
+                let asm_path = assessment_dir.join(format!("{}.md", asm_id));
+                std::fs::write(&asm_path, &mdx)?;
+                outputs.push(PublishedOutput::File { path: asm_path, content: mdx.clone() });
+            }
+
+            // Fallback / legacy: date+slug filename in output/thesis/ (old format)
             let slug_base = ascii_slug(&thesis.title);
             let slug = if slug_base.is_empty() {
                 short_id_from_thesis(&thesis.id)

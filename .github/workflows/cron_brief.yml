@@ -58,6 +58,8 @@ jobs:
           find frontend/src/content/ -name "*.mdx" -delete 2>/dev/null || true
           cp -r engine/output/daily/* frontend/src/content/daily/ 2>/dev/null || true
           cp -r engine/output/thesis/* frontend/src/content/thesis/ 2>/dev/null || true
+          mkdir -p frontend/src/content/thesis
+          cp -r engine/output/assessment/* frontend/src/content/thesis/ 2>/dev/null || true
           cp -r engine/output/research/* frontend/src/content/research/ 2>/dev/null || true
           cp -r engine/output/reflection/* frontend/src/content/reflection/ 2>/dev/null || true
           mkdir -p frontend/src/content/investigation

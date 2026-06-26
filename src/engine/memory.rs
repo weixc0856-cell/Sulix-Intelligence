@@ -254,6 +254,7 @@ impl MemoryEngine {
                     investigation_id: None,
                     decision_history: vec![],
                     falsification_conditions: analysis.falsification_conditions.clone(),
+                    assessment_id: None,
                 };
                 self.theses.push(new_thesis);
                 let new_idx = self.theses.len() - 1;
@@ -539,6 +540,47 @@ impl MemoryEngine {
         }
     }
 
+    /// Registry-aware 版本：分配 Assessment ID 后再 update_from_analysis
+    ///
+    /// 在 publishing.rs 中调用（有 registry 时），替代 update_from_analysis。
+    /// Registry 负责给每个 Thesis 分配稳定的 ASM-XXXX ID。
+    pub fn update_from_analysis_with_registry(
+        &mut self,
+        today: &str,
+        themes: &[Theme],
+        analyses: &[ThemeAnalysis],
+        registry: &mut crate::engine::registry::AssessmentRegistry,
+    ) -> Result<()> {
+        // 先执行常规更新
+        self.update_from_analysis(today, themes, analyses)?;
+
+        // 为每个 theme 匹配/分配 assessment_id
+        for (theme, _analysis) in themes.iter().zip(analyses.iter()) {
+            let title = &theme.title;
+
+            // 查 Registry：找到相似 → 复用 ASM-ID + 加 alias
+            let asm_id = if let Some(existing) = registry.find_similar(title) {
+                registry.add_alias(&existing, title);
+                existing
+            } else {
+                // 未找到 → 注册新 Assessment
+                // thesis_id 先用占位符，后面找到 thesis 后更新
+                registry.register(title, today, "pending")
+            };
+
+            // 给对应 thesis 绑定 assessment_id
+            if let Some(thesis) = self.theses.iter_mut().find(|t| Self::title_overlap(title, &t.title)) {
+                if thesis.assessment_id.is_none() {
+                    thesis.assessment_id = Some(asm_id.clone());
+                }
+                // 更新 registry 的 thesis_id
+                registry.update_thesis_id(&asm_id, &thesis.id);
+            }
+        }
+
+        Ok(())
+    }
+
     /// 生成 Thesis 的反思复盘
     ///
     /// 基于 Outcome 记录生成结构化反思：
@@ -688,6 +730,7 @@ impl MemoryEngine {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
     }
 
@@ -863,6 +906,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // 完全匹配
@@ -890,6 +934,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -917,6 +962,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -950,6 +996,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -976,6 +1023,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -1010,6 +1058,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1058,6 +1107,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1092,6 +1142,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1118,6 +1169,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // 超过 30 天 idle
@@ -1145,6 +1197,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // 仅 0 天 idle
@@ -1172,6 +1225,7 @@ mod tests {
             investigation_id: None,
             decision_history: vec![],
             falsification_conditions: vec![],
+            assessment_id: None,
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过

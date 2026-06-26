@@ -10,3 +10,4 @@ pub mod investigation;
 pub mod memory;
 pub mod pipeline_health;
 pub mod premium;
+pub mod registry;
