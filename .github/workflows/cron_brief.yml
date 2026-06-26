@@ -59,15 +59,19 @@ jobs:
           cp -r engine/output/reflection/* frontend/src/content/reflection/ 2>/dev/null || true
           cp engine/output/pipeline_report.json frontend/public/pipeline_report.json 2>/dev/null || true
 
-      - name: Deploy Frontend to Cloudflare Pages
+      - name: Build Frontend
         working-directory: frontend
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npm ci
           npm run build
-          npx wrangler pages deploy dist/ --project-name=intel-web
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist/ --project-name=intel-web
+          workingDirectory: frontend
 
       - name: Commit MDX to Engine Repo
         working-directory: engine
