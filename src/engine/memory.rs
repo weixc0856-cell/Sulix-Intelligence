@@ -24,8 +24,8 @@ pub use crate::domain::investigation::Investigation;
 pub use crate::domain::outcome::{Outcome, OutcomeVerdict};
 pub use crate::domain::reflection::Reflection;
 pub use crate::domain::thesis::{
-    ConfidenceSnapshot, ConfidenceTrigger, StatusTransition, Thesis, ThesisStatus,
-    TransitionTrigger,
+    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,
+    Thesis, ThesisStatus, TransitionTrigger,
 };
 
 /// 信念追踪引擎
@@ -195,6 +195,19 @@ impl MemoryEngine {
                     signal_strength: analysis.signal_strength,
                 });
                 self.theses[idx].updated = today.to_string();
+                // 管理生命周期：记录 Updated 事件（去重：同一天不重复）
+                let already_updated_today = self.theses[idx].lifecycle_events.last()
+                    .map(|e| e.date == today && matches!(e.kind, LifecycleEventKind::Updated { .. }))
+                    .unwrap_or(false);
+                if !already_updated_today {
+                    let evidence_count = self.theses[idx].evidences.len();
+                    self.theses[idx].lifecycle_events.push(LifecycleEvent {
+                        date: today.to_string(),
+                        kind: LifecycleEventKind::Updated {
+                            note: format!("{} evidence total", evidence_count),
+                        },
+                    });
+                }
 
                 // 同步证伪条件（覆盖更新，条件会随证据演化）
                 if !analysis.falsification_conditions.is_empty() {
@@ -255,10 +268,14 @@ impl MemoryEngine {
                     decision_history: vec![],
                     falsification_conditions: analysis.falsification_conditions.clone(),
                     assessment_id: None,
+                    lifecycle_events: vec![LifecycleEvent {
+                        date: today.to_string(),
+                        kind: LifecycleEventKind::Created,
+                    }],
                 };
                 self.theses.push(new_thesis);
                 let new_idx = self.theses.len() - 1;
-                // 记录初始置信度
+                // 记録初始置信度
                 self.record_confidence_inner(new_idx, ConfidenceTrigger::Initial, "thesis created");
             }
         }
@@ -403,6 +420,12 @@ impl MemoryEngine {
                         TransitionTrigger::IdleTimeout,
                         &desc,
                     );
+                    self.theses[i].lifecycle_events.push(LifecycleEvent {
+                        date: today.to_string(),
+                        kind: LifecycleEventKind::Archived {
+                            reason: format!("{} days without new evidence", idle),
+                        },
+                    });
                 } else if idle >= dormant_days {
                     let desc = format!("{} days idle (>={})", idle, dormant_days);
                     self.record_status_transition_inner(
@@ -731,6 +754,10 @@ impl MemoryEngine {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![LifecycleEvent {
+                date: today.to_string(),
+                kind: LifecycleEventKind::Created,
+            }],
         });
     }
 
@@ -907,6 +934,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // 完全匹配
@@ -935,6 +963,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -963,6 +992,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -997,6 +1027,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -1024,6 +1055,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -1059,6 +1091,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1108,6 +1141,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1143,6 +1177,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1170,6 +1205,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // 超过 30 天 idle
@@ -1198,6 +1234,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // 仅 0 天 idle
@@ -1226,6 +1263,7 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            lifecycle_events: vec![],
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过

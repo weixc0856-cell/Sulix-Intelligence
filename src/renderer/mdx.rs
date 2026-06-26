@@ -14,6 +14,7 @@
 use crate::clusterer::{Theme, ThemeAnalysis};
 use crate::domain::investigation::InvestigationReport;
 use crate::engine::decision::ThesisDecision;
+use crate::domain::thesis::LifecycleEventKind;
 use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
 use crate::renderer::helpers::yaml_escape;
@@ -266,6 +267,27 @@ pub fn render_thesis_mdx(
     mdx.push_str(&format!("title: {}\n", yaml_escape(&thesis.title)));
     mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
     mdx.push_str(&format!("created: \"{}\"\n", thesis.created));
+    if let Some(ref asm_id) = thesis.assessment_id {
+        mdx.push_str(&format!("assessment_id: \"{}\"\n", asm_id));
+    }
+    // 管理生命周期事件（最近 5 条，逆序）
+    if !thesis.lifecycle_events.is_empty() {
+        mdx.push_str("lifecycle:\n");
+        for ev in thesis.lifecycle_events.iter().rev().take(5) {
+            let event_str = match &ev.kind {
+                LifecycleEventKind::Created => "Created".to_string(),
+                LifecycleEventKind::Updated { note } => format!("Updated: {}", note),
+                LifecycleEventKind::Merged { into } => format!("Merged into {}", into),
+                LifecycleEventKind::Archived { reason } => format!("Archived: {}", reason),
+                LifecycleEventKind::Invalidated { reason } => format!("Invalidated: {}", reason),
+            };
+            mdx.push_str(&format!(
+                "  - date: \"{}\" event: {}\n",
+                ev.date,
+                yaml_escape(&event_str)
+            ));
+        }
+    }
     mdx.push_str(&format!("summary: {}\n", yaml_escape(summary)));
     mdx.push_str(&format!("status: \"{}\"\n", status_str));
     mdx.push_str(&format!("status_label: \"{}\"\n", status_label));

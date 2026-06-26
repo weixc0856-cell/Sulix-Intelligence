@@ -101,6 +101,32 @@ pub struct Thesis {
     /// 是 Assessment 的公开永久身份标识
     #[serde(default)]
     pub assessment_id: Option<String>,
+    /// 管理生命周期事件日志（Created/Updated/Merged/Archived/Invalidated）
+    /// 与 status_history（信号驱动）区分：lifecycle_events 是管理事件
+    #[serde(default)]
+    pub lifecycle_events: Vec<LifecycleEvent>,
+}
+
+/// 管理生命周期事件类型
+///
+/// 与 ThesisStatus（信号驱动）区分：
+///   - ThesisStatus = 证据积累的结果（Strengthening/Weakening/...）
+///   - LifecycleEventKind = 管理操作（Created/Merged/Archived/...）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "detail")]
+pub enum LifecycleEventKind {
+    Created,
+    Updated { note: String },
+    Merged { into: String },
+    Archived { reason: String },
+    Invalidated { reason: String },
+}
+
+/// 单条管理生命周期事件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifecycleEvent {
+    pub date: String,
+    pub kind: LifecycleEventKind,
 }
 
 /// 决策快照 — 每日记录，供 Decision Smoothing 使用
