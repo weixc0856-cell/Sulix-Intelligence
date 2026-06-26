@@ -56,6 +56,7 @@ jobs:
           cp -r engine/output/daily/* frontend/src/content/daily/ 2>/dev/null || true
           cp -r engine/output/thesis/* frontend/src/content/thesis/ 2>/dev/null || true
           cp -r engine/output/research/* frontend/src/content/research/ 2>/dev/null || true
+          cp -r engine/output/reflection/* frontend/src/content/reflection/ 2>/dev/null || true
           cp engine/output/pipeline_report.json frontend/public/pipeline_report.json 2>/dev/null || true
 
       - name: Deploy Frontend to Cloudflare Pages
