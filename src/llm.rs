@@ -175,7 +175,8 @@ async fn call_raw_inner(
         ],
         "max_tokens": llm_config.max_tokens.min(2048),
         "temperature": llm_config.temperature.min(0.2),
-        "response_format": {"type": "json_object"}
+        "response_format": {"type": "json_object"},
+        "seed": 42  // fixed seed for deterministic output
     });
 
     let response = client
@@ -234,7 +235,8 @@ async fn call_completion(
         ],
         "max_tokens": llm_config.max_tokens,
         "temperature": llm_config.temperature,
-        "response_format": {"type": "json_object"}
+        "response_format": {"type": "json_object"},
+        "seed": 42  // fixed seed for deterministic output
     });
 
     log::debug!("LLM 请求: {} ({} tokens max)", url, llm_config.max_tokens);

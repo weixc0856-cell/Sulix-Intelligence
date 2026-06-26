@@ -316,6 +316,17 @@ impl MemoryEngine {
                     return true;
                 }
             }
+
+            // 子集匹配（Determinism 改进）：
+            // 如果 A 的所有词都包含在 B 中，或反之，视为同一 thesis。
+            // 处理 LLM 每次稍微改变标题的情况（如"AI Infrastructure" vs "AI Infrastructure Consolidation"）。
+            if words.len() >= 2 {
+                let all_q_in_t = words.iter().all(|w| target_words.iter().any(|tw| tw.eq_ignore_ascii_case(w)));
+                let all_t_in_q = target_words.len() >= 2 && target_words.iter().all(|tw| words.iter().any(|w| w.eq_ignore_ascii_case(tw)));
+                if all_q_in_t || all_t_in_q {
+                    return true;
+                }
+            }
         }
 
         false

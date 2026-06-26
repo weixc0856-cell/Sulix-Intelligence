@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
         if let Ok(entries) = std::fs::read_dir(mdx_path.join("thesis")) {
             let count = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                 .count();
             if count > 0 { report.assessment_count = Some(count); }
         }
@@ -145,7 +145,7 @@ async fn main() -> Result<()> {
         if let Ok(entries) = std::fs::read_dir(mdx_path.join("investigation")) {
             let count = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                 .count();
             if count > 0 { report.investigation_count = Some(count); }
         }
@@ -574,11 +574,13 @@ async fn agent_research(
         "📊 开始主题聚类 (Insight: {} 篇)...",
         insight_articles.len()
     );
-    let themes = if insight_articles.is_empty() {
+    let mut themes = if insight_articles.is_empty() {
         vec![]
     } else {
         clusterer::cluster_articles(&insight_articles, api_key, &config.llm).await?
     };
+    // 标准化处理顺序（确定性管线）：按主题标题字母排序
+    themes.sort_by(|a, b| a.title.cmp(&b.title));
     catalog.save_step(5, "themes", &themes)?;
 
     // 主题分析 + 蓝军验证（英文）

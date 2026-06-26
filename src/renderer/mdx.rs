@@ -377,8 +377,32 @@ pub fn render_thesis_mdx(
             }
         }
     }
-    // Decision History: 最近 3 条决策快照（前端 What's Changed / Revision 用）
+    // Decision History: 决策变化事件（去掉相邻重复，保留真正的切换）
+    // Assessment Ledger 用：提供决策时间线
     {
+        let mut last_decision: Option<String> = None;
+        let decision_changes: Vec<_> = thesis.decision_history.iter()
+            .filter(|snap| {
+                if Some(&snap.decision_type) != last_decision.as_ref() {
+                    last_decision = Some(snap.decision_type.clone());
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
+        if !decision_changes.is_empty() {
+            mdx.push_str("decision_changes:\n");
+            for snap in &decision_changes {
+                mdx.push_str(&format!(
+                    "  - date: \"{}\"\n    decision: \"{}\"\n    confidence: {:.2}\n",
+                    snap.date,
+                    snap.decision_type,
+                    snap.confidence
+                ));
+            }
+        }
+        // 保留 decision_history_recent 作为向后兼容
         let recent_decisions: Vec<_> = thesis.decision_history.iter().rev().take(3).collect();
         if !recent_decisions.is_empty() {
             mdx.push_str("decision_history_recent:\n");
@@ -389,6 +413,31 @@ pub fn render_thesis_mdx(
                     snap.decision_type,
                     snap.confidence
                 ));
+            }
+        }
+    }
+    // Evidence Attribution — 支持/反对证据摘要（Evidence 区块详细化用）
+    {
+        let supporting: Vec<String> = thesis.evidences.iter()
+            .filter(|e| e.stance == Stance::Supports)
+            .rev().take(5)
+            .map(|e| format!("[{}] {}", e.source, e.summary))
+            .collect();
+        if !supporting.is_empty() {
+            mdx.push_str("supporting_evidence:\n");
+            for e in &supporting {
+                mdx.push_str(&format!("  - {}\n", yaml_escape(e)));
+            }
+        }
+        let conflicting: Vec<String> = thesis.evidences.iter()
+            .filter(|e| e.stance == Stance::Challenges)
+            .rev().take(3)
+            .map(|e| format!("[{}] {}", e.source, e.summary))
+            .collect();
+        if !conflicting.is_empty() {
+            mdx.push_str("conflicting_evidence:\n");
+            for e in &conflicting {
+                mdx.push_str(&format!("  - {}\n", yaml_escape(e)));
             }
         }
     }
