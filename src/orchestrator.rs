@@ -438,6 +438,7 @@ mod tests {
             chains: vec![],
             what_to_do: String::new(),
             what_to_watch: String::new(),
+            falsification_conditions: vec![],
         });
 
         let edge = blue_team_edge("DE");

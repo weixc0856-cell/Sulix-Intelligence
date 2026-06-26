@@ -93,6 +93,9 @@ pub struct Thesis {
     /// 决策历史（Stability Layer：防止日间决策抖动）
     #[serde(default)]
     pub decision_history: Vec<DecisionSnapshot>,
+    /// 证伪条件：哪些具体信号/事件会使该判断失效（First Principle: Falsifiability）
+    #[serde(default)]
+    pub falsification_conditions: Vec<String>,
 }
 
 /// 决策快照 — 每日记录，供 Decision Smoothing 使用

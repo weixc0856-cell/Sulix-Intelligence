@@ -66,6 +66,8 @@ pub struct ThemeAnalysis {
     pub chains: Vec<CausalChain>,
     pub what_to_do: String,
     pub what_to_watch: String,
+    /// 证伪条件：哪些具体信号/事件会使该判断失效（3-5 条可观测的触发器）
+    pub falsification_conditions: Vec<String>,
 }
 
 /// 综合摘要

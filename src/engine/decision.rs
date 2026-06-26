@@ -274,6 +274,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         }
     }
 

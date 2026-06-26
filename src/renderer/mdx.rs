@@ -287,6 +287,13 @@ pub fn render_thesis_mdx(
             mdx.push_str(&format!("decision_days: {}\n", decision_days));
         }
     }
+    // 证伪条件（First Principle: Falsifiability）
+    if !thesis.falsification_conditions.is_empty() {
+        mdx.push_str("falsification_conditions:\n");
+        for fc in &thesis.falsification_conditions {
+            mdx.push_str(&format!("  - {}\n", yaml_escape(fc)));
+        }
+    }
     // Decision Intelligence frontmatter
     if let Some(dec) = decision {
         mdx.push_str(&format!(

@@ -53,8 +53,20 @@ Output JSON Schema:
   "connections": ["Related theme 1", "Related theme 2"],
   "assumptions": [
     {"text": "承重假设描述（该判断成立的前提条件）", "load_bearing": true, "evidence_strength": "strong"}
+  ],
+  "falsification_conditions": [
+    "CONCRETE observable event that would WEAKEN or INVALIDATE this thesis.",
+    "Must name specific companies, metrics, or decisions — no vague statements like 'if market changes'.",
+    "Example: 'OpenAI announces open-weight GPT-5 release', 'AWS cuts Bedrock pricing by >50%', 'Enterprise AI adoption drops 3 consecutive quarters'"
   ]
 }
+
+[FALSIFICATION RULES]
+falsification_conditions is REQUIRED. List 3-5 specific, observable triggers that would change the assessment.
+- Each condition must be concrete and verifiable (can be confirmed by a news headline)
+- Must cover: competitor actions, market metrics, regulatory changes, technology shifts
+- Do NOT write: "if the market changes" or "if assumptions prove wrong" — too vague
+- DO write: specific company names, specific percentage thresholds, specific product decisions
 
 signal_strength (founder's framework):
 - 9-10: Changes my strategy this quarter
@@ -172,6 +184,12 @@ Evidence Level (4 levels):
         })
         .unwrap_or_default();
 
+    // 解析证伪条件（First Principle: Falsifiability）
+    let falsification_conditions: Vec<String> = parsed["falsification_conditions"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
     Ok(ThemeAnalysis {
         theme_id: theme.id.clone(),
         theme_title: theme.title.clone(),
@@ -192,6 +210,7 @@ Evidence Level (4 levels):
         chains: parse_causal_chain(&parsed["causal_chain"]),
         what_to_do: es("what_to_do", ""),
         what_to_watch: es("what_to_watch", ""),
+        falsification_conditions,
     })
 }
 

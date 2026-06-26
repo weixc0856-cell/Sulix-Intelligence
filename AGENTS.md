@@ -1,5 +1,23 @@
 # Sulix Intelligence — Agent Guide
 
+## First Principle
+
+> A decision without evidence is an opinion.
+> A decision without falsification is a belief.
+> Sulix publishes only assessments that are evidence-backed, traceable, and falsifiable.
+
+Every Thesis output MUST include:
+- **Supporting Evidence** (`evidences > 0`) — concrete, verifiable facts
+- **Conflicting Evidence** (`challenges` explicitly considered, not just absent)
+- **Confidence** (`0.0–1.0`) — updated with each new evidence
+- **Falsification Conditions** (`falsification_conditions: Vec<String>`) — 3–5 specific, observable triggers that would weaken or invalidate the thesis
+- **Recommended Decision** — actionable direction with horizon and stability
+- **Review Trigger** — conditions under which the decision should be re-assessed
+
+Any system output that cannot be traced to evidence and cannot be falsified is rejected.
+
+---
+
 > Part of three-repository architecture.
 > **sulix-engine** owns data acquisition, analysis, memory, and content generation.
 

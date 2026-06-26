@@ -310,6 +310,7 @@ mod tests {
             chains: vec![],
             what_to_do: String::new(),
             what_to_watch: String::new(),
+            falsification_conditions: vec![],
         }
     }
 

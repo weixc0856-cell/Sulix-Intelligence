@@ -196,6 +196,11 @@ impl MemoryEngine {
                 });
                 self.theses[idx].updated = today.to_string();
 
+                // 同步证伪条件（覆盖更新，条件会随证据演化）
+                if !analysis.falsification_conditions.is_empty() {
+                    self.theses[idx].falsification_conditions = analysis.falsification_conditions.clone();
+                }
+
                 // 记录状态变更
                 let old_status = self.theses[idx].status.clone();
                 let new_status = self.recompute_status(idx, today);
@@ -248,6 +253,7 @@ impl MemoryEngine {
                     metadata: HashMap::new(),
                     investigation_id: None,
                     decision_history: vec![],
+                    falsification_conditions: analysis.falsification_conditions.clone(),
                 };
                 self.theses.push(new_thesis);
                 let new_idx = self.theses.len() - 1;
@@ -670,6 +676,7 @@ impl MemoryEngine {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
     }
 
@@ -814,6 +821,7 @@ mod tests {
             chains: vec![],
             what_to_do: String::new(),
             what_to_watch: String::new(),
+            falsification_conditions: vec![],
         }
     }
 
@@ -843,6 +851,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // 完全匹配
@@ -869,6 +878,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -895,6 +905,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -927,6 +938,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -952,6 +964,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -985,6 +998,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1032,6 +1046,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1065,6 +1080,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1090,6 +1106,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // 超过 30 天 idle
@@ -1116,6 +1133,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // 仅 0 天 idle
@@ -1142,6 +1160,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             investigation_id: None,
             decision_history: vec![],
+            falsification_conditions: vec![],
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过

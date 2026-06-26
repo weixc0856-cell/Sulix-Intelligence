@@ -115,6 +115,7 @@ mod tests {
             chains: vec![],
             what_to_do: String::new(),
             what_to_watch: String::new(),
+            falsification_conditions: vec![],
         }];
         let result = detect_changes_rule(&entries, &analyses);
         assert_eq!(result.conflicts.len(), 1);
@@ -152,6 +153,7 @@ mod tests {
             chains: vec![],
             what_to_do: String::new(),
             what_to_watch: String::new(),
+            falsification_conditions: vec![],
         }];
         let result = detect_changes_rule(&entries, &analyses);
         assert_eq!(result.reinforced.len(), 1);
