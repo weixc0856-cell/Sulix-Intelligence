@@ -196,6 +196,24 @@ impl MdxPublisher {
     }
 }
 
+/// ASCII-safe slug: drop non-ASCII, lowercase, spaces → hyphens, collapse hyphens.
+fn ascii_slug(title: &str) -> String {
+    let s = title
+        .chars()
+        .filter(|c| c.is_ascii())
+        .collect::<String>()
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-");
+    if s.is_empty() {
+        "untitled".to_string()
+    } else {
+        s
+    }
+}
+
 impl Publisher for MdxPublisher {
     fn name(&self) -> &str {
         "MdxPublisher"
@@ -224,11 +242,7 @@ impl Publisher for MdxPublisher {
                 conf,
                 &ctx.editor_notes,
             );
-            let slug = theme
-                .title
-                .to_lowercase()
-                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                .replace(' ', "-");
+            let slug = ascii_slug(&theme.title);
             let path = daily_dir.join(format!("{}-{}.mdx", ctx.date, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
@@ -261,11 +275,7 @@ impl Publisher for MdxPublisher {
                 .map(|v| v.iter().map(|o| (*o).clone()).collect())
                 .unwrap_or_default();
             let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
-            let slug = thesis
-                .title
-                .to_lowercase()
-                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                .replace(' ', "-");
+            let slug = ascii_slug(&thesis.title);
             let path = thesis_dir.join(format!("{}-{}.mdx", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });

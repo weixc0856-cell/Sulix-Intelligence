@@ -95,17 +95,6 @@ pub fn render_daily_mdx(
     if !entities.is_empty() {
         mdx.push_str(&format!("entities:\n{}\n", entities_yaml));
     }
-    if !analysis.assumptions.is_empty() {
-        mdx.push_str("assumptions:\n");
-        for a in &analysis.assumptions {
-            mdx.push_str(&format!("  - text: {}\n", yaml_escape(&a.text)));
-            mdx.push_str(&format!("    load_bearing: {}\n", a.load_bearing));
-            mdx.push_str(&format!(
-                "    evidence_strength: {}\n",
-                yaml_escape(&a.evidence_strength)
-            ));
-        }
-    }
     mdx.push_str("---\n\n");
 
     // Body
