@@ -157,6 +157,22 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI芯片",
+          "source": "Hacker News - Front Page",
+          "summary": "亚1纳米芯片和LLM专用推理芯片的出现将加速AI应用层的成本下降，但硬件代际更替的节奏受制于制造工艺，创始人应调整推理成本预期并关注专用芯片对模型优化的反馈。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -361,6 +377,24 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -385,10 +419,11 @@
         }
       ],
       "falsification_conditions": [
-        "OpenAI或Google发布官方报告称代理在实际企业部署中错误率超过30%",
-        "Meta宣布其Llama 4在代理任务基准上落后现有闭源模型50%",
-        "连续两个季度企业AI代理采用率下降（如Gartner调查显示）",
-        "欧盟或美国出台严格法规，限制代理在关键行业（如医疗、金融）的使用"
+        "IBM宣布亚1纳米芯片因良率问题延期量产超过2年。",
+        "OpenAI公开Jalapeño芯片的基准测试，显示其推理成本高于或等于现有GPU（如H100）。",
+        "英伟达发布新一代推理芯片，性能提升超过3倍且成本持平，重新巩固市场地位。",
+        "Broadcom因技术问题终止与OpenAI的Jalapeño合作。",
+        "台积电或三星宣布突破0.7nm工艺并率先量产，导致IBM技术路径被边缘化。"
       ]
     },
     {
@@ -518,6 +553,14 @@
           "summary": "AI agents正迅速从实验室走向生产环境，基础设施支持（如Cloudflare临时账户）和模型能力（如Codex的长上下文）正在降低开发者门槛，创始人应立即评估将agent纳入产品核心的机会。",
           "stance": "Supports",
           "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI应用与Agent",
+          "source": "Google DeepMind Blog",
+          "summary": "AI Agent 能力进入实用化阶段，企业大规模部署加速，创始人应聚焦垂直应用而非基础模型。",
+          "stance": "Supports",
+          "signal_strength": 6
         }
       ],
       "assumptions": [
@@ -573,10 +616,11 @@
       "investigation_id": null,
       "decision_history": [],
       "falsification_conditions": [
-        "OpenAI在下一季度API路线图中移除或限制agent-related功能（如长上下文、工具调用）。",
-        "Cloudflare临时账户功能上线三个月后，开发者使用量低于预期（如日活<1000次部署）。",
-        "主要竞争对手（如Google、Anthropic）在同一时期推出更完善的agent开发平台，但市场反应冷淡。",
-        "连续三个季度公开案例中，agent返回的客户投诉率超过30%（可靠性问题）。"
+        "Google 或 OpenAI 宣布 Agent API 价格下调 >50%",
+        "Samsung 或同类企业报告 AI 部署 ROI 为负",
+        "GPT-5 Pro 在科研协作中因幻觉导致重大错误",
+        "出现开源 Agent 框架（如 LangChain）替代性突破",
+        "监管机构出台限制企业 AI 自动化的新法规"
       ]
     },
     {
@@ -680,6 +724,18 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -1029,6 +1085,18 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [
@@ -1261,6 +1329,12 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -1801,6 +1875,70 @@
     },
     {
       "id": "outcome-1782471566",
+      "thesis_id": "thesis-1782457975",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (21 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (3 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (5 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (5 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782472490",
       "thesis_id": "thesis-1782457975",
       "description": "证据持续积累 (2 条)",
       "verdict": "PartiallyConfirmed",
@@ -2667,6 +2805,118 @@
       "id": "reflection-1782471566",
       "thesis_id": "thesis-1782457975",
       "outcome_id": "outcome-1782471566",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (21 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (3 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (5 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (5 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782472490",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782472490",
+      "thesis_id": "thesis-1782457975",
+      "outcome_id": "outcome-1782472490",
       "verdict": "partially-confirmed",
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
