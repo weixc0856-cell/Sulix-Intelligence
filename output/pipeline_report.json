@@ -1,6 +1,9 @@
 {
   "date": "2026-06-26",
-  "duration_seconds": 252.14266958299999,
+  "duration_seconds": 232.85650539,
+  "observation_count": 43,
+  "signal_count": 43,
+  "theme_count": 2,
   "stages": [
     {
       "name": "agent_signal",
