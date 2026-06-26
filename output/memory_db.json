@@ -1,0 +1,179 @@
+{
+  "theses": [
+    {
+      "id": "thesis-1782441697",
+      "title": "AI代理",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "AI代理",
+          "source": "OpenAI Blog",
+          "summary": "AI代理能力跃升，从研究走向产品化，创始人应优先探索将其融入自动化工作流。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "AI代理的可靠性已足够高，可以安全投入生产环境",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "AI代理的部署成本将快速下降，使得中小企业也能负担",
+          "load_bearing": true,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "用户和企业愿意接受AI代理取代人工执行复杂任务",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "竞争对手不会更快推出类似或更优的产品",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "监管机构对AI代理的监管不会阻碍产品化进程",
+          "load_bearing": false,
+          "evidence_strength": "moderate"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    },
+    {
+      "id": "thesis-1782441697",
+      "title": "芯片技术",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "芯片技术",
+          "source": "OpenAI Blog",
+          "summary": "AI芯片定制化（如OpenAI Jalapeño）与工艺突破（IBM 0.7nm）并行，但短期内对初创公司的直接影响有限，长期看算力成本将下降但竞争加剧。",
+          "stance": "Supports",
+          "signal_strength": 4
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "定制AI芯片（如Jalapeño）将在短期内显著降低推理成本并惠及应用层初创",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "IBM 0.7nm在量产之前不会对短期供应链产生间接影响",
+          "load_bearing": false,
+          "evidence_strength": "moderate"
+        },
+        {
+          "text": "初创公司无法通过合作或外包方式参与芯片设计，除非拥有专用架构能力",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "地缘政治不会干扰定制芯片合作或芯片供应",
+          "load_bearing": false,
+          "evidence_strength": "moderate"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    },
+    {
+      "id": "thesis-1782441697",
+      "title": "AI应用部署",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "AI应用部署",
+          "source": "OpenAI Blog",
+          "summary": "AI正从实验阶段进入企业级大规模部署与科研突破并行阶段，创始人应加速将AI能力嵌入核心产品与运营流程。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "企业愿意承担安全与合规风险以换取效率提升，且三星案例代表普遍趋势",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "GPT-5 Pro的科研突破成果可重复且可推广到其他领域",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "AI应用技术门槛降低后，初创公司仍能通过差异化生存，而非被基础模型能力吞噬",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "推理算力需求上升的同时，成本会持续下降或企业愿意承担",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    }
+  ],
+  "outcomes": [],
+  "reflections": [],
+  "investigations": []
+}
