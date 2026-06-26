@@ -16,6 +16,20 @@ Every Thesis output MUST include:
 
 Any system output that cannot be traced to evidence and cannot be falsified is rejected.
 
+## Editorial Standards
+
+The following vocabulary rules apply to all LLM prompts and generated content:
+
+- **"Assessment" not "AI output"** — Sulix produces assessments, not AI-generated content
+- **"Evidence" not "data"** — each fact must be traceable to a source
+- **"Intelligence Signal" not just "signal"** — be precise
+- **Evidence Strength not Signal Strength** — use consulting language
+- **Never "AI thinks"** — write "Evidence suggests" or "Assessment indicates"
+- **Confidence % + evidence count** — always pair confidence with supporting evidence count
+- **Falsification required** — every assessment must explicitly state what would invalidate it
+
+See `D:\Project\intel-web\LEXICON.md` for the full vocabulary guide.
+
 ---
 
 > Part of three-repository architecture.

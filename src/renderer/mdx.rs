@@ -12,6 +12,7 @@
 //! - 无需 HTML 模板引擎，无需 CSS
 
 use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::investigation::InvestigationReport;
 use crate::engine::decision::ThesisDecision;
 use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
@@ -598,6 +599,67 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
         }
         mdx.push('\n');
     }
+
+    mdx
+}
+
+/// 渲染 Investigation Report MDX — "为什么相信这个判断"
+///
+/// 结构：Core Question → Supporting Evidence → Counter Evidence
+///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
+/// 输出到 output/investigation/{slug}.md
+pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str) -> String {
+    let mut mdx = String::new();
+    mdx.push_str("---\n");
+    mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Investigation: {}", report.thesis_title))));
+    mdx.push_str(&format!("date: \"{}\"\n", report.date));
+    mdx.push_str("status: \"active\"\n");
+    mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
+    mdx.push_str(&format!("thesis_ref: \"{}\"\n", slug));
+    if !report.supporting_evidence.is_empty() {
+        mdx.push_str(&format!("supporting_count: {}\n", report.supporting_evidence.len()));
+    }
+    if !report.counter_evidence.is_empty() {
+        mdx.push_str(&format!("counter_count: {}\n", report.counter_evidence.len()));
+    }
+    mdx.push_str("---\n\n");
+
+    mdx.push_str(&format!("## Core Question\n\n{}\n\n", report.core_question));
+
+    if !report.supporting_evidence.is_empty() {
+        mdx.push_str("## Supporting Evidence\n\n");
+        for e in &report.supporting_evidence {
+            mdx.push_str(&format!("- {}\n", e));
+        }
+        mdx.push('\n');
+    }
+
+    if !report.counter_evidence.is_empty() {
+        mdx.push_str("## Counter Evidence\n\n");
+        for e in &report.counter_evidence {
+            mdx.push_str(&format!("- {}\n", e));
+        }
+        mdx.push('\n');
+    }
+
+    if !report.key_unknowns.is_empty() {
+        mdx.push_str("## Key Unknowns\n\n");
+        for u in &report.key_unknowns {
+            mdx.push_str(&format!("- {}\n", u));
+        }
+        mdx.push('\n');
+    }
+
+    if !report.falsification_conditions.is_empty() {
+        mdx.push_str("## Falsification Conditions\n\n");
+        for fc in &report.falsification_conditions {
+            mdx.push_str(&format!("- {}\n", fc));
+        }
+        mdx.push('\n');
+    }
+
+    mdx.push_str("## Preliminary Conclusion\n\n");
+    mdx.push_str(&format!("{}\n", report.preliminary_conclusion));
 
     mdx
 }

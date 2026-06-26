@@ -494,6 +494,45 @@ pub async fn agent_publish(
             }
         }
 
+        // Derive Investigation Reports for all active theses (no LLM — data derivation only)
+        // Write to output/investigation/ for frontend Investigation pages
+        if let Some(ref mdx_out) = config.output.mdx_dir {
+            let inv_dir = std::path::Path::new(mdx_out).join("investigation");
+            if let Err(e) = std::fs::create_dir_all(&inv_dir) {
+                log::warn!("⚠️ Cannot create investigation dir: {}", e);
+            } else {
+                for thesis in memory.theses() {
+                    if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening) {
+                        continue;
+                    }
+                    // ASCII slug: same logic as renderer/publisher.rs::ascii_slug
+                    let slug_base: String = thesis.title.chars()
+                        .filter(|c| c.is_ascii())
+                        .collect::<String>()
+                        .to_lowercase()
+                        .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    let slug = if slug_base.is_empty() {
+                        thesis.id.trim_start_matches("thesis-")
+                            .get(..8).unwrap_or(&thesis.id).to_string()
+                    } else { slug_base };
+                    let report = crate::engine::investigation::derive_investigation_report(
+                        thesis,
+                        today,
+                        None, // TODO: pass decision rationale when available
+                    );
+                    let mdx = crate::renderer::mdx::render_investigation_mdx(&report, &slug);
+                    let path = inv_dir.join(format!("{}.md", slug));
+                    if let Err(e) = std::fs::write(&path, &mdx) {
+                        log::warn!("⚠️ Investigation MDX write failed [{}]: {}", thesis.title, e);
+                    }
+                }
+                log::info!("🔍 Investigation reports written: {} active theses", memory.theses().iter().filter(|t| matches!(t.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening)).count());
+            }
+        }
+
         // Meta Layer: Outcome 检测 & Reflection 生成
         for thesis in memory.theses().to_owned() {
             if thesis.status == ThesisStatus::Retired {

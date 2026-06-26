@@ -66,3 +66,29 @@ pub struct Answer {
     pub content: String,
     pub relevance: u8,
 }
+
+/// Investigation Report — 对一个 Thesis 的结构化调查报告
+///
+/// 直接从已有 Thesis 数据派生，不需要额外 LLM 调用。
+/// 结构：Core Question → Supporting Evidence → Counter Evidence
+///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
+///
+/// 输出到 output/investigation/{slug}.md
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvestigationReport {
+    pub thesis_id: String,
+    pub thesis_title: String,
+    pub date: String,
+    /// 核心问题（"Will [title] hold true?"）
+    pub core_question: String,
+    /// 支持证据摘要（来自 thesis.evidences, stance=Supports）
+    pub supporting_evidence: Vec<String>,
+    /// 反对证据摘要（来自 thesis.evidences, stance=Challenges）
+    pub counter_evidence: Vec<String>,
+    /// 关键未知（来自承重假设证据弱的条目）
+    pub key_unknowns: Vec<String>,
+    /// 证伪条件（来自 thesis.falsification_conditions）
+    pub falsification_conditions: Vec<String>,
+    /// 初步结论（来自最新证据摘要或决策理由）
+    pub preliminary_conclusion: String,
+}

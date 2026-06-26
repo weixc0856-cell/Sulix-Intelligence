@@ -9,7 +9,7 @@
 use anyhow::Result;
 
 use crate::config::LlmConfig;
-use crate::domain::investigation::{Investigation, Question, QuestionStatus};
+use crate::domain::investigation::{Investigation, InvestigationReport, Question, QuestionStatus};
 use crate::domain::thesis::Thesis;
 
 const SYSTEM_PROMPT: &str = r#"You are a strategic analyst. Your job is to decompose a strategic judgment into 3-5 key questions that need answering to validate or invalidate it.
@@ -119,6 +119,71 @@ pub async fn generate_investigation(
         generated_at: now,
         questions,
     })
+}
+
+/// Thesis 数据派生 Investigation Report（无 LLM 调用）
+///
+/// 直接从 Thesis 的已有数据（evidences, assumptions, falsification_conditions）
+/// 构造结构化调查报告，供 MDX 渲染和前端 Investigation 页面使用。
+pub fn derive_investigation_report(
+    thesis: &crate::domain::thesis::Thesis,
+    today: &str,
+    decision_rationale: Option<&str>,
+) -> InvestigationReport {
+    use crate::domain::evidence::Stance;
+
+    let core_question = format!(
+        "Will the following assessment hold true? \"{}\"",
+        thesis.title
+    );
+
+    // 支持证据（最多 5 条）
+    let supporting_evidence: Vec<String> = thesis
+        .evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Supports)
+        .take(5)
+        .map(|e| format!("[{}] {}", e.source, e.summary))
+        .collect();
+
+    // 反对证据（最多 5 条）
+    let counter_evidence: Vec<String> = thesis
+        .evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Challenges)
+        .take(5)
+        .map(|e| format!("[{}] {}", e.source, e.summary))
+        .collect();
+
+    // 关键未知：承重假设中证据弱的条目
+    let key_unknowns: Vec<String> = thesis
+        .assumptions
+        .iter()
+        .filter(|a| a.load_bearing && a.evidence_strength == "weak")
+        .take(4)
+        .map(|a| format!("Validate: {}", a.text))
+        .collect();
+
+    // 证伪条件（已有字段）
+    let falsification_conditions = thesis.falsification_conditions.clone();
+
+    // 初步结论：优先用 decision_rationale，否则用最新证据摘要
+    let preliminary_conclusion = decision_rationale
+        .map(|s| s.to_string())
+        .or_else(|| thesis.evidences.last().map(|e| e.summary.clone()))
+        .unwrap_or_else(|| format!("Assessment '{}' is currently being tracked.", thesis.title));
+
+    InvestigationReport {
+        thesis_id: thesis.id.clone(),
+        thesis_title: thesis.title.clone(),
+        date: today.to_string(),
+        core_question,
+        supporting_evidence,
+        counter_evidence,
+        key_unknowns,
+        falsification_conditions,
+        preliminary_conclusion,
+    }
 }
 
 #[cfg(test)]
