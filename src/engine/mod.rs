@@ -8,6 +8,7 @@ pub mod belief;
 pub mod decision;
 pub mod decision_registry;
 pub mod investigation;
+pub mod investigation_registry;
 pub mod memory;
 pub mod pipeline_health;
 pub mod premium;

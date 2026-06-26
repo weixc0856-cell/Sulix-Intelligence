@@ -477,26 +477,41 @@ pub async fn agent_publish(
             );
         }
 
-        // Investigation Engine: generate questions for new theses
+        // Investigation Engine: generate questions for active theses (with regeneration guard)
+        let inv_registry_path = PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
+        let mut inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(&inv_registry_path);
         for thesis in memory.theses().to_owned() {
-            if matches!(
-                thesis.status,
-                ThesisStatus::Active | ThesisStatus::Strengthening
-            ) && memory.get_investigation_for_thesis(&thesis.id).is_none()
-            {
-                match generate_investigation(&thesis, api_key, &config.llm, config.prompts.as_ref())
-                    .await
-                {
-                    Ok(inv) => {
-                        log::info!(
-                            "Investigation: '{}' -- {} questions",
-                            thesis.title,
-                            inv.questions.len()
-                        );
-                    }
-                    Err(e) => log::warn!("Investigation gen failed [{}]: {}", thesis.title, e),
-                }
+            if !matches!(thesis.status, ThesisStatus::Active | ThesisStatus::Strengthening) {
+                continue;
             }
+            // Skip if no ASM-ID yet (can't register in registry without canonical link)
+            let Some(ref asm_id) = thesis.assessment_id else { continue; };
+            // Guard: only generate if needed (first time or >33% new evidence)
+            if !memory.should_regenerate_investigation(&thesis.id) {
+                continue;
+            }
+            match generate_investigation(&thesis, api_key, &config.llm, config.prompts.as_ref())
+                .await
+            {
+                Ok(mut inv) => {
+                    let inv_id = if let Some(old_id) = inv_registry.find_active_by_asm(asm_id) {
+                        inv_registry.supersede_and_register(&old_id, asm_id, &thesis.id, today)
+                    } else {
+                        inv_registry.register(asm_id, &thesis.id, today)
+                    };
+                    inv.id = inv_id.clone();
+                    memory.upsert_investigation(inv);
+                    memory.set_investigation_id(&thesis.id, &inv_id);
+                    log::info!("🔍 Investigation {} generated for ASM {}", inv_id, asm_id);
+                }
+                Err(e) => log::warn!("Investigation gen failed [{}]: {}", thesis.title, e),
+            }
+        }
+        if let Err(e) = inv_registry.save(&inv_registry_path) {
+            log::warn!("⚠️ Investigation Registry 保存失败: {}", e);
+        } else {
+            log::info!("📋 Investigation Registry: {} investigations, next ID: INV-{:04}",
+                inv_registry.investigations.len(), inv_registry.next_id);
         }
 
         // Derive Investigation Reports for all active theses (no LLM — data derivation only)
@@ -528,7 +543,8 @@ pub async fn agent_publish(
                         today,
                         None, // TODO: pass decision rationale when available
                     );
-                    let mdx = crate::renderer::mdx::render_investigation_mdx(&report, &slug);
+                    let inv_id = thesis.investigation_id.as_deref();
+                    let mdx = crate::renderer::mdx::render_investigation_mdx(&report, &slug, inv_id);
                     let path = inv_dir.join(format!("{}.md", slug));
                     if let Err(e) = std::fs::write(&path, &mdx) {
                         log::warn!("⚠️ Investigation MDX write failed [{}]: {}", thesis.title, e);

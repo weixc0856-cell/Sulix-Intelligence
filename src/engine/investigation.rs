@@ -114,10 +114,11 @@ pub async fn generate_investigation(
     }
 
     Ok(Investigation {
-        id: format!("inv-{}", chrono::Utc::now().timestamp()),
+        id: format!("inv-{}", chrono::Utc::now().timestamp()), // replaced with INV-XXXX in publishing.rs
         thesis_id: thesis.id.clone(),
         generated_at: now,
         questions,
+        state: "active".to_string(),
     })
 }
 

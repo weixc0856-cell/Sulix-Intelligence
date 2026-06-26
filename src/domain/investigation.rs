@@ -16,12 +16,21 @@
 use serde::{Deserialize, Serialize};
 
 /// 调查任务：Thesis 的结构化问题集
+///
+/// id 格式：INV-XXXX（由 InvestigationRegistry 分配）
+/// state: "draft" | "active" | "completed" | "superseded" | "archived"
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Investigation {
     pub id: String,
     pub thesis_id: String,
     pub generated_at: String,
     pub questions: Vec<Question>,
+    #[serde(default = "default_inv_state")]
+    pub state: String,
+}
+
+fn default_inv_state() -> String {
+    "active".to_string()
 }
 
 /// 单个调查问题

@@ -274,6 +274,9 @@ pub fn render_thesis_mdx(
     if let Some(dec) = decision_record {
         mdx.push_str(&format!("dec_id: \"{}\"\n", dec.id));
     }
+    if let Some(ref inv_id) = thesis.investigation_id {
+        mdx.push_str(&format!("inv_id: \"{}\"\n", inv_id));
+    }
     // 管理生命周期事件（最近 5 条，逆序）
     if !thesis.lifecycle_events.is_empty() {
         mdx.push_str("lifecycle:\n");
@@ -683,11 +686,14 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
 /// 结构：Core Question → Supporting Evidence → Counter Evidence
 ///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
 /// 输出到 output/investigation/{slug}.md
-pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str) -> String {
+pub fn render_investigation_mdx(report: &InvestigationReport, slug: &str, inv_id: Option<&str>) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Investigation: {}", report.thesis_title))));
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
+    if let Some(id) = inv_id {
+        mdx.push_str(&format!("inv_id: \"{}\"\n", id));
+    }
     mdx.push_str("status: \"active\"\n");
     mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
     mdx.push_str(&format!("thesis_ref: \"{}\"\n", slug));

@@ -140,11 +140,45 @@ impl MemoryEngine {
         &self.investigations
     }
 
-    /// 获取指定 Thesis 的 Investigation
+    /// 获取指定 Thesis 的活跃 Investigation（按 state=active 优先，fallback 到任意）
     pub fn get_investigation_for_thesis(&self, thesis_id: &str) -> Option<&Investigation> {
         self.investigations
             .iter()
-            .find(|inv| inv.thesis_id == thesis_id)
+            .find(|inv| inv.thesis_id == thesis_id && inv.state == "active")
+            .or_else(|| self.investigations.iter().find(|inv| inv.thesis_id == thesis_id))
+    }
+
+    /// Upsert Investigation by id (insert or replace in place)
+    pub fn upsert_investigation(&mut self, inv: Investigation) {
+        if let Some(existing) = self.investigations.iter_mut().find(|i| i.id == inv.id) {
+            *existing = inv;
+        } else {
+            self.investigations.push(inv);
+        }
+    }
+
+    /// Set thesis.investigation_id to a stable INV-XXXX
+    pub fn set_investigation_id(&mut self, thesis_id: &str, inv_id: &str) {
+        if let Some(t) = self.theses.iter_mut().find(|t| t.id == thesis_id) {
+            t.investigation_id = Some(inv_id.to_string());
+        }
+    }
+
+    /// Whether a thesis needs a new Investigation generated.
+    /// True if: no investigation exists, or >33% of evidence is newer than last generation.
+    pub fn should_regenerate_investigation(&self, thesis_id: &str) -> bool {
+        let Some(inv) = self.get_investigation_for_thesis(thesis_id) else {
+            return true;
+        };
+        let Some(thesis) = self.theses.iter().find(|t| t.id == thesis_id) else {
+            return false;
+        };
+        let evidence_since = thesis
+            .evidences
+            .iter()
+            .filter(|e| e.date.as_str() > inv.generated_at.as_str())
+            .count();
+        evidence_since > 0 && evidence_since * 3 >= thesis.evidences.len()
     }
 
     /// 核心更新：将当日分析结果融入信念系统
