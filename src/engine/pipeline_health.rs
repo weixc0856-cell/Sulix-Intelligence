@@ -23,9 +23,15 @@ pub struct PipelineReport {
     /// 聚类后主题数
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme_count: Option<usize>,
+    /// 活跃 thesis 数（非 Retired）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assessment_count: Option<usize>,
     /// 有 decision 标签的 thesis 数
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision_count: Option<usize>,
+    /// 生成的 Investigation reports 数量
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub investigation_count: Option<usize>,
     /// 信号按分类的分布（前端 Observation 漏斗分解用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category_counts: Option<std::collections::HashMap<String, usize>>,
@@ -72,7 +78,9 @@ impl PipelineReport {
             observation_count: None,
             signal_count: None,
             theme_count: None,
+            assessment_count: None,
             decision_count: None,
+            investigation_count: None,
             category_counts: None,
             stages: Vec::new(),
             status: PipelineStatus::Success,

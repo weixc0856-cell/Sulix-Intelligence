@@ -128,6 +128,33 @@ async fn main() -> Result<()> {
     .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
 
+    // 填充下游产出计数（从 MDX 输出目录统计真实文件数）
+    if let Some(ref mdx_out) = config.output.mdx_dir {
+        let mdx_path = std::path::PathBuf::from(mdx_out);
+
+        // assessment_count: output/thesis/ 下的 .md 文件数
+        if let Ok(entries) = std::fs::read_dir(mdx_path.join("thesis")) {
+            let count = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                .count();
+            if count > 0 { report.assessment_count = Some(count); }
+        }
+
+        // investigation_count: output/investigation/ 下的 .md 文件数
+        if let Ok(entries) = std::fs::read_dir(mdx_path.join("investigation")) {
+            let count = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                .count();
+            if count > 0 { report.investigation_count = Some(count); }
+        }
+
+        // decision_count: 从 thesis MDX 中 grep "^decision:" 行数（简化近似）
+        // 直接用 assessment_count 的 ~70% 作为估算，或后续精确统计
+        // 当前先不设（由 assessment_count 传达信息已足够）
+    }
+
     report.duration_seconds = start.elapsed().as_secs_f64();
     if let Err(e) = report.save(&data_dir) {
         log::warn!("Pipeline report save failed: {}", e);
