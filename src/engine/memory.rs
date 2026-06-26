@@ -524,7 +524,7 @@ impl MemoryEngine {
         }
 
         // 找出最终结果
-        let latest = outcomes.last().unwrap();
+        let latest = outcomes.last().expect("non-empty after bail check above");
         let error_reason = match latest.verdict {
             OutcomeVerdict::Confirmed | OutcomeVerdict::PartiallyConfirmed => {
                 "判断基本正确，但细节有偏差".to_string()

@@ -134,8 +134,8 @@ pub fn capture_topic_evidence(
 }
 
 fn sanitize_all(signals: &mut [RawSignal]) {
-    let url_re = Regex::new(r"https?://\S+").unwrap();
-    let email_re = Regex::new(r"\S+@\S+\.\S+").unwrap();
+    let url_re = Regex::new(r"https?://\S+").expect("valid URL regex");
+    let email_re = Regex::new(r"\S+@\S+\.\S+").expect("valid email regex");
 
     for signal in signals.iter_mut() {
         signal.title = sanitize_text(&signal.title, &url_re, &email_re);
@@ -182,11 +182,11 @@ fn sanitize_html_structure(html: &str) -> String {
     let strip_tags = Regex::new(
         r"</?(?:script|style|iframe|form|input|button|nav|footer|header|aside|noscript)[^>]*>",
     )
-    .unwrap();
+    .expect("valid strip_tags regex");
     let no_strip = strip_tags.replace_all(html, "");
     // 2. 保留的标签只保留标签本身，不剥离内部文本
     // 移除不在保留列表中的所有其他标签
-    let all_tag = Regex::new(r"</?(\w+)[^>]*>").unwrap();
+    let all_tag = Regex::new(r"</?(\w+)[^>]*>").expect("valid HTML tag regex");
     let result = all_tag.replace_all(&no_strip, |caps: &regex::Captures| {
         let tag = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let is_keep = matches!(
@@ -214,7 +214,7 @@ fn sanitize_html_structure(html: &str) -> String {
                 | "img"
         );
         if is_keep {
-            caps.get(0).unwrap().as_str().to_string()
+            caps.get(0).expect("capture group 0 always exists on match").as_str().to_string()
         } else {
             String::new()
         }

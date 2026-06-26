@@ -89,7 +89,6 @@ pub fn render_daily_mdx(
     mdx.push_str(&format!("svi: {}\n", analysis.signal_strength));
     mdx.push_str(&format!("asi: {:.2}\n", asi));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
-    mdx.push_str("type: daily\n");
     if !sources.is_empty() {
         mdx.push_str(&format!("sources:\n{}\n", sources_yaml));
     }
@@ -244,10 +243,18 @@ pub fn render_thesis_mdx(
     let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
 
     let mut mdx = String::new();
+    // Derive summary: use first load-bearing assumption text, fall back to title
+    let summary = thesis
+        .assumptions
+        .iter()
+        .find(|a| a.load_bearing)
+        .map(|a| a.text.as_str())
+        .unwrap_or(&thesis.title);
+
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&thesis.title)));
     mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
-    mdx.push_str("type: thesis\n");
+    mdx.push_str(&format!("summary: {}\n", yaml_escape(summary)));
     mdx.push_str(&format!("status: \"{}\"\n", status_str));
     mdx.push_str(&format!("status_label: \"{}\"\n", status_label));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
@@ -376,12 +383,8 @@ pub fn render_research_mdx(report: &PremiumReport) -> String {
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&report.theme_title)));
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
-
-    mdx.push_str("type: research\n");
-    mdx.push_str("sources:\n");
-    for s in &report.sources {
-        mdx.push_str(&format!("  - {}\n", yaml_escape(s)));
-    }
+    mdx.push_str("stage: \"what-to-do\"\n");
+    mdx.push_str("is_premium: true\n");
     mdx.push_str("---\n\n");
 
     mdx.push_str("## Executive Summary\n\n");
@@ -413,6 +416,57 @@ pub fn render_research_mdx(report: &PremiumReport) -> String {
     mdx
 }
 
+/// 渲染每日文章摘要 MDX（所有去重后文章的列表页）
+///
+/// 输出到 output/daily/digest-{date}.mdx，供前端 Signal Feed 展示。
+pub fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &str) -> String {
+    let mut mdx = String::new();
+    mdx.push_str("---\n");
+    mdx.push_str(&format!("title: \"Daily Signal Digest — {}\"\n", today));
+    mdx.push_str(&format!("date: \"{}\"\n", today));
+    mdx.push_str("type: digest\n");
+    mdx.push_str(&format!("article_count: {}\n", articles.len()));
+    mdx.push_str("---\n\n");
+
+    mdx.push_str(&format!(
+        "## Signal Feed — {} articles\n\n",
+        articles.len()
+    ));
+
+    for article in articles {
+        let source = yaml_escape(&article.source);
+        let title = yaml_escape(&article.title);
+        let summary = article
+            .summary
+            .as_deref()
+            .or(article.content.as_deref())
+            .map(|s| {
+                let trimmed = s.trim();
+                if trimmed.len() > 160 {
+                    format!("{}…", &trimmed[..160])
+                } else {
+                    trimmed.to_string()
+                }
+            })
+            .unwrap_or_default();
+        let date_str = article
+            .published_at
+            .map(|d| d.format("%m-%d").to_string())
+            .unwrap_or_default();
+
+        mdx.push_str(&format!(
+            "### [{title}]({url})\n\n**{source}** · {date_str}\n\n{summary}\n\n---\n\n",
+            title = title,
+            url = article.url,
+            source = source,
+            date_str = date_str,
+            summary = summary,
+        ));
+    }
+
+    mdx
+}
+
 /// 渲染复盘反思 MDX
 pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> String {
     let _slug = format!("reflection-{}", reflection.id.replace(':', "-"));
@@ -435,11 +489,9 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
         "confidence_now: {:.2}\n",
         reflection.confidence_now
     ));
-    if !reflection.lessons.is_empty() {
-        mdx.push_str("lessons:\n");
-        for l in &reflection.lessons {
-            mdx.push_str(&format!("  - {}\n", yaml_escape(l)));
-        }
+    mdx.push_str("lessons:\n");
+    for l in &reflection.lessons {
+        mdx.push_str(&format!("  - {}\n", yaml_escape(l)));
     }
     mdx.push_str("---\n\n");
 

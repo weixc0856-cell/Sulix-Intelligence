@@ -115,6 +115,7 @@ pub async fn agent_publish(
     let premium_dir = vault_base.join("premium");
     fs::create_dir_all(&premium_dir)?;
     let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
+    let mut premium_reports: Vec<crate::engine::premium::PremiumReport> = vec![];
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
         let svi = crate::clusterer::calculate_svi(analysis, theme, &config.sources);
         let asi_config = crate::engine::analysis::asi::AsiConfig::default();
@@ -199,6 +200,7 @@ pub async fn agent_publish(
                         }
                     }
                 }
+                premium_reports.push(report);
             }
             Err(e) => log::warn!("⚠️ Premium 研报失败 [{}]: {}", theme.title, e),
         }
@@ -252,7 +254,7 @@ pub async fn agent_publish(
         flash_headline: None,
         change_summary: None,
         theses: vec![],
-        report: None,
+        reports: vec![],
         archive_entries: vec![],
         archive_entries_zh: vec![],
         source_statuses: vec![],
@@ -626,7 +628,7 @@ pub async fn agent_publish(
                 flash_headline: None,
                 change_summary: None,
                 theses: memory.theses().to_vec(),
-                report: None,
+                reports: std::mem::take(&mut premium_reports),
                 archive_entries: vec![],
                 archive_entries_zh: vec![],
                 source_statuses: vec![],
@@ -635,8 +637,8 @@ pub async fn agent_publish(
                 editor_notes: editor_notes.clone(),
                 belief_notes_html: String::new(),
                 css_content: String::new(),
-                articles: vec![],
-                watchlist_count: 0,
+                articles: new_articles.clone(),
+                watchlist_count: triage.watchlist.len(),
                 mdx_output_dir: Some(PathBuf::from(mdx_out)),
                 output_dir: vault_base.clone(),
                 reflections: memory.all_reflections().to_vec(),

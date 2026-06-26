@@ -1,7 +1,6 @@
 //! Question Engine — 将信号匹配到用户的声明式关切问题
 //!
-//! ⚠️ Phase 1 冻结状态：代码保留但标记弃用以防误用。
-//! 未来可能演变为 Research Planner / Hypothesis Generator / Investigation Generator 的雏形。
+//! DiGraph QE node: ThemeAnalysis → QuestionMatch mapping (活跃使用，非弃用)
 //!
 //! 输入: 已分析的主题 (ThemeAnalysis) + 用户的关切问题列表
 //! 输出: 每个主题匹配到的问题列表 + 相关性评分
@@ -11,8 +10,6 @@
 //!
 //! Code Review 认知去噪: 只有当该主题对问题提供了实质性(Substantial)的
 //! 新数据或路径扭转时，相关性评分(Relevance)才允许 ≥ 7。
-
-#![allow(dead_code)]
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

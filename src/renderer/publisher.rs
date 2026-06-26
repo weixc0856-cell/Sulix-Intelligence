@@ -42,7 +42,7 @@ pub struct PublishContext {
     pub flash_headline: Option<String>,
     pub change_summary: Option<ChangeSummary>,
     pub theses: Vec<Thesis>,
-    pub report: Option<PremiumReport>,
+    pub reports: Vec<PremiumReport>,
     pub archive_entries: Vec<ChronicleEntry>,
     /// 中文编年史条目（可选）
     pub archive_entries_zh: Vec<ChronicleEntry>,
@@ -160,22 +160,23 @@ impl Publisher for PremiumPublisher {
     }
 
     fn publish(&self, ctx: &PublishContext) -> Result<Vec<PublishedOutput>> {
-        if let Some(ref report) = ctx.report {
+        let mut outputs = Vec::new();
+        for report in &ctx.reports {
             let html = crate::renderer::premium::render_premium_report(report)?;
             let slug = report
                 .theme_title
                 .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
-            return Ok(vec![PublishedOutput::File {
+            outputs.push(PublishedOutput::File {
                 path: ctx
                     .output_dir
                     .join("premium")
                     .join(format!("{}-{}.html", ctx.date, slug)),
                 content: html,
-            }]);
+            });
         }
-        Ok(vec![])
+        Ok(outputs)
     }
 }
 
@@ -265,24 +266,26 @@ impl Publisher for MdxPublisher {
                 .to_lowercase()
                 .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
                 .replace(' ', "-");
-            let path = thesis_dir.join(format!("{}-{}.mdx", thesis.updated, slug));
+            let path = thesis_dir.join(format!("{}-{}.mdx", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
 
         // 3. Premium research → output/research/
-        if let Some(ref report) = ctx.report {
+        if !ctx.reports.is_empty() {
             let research_dir = mdx_dir.join("research");
             std::fs::create_dir_all(&research_dir)?;
-            let mdx = crate::renderer::mdx::render_research_mdx(report);
-            let slug = report
-                .theme_title
-                .to_lowercase()
-                .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
-                .replace(' ', "-");
-            let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
-            std::fs::write(&path, &mdx)?;
-            outputs.push(PublishedOutput::File { path, content: mdx });
+            for report in &ctx.reports {
+                let mdx = crate::renderer::mdx::render_research_mdx(report);
+                let slug = report
+                    .theme_title
+                    .to_lowercase()
+                    .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                    .replace(' ', "-");
+                let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
+                std::fs::write(&path, &mdx)?;
+                outputs.push(PublishedOutput::File { path, content: mdx });
+            }
         }
 
         // 4. Reflections → output/reflection/
@@ -304,16 +307,23 @@ impl Publisher for MdxPublisher {
             }
         }
 
+        // 5. Article digest → output_dir/digest/ (local only, not part of intel-web content)
+        if !ctx.articles.is_empty() {
+            let digest_dir = ctx.output_dir.join("digest");
+            std::fs::create_dir_all(&digest_dir)?;
+            let mdx = crate::renderer::mdx::render_digest_mdx(&ctx.articles, &ctx.date);
+            let path = digest_dir.join(format!("{}.mdx", ctx.date));
+            std::fs::write(&path, &mdx)?;
+            outputs.push(PublishedOutput::File { path, content: mdx });
+        }
+
         log::info!(
-            "📝 MDX 输出: {} daily, {} thesis, {} reflections{}",
+            "📝 MDX 输出: {} daily, {} thesis, {} reflections, {} research, {} digest articles",
             ctx.themes.len(),
             ctx.theses.len(),
             ctx.reflections.len(),
-            if ctx.report.is_some() {
-                ", 1 research"
-            } else {
-                ""
-            },
+            ctx.reports.len(),
+            ctx.articles.len(),
         );
 
         Ok(outputs)

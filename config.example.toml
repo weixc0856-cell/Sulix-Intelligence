@@ -23,8 +23,10 @@ max_tokens = 4096
 temperature = 0.3
 
 [output]
-# 日报输出目录
+# 日报输出目录（CI 通过 VAULT_PATH 环境变量覆盖为 "./output"）
 vault_path = "./DailyBrief"
+# MDX 输出目录（CI 里会写到 ./output/，然后被 cp 到 frontend/src/content/）
+mdx_dir = "./output"
 
 [storage]
 data_dir = "./data"

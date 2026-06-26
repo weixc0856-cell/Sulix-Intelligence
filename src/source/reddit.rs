@@ -49,7 +49,7 @@ pub async fn fetch_reddit(config: &SourceConfig, _date_range: &str) -> Result<Ve
         let created_utc = data["created_utc"].as_f64().unwrap_or(0.0);
         let created = DateTime::from_timestamp(created_utc as i64, 0)
             .unwrap_or_else(Utc::now)
-            .with_timezone(&FixedOffset::east_opt(0).unwrap());
+            .with_timezone(&FixedOffset::east_opt(0).expect("UTC offset 0 is valid"));
 
         // 跳过分数过低的帖子
         if score < 5 {
