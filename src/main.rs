@@ -61,6 +61,16 @@ async fn main() -> Result<()> {
 
     // Research Agent: 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
     let new_article_count = new_articles.len(); // 保存在 new_articles 被 move 前
+    // 快照分类计数（在 new_articles move 前）
+    let category_snapshot: std::collections::HashMap<String, usize> = {
+        let mut m = std::collections::HashMap::new();
+        for a in &new_articles {
+            if !a.is_internal {
+                *m.entry(a.category.clone()).or_insert(0) += 1;
+            }
+        }
+        m
+    };
     let research = agent_research(
         &config,
         &api_key,
@@ -77,6 +87,9 @@ async fn main() -> Result<()> {
     report.observation_count = Some(total_signals);
     report.signal_count = Some(new_article_count);
     report.theme_count = Some(research.themes.len());
+    if !category_snapshot.is_empty() {
+        report.category_counts = Some(category_snapshot);
+    }
     if research.themes.is_empty() {
         report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
     }

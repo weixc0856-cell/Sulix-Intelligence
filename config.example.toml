@@ -20,7 +20,7 @@ perplexity_key = ""
 model = "deepseek-v4-flash"
 base_url = "https://api.deepseek.com/v1"
 max_tokens = 4096
-temperature = 0.3
+temperature = 0.1
 
 [output]
 # 日报输出目录（CI 通过 VAULT_PATH 环境变量覆盖为 "./output"）

@@ -231,6 +231,27 @@ pub fn render_thesis_mdx(
 
     let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
 
+    // 计算近 7 天新增证据数（用于前端"Why Now?"）
+    let today_date = chrono::NaiveDate::parse_from_str(&thesis.updated, "%Y-%m-%d")
+        .unwrap_or_else(|_| chrono::Local::now().date_naive());
+    let evidences_recent = thesis.evidences.iter()
+        .filter(|e| {
+            chrono::NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
+                .is_ok_and(|d| (today_date - d).num_days() <= 7)
+        })
+        .count();
+
+    // 计算置信度 delta（vs 7 天前，用于 What Changed）
+    let week_ago = today_date - chrono::Duration::days(7);
+    let old_confidence = thesis.confidence_history.iter()
+        .rfind(|snap| {
+            chrono::NaiveDate::parse_from_str(&snap.date, "%Y-%m-%d")
+                .is_ok_and(|d| d <= week_ago)
+        })
+        .map(|snap| snap.value)
+        .unwrap_or(confidence);
+    let confidence_delta = confidence - old_confidence;
+
     let mut mdx = String::new();
     // Derive summary: use first load-bearing assumption text, fall back to title
     let summary = thesis
@@ -249,6 +270,12 @@ pub fn render_thesis_mdx(
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
     mdx.push_str(&format!("evidences: {}\n", support));
     mdx.push_str(&format!("challenges: {}\n", challenge));
+    if evidences_recent > 0 {
+        mdx.push_str(&format!("evidences_recent: {}\n", evidences_recent));
+    }
+    if confidence_delta.abs() > 0.005 {
+        mdx.push_str(&format!("confidence_delta: {:.3}\n", confidence_delta));
+    }
     // Decision Intelligence frontmatter
     if let Some(dec) = decision {
         mdx.push_str(&format!(
