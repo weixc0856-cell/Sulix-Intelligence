@@ -304,6 +304,18 @@ pub fn render_thesis_mdx(
             }
         }
     }
+    // 承重假设（Key Judgements 用，暴露到 frontmatter 供前端 Key Judgements 区块）
+    if !thesis.assumptions.is_empty() {
+        mdx.push_str("assumptions:\n");
+        for a in thesis.assumptions.iter().take(3) {
+            mdx.push_str(&format!(
+                "  - text: {}\n    load_bearing: {}\n    evidence_strength: {}\n",
+                yaml_escape(&a.text),
+                a.load_bearing,
+                yaml_escape(&a.evidence_strength)
+            ));
+        }
+    }
     // 证伪条件（First Principle: Falsifiability）
     if !thesis.falsification_conditions.is_empty() {
         mdx.push_str("falsification_conditions:\n");
@@ -348,6 +360,36 @@ pub fn render_thesis_mdx(
         mdx.push_str(&format!("outcome_partial: {}\n", partial));
         mdx.push_str(&format!("outcome_invalidated: {}\n", invalidated));
         mdx.push_str(&format!("historical_accuracy: {:.2}\n", accuracy));
+    }
+    // Revision History: 最近 5 条置信度快照（前端 Revision History 展示用）
+    {
+        let recent_confidence: Vec<_> = thesis.confidence_history.iter().rev().take(5).collect();
+        if !recent_confidence.is_empty() {
+            mdx.push_str("confidence_history:\n");
+            for snap in &recent_confidence {
+                mdx.push_str(&format!(
+                    "  - date: \"{}\"\n    value: {:.2}\n    reason: {}\n",
+                    snap.date,
+                    snap.value,
+                    yaml_escape(&snap.reason)
+                ));
+            }
+        }
+    }
+    // Decision History: 最近 3 条决策快照（前端 What's Changed / Revision 用）
+    {
+        let recent_decisions: Vec<_> = thesis.decision_history.iter().rev().take(3).collect();
+        if !recent_decisions.is_empty() {
+            mdx.push_str("decision_history_recent:\n");
+            for snap in &recent_decisions {
+                mdx.push_str(&format!(
+                    "  - date: \"{}\"\n    decision: \"{}\"\n    confidence: {:.2}\n",
+                    snap.date,
+                    snap.decision_type,
+                    snap.confidence
+                ));
+            }
+        }
     }
     mdx.push_str("---\n\n");
 
