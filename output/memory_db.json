@@ -37,6 +37,14 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -79,6 +87,12 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -247,6 +261,12 @@
           "value": 0.9,
           "trigger": "Initial",
           "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [],
@@ -267,6 +287,14 @@
           "title": "Agent能力",
           "source": "OpenAI Blog",
           "summary": "Agent能力正从实验走向产品化，创始人应立即将自主代理纳入产品路线图和运营策略。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI Agent",
+          "source": "OpenAI Blog",
+          "summary": "AI代理能力显著提升，可执行更长时间、更复杂任务，创始人应在本季度内将长周期工作流自动化纳入路线图。",
           "stance": "Supports",
           "signal_strength": 6
         }
@@ -298,6 +326,131 @@
           "evidence_strength": "weak"
         }
       ],
+      "status": "Strengthening",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "StatusChange",
+          "reason": "daily update"
+        }
+      ],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-06-26",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 2)"
+        }
+      ],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    },
+    {
+      "id": "thesis-1782443578",
+      "title": "AI芯片",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "AI芯片",
+          "source": "OpenAI Blog",
+          "summary": "OpenAI自研推理芯片和IBM突破亚1纳米制程，共同指向AI硬件正加速向专用化和极致能效演进，短期降低大模型推理成本，长期改变芯片供应格局。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "OpenAI自研芯片Jalapeño能够顺利量产并达到预期推理性能提升",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "IBM的0.7nm芯片技术能在未来2-3年内实现量产",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "大厂会效仿OpenAI自研芯片，减少对NVIDIA依赖",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "专用芯片的软件生态能与现有AI框架无缝兼容",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": null
+    },
+    {
+      "id": "thesis-1782443578",
+      "title": "AI监管",
+      "created": "2026-06-26",
+      "updated": "2026-06-26",
+      "evidences": [
+        {
+          "date": "2026-06-26",
+          "title": "AI监管",
+          "source": "Simon Willison",
+          "summary": "AI责任法律化加速，创始人必须立即将AI输出纳入产品责任和合规框架，否则面临诉讼风险。",
+          "stance": "Supports",
+          "signal_strength": 6
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "德国法院裁决将迅速被其他司法管辖区采纳并成为普遍原则",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "Appia Foundation能有效推动全球统一AI安全标准并被广泛接受",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "初创公司有足够资源快速建立AI输出审计机制和购买保险",
+          "load_bearing": false,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "模型提供商的合同条款能将责任明确转嫁给下游开发者且被法院支持",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "监管框架必然向严格化方向发展，不会出现宽松或模糊的妥协",
+          "load_bearing": true,
+          "evidence_strength": "medium"
+        }
+      ],
       "status": "Active",
       "confidence_history": [
         {
@@ -323,6 +476,22 @@
       "verdict": "PartiallyConfirmed",
       "date": "2026-06-26",
       "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782443632",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (5 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782443632",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
     }
   ],
   "reflections": [
@@ -334,6 +503,34 @@
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
         "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782443632",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782443632",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (5 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782443632",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782443632",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
         "错误原因: 判断基本正确，但细节有偏差"
       ],
       "confidence_at_creation": 0.9,
