@@ -61,6 +61,14 @@
           "summary": "AI: 22 篇 vs 前 0 篇",
           "stance": "Supports",
           "signal_strength": 10
+        },
+        {
+          "date": "2026-06-26",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 22 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
         }
       ],
       "assumptions": [
@@ -103,6 +111,18 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -335,6 +355,12 @@
           "value": 0.9,
           "trigger": "OutcomeRecorded",
           "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         }
       ],
       "status_history": [],
@@ -363,6 +389,14 @@
           "title": "AI Agent",
           "source": "OpenAI Blog",
           "summary": "AI代理能力显著提升，可执行更长时间、更复杂任务，创始人应在本季度内将长周期工作流自动化纳入路线图。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI Agent能力",
+          "source": "OpenAI Blog",
+          "summary": "AI agents are rapidly becoming capable of executing longer, more complex tasks across platforms, which will fundamentally reshape how startups build products and automate workflows.",
           "stance": "Supports",
           "signal_strength": 6
         }
@@ -445,6 +479,14 @@
           "summary": "定制AI芯片（如OpenAI Jalapeño）和先进制程（IBM 0.7nm）将加速降低AI推理成本，但短期内量产有限，创始人应优先关注现有可用的推理优化方案，而非等待下一代芯片。",
           "stance": "Supports",
           "signal_strength": 6
+        },
+        {
+          "date": "2026-06-26",
+          "title": "AI芯片创新",
+          "source": "Hacker News - Front Page",
+          "summary": "AI芯片创新进展（IBM sub-1nm芯片和OpenAI定制推理芯片）虽不能立即改变创业者的短期策略，但为未来6个月内的AI基础设施成本降低和性能提升提供了明确信号，需关注但无需立即行动。",
+          "stance": "Supports",
+          "signal_strength": 3
         }
       ],
       "assumptions": [
@@ -482,6 +524,12 @@
           "value": 0.9,
           "trigger": "StatusChange",
           "reason": "daily update"
+        },
+        {
+          "date": "2026-06-26",
+          "value": 0.9,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
         },
         {
           "date": "2026-06-26",
@@ -703,6 +751,38 @@
       "verdict": "PartiallyConfirmed",
       "date": "2026-06-26",
       "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782449006",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (8 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782449006",
+      "thesis_id": "thesis-1782441697",
+      "description": "证据持续积累 (2 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782449006",
+      "thesis_id": "thesis-1782443023",
+      "description": "证据持续积累 (3 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
+    },
+    {
+      "id": "outcome-1782449006",
+      "thesis_id": "thesis-1782443578",
+      "description": "证据持续积累 (3 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-06-26",
+      "supporting_evidence": []
     }
   ],
   "reflections": [
@@ -840,6 +920,62 @@
       "error_reason": "判断基本正确，但细节有偏差",
       "lessons": [
         "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782449006",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782449006",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (8 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782449006",
+      "thesis_id": "thesis-1782441697",
+      "outcome_id": "outcome-1782449006",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (2 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782449006",
+      "thesis_id": "thesis-1782443023",
+      "outcome_id": "outcome-1782449006",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (3 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.9,
+      "confidence_now": 0.9,
+      "created_at": "2026-06-26"
+    },
+    {
+      "id": "reflection-1782449006",
+      "thesis_id": "thesis-1782443578",
+      "outcome_id": "outcome-1782449006",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (3 条)",
         "错误原因: 判断基本正确，但细节有偏差"
       ],
       "confidence_at_creation": 0.9,
