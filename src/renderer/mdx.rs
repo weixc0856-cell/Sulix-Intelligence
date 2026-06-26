@@ -256,7 +256,7 @@ pub fn render_thesis_mdx(
             dec.decision_type.label().to_lowercase()
         ));
         mdx.push_str(&format!(
-            "decision_rationale: \"{}\"\n",
+            "decision_rationale: {}\n",
             yaml_escape(&dec.rationale)
         ));
         mdx.push_str(&format!("decision_horizon: \"{}\"\n", dec.horizon.as_str()));
@@ -462,10 +462,8 @@ pub fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str) -> Str
 
     let mut mdx = String::new();
     mdx.push_str("---\n");
-    mdx.push_str(&format!(
-        "title: \"Reflection: {}\"\n",
-        yaml_escape(thesis_title)
-    ));
+    let reflection_title = format!("Reflection: {}", thesis_title);
+    mdx.push_str(&format!("title: {}\n", yaml_escape(&reflection_title)));
     mdx.push_str(&format!("date: \"{}\"\n", reflection.created_at));
     mdx.push_str("type: reflection\n");
     mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_title)));
