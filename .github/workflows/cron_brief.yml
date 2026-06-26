@@ -63,7 +63,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          npx wrangler pages deploy dist/ --project-name=sulix-intel-frontend
+          npx wrangler pages deploy dist/ --project-name=intel-web
 
       - name: Commit MDX to Engine Repo
         working-directory: engine
