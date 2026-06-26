@@ -126,7 +126,7 @@ impl Publisher for MarkdownPublisher {
                 .replace(' ', "-");
             let md = crate::renderer::markdown::render_signal_markdown(theme, analysis, &ctx.date);
             outputs.push(PublishedOutput::File {
-                path: PathBuf::from("content/posts").join(format!("{}-{}.mdx", ctx.date, slug)),
+                path: PathBuf::from("content/posts").join(format!("{}-{}.md", ctx.date, slug)),
                 content: md,
             });
         }
@@ -243,7 +243,7 @@ impl Publisher for MdxPublisher {
                 &ctx.editor_notes,
             );
             let slug = ascii_slug(&theme.title);
-            let path = daily_dir.join(format!("{}-{}.mdx", ctx.date, slug));
+            let path = daily_dir.join(format!("{}-{}.md", ctx.date, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
@@ -276,7 +276,7 @@ impl Publisher for MdxPublisher {
                 .unwrap_or_default();
             let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision);
             let slug = ascii_slug(&thesis.title);
-            let path = thesis_dir.join(format!("{}-{}.mdx", thesis.created, slug));
+            let path = thesis_dir.join(format!("{}-{}.md", thesis.created, slug));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
@@ -288,7 +288,7 @@ impl Publisher for MdxPublisher {
             for report in &ctx.reports {
                 let mdx = crate::renderer::mdx::render_research_mdx(report);
                 let slug = ascii_slug(&report.theme_title);
-                let path = research_dir.join(format!("{}-{}.mdx", ctx.date, slug));
+                let path = research_dir.join(format!("{}-{}.md", ctx.date, slug));
                 std::fs::write(&path, &mdx)?;
                 outputs.push(PublishedOutput::File { path, content: mdx });
             }
@@ -307,7 +307,7 @@ impl Publisher for MdxPublisher {
                     .unwrap_or("Unknown Thesis");
                 let mdx = crate::renderer::mdx::render_reflection_mdx(reflection, thesis_title);
                 let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
-                let path = reflection_dir.join(format!("{}.mdx", slug));
+                let path = reflection_dir.join(format!("{}.md", slug));
                 std::fs::write(&path, &mdx)?;
                 outputs.push(PublishedOutput::File { path, content: mdx });
             }
@@ -318,7 +318,7 @@ impl Publisher for MdxPublisher {
             let digest_dir = ctx.output_dir.join("digest");
             std::fs::create_dir_all(&digest_dir)?;
             let mdx = crate::renderer::mdx::render_digest_mdx(&ctx.articles, &ctx.date);
-            let path = digest_dir.join(format!("{}.mdx", ctx.date));
+            let path = digest_dir.join(format!("{}.md", ctx.date));
             std::fs::write(&path, &mdx)?;
             outputs.push(PublishedOutput::File { path, content: mdx });
         }
