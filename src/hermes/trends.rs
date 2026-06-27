@@ -2,12 +2,12 @@
 
 use crate::db::TrendRow;
 use crate::domain::evidence::{Evidence, Stance};
-use crate::engine::memory::MemoryEngine;
+use crate::domain::thesis::ThesisRepository;
 
 /// 趋势检测：将 Trend Layer 数据写入 MemoryEngine
 ///
 /// change_pct > 30% 的趋势匹配到对应 Thesis 后追加 Evidence。
-pub fn analyze_trends(trends: &[TrendRow], memory: &mut MemoryEngine, today: &str) {
+pub fn analyze_trends(trends: &[TrendRow], memory: &mut dyn ThesisRepository, today: &str) {
     for t in trends {
         if t.change_pct.abs() < 30.0 {
             continue;

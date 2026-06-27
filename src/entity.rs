@@ -199,29 +199,6 @@ impl EntitySanctionDb {
         }
     }
 
-    /// 按类型查询已确认实体
-    #[allow(dead_code)]
-    pub fn get_by_type(&self, entity_type: &EntityType) -> Vec<&Entity> {
-        self.sanctioned
-            .values()
-            .filter(|e| e.entity_type == *entity_type)
-            .collect()
-    }
-
-    /// 为实体增加关系
-    #[allow(dead_code)]
-    pub fn add_relationship(&mut self, entity_id: &str, relationship: Relationship) -> Option<()> {
-        if let Some(entity) = self.sanctioned.get_mut(entity_id) {
-            entity.relationships.push(relationship);
-            Some(())
-        } else if let Some(entity) = self.unsanctioned.get_mut(entity_id) {
-            entity.relationships.push(relationship);
-            Some(())
-        } else {
-            None
-        }
-    }
-
     /// 加载/保存到 JSON 文件
     pub fn save_to_file(&self, path: &str) -> anyhow::Result<()> {
         let json = serde_json::to_string_pretty(self)?;

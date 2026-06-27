@@ -55,7 +55,7 @@ pub async fn fetch_source(config: &SourceConfig, date_range: &str) -> Result<Vec
 /// - 只读取 .json 文件，过滤 .DS_Store/.trash 等临时文件
 /// - 解析失败的文件被跳过而非崩溃
 /// - start_date/end_date 用于控制专题有效期（Phase 3 实现日期过滤）
-pub fn load_special_topics(vault_path: &str) -> Vec<crate::engine::premium::SpecialTopic> {
+pub fn load_special_topics(vault_path: &str) -> Vec<crate::domain::SpecialTopic> {
     let flash_path = Path::new(vault_path).join(".flash");
     if !flash_path.exists() {
         return vec![];
@@ -69,7 +69,7 @@ pub fn load_special_topics(vault_path: &str) -> Vec<crate::engine::premium::Spec
                 continue;
             }
             if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(topic) = serde_json::from_str::<crate::engine::premium::SpecialTopic>(&content) {
+                if let Ok(topic) = serde_json::from_str::<crate::domain::SpecialTopic>(&content) {
                     topics.push(topic);
                 }
             }

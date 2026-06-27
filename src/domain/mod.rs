@@ -15,8 +15,11 @@ pub mod action;
 pub mod evidence;
 pub mod investigation;
 pub mod outcome;
+pub mod premium;
 pub mod reflection;
 pub mod theme;
+pub mod decision;
+pub mod question_match;
 pub mod thesis;
 
 // ===== 统一重导出 =====
@@ -25,14 +28,20 @@ pub mod thesis;
 #[allow(unused_imports)]
 pub use action::*;
 #[allow(unused_imports)]
+pub use decision::*;
+#[allow(unused_imports)]
 pub use evidence::*;
 #[allow(unused_imports)]
 pub use investigation::*;
 #[allow(unused_imports)]
 pub use outcome::*;
 #[allow(unused_imports)]
+pub use premium::*;
+#[allow(unused_imports)]
 pub use reflection::*;
 #[allow(unused_imports)]
 pub use theme::*;
+#[allow(unused_imports)]
+pub use question_match::*;
 #[allow(unused_imports)]
 pub use thesis::*;

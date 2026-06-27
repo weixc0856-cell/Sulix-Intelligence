@@ -117,7 +117,7 @@ impl BeliefEngineV2 {
 }
 
 /// 渲染信念变化为 HTML 区块
-pub fn render_belief_changes_html(engine: &BeliefEngineV2) -> String {
+pub(crate) fn render_belief_changes_html(engine: &BeliefEngineV2) -> String {
     let changes = engine.recent_changes(5);
     if changes.is_empty() {
         return String::new();

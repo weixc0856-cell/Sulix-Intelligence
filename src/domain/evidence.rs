@@ -37,3 +37,22 @@ pub struct Evidence {
     /// 当日 SVI 评分 1-10
     pub signal_strength: u8,
 }
+
+/// 计算置信度 0.0-1.0（从证据 Support/Challenge 比例）
+pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
+    let support = evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Supports)
+        .count() as f64;
+    let challenge = evidences
+        .iter()
+        .filter(|e| e.stance == Stance::Challenges)
+        .count() as f64;
+    let total = support + challenge;
+    if total == 0.0 {
+        0.5
+    } else {
+        let ratio = support / total;
+        (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
+    }
+}

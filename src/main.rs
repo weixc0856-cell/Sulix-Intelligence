@@ -7,18 +7,27 @@
 //!   agent_publish()   — Premium 报告/HTML/Chronicle/看板
 
 use anyhow::Result;
-use std::path::Path;
 use std::path::PathBuf;
 
+use sulix_intel::agent;
+use sulix_intel::catalog;
+use sulix_intel::clusterer;
+use sulix_intel::config;
+use sulix_intel::db;
+use sulix_intel::engine;
+use sulix_intel::entity;
+use sulix_intel::fetcher;
+use sulix_intel::llm;
+use sulix_intel::pipeline;
+use sulix_intel::publishing;
+use sulix_intel::enricher;
+use sulix_intel::source;
+use sulix_intel::storage;
 use sulix_intel::engine::pipeline_health::StageStatus;
-use sulix_intel::*;
 
-/// 信号源抓取状态（替代 (String, bool, usize) 元组）
+/// 信号源抓取计数
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct SourceStatus {
-    name: String,
-    fetch_success: bool,
     signal_count: usize,
 }
 
@@ -34,7 +43,7 @@ async fn main() -> Result<()> {
     let mut report = sulix_intel::engine::pipeline_health::PipelineReport::new(&today);
 
     // Signal Agent: 抓取 → 去重 → 丰富 → 实体提取
-    let signal_result = agent_signal(&config, &api_key, &db, &catalog, &today, entity_db).await;
+    let signal_result = agent_signal(&config, &db, &catalog, &today, entity_db).await;
     report.add_stage(
         "agent_signal",
         0,
@@ -74,10 +83,7 @@ async fn main() -> Result<()> {
     let research = agent_research(
         &config,
         &api_key,
-        &db,
         &catalog,
-        &data_dir,
-        &today,
         new_articles,
     )
     .await?;
@@ -317,7 +323,6 @@ async fn init() -> Result<(
 /// 返回 None 表示今日无新文章（管线提前终止）
 async fn agent_signal(
     config: &config::Config,
-    _api_key: &str,
     db: &db::Database,
     catalog: &catalog::DataCatalog,
     today: &str,
@@ -340,12 +345,12 @@ async fn agent_signal(
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
-                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: true, signal_count: signals.len() });
+                source_statuses.push(SourceStatus { signal_count: signals.len() });
                 all_signals.append(&mut signals);
             }
             Err(e) => {
                 log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e);
-                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: false, signal_count: 0 });
+                source_statuses.push(SourceStatus { signal_count: 0 });
             }
         }
     }
@@ -497,12 +502,12 @@ use publishing::ResearchOutput;
 /// 注意：蓝军降级（signal_strength 扣减）已移至 BlueTeamNode 执行，
 /// 此处不再处理。这样保证了降级逻辑在 Graph 编排内原子化执行。
 async fn analyze_and_validate(
-    theme: &crate::domain::theme::Theme,
+    theme: &sulix_intel::domain::theme::Theme,
     api_key: &str,
     llm_config: &config::LlmConfig,
     prompts: Option<&config::PromptsConfig>,
     language: &str,
-) -> Option<crate::domain::theme::ThemeAnalysis> {
+) -> Option<sulix_intel::domain::theme::ThemeAnalysis> {
     let mut analysis = match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts).await {
         Ok(a) => a,
         Err(e) => {
@@ -530,10 +535,7 @@ async fn analyze_and_validate(
 async fn agent_research(
     config: &config::Config,
     api_key: &str,
-    _db: &db::Database,
     catalog: &catalog::DataCatalog,
-    _data_dir: &Path,
-    _today: &str,
     new_articles: Vec<fetcher::Article>,
 ) -> Result<ResearchOutput> {
     // 分组 + Scan Agent
@@ -658,7 +660,7 @@ async fn agent_research(
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
     // QuestionEngine 匹配（同步关键词降级，DiGraph 编排已移除）
-    let question_matches: Vec<sulix_intel::question_engine::QuestionMatch> = vec![];
+    let question_matches: Vec<sulix_intel::domain::QuestionMatch> = vec![];
 
     // 返回研究结果供 Publishing Agent 使用
     Ok(ResearchOutput {

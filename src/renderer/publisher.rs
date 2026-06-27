@@ -20,7 +20,7 @@ use crate::domain::outcome::Outcome;
 use crate::domain::reflection::Reflection;
 use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::Thesis;
-use crate::engine::premium::PremiumReport;
+use crate::domain::PremiumReport;
 
 /// 发布上下文 — 所有发布器共享的数据
 ///
@@ -49,11 +49,11 @@ pub struct PublishContext {
     /// Reflection 记录
     pub reflections: Vec<Reflection>,
     /// Decision Intelligence: Thesis → Decision 映射
-    pub thesis_decisions: Vec<crate::engine::decision::ThesisDecision>,
+    pub thesis_decisions: Vec<crate::domain::ThesisDecision>,
     /// Outcome 记录（用于 MDX frontmatter 中的 Historical Accuracy 展示）
     pub outcomes: Vec<Outcome>,
     /// Canonical Decision records (DEC-XXXX)
-    pub canonical_decisions: Vec<crate::engine::decision::DecisionRecord>,
+    pub canonical_decisions: Vec<crate::domain::DecisionRecord>,
 }
 
 /// 发布器 Trait
@@ -172,7 +172,7 @@ impl Publisher for MdxPublisher {
         // Build decision lookup: thesis_id → ThesisDecision
         let decision_map: std::collections::HashMap<
             &str,
-            &crate::engine::decision::ThesisDecision,
+            &crate::domain::ThesisDecision,
         > = ctx
             .thesis_decisions
             .iter()
@@ -181,7 +181,7 @@ impl Publisher for MdxPublisher {
         // Build canonical Decision record lookup: asm_id → DecisionRecord
         let dec_record_map: std::collections::HashMap<
             &str,
-            &crate::engine::decision::DecisionRecord,
+            &crate::domain::DecisionRecord,
         > = ctx
             .canonical_decisions
             .iter()
@@ -246,13 +246,14 @@ impl Publisher for MdxPublisher {
             let reflection_dir = mdx_dir.join("reflection");
             std::fs::create_dir_all(&reflection_dir)?;
             for reflection in &ctx.reflections {
-                let thesis_title = ctx
-                    .theses
-                    .iter()
-                    .find(|t| t.id == reflection.thesis_id)
-                    .map(|t| t.title.as_str())
-                    .unwrap_or("Unknown Thesis");
-                let mdx = crate::renderer::mdx::render_reflection_mdx(reflection, thesis_title);
+                let maybe_thesis = ctx.theses.iter().find(|t| t.id == reflection.thesis_id);
+                let thesis_title = maybe_thesis.map(|t| t.title.as_str()).unwrap_or("Unknown Thesis");
+                let assessment_id = maybe_thesis.and_then(|t| t.assessment_id.as_deref());
+                let mdx = crate::renderer::mdx::render_reflection_mdx(
+                    reflection,
+                    thesis_title,
+                    assessment_id,
+                );
                 let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
                 let path = reflection_dir.join(format!("{}.md", slug));
                 std::fs::write(&path, &mdx)?;

@@ -17,7 +17,7 @@
 //! - Confidence delta < 0.15 → don't escalate to different recommendation tier
 
 use crate::domain::action::{DecisionStability, DecisionType};
-use crate::engine::decision::ThesisDecision;
+use crate::domain::ThesisDecision;
 
 /// Minimum number of consecutive days the same decision type must be observed
 /// before a switch is allowed.

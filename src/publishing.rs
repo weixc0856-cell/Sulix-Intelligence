@@ -27,7 +27,8 @@ use crate::db::Database;
 use crate::domain::evidence::Stance;
 use crate::domain::outcome::{Outcome, OutcomeVerdict};
 use crate::domain::thesis::ThesisStatus;
-use crate::engine::decision::{map_theses_to_decisions, ThesisDecision};
+use crate::domain::ThesisDecision;
+use crate::engine::decision::map_theses_to_decisions;
 use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::MemoryEngine;
 use crate::renderer::publisher::Publisher;
@@ -40,7 +41,7 @@ pub struct ResearchOutput {
     pub analyses_zh: Vec<ThemeAnalysis>,
     pub triage: crate::agent::scan::TriageResult,
     pub new_articles: Vec<crate::fetcher::Article>,
-    pub question_matches: Vec<crate::question_engine::QuestionMatch>,
+    pub question_matches: Vec<crate::domain::QuestionMatch>,
 }
 
 // ===== 5-Stage Contract: Data Structures =====
@@ -62,7 +63,7 @@ struct StateBundle {
 /// Stage 2: Generate 阶段产出的所有内容
 struct GeneratedAssets {
     asi_score_map: HashMap<String, (f64, f64, f64)>,
-    premium_reports: Vec<crate::engine::premium::PremiumReport>,
+    premium_reports: Vec<crate::domain::PremiumReport>,
     belief_notes_html: String,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     change_summary: crate::hermes::ChangeSummary,
@@ -74,7 +75,7 @@ struct GeneratedAssets {
 struct InferredState {
     memory: MemoryEngine,
     thesis_decisions: Vec<ThesisDecision>,
-    premium_reports: Vec<crate::engine::premium::PremiumReport>,
+    premium_reports: Vec<crate::domain::PremiumReport>,
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     beliefs_html: String,
@@ -116,16 +117,16 @@ pub async fn agent_publish(
     // Stage 2: Generate — content creation (no state mutation)
     let (themes, analyses, analyses_zh, new_articles, question_matches, triage) = research.destructure();
     let generated = publish_generate(
-        config, api_key, today, &themes, &analyses, &analyses_zh,
-        &question_matches, &new_articles, &triage, &state,
+        config, api_key, today, &themes, &analyses,
+        &question_matches, &triage, &state,
     ).await?;
     catalog.save_step(7, "summary", &generated.summary)?;
     catalog.save_step(8, "calibration", &generated.calibration_text)?;
 
     // Stage 3: Infer — run cognitive engines (Memory, Hermes, Decision)
     let mut inferred = publish_infer(
-        config, api_key, today, data_dir,
-        &themes, &analyses, &analyses_zh, &new_articles, &triage,
+        config, api_key, today,
+        &themes, &analyses, &analyses_zh, &new_articles,
         &generated, &mut state, db,
     ).await?;
 
@@ -138,8 +139,8 @@ pub async fn agent_publish(
     // Stage 5: Emit — render MDX/Markdown output
     publish_emit(
         config, today, vault_base.clone(),
-        &themes, &analyses, &new_articles, &triage,
-        &inferred, &generated,
+        &themes, &analyses, &new_articles,
+        &inferred,
     ).await?;
 
     // Final logging
@@ -216,9 +217,7 @@ async fn publish_generate(
     today: &str,
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
-    _analyses_zh: &[ThemeAnalysis],
-    question_matches: &[crate::question_engine::QuestionMatch],
-    _new_articles: &[crate::fetcher::Article],
+    question_matches: &[crate::domain::QuestionMatch],
     triage: &crate::agent::scan::TriageResult,
     state: &StateBundle,
 ) -> Result<GeneratedAssets> {
@@ -228,7 +227,7 @@ async fn publish_generate(
 
     // Premium 深度研报 + ASI 评分收集
     let mut asi_score_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
-    let mut premium_reports: Vec<crate::engine::premium::PremiumReport> = vec![];
+    let mut premium_reports: Vec<crate::domain::PremiumReport> = vec![];
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
         let svi = crate::engine::analysis::calculate_svi(analysis, theme, &config.sources);
         let asi_config = crate::engine::analysis::asi::AsiConfig::default();
@@ -385,12 +384,10 @@ async fn publish_infer(
     config: &Config,
     api_key: &str,
     today: &str,
-    _data_dir: &Path,
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
     analyses_zh: &[ThemeAnalysis],
     new_articles: &[crate::fetcher::Article],
-    _triage: &crate::agent::scan::TriageResult,
     generated: &GeneratedAssets,
     state: &mut StateBundle,
     db: &Database,
@@ -716,9 +713,7 @@ async fn publish_emit(
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
     new_articles: &[crate::fetcher::Article],
-    _triage: &crate::agent::scan::TriageResult,
     inferred: &InferredState,
-    _generated: &GeneratedAssets,
 ) -> Result<()> {
     // Markdown 输出
     let md_ctx = crate::renderer::publisher::PublishContext {
@@ -807,7 +802,7 @@ fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
 // ===== ResearchOutput destructure helper =====
 impl ResearchOutput {
     #[allow(clippy::type_complexity)]
-    fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::question_engine::QuestionMatch>, crate::agent::scan::TriageResult) {
+    fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::domain::QuestionMatch>, crate::agent::scan::TriageResult) {
         (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.question_matches, self.triage)
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use super::helpers::html_escape;
-use crate::engine::premium::PremiumReport;
+use crate::domain::PremiumReport;
 
 /// 渲染 Premium 深度研报（长格式，多 Agent 合成）
 pub fn render_premium_report(report: &PremiumReport) -> Result<String> {

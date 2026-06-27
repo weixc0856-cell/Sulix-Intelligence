@@ -41,7 +41,7 @@ pub struct MemoryEngine {
     investigations: Vec<Investigation>,
     /// 所有 Canonical Decision 记录（DEC-XXXX）
     #[serde(default)]
-    decisions: Vec<crate::engine::decision::DecisionRecord>,
+    decisions: Vec<crate::domain::DecisionRecord>,
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
@@ -60,24 +60,7 @@ fn evidence_hash(title: &str, source: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// 计算置信度 0.0-1.0（从证据 Support/Challenge 比例）
-pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
-    let support = evidences
-        .iter()
-        .filter(|e| e.stance == Stance::Supports)
-        .count() as f64;
-    let challenge = evidences
-        .iter()
-        .filter(|e| e.stance == Stance::Challenges)
-        .count() as f64;
-    let total = support + challenge;
-    if total == 0.0 {
-        0.5
-    } else {
-        let ratio = support / total;
-        (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
-    }
-}
+pub use crate::domain::evidence::compute_confidence;
 
 /// 计算闲置天数
 fn idle_days(today: &str, updated: &str) -> Option<u32> {
@@ -116,7 +99,7 @@ impl MemoryEngine {
     }
 
     /// 写入 `memory_db.json`
-    pub fn save(&self) -> Result<()> {
+    pub(crate) fn save(&self) -> Result<()> {
         if let Some(parent) = self.memory_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -127,7 +110,7 @@ impl MemoryEngine {
     }
 
     /// 获取所有 Thesis
-    pub fn theses(&self) -> &[Thesis] {
+    pub(crate) fn theses(&self) -> &[Thesis] {
         &self.theses
     }
 
@@ -585,7 +568,7 @@ impl MemoryEngine {
     }
 
     /// 获取所有 canonical Decision 记录
-    pub fn all_decisions(&self) -> &[crate::engine::decision::DecisionRecord] {
+    pub fn all_decisions(&self) -> &[crate::domain::DecisionRecord] {
         &self.decisions
     }
 
@@ -595,12 +578,12 @@ impl MemoryEngine {
     /// Registry 以 asm_id 为主键；thesis_id 仅用于内部引用。
     pub fn record_or_update_decision(
         &mut self,
-        thesis_decision: &crate::engine::decision::ThesisDecision,
+        thesis_decision: &crate::domain::ThesisDecision,
         asm_id: &str,
         today: &str,
         registry: &mut crate::engine::decision_registry::DecisionRegistry,
     ) {
-        use crate::engine::decision::{DecisionRecord, DecisionState, DecisionTransition};
+        use crate::domain::{DecisionRecord, DecisionState, DecisionTransition};
 
         let type_str = thesis_decision.decision_type.as_key().to_string();
         let horizon_str = thesis_decision.horizon.as_str().to_string();
@@ -775,7 +758,7 @@ impl MemoryEngine {
     }
 
     /// 按标题查找活跃 Thesis
-    pub fn find_by_title(&self, title: &str) -> Option<&Thesis> {
+    pub(crate) fn find_by_title(&self, title: &str) -> Option<&Thesis> {
         self.theses
             .iter()
             .filter(|t| t.status != ThesisStatus::Retired)
@@ -783,7 +766,7 @@ impl MemoryEngine {
     }
 
     /// 按标题查找活跃 Thesis（可变引用），供 Hermes 写入 Evidence
-    pub fn find_by_title_mut(&mut self, title: &str) -> Option<&mut Thesis> {
+    pub(crate) fn find_by_title_mut(&mut self, title: &str) -> Option<&mut Thesis> {
         let pos = self
             .theses
             .iter()
@@ -795,7 +778,7 @@ impl MemoryEngine {
     }
 
     /// 强制创建一个新 Thesis（供 Hermes discovery 使用）
-    pub fn force_thesis(&mut self, title: String, today: &str, bluf: &str) {
+    pub(crate) fn force_thesis(&mut self, title: String, today: &str, bluf: &str) {
         if self.find_by_title(&title).is_some() {
             return;
         }
@@ -859,7 +842,7 @@ struct MemoryEngineData {
     #[serde(default)]
     investigations: Vec<Investigation>,
     #[serde(default)]
-    decisions: Vec<crate::engine::decision::DecisionRecord>,
+    decisions: Vec<crate::domain::DecisionRecord>,
 }
 
 impl From<&MemoryEngine> for MemoryEngineData {
@@ -871,6 +854,20 @@ impl From<&MemoryEngine> for MemoryEngineData {
             investigations: mem.investigations.clone(),
             decisions: mem.decisions.clone(),
         }
+    }
+}
+
+impl crate::domain::thesis::ThesisRepository for MemoryEngine {
+    fn find_by_title(&self, title: &str) -> Option<&crate::domain::thesis::Thesis> {
+        self.find_by_title(title)
+    }
+
+    fn find_by_title_mut(&mut self, title: &str) -> Option<&mut crate::domain::thesis::Thesis> {
+        self.find_by_title_mut(title)
+    }
+
+    fn force_thesis(&mut self, title: String, today: &str, bluf: &str) {
+        self.force_thesis(title, today, bluf);
     }
 }
 

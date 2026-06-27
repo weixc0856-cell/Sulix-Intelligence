@@ -10,36 +10,10 @@
 //!   而无需每次新增一个 Agent 角色。
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-
+use crate::domain::premium::PremiumReport;
 use crate::domain::theme::Theme;
 use crate::config::LlmConfig;
 use crate::llm;
-
-/// 最终 Premium 研报
-#[derive(Debug, Clone, Serialize)]
-pub struct PremiumReport {
-    pub theme_title: String,
-    pub date: String,
-    pub executive_summary: String,
-    pub geopolitical_assessment: String,
-    pub technical_impact: String,
-    pub commercial_framework: String,
-    pub risk_scenarios: Vec<String>,
-    pub sources: Vec<String>,
-}
-
-/// 专题聚合/紧急加更配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpecialTopic {
-    pub topic_id: String,
-    pub title: String,
-    pub is_flash: bool,
-    pub perspective: Option<String>,
-    pub start_date: Option<String>,
-    pub end_date: Option<String>,
-    pub locked_sources: Option<Vec<String>>,
-}
 
 // ===== Stage 1: WhatChanged =====
 
