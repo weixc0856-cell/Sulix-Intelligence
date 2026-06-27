@@ -30,7 +30,7 @@ mdx_dir = "./output"
 # 前端 Content Collections 目录（可选）
 # 设置后，manifest.json 也会被同步到此目录所在的 public/manifest.json。
 # 引擎直接写入前端 content 目录，消除 CI 复制 gap（路径相对于项目根目录）
-frontend_content_dir = "../intel-web/src/content/"
+frontend_public_dir = "../intel-web/public/"
 
 [storage]
 data_dir = "./data"

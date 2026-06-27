@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
 use crate::engine::memory::MemoryEngine;
-use crate::engine::memory::ThesisStatus;
+use crate::domain::thesis::ThesisStatus;
 
 // ===== Canonical Decision Object (DEC-XXXX) =====
 
@@ -202,7 +202,7 @@ fn map_thesis_to_decision(
     let decision_type = if raw_type == DecisionType::Exit {
         raw_type
     } else {
-        let raw_label = raw_type.label().to_lowercase();
+        let raw_label = raw_type.as_key();
         let history = &thesis.decision_history;
         match history.last() {
             // 没有历史 → 新 thesis，直接用原始决策
@@ -222,7 +222,7 @@ fn map_thesis_to_decision(
                     raw_type // 连续 2 天 → 允许切换
                 } else {
                     // 只有 1 天 → 抑制翻转，用历史中最近的决策
-                    parse_decision_type(&history.last().unwrap().decision_type)
+                    crate::domain::action::DecisionType::from_key(&history.last().unwrap().decision_type)
                         .unwrap_or(raw_type)
                 }
             }
@@ -233,7 +233,7 @@ fn map_thesis_to_decision(
     let priority = decision_type.priority();
 
     // ── Stability — 结合决策连续性 + outcome history ──────────────────
-    let final_label = decision_type.label().to_lowercase();
+    let final_label = decision_type.as_key();
     let stability = if decision_type == DecisionType::Exit {
         DecisionStability::Final
     } else {
@@ -287,18 +287,6 @@ fn map_thesis_to_decision(
     }
 }
 
-/// 将小写字符串解析为 DecisionType（用于 decision_history 查找）
-fn parse_decision_type(s: &str) -> Option<DecisionType> {
-    match s {
-        "build" => Some(DecisionType::Build),
-        "invest" => Some(DecisionType::Invest),
-        "monitor" => Some(DecisionType::Monitor),
-        "learn" => Some(DecisionType::Learn),
-        "ignore" => Some(DecisionType::Ignore),
-        "exit" => Some(DecisionType::Exit),
-        _ => None,
-    }
-}
 
 #[cfg(test)]
 mod tests {

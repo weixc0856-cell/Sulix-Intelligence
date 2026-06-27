@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::clusterer::ThemeAnalysis;
+use crate::domain::theme::ThemeAnalysis;
 use crate::domain::evidence::Stance;
 use crate::domain::thesis::Thesis;
 use crate::question_engine::QuestionMatch;

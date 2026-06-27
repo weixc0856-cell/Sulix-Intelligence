@@ -11,7 +11,7 @@ use anyhow::Result;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::source::RawSignal;
 
 /// 运行管线（使用配置的去重阈值）

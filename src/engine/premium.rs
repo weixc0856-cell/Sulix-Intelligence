@@ -12,7 +12,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::clusterer::Theme;
+use crate::domain::theme::Theme;
 use crate::config::LlmConfig;
 use crate::llm;
 

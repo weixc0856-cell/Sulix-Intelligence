@@ -56,7 +56,7 @@ pub struct ChangeDetectionEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clusterer::{AdverseScenario, ThemeAnalysis};
+    use crate::domain::theme::{AdverseScenario, ThemeAnalysis};
 
     #[test]
     fn test_semantic_relation_deserialization() {

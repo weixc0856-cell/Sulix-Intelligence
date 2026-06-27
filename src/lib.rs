@@ -18,7 +18,6 @@ pub mod event_log;
 pub mod fetcher;
 pub mod hermes;
 pub mod llm;
-pub mod orchestrator;
 pub mod pipeline;
 pub mod publishing;
 pub mod question_engine;

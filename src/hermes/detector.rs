@@ -1,7 +1,7 @@
 //! 变更检测：规则版 + LLM 语义版
 
 use crate::archive::ChronicleEntry;
-use crate::clusterer::ThemeAnalysis;
+use crate::domain::theme::ThemeAnalysis;
 use crate::config::LlmConfig;
 
 use super::{ChangeDetectionEntry, ChangeSummary, ConflictEntry, SemanticRelation};

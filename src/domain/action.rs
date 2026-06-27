@@ -110,6 +110,33 @@ impl DecisionType {
         }
     }
 
+    /// Returns a machine-readable lowercase key for serialization.
+    /// Use this instead of `label().to_lowercase()` — no allocation, no copy.
+    pub fn as_key(&self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::Invest => "invest",
+            Self::Monitor => "monitor",
+            Self::Learn => "learn",
+            Self::Ignore => "ignore",
+            Self::Exit => "exit",
+        }
+    }
+
+    /// Parse a lowercase key back into a DecisionType.
+    /// Inverse of `as_key()`.
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "build" => Some(Self::Build),
+            "invest" => Some(Self::Invest),
+            "monitor" => Some(Self::Monitor),
+            "learn" => Some(Self::Learn),
+            "ignore" => Some(Self::Ignore),
+            "exit" => Some(Self::Exit),
+            _ => None,
+        }
+    }
+
     pub fn priority(&self) -> u8 {
         match self {
             Self::Exit => 1,

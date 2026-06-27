@@ -1,6 +1,6 @@
 //! 因果链解析 — parse_causal_chain
 
-use crate::clusterer::CausalChain;
+use crate::domain::theme::CausalChain;
 
 /// 解析 LLM 输出的因果链字符串
 pub(super) fn parse_causal_chain(value: &serde_json::Value) -> Vec<CausalChain> {

@@ -21,12 +21,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use anyhow::Result;
 
 use crate::archive::{ChronicleDb, ChronicleEntry};
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
+use crate::domain::evidence::Stance;
+use crate::domain::outcome::{Outcome, OutcomeVerdict};
+use crate::domain::thesis::ThesisStatus;
 use crate::engine::decision::{map_theses_to_decisions, ThesisDecision};
 use crate::engine::investigation::generate_investigation;
-use crate::engine::memory::{MemoryEngine, Outcome, OutcomeVerdict, Stance, ThesisStatus};
+use crate::engine::memory::MemoryEngine;
 use crate::renderer::publisher::Publisher;
 use crate::storage;
 
@@ -64,7 +67,7 @@ struct GeneratedAssets {
     editor_notes: Vec<crate::agent::editor::EditorNote>,
     change_summary: crate::hermes::ChangeSummary,
     calibration_text: String,
-    summary: crate::clusterer::Summary,
+    summary: crate::domain::theme::Summary,
 }
 
 /// Stage 3: Infer 阶段产出的认知状态
@@ -592,7 +595,7 @@ async fn publish_infer(
     );
 
     for d in &thesis_decisions {
-        memory.record_decision(&d.thesis_id, today, &d.decision_type.label().to_lowercase(), d.confidence);
+        memory.record_decision(&d.thesis_id, today, d.decision_type.as_key(), d.confidence);
     }
 
     // Log high-priority decisions

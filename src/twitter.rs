@@ -3,7 +3,7 @@
 //! 每日简报 → 自动格式化推文 (≤280 chars) → Twitter API v2 推送
 //! 失败时不阻塞管线（fire-and-forget）
 
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::config::TwitterConfig;
 
 /// 从每日简报生成推文（多条，每条 ≤280 字符）

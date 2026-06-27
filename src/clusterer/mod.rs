@@ -3,15 +3,7 @@
 //! 从 836 行缩减为重导出入口。
 //! 子模块：clustering / synthesis / llm_prededup
 //!
-//! 共享类型定义已迁移至 `crate::domain`，此处保持向后兼容重导出。
-
-// ===== 共享类型（由 domain 层提供）=====
-
-pub use crate::domain::evidence::FactBaseEntry;
-#[allow(unused_imports)]
-pub use crate::domain::theme::{
-    AdverseScenario, Assumption, CausalChain, Summary, Theme, ThemeAnalysis,
-};
+//! 所有共享类型已迁移至 `crate::domain`，此处通过子模块重导向后兼容。
 
 // ===== 子模块声明 =====
 

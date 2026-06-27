@@ -11,11 +11,13 @@
 //! - Markdown 正文：人类可读，机器可解析
 //! - 无需 HTML 模板引擎，无需 CSS
 
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::evidence::Stance;
 use crate::domain::investigation::InvestigationReport;
+use crate::domain::outcome::Outcome;
+use crate::domain::reflection::Reflection;
+use crate::domain::theme::{Theme, ThemeAnalysis};
+use crate::domain::thesis::{LifecycleEventKind, Thesis};
 use crate::engine::decision::ThesisDecision;
-use crate::domain::thesis::LifecycleEventKind;
-use crate::engine::memory::{Outcome, Reflection, Stance, Thesis};
 use crate::engine::premium::PremiumReport;
 use crate::renderer::helpers::yaml_escape;
 
@@ -342,7 +344,7 @@ pub fn render_thesis_mdx(
     if let Some(dec) = decision {
         mdx.push_str(&format!(
             "decision: \"{}\"\n",
-            dec.decision_type.label().to_lowercase()
+            dec.decision_type.as_key()
         ));
         mdx.push_str(&format!(
             "decision_rationale: {}\n",
@@ -359,15 +361,15 @@ pub fn render_thesis_mdx(
         let total = outcomes.len();
         let confirmed = outcomes
             .iter()
-            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::Confirmed)
+            .filter(|o| o.verdict == crate::domain::outcome::OutcomeVerdict::Confirmed)
             .count();
         let partial = outcomes
             .iter()
-            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::PartiallyConfirmed)
+            .filter(|o| o.verdict == crate::domain::outcome::OutcomeVerdict::PartiallyConfirmed)
             .count();
         let invalidated = outcomes
             .iter()
-            .filter(|o| o.verdict == crate::engine::memory::OutcomeVerdict::Invalidated)
+            .filter(|o| o.verdict == crate::domain::outcome::OutcomeVerdict::Invalidated)
             .count();
         let accuracy = (confirmed as f64 + partial as f64 * 0.5) / total as f64;
         mdx.push_str(&format!("outcome_total: {}\n", total));
@@ -515,10 +517,10 @@ pub fn render_thesis_mdx(
         mdx.push_str("## Outcomes\n\n");
         for o in outcomes {
             let icon = match o.verdict {
-                crate::engine::memory::OutcomeVerdict::Confirmed => "✅",
-                crate::engine::memory::OutcomeVerdict::PartiallyConfirmed => "🟡",
-                crate::engine::memory::OutcomeVerdict::Invalidated => "❌",
-                crate::engine::memory::OutcomeVerdict::Unknown => "❓",
+                crate::domain::outcome::OutcomeVerdict::Confirmed => "✅",
+                crate::domain::outcome::OutcomeVerdict::PartiallyConfirmed => "🟡",
+                crate::domain::outcome::OutcomeVerdict::Invalidated => "❌",
+                crate::domain::outcome::OutcomeVerdict::Unknown => "❓",
             };
             mdx.push_str(&format!("- {} {}: {}\n", icon, o.date, o.description));
         }

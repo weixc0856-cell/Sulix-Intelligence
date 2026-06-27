@@ -16,10 +16,10 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::outcome::Outcome;
 use crate::domain::reflection::Reflection;
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::Thesis;
-use crate::engine::memory::Outcome;
 use crate::engine::premium::PremiumReport;
 
 /// 发布上下文 — 所有发布器共享的数据

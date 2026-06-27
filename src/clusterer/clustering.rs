@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 
-use crate::clusterer::Theme;
+use crate::domain::theme::Theme;
 use crate::config::LlmConfig;
 use crate::fetcher::Article;
 use crate::llm;

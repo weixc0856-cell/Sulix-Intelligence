@@ -6,8 +6,6 @@
 //!   agent_research()  — 分流/聚类/分析/蓝军/认知引擎/BeliefDb
 //!   agent_publish()   — Premium 报告/HTML/Chronicle/看板
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,6 +13,14 @@ use std::path::PathBuf;
 use sulix_intel::engine::pipeline_health::StageStatus;
 use sulix_intel::*;
 
+/// 信号源抓取状态（替代 (String, bool, usize) 元组）
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct SourceStatus {
+    name: String,
+    fetch_success: bool,
+    signal_count: usize,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,7 +46,7 @@ async fn main() -> Result<()> {
         },
     );
 
-    let Some((new_articles, total_signals, entity_db_fetched)) = signal_result? else {
+    let Some((new_articles, source_statuses, entity_db_fetched)) = signal_result? else {
         log::warn!("Pipeline: 0 new articles — done");
         report.status = sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly;
         report.add_stage("agent_research", 0, 0, StageStatus::Skipped);
@@ -63,6 +69,7 @@ async fn main() -> Result<()> {
         }
         m
     };
+    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
 
     let research = agent_research(
         &config,
@@ -206,6 +213,7 @@ async fn main() -> Result<()> {
             } else {
                 log::info!("📋 Manifest synced to frontend public/: {}", fe_manifest_path.display());
             }
+        }
     }
 
     report.duration_seconds = start.elapsed().as_secs_f64();
@@ -317,7 +325,7 @@ async fn agent_signal(
 ) -> Result<
     Option<(
         Vec<fetcher::Article>,
-        usize,  // total_signals
+        Vec<SourceStatus>,
         entity::EntitySanctionDb,
     )>,
 > {
@@ -326,17 +334,18 @@ async fn agent_signal(
     let enabled_sources: Vec<&config::SourceConfig> =
         config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
-    let mut total_signals: usize = 0;
+    let mut source_statuses: Vec<SourceStatus> = Vec::new();
     let date_range = &config.output.date_range;
     for sc in &enabled_sources {
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
-                total_signals += signals.len();
+                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: true, signal_count: signals.len() });
                 all_signals.append(&mut signals);
             }
             Err(e) => {
                 log::warn!("⚠️ [{}] 抓取失败: {}", sc.name, e);
+                source_statuses.push(SourceStatus { name: sc.name.clone(), fetch_success: false, signal_count: 0 });
             }
         }
     }
@@ -472,7 +481,7 @@ async fn agent_signal(
         entity_db.unsanctioned.len()
     );
 
-    Ok(Some((new_articles, total_signals, entity_db)))
+    Ok(Some((new_articles, source_statuses, entity_db)))
 }
 
 use publishing::ResearchOutput;
@@ -488,12 +497,12 @@ use publishing::ResearchOutput;
 /// 注意：蓝军降级（signal_strength 扣减）已移至 BlueTeamNode 执行，
 /// 此处不再处理。这样保证了降级逻辑在 Graph 编排内原子化执行。
 async fn analyze_and_validate(
-    theme: &clusterer::Theme,
+    theme: &crate::domain::theme::Theme,
     api_key: &str,
     llm_config: &config::LlmConfig,
     prompts: Option<&config::PromptsConfig>,
     language: &str,
-) -> Option<clusterer::ThemeAnalysis> {
+) -> Option<crate::domain::theme::ThemeAnalysis> {
     let mut analysis = match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts).await {
         Ok(a) => a,
         Err(e) => {
@@ -637,3 +646,121 @@ async fn agent_research(
             log::warn!("⚠️ 主题证据快照写入失败: {}", e);
         }
         log::info!("📸 主题证据快照: {} 篇", analyses.len());
+    }
+
+    // 中文分析
+    let mut analyses_zh = Vec::new();
+    for theme in &themes {
+        if let Some(a) = analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "zh").await {
+            analyses_zh.push(a);
+        }
+    }
+    log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
+
+    // QuestionEngine 匹配（同步关键词降级，DiGraph 编排已移除）
+    let question_matches: Vec<sulix_intel::question_engine::QuestionMatch> = vec![];
+
+    // 返回研究结果供 Publishing Agent 使用
+    Ok(ResearchOutput {
+        themes,
+        analyses,
+        analyses_zh,
+        triage,
+        new_articles,
+        question_matches,
+    })
+}
+
+// ===== Phase 0: Output Contract Validation =====
+
+/// Validate that all required output artifacts exist and are internally consistent.
+///
+/// This is the **contract enforcement layer** between sulix-engine and sulix-web.
+/// It checks:
+///   1. Manifest file exists and is valid JSON
+///   2. At least one MDX output directory has content (daily / thesis / research)
+///   3. Pipeline report is not in Failed state
+///
+/// Non-fatal: warnings are logged but the pipeline does not fail.
+async fn validate_output_contract(
+    config: &config::Config,
+    report: &sulix_intel::engine::pipeline_health::PipelineReport,
+) {
+    let mut issues: Vec<String> = Vec::new();
+
+    // 1. Check manifest exists
+    if let Some(ref mdx_out) = config.output.mdx_dir {
+        let manifest_path = std::path::PathBuf::from(mdx_out).join("manifest.json");
+        if !manifest_path.exists() {
+            issues.push(format!("Manifest not found: {}", manifest_path.display()));
+        } else {
+            match std::fs::read_to_string(&manifest_path) {
+                Ok(content) => {
+                    if serde_json::from_str::<serde_json::Value>(&content).is_err() {
+                        issues.push(format!("Manifest is not valid JSON: {}", manifest_path.display()));
+                    }
+                }
+                Err(e) => issues.push(format!("Manifest unreadable: {}: {}", manifest_path.display(), e)),
+            }
+        }
+
+        // 2. Check MDX output directories have content
+        let required_dirs = ["daily", "thesis", "research", "investigation"];
+        for dir_name in &required_dirs {
+            let dir_path = std::path::PathBuf::from(mdx_out).join(dir_name);
+            if dir_path.exists() {
+                if let Ok(entries) = std::fs::read_dir(&dir_path) {
+                    let md_count = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                        .count();
+                    if md_count == 0 {
+                        issues.push(format!("MDX dir '{}' exists but contains 0 .md files", dir_name));
+                    }
+                }
+            } else {
+                // Only warn if the pipeline completed successfully — zero-output runs are fine
+                if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::Success {
+                    issues.push(format!("MDX dir '{}' does not exist", dir_name));
+                }
+            }
+        }
+    }
+
+    // 3. Check pipeline report isn't Failed
+    if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure
+        || report.status == sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly
+    {
+        issues.push(format!("Pipeline finished with status: {:?}", report.status));
+    }
+
+    // 4. Check frontend content sync if configured
+    if let Some(ref fe_public_dir) = config.output.frontend_public_dir {
+        let fe_path = std::path::Path::new(fe_public_dir);
+        if !fe_path.exists() {
+            issues.push(format!(
+                "Frontend public dir configured but does not exist: {}",
+                fe_public_dir
+            ));
+        }
+    }
+
+    if issues.is_empty() {
+        log::info!("✅ Output contract validation passed");
+    } else {
+        log::warn!("⚠️ Output contract issues:");
+        for issue in &issues {
+            log::warn!("  - {}", issue);
+        }
+    }
+}
+
+// ===== [agent_publish moved to src/publishing.rs] =====
+fn get_db_path(config: &config::Config) -> PathBuf {
+    let data_dir = config
+        .storage
+        .as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .unwrap_or("data");
+    PathBuf::from(data_dir).join("intel.db")
+}

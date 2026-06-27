@@ -1,7 +1,8 @@
 //! 趋势分析：将 Trend Layer 数据写入 MemoryEngine
 
 use crate::db::TrendRow;
-use crate::engine::memory::{Evidence, MemoryEngine, Stance};
+use crate::domain::evidence::{Evidence, Stance};
+use crate::engine::memory::MemoryEngine;
 
 /// 趋势检测：将 Trend Layer 数据写入 MemoryEngine
 ///

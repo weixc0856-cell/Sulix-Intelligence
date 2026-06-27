@@ -2,7 +2,7 @@
 //!
 //! 从 clusterer.rs 拆分。
 
-use crate::clusterer::{Theme, ThemeAnalysis};
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::theme::Summary;
 
 /// 整合所有主题分析，输出综合判断
@@ -45,7 +45,7 @@ pub fn synthesize(themes: &[Theme], analyses: &[ThemeAnalysis]) -> Summary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clusterer::Theme;
+    use crate::domain::theme::Theme;
     use crate::domain::theme::ThemeAnalysis;
     use crate::fetcher::Article;
 

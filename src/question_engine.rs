@@ -14,7 +14,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::clusterer::ThemeAnalysis;
+use crate::domain::theme::ThemeAnalysis;
 use crate::config::LlmConfig;
 use crate::llm;
 

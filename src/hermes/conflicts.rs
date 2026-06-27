@@ -1,8 +1,9 @@
 //! 冲突应用 + Thesis 发现
 
 use crate::archive::ChronicleDb;
-use crate::clusterer::ThemeAnalysis;
-use crate::engine::memory::{Evidence, MemoryEngine, Stance};
+use crate::domain::theme::ThemeAnalysis;
+use crate::domain::evidence::{Evidence, Stance};
+use crate::engine::memory::MemoryEngine;
 
 use super::ChangeSummary;
 

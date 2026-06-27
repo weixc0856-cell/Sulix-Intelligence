@@ -96,7 +96,7 @@ impl BeliefEngineV2 {
     /// 从分析结果更新信念
     pub fn update_from_analyses(
         &mut self,
-        analyses: &[crate::clusterer::ThemeAnalysis],
+        analyses: &[crate::domain::theme::ThemeAnalysis],
         today: &str,
     ) {
         for analysis in analyses {

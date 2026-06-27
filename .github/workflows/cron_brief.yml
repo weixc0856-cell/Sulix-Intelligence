@@ -58,16 +58,36 @@ jobs:
           find frontend/src/content/ -name "*.mdx" -delete 2>/dev/null || true
           cp -r engine/output/daily/* frontend/src/content/daily/ 2>/dev/null || true
           cp -r engine/output/thesis/* frontend/src/content/thesis/ 2>/dev/null || true
-          mkdir -p frontend/src/content/thesis
-          cp -r engine/output/assessment/* frontend/src/content/thesis/ 2>/dev/null || true
+          mkdir -p frontend/src/content/assessment
+          cp -r engine/output/assessment/* frontend/src/content/assessment/ 2>/dev/null || true
           cp -r engine/output/research/* frontend/src/content/research/ 2>/dev/null || true
           cp -r engine/output/reflection/* frontend/src/content/reflection/ 2>/dev/null || true
           mkdir -p frontend/src/content/investigation
           cp -r engine/output/investigation/* frontend/src/content/investigation/ 2>/dev/null || true
           mkdir -p frontend/src/content/decision
           cp -r engine/output/decision/* frontend/src/content/decision/ 2>/dev/null || true
+          mkdir -p frontend/src/content/memory
+          cp -r engine/output/memory/* frontend/src/content/memory/ 2>/dev/null || true
           cp engine/output/pipeline_report.json frontend/public/pipeline_report.json 2>/dev/null || true
           cp engine/output/manifest.json frontend/public/manifest.json 2>/dev/null || true
+
+      - name: Validate Content Schemas
+        working-directory: frontend
+        run: npm run build -- --dry-run 2>&1 || (echo "::error::Schema validation failed — MDX frontmatter may not match Zod schemas" && exit 1)
+
+      - name: Detect Missing Content
+        run: |
+          MISSING=0
+          for col in daily thesis assessment research reflection investigation decision memory; do
+            count=$(ls -1 frontend/src/content/$col/*.md 2>/dev/null | wc -l)
+            echo "  $col: $count files"
+          done
+          thesis_count=$(ls -1 frontend/src/content/thesis/*.md 2>/dev/null | wc -l)
+          if [ "$thesis_count" -eq 0 ]; then
+            echo "::error::Critical: thesis content is empty"
+            MISSING=1
+          fi
+          exit $MISSING
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -76,10 +96,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build Frontend
+      - name: Validate and Build Frontend
         working-directory: frontend
         run: |
           npm ci
+          npm test
           npm run build
 
       - name: Deploy to Cloudflare Pages

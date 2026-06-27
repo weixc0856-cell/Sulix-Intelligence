@@ -15,17 +15,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::clusterer::{Theme, ThemeAnalysis};
-
-// ===== 数据模型（从 domain 层导入）=====
-
-pub use crate::domain::evidence::{Evidence, Stance};
-pub use crate::domain::investigation::Investigation;
-pub use crate::domain::outcome::{Outcome, OutcomeVerdict};
-pub use crate::domain::reflection::Reflection;
-pub use crate::domain::thesis::{
-    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,
-    Thesis, ThesisStatus, TransitionTrigger,
+use crate::domain::evidence::{Evidence, Stance};
+use crate::domain::investigation::Investigation;
+use crate::domain::outcome::{Outcome, OutcomeVerdict};
+use crate::domain::reflection::Reflection;
+use crate::domain::theme::{Theme, ThemeAnalysis};
+use crate::domain::thesis::{
+    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind,
+    StatusTransition, Thesis, ThesisStatus, TransitionTrigger,
 };
 
 /// 信念追踪引擎
@@ -605,7 +602,7 @@ impl MemoryEngine {
     ) {
         use crate::engine::decision::{DecisionRecord, DecisionState, DecisionTransition};
 
-        let type_str = thesis_decision.decision_type.label().to_lowercase();
+        let type_str = thesis_decision.decision_type.as_key().to_string();
         let horizon_str = thesis_decision.horizon.as_str().to_string();
         let stability_str = thesis_decision.stability.label().to_lowercase();
 
@@ -755,23 +752,7 @@ impl MemoryEngine {
             OutcomeVerdict::Unknown => "unknown",
         };
 
-        let support_count = thesis
-            .evidences
-            .iter()
-            .filter(|e| e.stance == Stance::Supports)
-            .count();
-        let challenge_count = thesis
-            .evidences
-            .iter()
-            .filter(|e| e.stance == Stance::Challenges)
-            .count();
-        let total_ev = support_count + challenge_count;
-        let conf_val = if total_ev == 0 {
-            0.5
-        } else {
-            let ratio = support_count as f64 / total_ev as f64;
-            (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
-        };
+        let conf_val = compute_confidence(&thesis.evidences);
 
         let reflection = Reflection {
             id: format!("reflection-{}", chrono::Utc::now().timestamp()),
