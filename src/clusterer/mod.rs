@@ -17,5 +17,3 @@ pub use clustering::*;
 pub use llm_prededup::*;
 pub use synthesis::*;
 
-// 保持 change_detection → hermes 重导向后兼容
-pub use crate::hermes::{detect_changes_llm, detect_changes_rule, ChangeSummary};

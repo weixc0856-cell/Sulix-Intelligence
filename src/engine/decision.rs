@@ -12,85 +12,15 @@
 //!   Retired (Invalidated) → Exit
 //!   Retired (no outcome)  → Ignore
 
-use serde::{Deserialize, Serialize};
-
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
 use crate::engine::memory::MemoryEngine;
 use crate::domain::thesis::ThesisStatus;
 
-// ===== Canonical Decision Object (DEC-XXXX) =====
-
-/// Administrative lifecycle state of a canonical Decision object
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "state", content = "detail")]
-pub enum DecisionState {
-    #[default]
-    Active,
-    Archived { reason: String },
-    Superseded { by: String }, // by DEC-XXXX
-    Expired,
-}
-
-/// Full transition event: from → to (richer than DecisionSnapshot)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DecisionTransition {
-    pub date: String,
-    /// Previous decision_type label or "initial"
-    pub from: String,
-    /// New decision_type label
-    pub to: String,
-    pub confidence: f64,
-    /// What triggered the change: "evidence-update", "outcome", "manual"
-    pub trigger: String,
-}
-
-/// Canonical Decision object with stable DEC-XXXX ID
-///
-/// One DEC per active Assessment. ID is stable; decision_type evolves.
-/// Links to ASM-XXXX (primary), thesis_id (internal reference only).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DecisionRecord {
-    /// Stable canonical ID, e.g. "DEC-0001"
-    pub id: String,
-    /// Primary link to canonical Assessment (ASM-XXXX)
-    pub asm_id: String,
-    /// Internal reference — thesis-XXXX ephemeral ID
-    pub thesis_id: String,
-    /// Current decision type label (lowercase): "build", "monitor", etc.
-    pub decision_type: String,
-    /// Time horizon string: "30d", "90d", "180d", "immediate"
-    pub horizon: String,
-    pub confidence: f64,
-    pub rationale: String,
-    /// Stability label: "volatile", "stable", "final"
-    pub stability: String,
-    #[serde(default)]
-    pub state: DecisionState,
-    pub created: String,
-    pub updated: String,
-    /// Reserved for OUT-XXXX links (future)
-    #[serde(default)]
-    pub outcome_ids: Vec<String>,
-    /// Type transition log (from → to events)
-    #[serde(default)]
-    pub decision_history: Vec<DecisionTransition>,
-}
-
-/// Thesis → Decision 映射结果
-#[derive(Debug, Clone)]
-pub struct ThesisDecision {
-    pub thesis_id: String,
-    pub thesis_title: String,
-    pub decision_type: DecisionType,
-    /// 决策置信度（基于 evidence ratio），当前未在前端使用但保留用于未来 filtering
-    pub confidence: f64,
-    pub rationale: String,
-    pub horizon: DecisionHorizon,
-    pub priority: u8,
-    /// 决策稳定性 — outcome history 驱动
-    pub stability: DecisionStability,
-}
+// Backward-compat re-exports — types moved to crate::domain::decision
+pub use crate::domain::decision::{
+    DecisionRecord, DecisionState, DecisionTransition, ThesisDecision,
+};
 
 /// 将 Memory Engine 中的所有活跃 Thesis 映射为决策建议
 pub fn map_theses_to_decisions(memory: &MemoryEngine) -> Vec<ThesisDecision> {
@@ -195,7 +125,7 @@ fn map_thesis_to_decision(
     };
 
     // Compute confidence from evidence ratio (canonical: engine/memory.rs)
-    let confidence = crate::engine::memory::compute_confidence(&thesis.evidences);
+    let confidence = crate::domain::compute_confidence(&thesis.evidences);
 
     // ── Decision Smoothing ──────────────────────────────────────────────
     // EXIT 永远立即生效，不受 smoothing 影响

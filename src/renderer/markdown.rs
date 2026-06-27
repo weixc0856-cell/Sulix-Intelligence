@@ -1,5 +1,5 @@
 use crate::domain::theme::{Theme, ThemeAnalysis};
-use crate::engine::premium::PremiumReport;
+use crate::domain::PremiumReport;
 
 /// YAML 双引号字符串值：转义 `\` 和 `"` 后包裹双引号
 fn yaml_quoted(s: &str) -> String {

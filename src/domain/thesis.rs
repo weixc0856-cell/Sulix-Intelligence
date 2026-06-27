@@ -226,3 +226,13 @@ pub struct BeliefDb {
     pub total_challenge: usize,
     pub contradictions_detected: usize,
 }
+
+/// Repository trait for MemoryEngine operations needed by Hermes modules.
+///
+/// Enables hermes/ module to depend on domain/ instead of engine/,
+/// breaking the hermes → engine architectural boundary violation.
+pub trait ThesisRepository {
+    fn find_by_title(&self, title: &str) -> Option<&Thesis>;
+    fn find_by_title_mut(&mut self, title: &str) -> Option<&mut Thesis>;
+    fn force_thesis(&mut self, title: String, today: &str, bluf: &str);
+}

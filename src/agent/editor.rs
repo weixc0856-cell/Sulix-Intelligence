@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::theme::ThemeAnalysis;
 use crate::domain::evidence::Stance;
 use crate::domain::thesis::Thesis;
-use crate::question_engine::QuestionMatch;
+use crate::domain::QuestionMatch;
 
 /// Editor 笔记：一条分析结果对你个人决策的影响
 #[derive(Debug, Clone, Serialize, Deserialize)]

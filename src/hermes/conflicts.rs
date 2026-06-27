@@ -3,12 +3,12 @@
 use crate::archive::ChronicleDb;
 use crate::domain::theme::ThemeAnalysis;
 use crate::domain::evidence::{Evidence, Stance};
-use crate::engine::memory::MemoryEngine;
+use crate::domain::thesis::ThesisRepository;
 
 use super::ChangeSummary;
 
 /// 矛盾写入：将 ChangeSummary 中的冲突记到对应 Thesis 的 Challenges Evidence
-pub fn apply_conflicts(changes: &ChangeSummary, memory: &mut MemoryEngine, today: &str) {
+pub fn apply_conflicts(changes: &ChangeSummary, memory: &mut dyn ThesisRepository, today: &str) {
     for conflict in &changes.conflicts {
         if let Some(thesis) = memory.find_by_title_mut(&conflict.topic) {
             thesis.evidences.push(Evidence {
@@ -31,7 +31,7 @@ pub fn apply_conflicts(changes: &ChangeSummary, memory: &mut MemoryEngine, today
 pub fn discover_theses(
     analyses: &[ThemeAnalysis],
     chronicle: &ChronicleDb,
-    memory: &mut MemoryEngine,
+    memory: &mut dyn ThesisRepository,
     today: &str,
 ) {
     use chrono::NaiveDate;

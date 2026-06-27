@@ -25,7 +25,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::question_engine::QuestionMatch;
+use crate::domain::QuestionMatch;
 
 /// ASI 配置（可通过 config.toml 覆盖权重）
 #[derive(Debug, Clone, Serialize, Deserialize)]
