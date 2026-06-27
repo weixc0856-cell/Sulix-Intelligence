@@ -18,21 +18,25 @@ use crate::domain::reflection::Reflection;
 use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::{LifecycleEventKind, Thesis};
 use crate::domain::decision::ThesisDecision;
+use crate::domain::EditorNote;
 use crate::domain::PremiumReport;
 use crate::renderer::helpers::yaml_escape;
 
 /// 渲染每日信号 MDX
 ///
 /// 每个 theme 生成一个文件，包含：
-/// - YAML frontmatter: title, date, svi, asi, confidence, sources, entities, thesis_status
+/// - YAML frontmatter: title, date, locale, svi, asi, confidence, sources, entities, related_thesis
 /// - 正文: BLUF, Thesis, Evidence 表, Assumptions, Action
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_daily_mdx(
     theme: &Theme,
     analysis: &ThemeAnalysis,
     today: &str,
+    locale: &str,
     asi: f64,
     confidence: f64,
-    editor_notes: &[crate::agent::editor::EditorNote],
+    editor_notes: &[EditorNote],
+    related_slug: Option<&str>,
 ) -> String {
     let _slug = theme
         .title
@@ -64,7 +68,7 @@ pub(crate) fn render_daily_mdx(
         .join("\n");
 
     // Editor notes for this theme
-    let theme_notes: Vec<&crate::agent::editor::EditorNote> = editor_notes
+    let theme_notes: Vec<&EditorNote> = editor_notes
         .iter()
         .filter(|n| n.theme_title == theme.title)
         .collect();
@@ -75,6 +79,7 @@ pub(crate) fn render_daily_mdx(
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&theme.title)));
     mdx.push_str(&format!("date: \"{}\"\n", today));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: daily\n");
     mdx.push_str(&format!("svi: {}\n", analysis.signal_strength));
     mdx.push_str(&format!("asi: {:.2}\n", asi));
@@ -85,17 +90,8 @@ pub(crate) fn render_daily_mdx(
     if !entities.is_empty() {
         mdx.push_str(&format!("entities:\n{}\n", entities_yaml));
     }
-    // Assumptions (YAML frontmatter)
-    if !analysis.assumptions.is_empty() {
-        mdx.push_str("assumptions:\n");
-        for a in &analysis.assumptions {
-            mdx.push_str(&format!(
-                "  - text: {}\n    load_bearing: {}\n    evidence_strength: {}\n",
-                crate::renderer::helpers::yaml_escape(&a.text),
-                a.load_bearing,
-                crate::renderer::helpers::yaml_escape(&a.evidence_strength),
-            ));
-        }
+    if let Some(slug) = related_slug {
+        mdx.push_str(&format!("related_thesis: \"{}\"\n", slug));
     }
     mdx.push_str("---\n\n");
 
@@ -204,6 +200,7 @@ pub(crate) fn render_thesis_mdx(
     outcomes: &[Outcome],
     decision: Option<&ThesisDecision>,
     decision_record: Option<&crate::domain::DecisionRecord>,
+    locale: &str,
 ) -> String {
     let _slug = thesis
         .title
@@ -211,14 +208,14 @@ pub(crate) fn render_thesis_mdx(
         .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
         .replace(' ', "-");
 
-    // Thesis 前台状态: 简化映射，consulting-style labels
-    let (status_label, status_str) = match thesis.status {
-        crate::domain::thesis::ThesisStatus::Proposed => ("early-signal", "proposed"),
-        crate::domain::thesis::ThesisStatus::Active => ("developing", "active"),
-        crate::domain::thesis::ThesisStatus::Strengthening => ("established", "strengthening"),
-        crate::domain::thesis::ThesisStatus::Weakening => ("at-risk", "weakening"),
-        crate::domain::thesis::ThesisStatus::Dormant => ("under-review", "dormant"),
-        crate::domain::thesis::ThesisStatus::Retired => ("archived", "retired"),
+    // Thesis status string for frontmatter
+    let status_str = match thesis.status {
+        crate::domain::thesis::ThesisStatus::Proposed => "proposed",
+        crate::domain::thesis::ThesisStatus::Active => "active",
+        crate::domain::thesis::ThesisStatus::Strengthening => "strengthening",
+        crate::domain::thesis::ThesisStatus::Weakening => "weakening",
+        crate::domain::thesis::ThesisStatus::Dormant => "dormant",
+        crate::domain::thesis::ThesisStatus::Retired => "retired",
     };
 
     let support = thesis
@@ -268,6 +265,7 @@ pub(crate) fn render_thesis_mdx(
     mdx.push_str(&format!("title: {}\n", yaml_escape(&thesis.title)));
     mdx.push_str(&format!("date: \"{}\"\n", thesis.updated));
     mdx.push_str(&format!("created: \"{}\"\n", thesis.created));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: thesis\n");
     if let Some(ref asm_id) = thesis.assessment_id {
         mdx.push_str(&format!("assessment_id: \"{}\"\n", asm_id));
@@ -298,7 +296,6 @@ pub(crate) fn render_thesis_mdx(
     }
     mdx.push_str(&format!("summary: {}\n", yaml_escape(summary)));
     mdx.push_str(&format!("status: \"{}\"\n", status_str));
-    mdx.push_str(&format!("status_label: \"{}\"\n", status_label));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
     mdx.push_str(&format!("evidences: {}\n", support));
     mdx.push_str(&format!("challenges: {}\n", challenge));
@@ -545,7 +542,7 @@ pub(crate) fn render_thesis_mdx(
 }
 
 /// 渲染 Premium 研报 MDX
-pub(crate) fn render_research_mdx(report: &PremiumReport) -> String {
+pub(crate) fn render_research_mdx(report: &PremiumReport, locale: &str) -> String {
     let _slug = report
         .theme_title
         .to_lowercase()
@@ -556,8 +553,9 @@ pub(crate) fn render_research_mdx(report: &PremiumReport) -> String {
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&report.theme_title)));
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
-    mdx.push_str("stage: \"what-to-do\"\n");
-    mdx.push_str("is_premium: true\n");
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
+    mdx.push_str(&format!("stage: \"{}\"\n", report.stage));
+    mdx.push_str(&format!("is_premium: {}\n", report.is_premium));
     mdx.push_str("type: research\n");
     mdx.push_str("---\n\n");
 
@@ -593,11 +591,12 @@ pub(crate) fn render_research_mdx(report: &PremiumReport) -> String {
 /// 渲染每日文章摘要 MDX（所有去重后文章的列表页）
 ///
 /// 输出到 output/daily/digest-{date}.mdx，供前端 Signal Feed 展示。
-pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &str) -> String {
+pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &str, locale: &str) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: \"Daily Signal Digest — {}\"\n", today));
     mdx.push_str(&format!("date: \"{}\"\n", today));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: digest\n");
     mdx.push_str(&format!("article_count: {}\n", articles.len()));
     mdx.push_str("---\n\n");
@@ -642,7 +641,7 @@ pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &st
 }
 
 /// 渲染复盘反思 MDX
-pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str, assessment_id: Option<&str>) -> String {
+pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str, assessment_id: Option<&str>, locale: &str) -> String {
     let _slug = format!("reflection-{}", reflection.id.replace(':', "-"));
 
     let mut mdx = String::new();
@@ -650,6 +649,7 @@ pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str,
     let reflection_title = format!("Reflection: {}", thesis_title);
     mdx.push_str(&format!("title: {}\n", yaml_escape(&reflection_title)));
     mdx.push_str(&format!("date: \"{}\"\n", reflection.created_at));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: reflection\n");
     let thesis_ref = assessment_id.unwrap_or(thesis_title);
     mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_ref)));
@@ -689,16 +689,17 @@ pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str,
 /// 结构：Core Question → Supporting Evidence → Counter Evidence
 ///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
 /// 输出到 output/investigation/{slug}.md
-pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str, assessment_id: Option<&str>, inv_id: Option<&str>) -> String {
+pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str, assessment_id: Option<&str>, inv_id: Option<&str>, locale: &str) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Investigation: {}", report.thesis_title))));
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: investigation\n");
     if let Some(id) = inv_id {
         mdx.push_str(&format!("inv_id: \"{}\"\n", id));
     }
-    mdx.push_str("status: \"active\"\n");
+    mdx.push_str(&format!("status: \"{}\"\n", report.status));
     mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
     // thesis_ref: 优先用稳定的 ASM-ID，fallback 到 title-derived slug
     let thesis_ref = assessment_id.unwrap_or(slug);
@@ -754,7 +755,7 @@ pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str,
 /// 渲染 canonical Decision MDX (DEC-XXXX standalone file)
 ///
 /// 输出到 output/decision/DEC-XXXX.md
-pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord) -> String {
+pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &str) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Decision {}: {}", dec.id, dec.decision_type.to_uppercase()))));
@@ -773,6 +774,7 @@ pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord) -> String
     mdx.push_str(&format!("state: \"{}\"\n", state_str));
     mdx.push_str(&format!("created: \"{}\"\n", dec.created));
     mdx.push_str(&format!("updated: \"{}\"\n", dec.updated));
+    mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: decision\n");
     mdx.push_str(&format!("rationale: {}\n", yaml_escape(&dec.rationale)));
     if !dec.decision_history.is_empty() {
@@ -818,8 +820,10 @@ mod contract_tests {
             commercial_framework: "Commerce text".into(),
             risk_scenarios: vec!["Risk 1".into()],
             sources: vec!["Source 1".into()],
+            stage: "what-to-do".into(),
+            is_premium: true,
         };
-        let mdx = render_research_mdx(&report);
+        let mdx = render_research_mdx(&report, "en");
         assert!(mdx.starts_with("---\n"));
         assert!(mdx.contains("title: AI Governance 2026"));
         assert!(mdx.contains("date: \"2026-06-26\""));
@@ -843,7 +847,7 @@ mod contract_tests {
             confidence_now: 0.85,
             created_at: "2026-06-26".into(),
         };
-        let mdx = render_reflection_mdx(&reflection, "Test Thesis", None);
+        let mdx = render_reflection_mdx(&reflection, "Test Thesis", None, "en");
         assert!(mdx.starts_with("---\n"));
         assert!(mdx.contains("title: \"Reflection: Test Thesis\""));
         assert!(mdx.contains("date: \"2026-06-26\""));
@@ -866,8 +870,9 @@ mod contract_tests {
             key_unknowns: vec!["China approach unclear".into()],
             falsification_conditions: vec!["No convergence by 2027".into()],
             preliminary_conclusion: "Likely to converge".into(),
+            status: "active".to_string(),
         };
-        let mdx = render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"));
+        let mdx = render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"), "en");
         assert!(mdx.starts_with("---\n"));
         assert!(mdx.contains("title: \"Investigation: AI Governance\""));
         assert!(mdx.contains("date: \"2026-06-26\""));
@@ -896,7 +901,7 @@ mod contract_tests {
             outcome_ids: vec![],
             decision_history: vec![],
         };
-        let mdx = render_decision_mdx(&dec);
+        let mdx = render_decision_mdx(&dec, "en");
         assert!(mdx.starts_with("---\n"));
         assert!(mdx.contains("title: \"Decision DEC-001: BUILD\""));
         assert!(mdx.contains("dec_id: \"DEC-001\""));

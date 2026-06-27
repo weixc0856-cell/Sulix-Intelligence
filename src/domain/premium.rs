@@ -11,6 +11,10 @@ pub struct PremiumReport {
     pub commercial_framework: String,
     pub risk_scenarios: Vec<String>,
     pub sources: Vec<String>,
+    /// Research stage: "what-changed" | "why-it-matters" | "what-to-do"
+    pub stage: String,
+    /// Whether this is a premium (vs. quick) research report
+    pub is_premium: bool,
 }
 
 /// 专题聚合/紧急加更配置

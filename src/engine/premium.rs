@@ -208,6 +208,8 @@ pub async fn generate_premium_report(
         commercial_framework: commercial,
         risk_scenarios,
         sources,
+        stage: "what-to-do".to_string(),
+        is_premium: true,
     })
 }
 
@@ -259,6 +261,8 @@ mod tests {
             commercial_framework: "Commercial".into(),
             risk_scenarios: vec!["Base (60%): Test".into()],
             sources: vec!["Source A".into()],
+            stage: "what-to-do".into(),
+            is_premium: true,
         };
         assert_eq!(report.theme_title, "Test");
         assert_eq!(report.risk_scenarios.len(), 1);
@@ -276,6 +280,8 @@ mod tests {
             commercial_framework: "Stage3 framework".into(),
             risk_scenarios: vec!["Base (60%): Normal".into()],
             sources: vec!["Federal Register".into()],
+            stage: "what-to-do".into(),
+            is_premium: true,
         };
         let md = crate::renderer::render_substack_markdown(&report);
         assert!(md.contains("【Premium】SVI Test"));

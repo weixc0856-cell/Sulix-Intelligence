@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::domain::compute_confidence;
 use crate::domain::evidence::{Evidence, Stance};
 use crate::domain::investigation::Investigation;
 use crate::domain::outcome::{Outcome, OutcomeVerdict};
@@ -59,8 +60,6 @@ fn evidence_hash(title: &str, source: &str) -> String {
     hasher.update(normalized.as_bytes());
     format!("{:x}", hasher.finalize())
 }
-
-pub use crate::domain::evidence::compute_confidence;
 
 /// 计算闲置天数
 fn idle_days(today: &str, updated: &str) -> Option<u32> {

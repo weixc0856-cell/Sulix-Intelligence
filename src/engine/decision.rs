@@ -14,13 +14,9 @@
 
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
+use crate::domain::ThesisDecision;
 use crate::engine::memory::MemoryEngine;
 use crate::domain::thesis::ThesisStatus;
-
-// Backward-compat re-exports — types moved to crate::domain::decision
-pub use crate::domain::decision::{
-    DecisionRecord, DecisionState, DecisionTransition, ThesisDecision,
-};
 
 /// 将 Memory Engine 中的所有活跃 Thesis 映射为决策建议
 pub fn map_theses_to_decisions(memory: &MemoryEngine) -> Vec<ThesisDecision> {

@@ -100,4 +100,11 @@ pub struct InvestigationReport {
     pub falsification_conditions: Vec<String>,
     /// 初步结论（来自最新证据摘要或决策理由）
     pub preliminary_conclusion: String,
+    /// 调查状态: "active" | "complete" | "archived"
+    #[serde(default = "default_report_status")]
+    pub status: String,
+}
+
+fn default_report_status() -> String {
+    "active".to_string()
 }

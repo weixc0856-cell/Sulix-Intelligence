@@ -346,11 +346,15 @@ struct ArticlesWrapper {
     articles: Vec<AnalyzedArticleRaw>,
 }
 
+/// Raw LLM response struct — all fields kept for deserialization completeness.
+/// Fields that are consumed downstream are read; the rest are retained for API contract alignment
+/// with the LLM response schema.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub(crate) struct AnalyzedArticleRaw {
-    #[serde(default)]
-    pub(crate) id: String,
+    /// id field from LLM response; unused internally, retained for deserialization
+    #[serde(default, rename = "id")]
+    pub(crate) _id: String,
     pub(crate) title: String,
     pub(crate) importance: u8,
     pub(crate) relevance: String,

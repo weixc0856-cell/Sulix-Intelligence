@@ -594,7 +594,6 @@ async fn agent_research(
             analyses_zh: vec![],
             triage,
             new_articles: vec![],
-            question_matches: vec![],
         });
     }
 
@@ -659,9 +658,7 @@ async fn agent_research(
     }
     log::info!("✅ 中文分析完成: {} 篇", analyses_zh.len());
 
-    // QuestionEngine 匹配（同步关键词降级，DiGraph 编排已移除）
-    let question_matches: Vec<sulix_intel::domain::QuestionMatch> = vec![];
-
+    // QuestionEngine 已移除（原始终返回空列表）。保留 question_engine.rs 模块供未来启用。
     // 返回研究结果供 Publishing Agent 使用
     Ok(ResearchOutput {
         themes,
@@ -669,7 +666,6 @@ async fn agent_research(
         analyses_zh,
         triage,
         new_articles,
-        question_matches,
     })
 }
 
