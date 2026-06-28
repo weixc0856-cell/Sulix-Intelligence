@@ -10,8 +10,8 @@ pub mod asi;
 pub mod causal;
 pub mod svi;
 
-pub use analyzer::*;
-#[allow(unused_imports)]
-pub use asi::*;
-// (parse_causal_chain is pub(super) in causal.rs — no pub items to glob-rexport)
-pub use svi::*;
+// Explicit re-exports — avoid wildcards to keep API surface clear
+pub use analyzer::{analyze_theme, challenge_theme};
+// asi types accessed via crate::engine::analysis::asi::* directly — no wildcard needed
+// (parse_causal_chain is pub(super) in causal.rs — no items to re-export)
+pub use svi::calculate_svi;

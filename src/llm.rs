@@ -149,6 +149,18 @@ pub(crate) async fn call_with_retry_raw(
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("重试循环退出但未积累错误")))
 }
 
+/// Simple text-in/text-out LLM call (creates its own client).
+/// Used by lightweight classification tasks that don't need JSON parsing.
+pub(crate) async fn call_and_parse(
+    api_key: &str,
+    llm_config: &LlmConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String> {
+    let client = reqwest::Client::new();
+    call_with_retry_raw(&client, api_key, llm_config, system_prompt, user_prompt).await
+}
+
 /// 不带重试的原始 API 调用（供 call_with_retry_raw 使用）
 async fn call_raw_inner(
     client: &reqwest::Client,
@@ -346,11 +358,15 @@ struct ArticlesWrapper {
     articles: Vec<AnalyzedArticleRaw>,
 }
 
+/// Raw LLM response struct — all fields kept for deserialization completeness.
+/// Fields that are consumed downstream are read; the rest are retained for API contract alignment
+/// with the LLM response schema.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub(crate) struct AnalyzedArticleRaw {
-    #[serde(default)]
-    pub(crate) id: String,
+    /// id field from LLM response; unused internally, retained for deserialization
+    #[serde(default, rename = "id")]
+    pub(crate) _id: String,
     pub(crate) title: String,
     pub(crate) importance: u8,
     pub(crate) relevance: String,

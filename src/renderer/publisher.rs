@@ -20,6 +20,7 @@ use crate::domain::outcome::Outcome;
 use crate::domain::reflection::Reflection;
 use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::Thesis;
+use crate::domain::EditorNote;
 use crate::domain::PremiumReport;
 
 /// 发布上下文 — 所有发布器共享的数据
@@ -38,12 +39,14 @@ pub struct PublishContext {
     /// ASI/Confidence 评分 per theme_title → (asi, confidence, final)
     pub asi_scores: HashMap<String, (f64, f64, f64)>,
     /// Editor Agent 分析结果（个人影响分析）
-    pub editor_notes: Vec<crate::agent::editor::EditorNote>,
+    pub editor_notes: Vec<EditorNote>,
     /// Belief Engine HTML 区块
     pub belief_notes_html: String,
     /// 今日原始文章列表（用于 Signal Feed 板块）
     pub articles: Vec<crate::fetcher::Article>,
     pub output_dir: PathBuf,
+    /// Locale for MDX frontmatter (e.g. "en", "zh-cn", "zh-tw")
+    pub locale: String,
     /// MDX 输出目录（如 output/），None = 不输出 MDX
     pub mdx_output_dir: Option<PathBuf>,
     /// Reflection 记录
@@ -148,13 +151,19 @@ impl Publisher for MdxPublisher {
         for (theme, analysis) in ctx.themes.iter().zip(ctx.analyses.iter()) {
             let asi = ctx.asi_scores.get(&theme.title).map(|s| s.0).unwrap_or(0.0);
             let conf = ctx.asi_scores.get(&theme.title).map(|s| s.1).unwrap_or(0.0);
+            // Compute related thesis slug: find a thesis whose title matches this theme
+            let related_slug = ctx.theses.iter()
+                .find(|t| t.title == theme.title)
+                .map(|t| ascii_slug(&t.title));
             let mdx = crate::renderer::mdx::render_daily_mdx(
                 theme,
                 analysis,
                 &ctx.date,
+                &ctx.locale,
                 asi,
                 conf,
                 &ctx.editor_notes,
+                related_slug.as_deref(),
             );
             let slug = ascii_slug(&theme.title);
             let path = daily_dir.join(format!("{}-{}.md", ctx.date, slug));
@@ -203,7 +212,7 @@ impl Publisher for MdxPublisher {
                 .get(thesis.id.as_str())
                 .map(|v| v.iter().map(|o| (*o).clone()).collect())
                 .unwrap_or_default();
-            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision, dec_record);
+            let mdx = crate::renderer::mdx::render_thesis_mdx(thesis, &thesis_outcomes, decision, dec_record, &ctx.locale);
 
             // Primary: stable ASM-ID filename (if assessment_id assigned)
             if let Some(ref asm_id) = thesis.assessment_id {
@@ -224,7 +233,7 @@ impl Publisher for MdxPublisher {
 
         // Write output/decision/DEC-XXXX.md (standalone canonical Decision files)
         for dec in &ctx.canonical_decisions {
-            let dec_mdx = crate::renderer::mdx::render_decision_mdx(dec);
+            let dec_mdx = crate::renderer::mdx::render_decision_mdx(dec, &ctx.locale);
             let dec_path = decision_dir.join(format!("{}.md", dec.id));
             std::fs::write(&dec_path, &dec_mdx)?;
         }
@@ -234,7 +243,7 @@ impl Publisher for MdxPublisher {
             let research_dir = mdx_dir.join("research");
             std::fs::create_dir_all(&research_dir)?;
             for report in &ctx.reports {
-                let mdx = crate::renderer::mdx::render_research_mdx(report);
+                let mdx = crate::renderer::mdx::render_research_mdx(report, &ctx.locale);
                 let slug = ascii_slug(&report.theme_title);
                 let path = research_dir.join(format!("{}-{}.md", ctx.date, slug));
                 std::fs::write(&path, &mdx)?;
@@ -253,6 +262,7 @@ impl Publisher for MdxPublisher {
                     reflection,
                     thesis_title,
                     assessment_id,
+                    &ctx.locale,
                 );
                 let slug = format!("reflection-{}", reflection.id.replace(':', "-"));
                 let path = reflection_dir.join(format!("{}.md", slug));
@@ -264,7 +274,7 @@ impl Publisher for MdxPublisher {
         if !ctx.articles.is_empty() {
             let digest_dir = ctx.output_dir.join("digest");
             std::fs::create_dir_all(&digest_dir)?;
-            let mdx = crate::renderer::mdx::render_digest_mdx(&ctx.articles, &ctx.date);
+            let mdx = crate::renderer::mdx::render_digest_mdx(&ctx.articles, &ctx.date, &ctx.locale);
             let path = digest_dir.join(format!("{}.md", ctx.date));
             std::fs::write(&path, &mdx)?;
         }

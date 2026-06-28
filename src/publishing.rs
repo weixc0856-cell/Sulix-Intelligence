@@ -27,6 +27,8 @@ use crate::db::Database;
 use crate::domain::evidence::Stance;
 use crate::domain::outcome::{Outcome, OutcomeVerdict};
 use crate::domain::thesis::ThesisStatus;
+use crate::domain::EditorNote;
+use crate::domain::StrategicDomain;
 use crate::domain::ThesisDecision;
 use crate::engine::decision::map_theses_to_decisions;
 use crate::engine::investigation::generate_investigation;
@@ -41,7 +43,6 @@ pub struct ResearchOutput {
     pub analyses_zh: Vec<ThemeAnalysis>,
     pub triage: crate::agent::scan::TriageResult,
     pub new_articles: Vec<crate::fetcher::Article>,
-    pub question_matches: Vec<crate::domain::QuestionMatch>,
 }
 
 // ===== 5-Stage Contract: Data Structures =====
@@ -65,10 +66,12 @@ struct GeneratedAssets {
     asi_score_map: HashMap<String, (f64, f64, f64)>,
     premium_reports: Vec<crate::domain::PremiumReport>,
     belief_notes_html: String,
-    editor_notes: Vec<crate::agent::editor::EditorNote>,
+    editor_notes: Vec<EditorNote>,
     change_summary: crate::hermes::ChangeSummary,
     calibration_text: String,
     summary: crate::domain::theme::Summary,
+    /// theme title → (primary_domain, secondary_domains) — LLM-refined when keyword confidence low
+    refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)>,
 }
 
 /// Stage 3: Infer 阶段产出的认知状态
@@ -77,10 +80,12 @@ struct InferredState {
     thesis_decisions: Vec<ThesisDecision>,
     premium_reports: Vec<crate::domain::PremiumReport>,
     asi_score_map: HashMap<String, (f64, f64, f64)>,
-    editor_notes: Vec<crate::agent::editor::EditorNote>,
+    editor_notes: Vec<EditorNote>,
     beliefs_html: String,
     /// 待 Emit 阶段写入的 Investigation Reports (slug, report, assessment_id, inv_id)
     investigation_reports: Vec<(String, crate::domain::investigation::InvestigationReport, Option<String>, Option<String>)>,
+    /// theme title → (primary_domain, secondary_domains) — LLM-refined domains
+    refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)>,
 }
 
 // ===== Contract Constants =====
@@ -115,10 +120,10 @@ pub async fn agent_publish(
     let mut state = publish_preprocess(data_dir, config).await;
 
     // Stage 2: Generate — content creation (no state mutation)
-    let (themes, analyses, analyses_zh, new_articles, question_matches, triage) = research.destructure();
+    let (themes, analyses, analyses_zh, new_articles, triage) = research.destructure();
     let generated = publish_generate(
         config, api_key, today, &themes, &analyses,
-        &question_matches, &triage, &state,
+        &triage, &state,
     ).await?;
     catalog.save_step(7, "summary", &generated.summary)?;
     catalog.save_step(8, "calibration", &generated.calibration_text)?;
@@ -217,7 +222,6 @@ async fn publish_generate(
     today: &str,
     themes: &[Theme],
     analyses: &[ThemeAnalysis],
-    question_matches: &[crate::domain::QuestionMatch],
     triage: &crate::agent::scan::TriageResult,
     state: &StateBundle,
 ) -> Result<GeneratedAssets> {
@@ -240,7 +244,6 @@ async fn publish_generate(
             .num_days()
             .max(0);
         let asi_result = crate::engine::analysis::asi::calculate_asi(
-            question_matches,
             analysis.signal_strength,
             max_days_old,
             &asi_config,
@@ -340,9 +343,9 @@ async fn publish_generate(
         themes.iter().map(|t| t.articles.len()).sum::<usize>() + triage.watchlist.len(),
     );
 
-    // Editor Notes
+    // Editor Notes (question_matches removed — QuestionEngine not wired)
     let editor_notes = crate::agent::editor::analyze_personal_impact(
-        question_matches, analyses, state.memory_for_linking.theses(),
+        analyses, state.memory_for_linking.theses(),
     );
     if !editor_notes.is_empty() {
         log::info!("👤 Editor Agent: {} 项个人影响分析", editor_notes.len());
@@ -368,11 +371,42 @@ async fn publish_generate(
             change_summary.conflicts.len(), change_summary.reinforced.len(), change_summary.new_signals.len());
     }
 
+    // ── Strategic Domain Classification (with LLM refine for low-confidence topics) ──
+    let mut refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)> = HashMap::new();
+    for theme in themes {
+        let text = format!("{} {}", theme.title,
+            theme.articles.first()
+                .and_then(|a| a.summary.as_deref())
+                .unwrap_or(""));
+        if crate::domain::StrategicDomain::is_classify_low_confidence(&text) {
+            // Low keyword confidence → try LLM refine
+            let system_prompt = crate::domain::StrategicDomain::llm_classification_prompt();
+            match crate::llm::call_and_parse(
+                api_key, &config.llm, system_prompt, &text
+            ).await {
+                Ok(response) => {
+                    if crate::domain::StrategicDomain::validate_llm_output(&response) {
+                        let (primary, secondary) = crate::domain::StrategicDomain::parse_llm_response(&response);
+                        log::info!("🧠 Domain classify [{}]: {} (LLM-refined, was keyword)", theme.title, primary.label());
+                        refined_domains.insert(theme.title.clone(), (primary, secondary));
+                    }
+                }
+                Err(_) => {
+                    // LLM failed → keep keyword result (no entry in refined_domains)
+                }
+            }
+        }
+    }
+    if !refined_domains.is_empty() {
+        log::info!("🧠 Domain classification: {} topics LLM-refined", refined_domains.len());
+    }
+
     Ok(GeneratedAssets {
         asi_score_map, premium_reports,
         belief_notes_html,
         editor_notes, change_summary,
         calibration_text, summary,
+        refined_domains,
     })
 }
 
@@ -452,6 +486,16 @@ async fn publish_infer(
         crate::hermes::discover_theses(analyses, &chronicle, &mut memory, today);
         log::info!("🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
             memory.theses().len(), memory.theses().len() - before);
+
+        // Apply LLM-refined domain classifications (overrides keyword-based defaults)
+        if !generated.refined_domains.is_empty() {
+            for thesis in memory.theses_mut() {
+                if let Some((primary, secondary)) = generated.refined_domains.get(&thesis.title) {
+                    thesis.primary_domain = *primary;
+                    thesis.secondary_domains = secondary.clone();
+                }
+            }
+        }
     }
 
     // Investigation Engine
@@ -633,6 +677,7 @@ async fn publish_infer(
         editor_notes: generated.editor_notes.clone(),
         beliefs_html,
         investigation_reports,
+        refined_domains: generated.refined_domains.clone(),
     })
 }
 
@@ -720,6 +765,7 @@ async fn publish_emit(
         themes: themes.to_vec(),
         analyses: analyses.to_vec(),
         date: today.to_string(),
+        locale: "en".to_string(),
         theses: vec![],
         reports: vec![],
         canonical_decisions: vec![],
@@ -742,6 +788,7 @@ async fn publish_emit(
             themes: themes.to_vec(),
             analyses: analyses.to_vec(),
             date: today.to_string(),
+            locale: "en".to_string(),
             theses: inferred.memory.theses().to_vec(),
             reports: inferred.premium_reports.clone(),
             canonical_decisions: inferred.memory.all_decisions().to_vec(),
@@ -767,7 +814,7 @@ async fn publish_emit(
             } else {
                 for (slug, report, assessment_id, inv_id) in &inferred.investigation_reports {
                     let mdx = crate::renderer::mdx::render_investigation_mdx(
-                        report, slug, assessment_id.as_deref(), inv_id.as_deref(),
+                        report, slug, assessment_id.as_deref(), inv_id.as_deref(), "en",
                     );
                     if let Err(e) = std::fs::write(inv_dir.join(format!("{}.md", slug)), &mdx) {
                         log::warn!("⚠️ Investigation MDX write failed [{}]: {}", slug, e);
@@ -802,8 +849,8 @@ fn extract_entities(analysis: &ThemeAnalysis) -> Vec<String> {
 // ===== ResearchOutput destructure helper =====
 impl ResearchOutput {
     #[allow(clippy::type_complexity)]
-    fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, Vec<crate::domain::QuestionMatch>, crate::agent::scan::TriageResult) {
-        (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.question_matches, self.triage)
+    fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, crate::agent::scan::TriageResult) {
+        (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.triage)
     }
 }
 
@@ -897,19 +944,17 @@ mod tests {
             analyses: vec![],
             analyses_zh: vec![],
             new_articles: vec![],
-            question_matches: vec![],
             triage: crate::agent::scan::TriageResult {
                 insight: vec![],
                 watchlist: vec![],
                 signal_memory: vec![],
             },
         };
-        let (t, a, az, art, qm, tr) = output.destructure();
+        let (t, a, az, art, tr) = output.destructure();
         assert!(t.is_empty());
         assert!(a.is_empty());
         assert!(az.is_empty());
         assert!(art.is_empty());
-        assert!(qm.is_empty());
         assert!(tr.insight.is_empty());
     }
 }

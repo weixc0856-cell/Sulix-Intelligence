@@ -12,6 +12,8 @@
 //! - reflection:  反思复盘（为什么对/错）
 
 pub mod action;
+pub mod strategic_domain;
+pub mod revision;
 pub mod evidence;
 pub mod investigation;
 pub mod outcome;
@@ -19,29 +21,27 @@ pub mod premium;
 pub mod reflection;
 pub mod theme;
 pub mod decision;
+pub mod editor_note;
 pub mod question_match;
 pub mod thesis;
 
 // ===== 统一重导出 =====
-// 调用方可以直接 `use crate::domain::{Theme, Thesis, Evidence, ...}`
+// 显式列出的类型 — 只有外部实际消费的类型才暴露。
+// 避免通配符 pub use submodule::*，防止隐藏 dead code 和 API surface 膨胀。
 
-#[allow(unused_imports)]
-pub use action::*;
-#[allow(unused_imports)]
-pub use decision::*;
-#[allow(unused_imports)]
-pub use evidence::*;
-#[allow(unused_imports)]
-pub use investigation::*;
-#[allow(unused_imports)]
-pub use outcome::*;
-#[allow(unused_imports)]
-pub use premium::*;
-#[allow(unused_imports)]
-pub use reflection::*;
-#[allow(unused_imports)]
-pub use theme::*;
-#[allow(unused_imports)]
-pub use question_match::*;
-#[allow(unused_imports)]
-pub use thesis::*;
+pub use action::{DecisionHorizon, DecisionStability, DecisionType};
+pub use decision::{DecisionRecord, DecisionState, DecisionTransition, ThesisDecision};
+pub use strategic_domain::StrategicDomain;
+pub use revision::{build_revision_history, Revision};
+pub use editor_note::EditorNote;
+pub use evidence::{compute_confidence, Evidence, FactBaseEntry, Stance};
+pub use investigation::{Investigation, InvestigationReport, Question, QuestionStatus};
+pub use outcome::{Outcome, OutcomeVerdict};
+pub use premium::{PremiumReport, SpecialTopic};
+pub use question_match::QuestionMatch;
+pub use reflection::Reflection;
+pub use theme::{AdverseScenario, Assumption, CausalChain, Summary, Theme, ThemeAnalysis};
+pub use thesis::{
+    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,
+    Thesis, ThesisRepository, ThesisStatus, TransitionTrigger,
+};

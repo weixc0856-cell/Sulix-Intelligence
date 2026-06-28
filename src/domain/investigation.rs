@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::strategic_domain::StrategicDomain;
+
 /// 调查任务：Thesis 的结构化问题集
 ///
 /// id 格式：INV-XXXX（由 InvestigationRegistry 分配）
@@ -27,6 +29,12 @@ pub struct Investigation {
     pub questions: Vec<Question>,
     #[serde(default = "default_inv_state")]
     pub state: String,
+    /// 主战略领域
+    #[serde(default)]
+    pub primary_domain: StrategicDomain,
+    /// 次要战略领域（跨领域问题）
+    #[serde(default)]
+    pub secondary_domains: Vec<StrategicDomain>,
 }
 
 fn default_inv_state() -> String {
@@ -100,4 +108,17 @@ pub struct InvestigationReport {
     pub falsification_conditions: Vec<String>,
     /// 初步结论（来自最新证据摘要或决策理由）
     pub preliminary_conclusion: String,
+    /// 调查状态: "active" | "complete" | "archived"
+    #[serde(default = "default_report_status")]
+    pub status: String,
+    /// 主战略领域
+    #[serde(default)]
+    pub primary_domain: StrategicDomain,
+    /// 次要战略领域（跨领域问题）
+    #[serde(default)]
+    pub secondary_domains: Vec<StrategicDomain>,
+}
+
+fn default_report_status() -> String {
+    "active".to_string()
 }

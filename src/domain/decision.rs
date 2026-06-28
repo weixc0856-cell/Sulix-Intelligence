@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
+use crate::domain::strategic_domain::StrategicDomain;
 
 // ===== Canonical Decision Object (DEC-XXXX) =====
 
@@ -61,6 +62,12 @@ pub struct DecisionRecord {
     /// Reserved for OUT-XXXX links (future)
     #[serde(default)]
     pub outcome_ids: Vec<String>,
+    /// 主战略领域（继承自 Assessment）
+    #[serde(default)]
+    pub primary_domain: StrategicDomain,
+    /// 次要战略领域（跨领域问题）
+    #[serde(default)]
+    pub secondary_domains: Vec<StrategicDomain>,
     /// Type transition log (from → to events)
     #[serde(default)]
     pub decision_history: Vec<DecisionTransition>,

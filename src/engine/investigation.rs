@@ -119,6 +119,8 @@ pub async fn generate_investigation(
         generated_at: now,
         questions,
         state: "active".to_string(),
+        primary_domain: crate::domain::StrategicDomain::default(),
+        secondary_domains: vec![],
     })
 }
 
@@ -174,6 +176,12 @@ pub fn derive_investigation_report(
         .or_else(|| thesis.evidences.last().map(|e| e.summary.clone()))
         .unwrap_or_else(|| format!("Assessment '{}' is currently being tracked.", thesis.title));
 
+    // Derive status from thesis status
+    let status = match thesis.status {
+        crate::domain::thesis::ThesisStatus::Dormant | crate::domain::thesis::ThesisStatus::Retired => "archived",
+        _ => "active",
+    };
+
     InvestigationReport {
         thesis_id: thesis.id.clone(),
         thesis_title: thesis.title.clone(),
@@ -184,6 +192,9 @@ pub fn derive_investigation_report(
         key_unknowns,
         falsification_conditions,
         preliminary_conclusion,
+        status: status.to_string(),
+        primary_domain: thesis.primary_domain,
+        secondary_domains: thesis.secondary_domains.clone(),
     }
 }
 

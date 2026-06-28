@@ -25,8 +25,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::QuestionMatch;
-
 /// ASI 配置（可通过 config.toml 覆盖权重）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AsiConfig {
@@ -74,9 +72,8 @@ pub struct AsiResult {
 
 /// 计算 ASI 指数
 ///
-/// UserRelevance: 基于 QuestionEngine 匹配结果。
-///   如果用户配置了关切问题且产生了匹配，取 relevance 均值的归一化值。
-///   如果没有问题配置或没有匹配，默认 0.3（中等偏低——变化存在但对用户不确定是否相关）。
+/// UserRelevance: 固定为 0.3（中等偏低），原 QuestionEngine 匹配始终为空。
+///   若未来启用了 QuestionEngine，可恢复为基于匹配结果的动态计算。
 ///
 /// TimeUrgency: 基于信号新鲜度。
 ///   与 SVI recency 逻辑一致：1 天内 1.0, 3 天内 0.8, 7 天内 0.5, 之后 0.2。
@@ -87,22 +84,12 @@ pub struct AsiResult {
 ///   signal_strength >= 3 → 0.3（偏低）
 ///   else → 0.1（噪音）
 pub fn calculate_asi(
-    question_matches: &[QuestionMatch],
     signal_strength: u8,
     max_days_old: i64,
     config: &AsiConfig,
 ) -> AsiResult {
-    // 1. UserRelevance
-    let user_relevance = if question_matches.is_empty() {
-        0.3
-    } else {
-        let avg: f64 = question_matches
-            .iter()
-            .map(|m| m.relevance as f64)
-            .sum::<f64>()
-            / question_matches.len() as f64;
-        (avg / 10.0).clamp(0.0, 1.0)
-    };
+    // 1. UserRelevance — currently static (QuestionEngine not wired)
+    let user_relevance = 0.3;
 
     // 2. TimeUrgency
     let time_urgency = if max_days_old <= 1 {
@@ -284,37 +271,23 @@ impl ConfidenceResult {
 mod tests {
     use super::*;
 
-    fn make_match(relevance: u8) -> QuestionMatch {
-        QuestionMatch {
-            question_id: "q1".into(),
-            question_text: "test".into(),
-            relevance,
-            reasoning: "".into(),
-            evidence_type: "Support".into(),
-        }
-    }
-
     #[test]
     fn test_asi_no_questions_low_relevance() {
-        let result = calculate_asi(&[], 8, 0, &AsiConfig::default());
+        let result = calculate_asi(8, 0, &AsiConfig::default());
         assert!(result.asi > 0.2 && result.asi < 0.7);
     }
 
     #[test]
     fn test_asi_high_relevance_high_value() {
-        let matches = vec![make_match(9), make_match(8)];
-        let result = calculate_asi(&matches, 9, 0, &AsiConfig::default());
-        // UserRelevance 接近 0.85, TimeUrgency 1.0, Actionability 0.9
-        // ASI ≈ 0.85×0.4 + 1.0×0.3 + 0.9×0.3 = 0.34 + 0.30 + 0.27 = 0.91
-        assert!(result.asi > 0.8, "ASI should be high: {}", result.asi);
+        // Note: user_relevance is now static 0.3 (QuestionEngine not wired)
+        // All matches are accepted but don't affect the calculation
+        let result = calculate_asi(9, 0, &AsiConfig::default());
+        assert!(result.asi > 0.3, "ASI should be reasonable: {}", result.asi);
     }
 
     #[test]
     fn test_asi_low_relevance_low_value() {
-        let matches = vec![make_match(1)];
-        let result = calculate_asi(&matches, 2, 30, &AsiConfig::default());
-        // UserRelevance 0.1, TimeUrgency 0.2, Actionability 0.1
-        // ASI ≈ 0.1×0.4 + 0.2×0.3 + 0.1×0.3 = 0.04 + 0.06 + 0.03 = 0.13
+        let result = calculate_asi(2, 30, &AsiConfig::default());
         assert!(result.asi < 0.3);
     }
 
@@ -346,8 +319,7 @@ mod tests {
 
     #[test]
     fn test_asi_clamped() {
-        let matches = vec![make_match(15)]; // > 10, should clamp
-        let result = calculate_asi(&matches, 10, 0, &AsiConfig::default());
+        let result = calculate_asi(10, 0, &AsiConfig::default());
         assert!(result.user_relevance <= 1.0);
         assert!(result.asi <= 1.0);
     }
@@ -355,52 +327,52 @@ mod tests {
     #[test]
     fn test_asi_signal_strength_boundaries() {
         // signal_strength=0 → actionability=0.1
-        let r0 = calculate_asi(&[], 0, 0, &AsiConfig::default());
+        let r0 = calculate_asi(0, 0, &AsiConfig::default());
         assert!((r0.actionability - 0.1).abs() < 0.01);
 
         // signal_strength=3 → actionability=0.3
-        let r3 = calculate_asi(&[], 3, 0, &AsiConfig::default());
+        let r3 = calculate_asi(3, 0, &AsiConfig::default());
         assert!((r3.actionability - 0.3).abs() < 0.01);
 
         // signal_strength=5 → actionability=0.6
-        let r5 = calculate_asi(&[], 5, 0, &AsiConfig::default());
+        let r5 = calculate_asi(5, 0, &AsiConfig::default());
         assert!((r5.actionability - 0.6).abs() < 0.01);
 
         // signal_strength=7 → actionability=0.9
-        let r7 = calculate_asi(&[], 7, 0, &AsiConfig::default());
+        let r7 = calculate_asi(7, 0, &AsiConfig::default());
         assert!((r7.actionability - 0.9).abs() < 0.01);
     }
 
     #[test]
     fn test_asi_max_days_old_boundaries() {
         // max_days_old=-1 → same as 0 (negative treated via max with 0 in caller)
-        let r_neg = calculate_asi(&[], 5, -1, &AsiConfig::default());
-        let r_0 = calculate_asi(&[], 5, 0, &AsiConfig::default());
+        let r_neg = calculate_asi(5, -1, &AsiConfig::default());
+        let r_0 = calculate_asi(5, 0, &AsiConfig::default());
         assert!((r_neg.time_urgency - 1.0).abs() < 0.01);
         assert!((r_0.time_urgency - 1.0).abs() < 0.01);
 
         // max_days_old=1 → time_urgency=1.0
-        let r1 = calculate_asi(&[], 5, 1, &AsiConfig::default());
+        let r1 = calculate_asi(5, 1, &AsiConfig::default());
         assert!((r1.time_urgency - 1.0).abs() < 0.01);
 
         // max_days_old=2 → time_urgency=0.8
-        let r2 = calculate_asi(&[], 5, 2, &AsiConfig::default());
+        let r2 = calculate_asi(5, 2, &AsiConfig::default());
         assert!((r2.time_urgency - 0.8).abs() < 0.01);
 
         // max_days_old=3 → time_urgency=0.8
-        let r3 = calculate_asi(&[], 5, 3, &AsiConfig::default());
+        let r3 = calculate_asi(5, 3, &AsiConfig::default());
         assert!((r3.time_urgency - 0.8).abs() < 0.01);
 
         // max_days_old=4 → time_urgency=0.5
-        let r4 = calculate_asi(&[], 5, 4, &AsiConfig::default());
+        let r4 = calculate_asi(5, 4, &AsiConfig::default());
         assert!((r4.time_urgency - 0.5).abs() < 0.01);
 
         // max_days_old=7 → time_urgency=0.5
-        let r7 = calculate_asi(&[], 5, 7, &AsiConfig::default());
+        let r7 = calculate_asi(5, 7, &AsiConfig::default());
         assert!((r7.time_urgency - 0.5).abs() < 0.01);
 
         // max_days_old=8 → time_urgency=0.2
-        let r8 = calculate_asi(&[], 5, 8, &AsiConfig::default());
+        let r8 = calculate_asi(5, 8, &AsiConfig::default());
         assert!((r8.time_urgency - 0.2).abs() < 0.01);
     }
 
