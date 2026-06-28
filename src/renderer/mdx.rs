@@ -81,6 +81,17 @@ pub(crate) fn render_daily_mdx(
     mdx.push_str(&format!("date: \"{}\"\n", today));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: daily\n");
+    // StrategicDomain classification from theme title + analysis content
+    let (daily_primary, daily_secondary) = crate::domain::StrategicDomain::classify(
+        &format!("{} {}", theme.title, analysis.bluf)
+    );
+    mdx.push_str(&format!("primary_domain: \"{}\"\n", daily_primary.label().to_lowercase()));
+    if !daily_secondary.is_empty() {
+        mdx.push_str("secondary_domains:\n");
+        for sd in &daily_secondary {
+            mdx.push_str(&format!("  - \"{}\"\n", sd.label().to_lowercase()));
+        }
+    }
     mdx.push_str(&format!("svi: {}\n", analysis.signal_strength));
     mdx.push_str(&format!("asi: {:.2}\n", asi));
     mdx.push_str(&format!("confidence: {:.2}\n", confidence));
@@ -267,6 +278,16 @@ pub(crate) fn render_thesis_mdx(
     mdx.push_str(&format!("created: \"{}\"\n", thesis.created));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: thesis\n");
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        thesis.primary_domain.label().to_lowercase()
+    ));
+    if !thesis.secondary_domains.is_empty() {
+        mdx.push_str("secondary_domains:\n");
+        for sd in &thesis.secondary_domains {
+            mdx.push_str(&format!("  - \"{}\"\n", sd.label().to_lowercase()));
+        }
+    }
     if let Some(ref asm_id) = thesis.assessment_id {
         mdx.push_str(&format!("assessment_id: \"{}\"\n", asm_id));
     }
@@ -468,6 +489,47 @@ pub(crate) fn render_thesis_mdx(
             }
         }
     }
+    // ── Revision History (Git-style unified timeline) ──
+    {
+        let revisions = crate::domain::revision::build_revision_history(thesis);
+        let meaningful: Vec<_> = revisions.iter().filter(|v| v.is_meaningful()).collect();
+        if !meaningful.is_empty() {
+            mdx.push_str("revision_history:\n");
+            for v in meaningful.iter().rev().take(10) {
+                mdx.push_str(&format!(
+                    "  - version: {}\n    date: \"{}\"\n    confidence: {:.1}\n",
+                    v.version, v.date, v.confidence
+                ));
+                if let Some(delta) = v.confidence_delta {
+                    mdx.push_str(&format!("    confidence_delta: {:.1}\n", delta));
+                }
+                if let Some((ref from, ref to)) = v.decision_change {
+                    mdx.push_str(&format!(
+                        "    decision_change: \"{}->{}\"\n", from, to
+                    ));
+                }
+                if let Some((ref _from, ref to)) = v.status_change {
+                    mdx.push_str(&format!("    status_change: \"{}\"\n", yaml_escape(to)));
+                }
+                if !v.evidence_added.is_empty() {
+                    mdx.push_str(&format!(
+                        "    evidence_added: {}\n",
+                        v.evidence_added.len()
+                    ));
+                }
+                if !v.challenges_added.is_empty() {
+                    mdx.push_str(&format!(
+                        "    challenges_added: {}\n",
+                        v.challenges_added.len()
+                    ));
+                }
+                mdx.push_str(&format!(
+                    "    summary: {}\n",
+                    yaml_escape(&v.summary())
+                ));
+            }
+        }
+    }
     mdx.push_str("---\n\n");
 
     mdx.push_str(&format!("## Status\n\n- **状态:** {:?}\n", thesis.status));
@@ -557,6 +619,19 @@ pub(crate) fn render_research_mdx(report: &PremiumReport, locale: &str) -> Strin
     mdx.push_str(&format!("stage: \"{}\"\n", report.stage));
     mdx.push_str(&format!("is_premium: {}\n", report.is_premium));
     mdx.push_str("type: research\n");
+    let (research_primary, research_secondary) = crate::domain::StrategicDomain::classify(
+        &format!("{} {}", report.theme_title, report.executive_summary)
+    );
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        research_primary.label().to_lowercase()
+    ));
+    if !research_secondary.is_empty() {
+        mdx.push_str("secondary_domains:\n");
+        for sd in &research_secondary {
+            mdx.push_str(&format!("  - \"{}\"\n", sd.label().to_lowercase()));
+        }
+    }
     mdx.push_str("---\n\n");
 
     mdx.push_str("## Executive Summary\n\n");
@@ -651,6 +726,10 @@ pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str,
     mdx.push_str(&format!("date: \"{}\"\n", reflection.created_at));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: reflection\n");
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        reflection.primary_domain.label().to_lowercase()
+    ));
     let thesis_ref = assessment_id.unwrap_or(thesis_title);
     mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_ref)));
     mdx.push_str(&format!("verdict: \"{}\"\n", reflection.verdict));
@@ -696,6 +775,10 @@ pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str,
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: investigation\n");
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        report.primary_domain.label().to_lowercase()
+    ));
     if let Some(id) = inv_id {
         mdx.push_str(&format!("inv_id: \"{}\"\n", id));
     }
@@ -776,6 +859,10 @@ pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &
     mdx.push_str(&format!("updated: \"{}\"\n", dec.updated));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: decision\n");
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        dec.primary_domain.label().to_lowercase()
+    ));
     mdx.push_str(&format!("rationale: {}\n", yaml_escape(&dec.rationale)));
     if !dec.decision_history.is_empty() {
         mdx.push_str("transitions:\n");
@@ -846,6 +933,8 @@ mod contract_tests {
             confidence_at_creation: 0.75,
             confidence_now: 0.85,
             created_at: "2026-06-26".into(),
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         };
         let mdx = render_reflection_mdx(&reflection, "Test Thesis", None, "en");
         assert!(mdx.starts_with("---\n"));
@@ -871,6 +960,8 @@ mod contract_tests {
             falsification_conditions: vec!["No convergence by 2027".into()],
             preliminary_conclusion: "Likely to converge".into(),
             status: "active".to_string(),
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         };
         let mdx = render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"), "en");
         assert!(mdx.starts_with("---\n"));
@@ -900,6 +991,8 @@ mod contract_tests {
             updated: "2026-06-26".into(),
             outcome_ids: vec![],
             decision_history: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         };
         let mdx = render_decision_mdx(&dec, "en");
         assert!(mdx.starts_with("---\n"));

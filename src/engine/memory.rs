@@ -113,6 +113,11 @@ impl MemoryEngine {
         &self.theses
     }
 
+    /// Mutable access to theses (for domain refinement & other post-processing)
+    pub(crate) fn theses_mut(&mut self) -> &mut Vec<Thesis> {
+        &mut self.theses
+    }
+
     /// 获取指定 Thesis 的活跃 Investigation（按 state=active 优先，fallback 到任意）
     pub fn get_investigation_for_thesis(&self, thesis_id: &str) -> Option<&Investigation> {
         self.investigations
@@ -280,6 +285,8 @@ impl MemoryEngine {
                     decision_history: vec![],
                     falsification_conditions: analysis.falsification_conditions.clone(),
                     assessment_id: None,
+                    primary_domain: crate::domain::StrategicDomain::classify_primary(title),
+                    secondary_domains: crate::domain::StrategicDomain::classify(title).1,
                     lifecycle_events: vec![LifecycleEvent {
                         date: today.to_string(),
                         kind: LifecycleEventKind::Created,
@@ -626,6 +633,8 @@ impl MemoryEngine {
                 created: today.to_string(),
                 updated: today.to_string(),
                 outcome_ids: vec![],
+                primary_domain: crate::domain::StrategicDomain::classify_primary(&thesis_decision.thesis_title),
+                secondary_domains: crate::domain::StrategicDomain::classify(&thesis_decision.thesis_title).1,
                 decision_history: vec![DecisionTransition {
                     date: today.to_string(),
                     from: "initial".to_string(),
@@ -746,6 +755,8 @@ impl MemoryEngine {
             confidence_at_creation: conf_val,
             confidence_now: conf_val,
             created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+            primary_domain: thesis.primary_domain,
+            secondary_domains: thesis.secondary_domains.clone(),
         };
 
         Ok(reflection)
@@ -781,6 +792,7 @@ impl MemoryEngine {
         if self.find_by_title(&title).is_some() {
             return;
         }
+        let (primary_domain, secondary_domains) = crate::domain::StrategicDomain::classify(&title);
         self.theses.push(Thesis {
             id: format!("thesis-{}", chrono::Utc::now().timestamp()),
             title,
@@ -806,6 +818,8 @@ impl MemoryEngine {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            primary_domain,
+            secondary_domains,
             lifecycle_events: vec![LifecycleEvent {
                 date: today.to_string(),
                 kind: LifecycleEventKind::Created,
@@ -946,6 +960,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // 完全匹配
@@ -975,6 +991,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // "AI Commoditization" 与 "AI Commoditization Trends" 有 2/3 重叠
@@ -1004,6 +1022,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // "模型商品化趋势" 应通过字符级 Jaccard 后备匹配 "模型商品化"
@@ -1039,6 +1059,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         let result = mem.match_thesis("Weather Forecast");
@@ -1067,6 +1089,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         let result = mem.match_thesis("AI Commoditization");
@@ -1103,6 +1127,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1153,6 +1179,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1189,6 +1217,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         let status = mem.recompute_status(0, "2026-06-24");
@@ -1217,6 +1247,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // 超过 30 天 idle
@@ -1246,6 +1278,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // 仅 0 天 idle
@@ -1275,6 +1309,8 @@ mod tests {
             falsification_conditions: vec![],
             assessment_id: None,
             lifecycle_events: vec![],
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
         });
 
         // 即使 idle 超过 30 天，已 Retired 的应被跳过

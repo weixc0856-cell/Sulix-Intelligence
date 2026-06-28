@@ -249,6 +249,8 @@ mod tests {
             decision_history: vec![],
             falsification_conditions: vec![],
             assessment_id: None,
+            primary_domain: crate::domain::StrategicDomain::default(),
+            secondary_domains: vec![],
             lifecycle_events: vec![],
         }
     }

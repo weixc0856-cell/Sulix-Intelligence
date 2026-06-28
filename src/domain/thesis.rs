@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::strategic_domain::StrategicDomain;
 use crate::domain::evidence::{Evidence, Stance};
 use crate::domain::theme::Assumption;
 
@@ -101,6 +102,12 @@ pub struct Thesis {
     /// 是 Assessment 的公开永久身份标识
     #[serde(default)]
     pub assessment_id: Option<String>,
+    /// 主战略领域（固定 Taxonomy：AI/Semiconductor/Space/...）
+    #[serde(default)]
+    pub primary_domain: StrategicDomain,
+    /// 次要战略领域（跨领域问题）
+    #[serde(default)]
+    pub secondary_domains: Vec<StrategicDomain>,
     /// 管理生命周期事件日志（Created/Updated/Merged/Archived/Invalidated）
     /// 与 status_history（信号驱动）区分：lifecycle_events 是管理事件
     #[serde(default)]

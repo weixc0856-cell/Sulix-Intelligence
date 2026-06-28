@@ -12,6 +12,8 @@
 //! - reflection:  反思复盘（为什么对/错）
 
 pub mod action;
+pub mod strategic_domain;
+pub mod revision;
 pub mod evidence;
 pub mod investigation;
 pub mod outcome;
@@ -29,6 +31,8 @@ pub mod thesis;
 
 pub use action::{DecisionHorizon, DecisionStability, DecisionType};
 pub use decision::{DecisionRecord, DecisionState, DecisionTransition, ThesisDecision};
+pub use strategic_domain::StrategicDomain;
+pub use revision::{build_revision_history, Revision};
 pub use editor_note::EditorNote;
 pub use evidence::{compute_confidence, Evidence, FactBaseEntry, Stance};
 pub use investigation::{Investigation, InvestigationReport, Question, QuestionStatus};

@@ -28,6 +28,7 @@ use crate::domain::evidence::Stance;
 use crate::domain::outcome::{Outcome, OutcomeVerdict};
 use crate::domain::thesis::ThesisStatus;
 use crate::domain::EditorNote;
+use crate::domain::StrategicDomain;
 use crate::domain::ThesisDecision;
 use crate::engine::decision::map_theses_to_decisions;
 use crate::engine::investigation::generate_investigation;
@@ -69,6 +70,8 @@ struct GeneratedAssets {
     change_summary: crate::hermes::ChangeSummary,
     calibration_text: String,
     summary: crate::domain::theme::Summary,
+    /// theme title → (primary_domain, secondary_domains) — LLM-refined when keyword confidence low
+    refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)>,
 }
 
 /// Stage 3: Infer 阶段产出的认知状态
@@ -81,6 +84,8 @@ struct InferredState {
     beliefs_html: String,
     /// 待 Emit 阶段写入的 Investigation Reports (slug, report, assessment_id, inv_id)
     investigation_reports: Vec<(String, crate::domain::investigation::InvestigationReport, Option<String>, Option<String>)>,
+    /// theme title → (primary_domain, secondary_domains) — LLM-refined domains
+    refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)>,
 }
 
 // ===== Contract Constants =====
@@ -366,11 +371,42 @@ async fn publish_generate(
             change_summary.conflicts.len(), change_summary.reinforced.len(), change_summary.new_signals.len());
     }
 
+    // ── Strategic Domain Classification (with LLM refine for low-confidence topics) ──
+    let mut refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)> = HashMap::new();
+    for theme in themes {
+        let text = format!("{} {}", theme.title,
+            theme.articles.first()
+                .and_then(|a| a.summary.as_deref())
+                .unwrap_or(""));
+        if crate::domain::StrategicDomain::is_classify_low_confidence(&text) {
+            // Low keyword confidence → try LLM refine
+            let system_prompt = crate::domain::StrategicDomain::llm_classification_prompt();
+            match crate::llm::call_and_parse(
+                api_key, &config.llm, system_prompt, &text
+            ).await {
+                Ok(response) => {
+                    if crate::domain::StrategicDomain::validate_llm_output(&response) {
+                        let (primary, secondary) = crate::domain::StrategicDomain::parse_llm_response(&response);
+                        log::info!("🧠 Domain classify [{}]: {} (LLM-refined, was keyword)", theme.title, primary.label());
+                        refined_domains.insert(theme.title.clone(), (primary, secondary));
+                    }
+                }
+                Err(_) => {
+                    // LLM failed → keep keyword result (no entry in refined_domains)
+                }
+            }
+        }
+    }
+    if !refined_domains.is_empty() {
+        log::info!("🧠 Domain classification: {} topics LLM-refined", refined_domains.len());
+    }
+
     Ok(GeneratedAssets {
         asi_score_map, premium_reports,
         belief_notes_html,
         editor_notes, change_summary,
         calibration_text, summary,
+        refined_domains,
     })
 }
 
@@ -450,6 +486,16 @@ async fn publish_infer(
         crate::hermes::discover_theses(analyses, &chronicle, &mut memory, today);
         log::info!("🧠 Memory Engine: {} 个 Thesis (Hermes: {} 新增)",
             memory.theses().len(), memory.theses().len() - before);
+
+        // Apply LLM-refined domain classifications (overrides keyword-based defaults)
+        if !generated.refined_domains.is_empty() {
+            for thesis in memory.theses_mut() {
+                if let Some((primary, secondary)) = generated.refined_domains.get(&thesis.title) {
+                    thesis.primary_domain = *primary;
+                    thesis.secondary_domains = secondary.clone();
+                }
+            }
+        }
     }
 
     // Investigation Engine
@@ -631,6 +677,7 @@ async fn publish_infer(
         editor_notes: generated.editor_notes.clone(),
         beliefs_html,
         investigation_reports,
+        refined_domains: generated.refined_domains.clone(),
     })
 }
 

@@ -119,6 +119,8 @@ pub async fn generate_investigation(
         generated_at: now,
         questions,
         state: "active".to_string(),
+        primary_domain: crate::domain::StrategicDomain::default(),
+        secondary_domains: vec![],
     })
 }
 
@@ -191,6 +193,8 @@ pub fn derive_investigation_report(
         falsification_conditions,
         preliminary_conclusion,
         status: status.to_string(),
+        primary_domain: thesis.primary_domain,
+        secondary_domains: thesis.secondary_domains.clone(),
     }
 }
 

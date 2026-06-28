@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::strategic_domain::StrategicDomain;
+
 /// 反思记录：判断的复盘
 ///
 /// 一个完整的 Reflection 回答三个问题：
@@ -42,6 +44,12 @@ pub struct Reflection {
     pub confidence_now: f64,
     /// 反思创建日期
     pub created_at: String,
+    /// 主战略领域
+    #[serde(default)]
+    pub primary_domain: StrategicDomain,
+    /// 次要战略领域（跨领域问题）
+    #[serde(default)]
+    pub secondary_domains: Vec<StrategicDomain>,
 }
 
 
