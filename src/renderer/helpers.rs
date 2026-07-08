@@ -25,6 +25,8 @@ pub(crate) fn yaml_escape(s: &str) -> String {
         || s.contains('#')
         || s.contains('"')
         || s.contains('\'')
+        || s.contains('[')
+        || s.contains(']')
         || matches!(s, "true" | "false" | "null" | "yes" | "no" | "on" | "off")
         || s.chars().all(|c| c.is_numeric());
     if needs_quoting {

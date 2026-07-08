@@ -172,7 +172,8 @@ async fn main() -> Result<()> {
         let investigations = count_md(&mdx_path.join("investigation"));
         let archive_days = count_unique_dates(&mdx_path.join("daily"));
 
-        let manifest_path = mdx_path.join("manifest.json");
+        // manifest.json saved to vault_path (NOT mdx_dir — that is Astro content root)
+        let manifest_path = PathBuf::from(&config.output.vault_path).join("manifest.json");
         let prev_version = std::fs::read_to_string(&manifest_path)
             .ok()
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())

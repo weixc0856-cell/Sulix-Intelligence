@@ -1,0 +1,19 @@
+{
+  "next_id": 3,
+  "investigations": {
+    "INV-0002": {
+      "asm_id": "ASM-0002",
+      "thesis_id": "thesis-1783477455",
+      "created": "2026-07-08",
+      "updated": "2026-07-08",
+      "state": "active"
+    },
+    "INV-0001": {
+      "asm_id": "ASM-0001",
+      "thesis_id": "thesis-1783476798",
+      "created": "2026-07-08",
+      "updated": "2026-07-08",
+      "state": "active"
+    }
+  }
+}
