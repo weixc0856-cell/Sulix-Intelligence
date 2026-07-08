@@ -44,3 +44,6 @@ wrangler.jsonc
 # ---- 操作系统文件 ----
 Thumbs.db
 .DS_Store
+
+# ---- Cloudflare Agents SDK（独立 npm 项目，非 Rust crate 的一部分）----
+/agents/
