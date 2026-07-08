@@ -12,6 +12,9 @@ pub struct Config {
     pub llm: LlmConfig,
     pub output: OutputConfig,
     pub storage: Option<StorageConfig>,
+    /// Cloudflare R2 云存储（Phase 0）
+    #[serde(default)]
+    pub r2: Option<R2Config>,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
     /// Phase A: Scan Agent 配置
@@ -91,6 +94,24 @@ fn default_date_range() -> String {
 pub struct StorageConfig {
     pub data_dir: Option<String>,
 }
+
+/// Cloudflare R2 配置
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct R2Config {
+    /// R2 bucket 名称（如 "sulix-content"）
+    pub bucket: String,
+    /// R2 S3 兼容端点 URL
+    pub endpoint: String,
+    /// 公开访问 URL（可选，用于前端构建时拉取）
+    #[serde(default)]
+    pub public_url: Option<String>,
+    /// 是否启用 R2 上传
+    #[serde(default = "default_r2_enabled")]
+    pub enabled: bool,
+}
+
+fn default_r2_enabled() -> bool { true }
 
 /// RSS 源配置
 #[derive(Debug, Deserialize, Clone)]

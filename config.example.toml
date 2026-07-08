@@ -35,6 +35,16 @@ frontend_public_dir = "../intel-web/public/"
 [storage]
 data_dir = "./data"
 
+# ===== Cloudflare R2 存储 =====
+# Phase 0: 将内容资产上传到 R2，使前端在构建时通过公开 URL 拉取
+# 凭证通过环境变量注入（不写入 config.toml）:
+#   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT
+# [r2]
+# bucket = "sulix-content"
+# endpoint = "https://<accountid>.r2.cloudflarestorage.com"
+# public_url = "https://pub-<hash>.r2.dev"
+# enabled = true
+
 # ===== Phase A: Scan Agent =====
 [scan_agent]
 # 启用后，LLM 分析前先做轻量初筛
