@@ -118,6 +118,16 @@ pub async fn publish(
                 log::info!("📋 Manifest synced to frontend public/");
             }
         }
+
+        // Also sync to mdx_dir so R2 upload (Phase 1) can find it
+        if let Some(ref mdx_dir) = config.output.mdx_dir {
+            let mdx_manifest = PathBuf::from(mdx_dir).join("manifest.json");
+            if let Err(e) = manifest.save_as_json(&mdx_manifest) {
+                log::warn!("⚠️ Manifest mdx_dir sync failed: {}", e);
+            } else {
+                log::debug!("📋 Manifest synced to mdx_dir");
+            }
+        }
     }
 
     // 5. R2 upload (if configured — soft error, recorded in r2_status)
@@ -134,7 +144,8 @@ pub async fn publish(
                         let mdx_path = PathBuf::from(mdx_out);
                         for prefix in &["daily", "thesis", "assessment", "research",
                                         "investigation", "reflection", "decision"] {
-                            let result = r2.upload_dir(&mdx_path, prefix, "md").await;
+                            // Upload with trailing slash so keys are like "daily/file.md", not "dailyfile.md"
+                            let result = r2.upload_dir(&mdx_path, &format!("{}/", prefix), "md").await;
                             total_ok += result.uploaded.len();
                             total_fail += result.failed.len();
                             for (key, err) in &result.failed {
@@ -143,13 +154,18 @@ pub async fn publish(
                         }
                     }
 
-                    // Upload manifest
-                    if let Some(ref mdx_out) = config.output.mdx_dir {
-                        let manifest_path = PathBuf::from(mdx_out).join("manifest.json");
+                    // Upload manifest — try mdx_dir first, fall back to frontend_public_dir
+                    let manifest_sources = [
+                        config.output.mdx_dir.as_deref(),
+                        config.output.frontend_public_dir.as_deref(),
+                    ];
+                    for manifest_dir in manifest_sources.iter().flatten() {
+                        let manifest_path = PathBuf::from(manifest_dir).join("manifest.json");
                         if let Ok(data) = std::fs::read(&manifest_path) {
                             if let Err(e) = r2.upload_json("manifest.json", &data).await {
                                 log::warn!("⚠️ R2 manifest.json upload failed: {}", e);
                             }
+                            break;
                         }
                     }
 

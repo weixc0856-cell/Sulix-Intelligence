@@ -3,6 +3,7 @@ name = "sulix-intel"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.91"
+default-run = "sulix-intel"
 description = "Sulix Intelligence — 个人创业者的 AI 战略情报助手"
 
 [dependencies]
