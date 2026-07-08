@@ -2,6 +2,12 @@
 //!
 //! 记录管线中的关键事件（主题创建、合并、SVI 变化、论题更新、冲突检测），
 //! 支持 JSON 持久化与最近 N 条查询。
+//!
+//! # Object Event（审计线）
+//! 每个 DEC/ASM 创建时产生一条 ObjectEvent 纯值，通过 ArtifactSet.events 收集，
+//! 由 delivery::publisher 统一 flush 到 data/events/{date}.jsonl。
+//! 不做 event sourcing（不从事件重放状态）。
+//! 事件只含摘要字段，全量快照在 R2 objects/ 中。
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -23,6 +29,76 @@ pub enum PipelineEventType {
     OutcomeRecorded,
     /// Thesis 被证伪（Meta Layer）
     ThesisRefuted,
+}
+
+// ===== Step 2: Object Event 审计日志 =====
+
+/// 对象生命周期事件类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectEventType {
+    SignalCreated,
+    AssessmentCreated,
+    AssessmentUpdated,
+    DecisionCreated,
+    DecisionUpdated,
+    OutcomeRecorded,
+    ThesisRefuted,
+    ReflectionGenerated,
+    /// 对象被验证门拒绝（不阻止管线完成）
+    PublishRejected,
+    /// 单次发布完成（汇总事件，summary 放 passed/rejected/r2_status）
+    PublishCompleted,
+}
+
+/// Schema 当前版本（递增此值当 JSONL 格式变更）
+pub const OBJECT_EVENT_SCHEMA_VERSION: u32 = 1;
+
+/// 对象生命周期事件（审计线）
+/// 只含摘要字段，全量快照在 R2 objects/ 中。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectEvent {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+    pub event_type: ObjectEventType,
+    pub object_id: String,
+    pub object_type: String,
+    /// 摘要字段：decision 存 {confidence, asm_id}，outcome 存 {verdict, thesis_id}
+    pub summary: serde_json::Value,
+    pub source: String,
+    pub timestamp: String,
+}
+
+fn default_schema_version() -> u32 { OBJECT_EVENT_SCHEMA_VERSION }
+
+impl ObjectEvent {
+    pub fn new(
+        event_type: ObjectEventType,
+        object_id: &str,
+        object_type: &str,
+        summary: serde_json::Value,
+        source: &str,
+    ) -> Self {
+        Self {
+            schema_version: OBJECT_EVENT_SCHEMA_VERSION,
+            event_type,
+            object_id: object_id.to_string(),
+            object_type: object_type.to_string(),
+            summary,
+            source: source.to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// 创建一个 complete 事件（publish 结束时的汇总锚点）
+    pub fn complete(source: &str, summary: serde_json::Value) -> Self {
+        Self::new(
+            ObjectEventType::PublishCompleted,
+            "pipeline", "pipeline",
+            summary,
+            source,
+        )
+    }
 }
 
 /// 单条管线事件

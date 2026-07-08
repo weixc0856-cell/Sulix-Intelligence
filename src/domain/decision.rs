@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::strategic_domain::StrategicDomain;
+use crate::event_log::{ObjectEvent, ObjectEventType};
 
 // ===== Canonical Decision Object (DEC-XXXX) =====
 
@@ -71,6 +72,52 @@ pub struct DecisionRecord {
     /// Type transition log (from → to events)
     #[serde(default)]
     pub decision_history: Vec<DecisionTransition>,
+}
+
+impl DecisionRecord {
+    /// 创建新的规范 Decision 记录（同时产出审计事件）
+    pub fn new(
+        id: String,
+        asm_id: String,
+        thesis_id: String,
+        decision_type: String,
+        horizon: String,
+        confidence: f64,
+        rationale: String,
+        stability: String,
+        primary_domain: StrategicDomain,
+        today: &str,
+    ) -> (Self, ObjectEvent) {
+        let record = Self {
+            id: id.clone(),
+            asm_id,
+            thesis_id,
+            decision_type: decision_type.clone(),
+            horizon,
+            confidence,
+            rationale,
+            stability,
+            state: DecisionState::Active,
+            created: today.to_string(),
+            updated: today.to_string(),
+            outcome_ids: vec![],
+            primary_domain,
+            secondary_domains: vec![],
+            decision_history: vec![],
+        };
+        let event = ObjectEvent::new(
+            ObjectEventType::DecisionCreated,
+            &record.id,
+            "decision",
+            serde_json::json!({
+                "confidence": record.confidence,
+                "asm_id": record.asm_id,
+                "decision_type": decision_type,
+            }),
+            "agent_publish",
+        );
+        (record, event)
+    }
 }
 
 /// Thesis → Decision 映射结果

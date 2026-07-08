@@ -24,6 +24,7 @@ pub mod decision;
 pub mod editor_note;
 pub mod question_match;
 pub mod thesis;
+pub mod artifact;
 
 // ===== 统一重导出 =====
 // 显式列出的类型 — 只有外部实际消费的类型才暴露。

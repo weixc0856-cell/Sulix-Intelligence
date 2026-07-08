@@ -19,6 +19,7 @@
 //!   - serde aliases 确保旧数据向后兼容
 
 use serde::{Deserialize, Serialize};
+use crate::event_log::{ObjectEvent, ObjectEventType};
 
 /// 结果判定 — 判断 vs 现实
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -69,4 +70,81 @@ pub struct Outcome {
     /// 期望 vs 实际的偏差（归因模型: delta，一句话概括）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub delta: String,
+}
+
+impl Outcome {
+    /// 创建新的 Outcome 记录（同时产出审计事件）
+    /// 简化版构造函数：只填核心字段，supporting_evidence/expected/actual/delta 默认空
+    pub fn new(
+        id: String,
+        thesis_id: String,
+        description: String,
+        verdict: OutcomeVerdict,
+        date: String,
+    ) -> (Self, ObjectEvent) {
+        let record = Self {
+            id: id.clone(),
+            thesis_id: thesis_id.clone(),
+            description,
+            verdict,
+            date,
+            supporting_evidence: vec![],
+            expected_signal: String::new(),
+            actual_signal: String::new(),
+            delta: String::new(),
+        };
+        let event = ObjectEvent::new(
+            ObjectEventType::OutcomeRecorded,
+            &record.id,
+            "outcome",
+            serde_json::json!({
+                "verdict": format!("{:?}", record.verdict),
+                "thesis_id": thesis_id,
+            }),
+            "agent_publish",
+        );
+        (record, event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_log::OBJECT_EVENT_SCHEMA_VERSION;
+
+    #[test]
+    fn test_outcome_new_creates_event_with_correct_fields() {
+        let (outcome, event) = Outcome::new(
+            "outcome-test-1".into(),
+            "thesis-test-1".into(),
+            "Test outcome".into(),
+            OutcomeVerdict::Confirmed,
+            "2026-07-08".into(),
+        );
+
+        assert_eq!(outcome.id, "outcome-test-1");
+        assert_eq!(outcome.thesis_id, "thesis-test-1");
+        assert_eq!(outcome.verdict, OutcomeVerdict::Confirmed);
+
+        assert_eq!(event.event_type, ObjectEventType::OutcomeRecorded);
+        assert_eq!(event.object_id, "outcome-test-1");
+        assert_eq!(event.object_type, "outcome");
+        assert_eq!(event.summary["verdict"], "Confirmed");
+        assert_eq!(event.summary["thesis_id"], "thesis-test-1");
+        assert_eq!(event.schema_version, OBJECT_EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_outcome_new_invalidated() {
+        let (outcome, event) = Outcome::new(
+            "outcome-test-2".into(),
+            "thesis-test-2".into(),
+            "Was wrong".into(),
+            OutcomeVerdict::Invalidated,
+            "2026-07-08".into(),
+        );
+
+        assert_eq!(outcome.verdict, OutcomeVerdict::Invalidated);
+        assert_eq!(event.summary["verdict"], "Invalidated");
+    }
 }

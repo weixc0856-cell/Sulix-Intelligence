@@ -36,3 +36,11 @@ output/
 # 操作系统文件
 Thumbs.db
 .DS_Store
+
+# DailyBrief — 全部生成产物（registries/design/manifest/reports）
+# 不含手动配置或模板文件
+/DailyBrief/
+
+# 事件日志与验证报告
+*.jsonl
+data/validation_report.json
