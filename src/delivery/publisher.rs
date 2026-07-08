@@ -181,6 +181,32 @@ pub async fn publish(
                         }
                     }
 
+                    // Upload state files for CI persistence (memory_db, entity_db, etc.)
+                    let state_files = [
+                        (config.output.vault_path.as_str(), "memory_db.json"),
+                        (config.output.vault_path.as_str(), "decision_registry.json"),
+                    ];
+                    for (base_dir, filename) in &state_files {
+                        let state_path = PathBuf::from(base_dir).join(filename);
+                        if let Ok(data) = std::fs::read(&state_path) {
+                            let r2_key = format!("state/{}", filename);
+                            if let Err(e) = r2.upload_json(&r2_key, &data).await {
+                                log::warn!("⚠️ R2 state/{} upload failed: {}", filename, e);
+                            } else {
+                                log::debug!("☁️ R2 state/{} uploaded", filename);
+                            }
+                        }
+                    }
+                    let entity_path = data_dir.join("entity_db.json");
+                    if entity_path.exists() {
+                        if let Ok(data) = std::fs::read(&entity_path) {
+                            if let Err(e) = r2.upload_json("state/entity_db.json", &data).await {
+                                log::warn!("⚠️ R2 state/entity_db.json upload failed: {}", e);
+                            }
+                        }
+                    }
+
+
                     if total_fail > 0 {
                         r2_status = format!("partial_failure ({}/{})", total_ok, total_ok + total_fail);
                     } else if total_ok > 0 {

@@ -35,6 +35,9 @@ pub struct ContentManifest {
     pub total_signals: usize,
     pub total_assessments: usize,
     pub pipeline_status: String,
+    /// CI run ID (GITHUB_RUN_ID)，本地运行为 "local"
+    #[serde(default)]
+    pub pipeline_run_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipeline_observation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,6 +77,7 @@ impl ContentManifest {
             total_signals: 0,
             total_assessments: 0,
             pipeline_status: status.to_string(),
+            pipeline_run_id: std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string()),
             pipeline_observation_count: observation_count,
             pipeline_signal_count: signal_count,
             output_counts: None,

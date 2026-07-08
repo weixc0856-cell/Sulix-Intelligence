@@ -1,0 +1,33 @@
+# Sulix Intelligence — CI 配置
+# 用于 GitHub Actions runner，路径均为相对路径
+# 本地开发使用 config.toml（.gitignore）
+
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com/v1"
+max_tokens = 4096
+temperature = 0.3
+
+[output]
+vault_path = "./DailyBrief"
+mdx_dir = "./content"
+frontend_public_dir = "./public"
+
+[storage]
+data_dir = "./data"
+
+[r2]
+bucket = "sulix-content"
+endpoint = "https://a754cffcd8dfec7a51c66164863f16b8.r2.cloudflarestorage.com"
+public_url = "https://pub-253c4c23dbe0465aac15cb4fc2402c13.r2.dev"
+enabled = true
+
+[translation]
+enabled = false
+target_locales = ["zh-cn", "zh-tw"]
+translate_dirs = ["decision", "thesis", "research", "assessment"]
+max_files_per_run = 5
+concurrency = 3
+
+# CI 暂不启用翻译（首跑验证通过后打开）
