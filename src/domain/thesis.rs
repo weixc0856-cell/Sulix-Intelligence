@@ -234,6 +234,32 @@ pub struct BeliefDb {
     pub contradictions_detected: usize,
 }
 
+impl BeliefDb {
+    /// 从信念变更提案创建 BeliefDb（当前仅含一条被批准的变更）
+    pub fn new(change: &crate::engine::memory::BeliefChangeCandidate) -> Self {
+        Self {
+            snapshot_date: change.created_at.clone(),
+            beliefs: vec![BeliefStatement {
+                id: format!("belief-{}", chrono::Utc::now().timestamp()),
+                text: change.belief_text.clone(),
+                confidence: change.suggested_confidence,
+                category: change.category.clone(),
+                evidence_ids: vec![],
+            }],
+            recent_updates: vec![BeliefUpdate {
+                belief_id: String::new(),
+                delta: change.suggested_confidence as i8,
+                evidence_type: crate::domain::evidence::Stance::Supports,
+                reasoning: format!("Approved from outcome {}", change.outcome_id),
+                is_contradiction: false,
+            }],
+            total_support: 1,
+            total_challenge: 0,
+            contradictions_detected: 0,
+        }
+    }
+}
+
 /// Repository trait for MemoryEngine operations needed by Hermes modules.
 ///
 /// Enables hermes/ module to depend on domain/ instead of engine/,

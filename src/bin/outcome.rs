@@ -27,6 +27,8 @@ fn main() {
     let result = match args[1].as_str() {
         "record" => cmd_record(&args[1..]),
         "reflect" => cmd_reflect(&args[1..]),
+        "propose-belief" => cmd_propose_belief(&args[1..]),
+        "apply-belief" => cmd_apply_belief(&args[1..]),
         "list" => cmd_list(&args[1..]),
         "status" => cmd_status(&args[1..]),
         other => {
@@ -219,6 +221,73 @@ fn cmd_reflect(args: &[String]) -> anyhow::Result<()> {
     memory.save()?;
 
     println!("✅ Reflection generated for {outcome_id}");
+    Ok(())
+}
+
+fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
+    if args.len() < 2 {
+        anyhow::bail!("Usage: sulix-outcome propose-belief OUT-ID");
+    }
+    let outcome_id = &args[1];
+
+    let (_, vault_path) = load_config()?;
+    let mut memory = load_memory(&vault_path)?;
+
+    // Find outcome
+    let outcome = memory.all_outcomes().iter()
+        .find(|o| o.id == *outcome_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Outcome '{}' not found", outcome_id))?;
+
+    // Find matching reflection
+    let reflection = memory.all_reflections().iter()
+        .find(|r| r.outcome_id == *outcome_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("No reflection found for outcome '{}'. Run 'sulix-outcome reflect {}' first.", outcome_id, outcome_id))?;
+
+    // Generate belief text from reflection lessons
+    let belief_text = reflection.lessons.first()
+        .cloned()
+        .unwrap_or_else(|| format!("Reflection on {}", outcome_id));
+
+    let change = sulix_intel::engine::memory::BeliefChangeCandidate {
+        id: format!("cand-{}", chrono::Utc::now().timestamp()),
+        reflection_id: reflection.id.clone(),
+        outcome_id: outcome_id.to_string(),
+        thesis_id: outcome.thesis_id.clone(),
+        belief_text,
+        suggested_confidence: 6, // Default: medium-high
+        category: "manual".to_string(),
+        created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        applied_confidence: None,
+        applied: false,
+    };
+
+    memory.add_belief_change(change.clone());
+    memory.save()?;
+
+    println!("✅ BeliefChangeCandidate {} proposed", change.id);
+    println!("   Based on: {}", outcome_id);
+    println!("   Belief: {}", change.belief_text);
+    println!("   Suggested confidence: {}/10", change.suggested_confidence);
+    println!("   Run 'sulix-outcome apply-belief {}' to approve", change.id);
+    Ok(())
+}
+
+fn cmd_apply_belief(args: &[String]) -> anyhow::Result<()> {
+    if args.len() < 2 {
+        anyhow::bail!("Usage: sulix-outcome apply-belief CAND-ID");
+    }
+    let change_id = &args[1];
+
+    let (_, vault_path) = load_config()?;
+    let mut memory = load_memory(&vault_path)?;
+
+    let db = memory.apply_belief_change(change_id)?;
+    memory.save()?;
+
+    println!("✅ BeliefChange {change_id} approved");
+    println!("   BeliefDb updated: {} beliefs", db.beliefs.len());
     Ok(())
 }
 

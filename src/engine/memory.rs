@@ -45,6 +45,9 @@ pub struct MemoryEngine {
     /// 所有 Canonical Decision 记录（DEC-XXXX）
     #[serde(default)]
     decisions: Vec<crate::domain::DecisionRecord>,
+    /// 信念变更提案（Day 3: Reflection → Belief，人工批准）
+    #[serde(default)]
+    belief_changes: Vec<BeliefChangeCandidate>,
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
@@ -81,6 +84,7 @@ impl MemoryEngine {
             reflections: Vec::new(),
             investigations: Vec::new(),
             decisions: Vec::new(),
+            belief_changes: Vec::new(),
             memory_path,
         }
     }
@@ -95,6 +99,7 @@ impl MemoryEngine {
             self.reflections = loaded.reflections;
             self.investigations = loaded.investigations;
             self.decisions = loaded.decisions;
+            self.belief_changes = loaded.belief_changes;
         }
         Ok(())
     }
@@ -606,6 +611,39 @@ impl MemoryEngine {
         &self.outcomes
     }
 
+    // ===== Belief Change (Day 3: Reflection → Belief, human approval) =====
+
+    /// 添加信念变更提案
+    pub fn add_belief_change(&mut self, change: BeliefChangeCandidate) {
+        self.belief_changes.push(change);
+    }
+
+    /// 获取所有信念变更提案
+    pub fn all_belief_changes(&self) -> &[BeliefChangeCandidate] {
+        &self.belief_changes
+    }
+
+    /// 应用信念变更（人工批准）
+    ///
+    /// 返回应用后的 BeliefDb 快照。
+    pub fn apply_belief_change(&mut self, change_id: &str) -> Result<crate::domain::thesis::BeliefDb> {
+        let change = self.belief_changes.iter_mut()
+            .find(|c| c.id == change_id)
+            .ok_or_else(|| anyhow::anyhow!("BeliefChange '{}' not found", change_id))?;
+
+        if change.applied {
+            anyhow::bail!("BeliefChange '{}' already applied", change_id);
+        }
+
+        let confidence = change.suggested_confidence;
+        change.applied_confidence = Some(confidence);
+        change.applied = true;
+
+        use crate::domain::thesis::BeliefDb;
+        let db = BeliefDb::new(&change);
+        Ok(db)
+    }
+
     /// 记录今日决策到 thesis.decision_history（Stability Layer 持久化）
     ///
     /// 在 publishing.rs 的 map_theses_to_decisions() 之后调用，
@@ -925,6 +963,30 @@ impl MemoryEngine {
     }
 }
 
+/// 信念变更提案——由 Reflection 生成，人工批准后方可写 BeliefDb
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BeliefChangeCandidate {
+    pub id: String,
+    /// 来源 Reflection ID
+    pub reflection_id: String,
+    /// 来源 Outcome ID
+    pub outcome_id: String,
+    /// 来源 Thesis ID
+    pub thesis_id: String,
+    /// 建议的信念文本
+    pub belief_text: String,
+    /// 建议的置信度 1-10
+    pub suggested_confidence: u8,
+    /// 类别
+    pub category: String,
+    /// 创建时间
+    pub created_at: String,
+    /// 人工确认后的最终置信度（确认前为 None）
+    pub applied_confidence: Option<u8>,
+    /// 是否已应用
+    pub applied: bool,
+}
+
 /// JSON 持久化包装
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MemoryEngineData {
@@ -937,6 +999,8 @@ struct MemoryEngineData {
     investigations: Vec<Investigation>,
     #[serde(default)]
     decisions: Vec<crate::domain::DecisionRecord>,
+    #[serde(default)]
+    belief_changes: Vec<BeliefChangeCandidate>,
 }
 
 impl From<&MemoryEngine> for MemoryEngineData {
@@ -947,6 +1011,7 @@ impl From<&MemoryEngine> for MemoryEngineData {
             reflections: mem.reflections.clone(),
             investigations: mem.investigations.clone(),
             decisions: mem.decisions.clone(),
+            belief_changes: mem.belief_changes.clone(),
         }
     }
 }
