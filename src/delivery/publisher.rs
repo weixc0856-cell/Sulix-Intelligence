@@ -100,15 +100,8 @@ pub async fn publish(
         artifacts.total_signals,
     );
 
-    // 4. Local write
-    if let Some(ref mdx_path) = config.output.mdx_dir {
-        let mdx_base = PathBuf::from(mdx_path);
-
-        // Write manifest to mdx_dir and vault_path
-        if let Err(e) = manifest.save_as_json(&mdx_base.join("manifest.json")) {
-            log::warn!("⚠️ Manifest local save failed: {}", e);
-        }
-
+    // 4. Local write — manifest to vault_path and frontend public/ (NOT to mdx_dir — that is Astro content root)
+    {
         let vault_manifest_path = PathBuf::from(&config.output.vault_path).join("manifest.json");
         if let Err(e) = manifest.save_as_json(&vault_manifest_path) {
             log::warn!("⚠️ Manifest vault save failed: {}", e);
