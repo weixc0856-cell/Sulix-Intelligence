@@ -37,3 +37,8 @@ scraper = "0.27"
 # A股关键词预过滤（高频源降噪）
 regex = "1.11"
 sha2 = "0.10"
+
+# Cloudflare R2 (S3 兼容 API)
+aws-sdk-s3 = { version = "1", features = ["rt-tokio"] }
+aws-config = { version = "1" }
+aws-credential-types = "1"

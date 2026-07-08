@@ -240,6 +240,53 @@ async fn main() -> Result<()> {
         }
     }
 
+    // ☁️ R2 Upload: 内容资产 + manifest + pipeline report
+    if let Some(ref r2_config) = config.r2 {
+        if r2_config.enabled {
+            match sulix_intel::storage::R2Client::from_config(r2_config).await {
+                Ok(r2) => {
+                    // 1. 上传 MDX 内容目录
+                    if let Some(ref mdx_out) = config.output.mdx_dir {
+                        let mdx_path = std::path::PathBuf::from(mdx_out);
+                        for prefix in &["daily", "thesis", "assessment", "research",
+                                        "investigation", "reflection", "decision"] {
+                            let result = r2.upload_dir(&mdx_path, prefix, "md").await;
+                            log::info!("☁️ R2: {}/ — {} 上传成功, {} 失败",
+                                prefix, result.uploaded.len(), result.failed.len());
+                            for (key, err) in &result.failed {
+                                log::warn!("☁️ R2 上传失败 [{}]: {}", key, err);
+                            }
+                        }
+                    }
+                    // 2. 上传 manifest.json
+                    if let Some(ref mdx_out) = config.output.mdx_dir {
+                        let manifest_path = std::path::PathBuf::from(mdx_out).join("manifest.json");
+                        if let Ok(data) = std::fs::read(&manifest_path) {
+                            if let Err(e) = r2.upload_json("manifest.json", &data).await {
+                                log::warn!("⚠️ R2 manifest.json 上传失败: {}", e);
+                            }
+                        }
+                    }
+                    // 3. 上传 pipeline_report.json
+                    let report_paths = [
+                        data_dir.join("pipeline_report.json"),
+                        PathBuf::from(&config.output.vault_path).join("pipeline_report.json"),
+                    ];
+                    for path in &report_paths {
+                        if let Ok(data) = std::fs::read(path) {
+                            if let Err(e) = r2.upload_json("pipeline_report.json", &data).await {
+                                log::warn!("⚠️ R2 pipeline_report.json 上传失败: {}", e);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(e) => log::warn!("⚠️ R2 客户端初始化失败: {}", e),
+            }
+        }
+    }
+
     // Phase 0: Validate output contract — ensure frontend has everything it needs
     validate_output_contract(&config, &report).await;
 

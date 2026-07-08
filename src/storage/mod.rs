@@ -1,8 +1,10 @@
-//! 持久化辅助工具
+//! 持久化辅助工具 + R2 云存储客户端
 //!
-//! 当前仅保留 `with_corrupt_recovery()` 函数。
-//! 原 Saveable/Loadable trait 设计（Phase 3 蓝图）已归档移除——
-//! 各模块保持各自的持久化签名，通过此高阶函数获得损坏备份保护。
+//! - `with_corrupt_recovery()` — JSON 文件损坏备份恢复
+//! - `R2Client` — Cloudflare R2 对象存储上传
+
+pub mod r2;
+pub use r2::R2Client;
 
 use std::path::Path;
 
