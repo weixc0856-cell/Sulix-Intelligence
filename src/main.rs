@@ -14,7 +14,6 @@ use sulix_intel::catalog;
 use sulix_intel::clusterer;
 use sulix_intel::config;
 use sulix_intel::db;
-use sulix_intel::engine;
 use sulix_intel::entity;
 use sulix_intel::fetcher;
 use sulix_intel::llm;
