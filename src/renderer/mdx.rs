@@ -786,7 +786,7 @@ pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str,
     mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
     // thesis_ref: 优先用稳定的 ASM-ID，fallback 到 title-derived slug
     let thesis_ref = assessment_id.unwrap_or(slug);
-    mdx.push_str(&format!("thesis_ref: \"{}\"\n", yaml_escape(thesis_ref)));
+    mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_ref)));
     if !report.supporting_evidence.is_empty() {
         mdx.push_str(&format!("supporting_count: {}\n", report.supporting_evidence.len()));
     }
@@ -868,7 +868,7 @@ pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &
         mdx.push_str("transitions:\n");
         for t in &dec.decision_history {
             mdx.push_str(&format!(
-                "  - date: \"{}\" from: \"{}\" to: \"{}\" confidence: {:.2}\n",
+                "  - date: \"{}\"\n    from: \"{}\"\n    to: \"{}\"\n    confidence: {:.2}\n",
                 t.date, t.from, t.to, t.confidence
             ));
         }

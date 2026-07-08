@@ -56,10 +56,477 @@
       "merged_ids": [],
       "related_thesis_ids": [],
       "metadata": {},
-      "investigation_id": null
+      "investigation_id": null,
+      "decision_history": [
+        {
+          "date": "2026-07-08",
+          "decision_type": "monitor",
+          "confidence": 0.9
+        }
+      ],
+      "falsification_conditions": [],
+      "assessment_id": null,
+      "primary_domain": "other",
+      "secondary_domains": [],
+      "lifecycle_events": []
+    },
+    {
+      "id": "thesis-1783476798",
+      "title": "今日要闻",
+      "created": "2026-07-08",
+      "updated": "2026-07-08",
+      "evidences": [
+        {
+          "date": "2026-07-08",
+          "title": "今日要闻",
+          "source": "Google DeepMind Blog",
+          "summary": "Google DeepMind与A24的首次合作表明AI在创意产业的应用进入商业化阶段，内容创作者应重新评估AI工具的采用策略。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-07-08",
+          "title": "Google DeepMind与A24的首次合作表明AI在创意产业的应用进入商业化阶段，内容创作者应重新评估AI工具的采用策略。",
+          "source": "Hermes.Conflict",
+          "summary": "近 7 天出现 1 次",
+          "stance": "Challenges",
+          "signal_strength": 8
+        },
+        {
+          "date": "2026-07-08",
+          "title": "今日要闻",
+          "source": "OpenAI Blog",
+          "summary": "Enterprise AI adoption accelerates as major institutions partner with AI leaders, reinforcing the imperative for startups to integrate AI capabilities now.",
+          "stance": "Supports",
+          "signal_strength": 7
+        },
+        {
+          "date": "2026-07-08",
+          "title": "Enterprise AI adoption accelerates as major institutions partner with AI leaders, reinforcing the imperative for startups to integrate AI capabilities now.",
+          "source": "Hermes.Conflict",
+          "summary": "近 7 天出现 2 次",
+          "stance": "Challenges",
+          "signal_strength": 8
+        },
+        {
+          "date": "2026-07-08",
+          "title": "Enterprise adoption of AI in finance and AI partnerships in creative industries confirm accelerating AI integration across sectors, prompting founders to target verticalized AI solutions.",
+          "source": "Hermes.Conflict",
+          "summary": "近 7 天出现 2 次",
+          "stance": "Challenges",
+          "signal_strength": 8
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "假设A24的参与标志着整个创意产业对AI的认可，而不仅仅是该工作室的特定战略",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设合作能顺利转化为商业化产品，且不会遇到技术瓶颈或创意质量争议",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设内容创作者会主动调整采纳策略，而非抵制或等待更成熟方案",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "假设版权和真实性的法律问题能在短期内解决或不会阻碍应用",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Strengthening",
+      "confidence_history": [
+        {
+          "date": "2026-07-08",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        },
+        {
+          "date": "2026-07-08",
+          "value": 0.6333333333333333,
+          "trigger": "StatusChange",
+          "reason": "daily update"
+        },
+        {
+          "date": "2026-07-08",
+          "value": 0.5,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-07-08",
+          "value": 0.5,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        },
+        {
+          "date": "2026-07-08",
+          "value": 0.42000000000000004,
+          "trigger": "OutcomeRecorded",
+          "reason": "outcome recorded"
+        }
+      ],
+      "status_history": [
+        {
+          "from": "Active",
+          "to": "Strengthening",
+          "date": "2026-07-08",
+          "trigger": "EvidenceThreshold",
+          "description": "Active → Strengthening (evidence: 3)"
+        }
+      ],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": "INV-0001",
+      "decision_history": [
+        {
+          "date": "2026-07-08",
+          "decision_type": "monitor",
+          "confidence": 0.5
+        }
+      ],
+      "falsification_conditions": [
+        "MUFG publicly announces scaling back ChatGPT Enterprise usage within 6 months.",
+        "Google DeepMind or A24 declares the partnership ended without a product launch.",
+        "No other major bank adopts an enterprise AI platform within next quarter.",
+        "Enterprise AI adoption metrics from industry surveys show a decline in next two quarters."
+      ],
+      "assessment_id": "ASM-0001",
+      "primary_domain": "other",
+      "secondary_domains": [],
+      "lifecycle_events": [
+        {
+          "date": "2026-07-08",
+          "kind": {
+            "kind": "Created"
+          }
+        },
+        {
+          "date": "2026-07-08",
+          "kind": {
+            "kind": "Updated",
+            "detail": {
+              "note": "3 evidence total"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "thesis-1783477455",
+      "title": "企业AI应用",
+      "created": "2026-07-08",
+      "updated": "2026-07-08",
+      "evidences": [
+        {
+          "date": "2026-07-08",
+          "title": "企业AI应用",
+          "source": "OpenAI Blog",
+          "summary": "金融机构采用ChatGPT Enterprise的案例确认企业AI采用趋势加速，但未改变现有战略判断。",
+          "stance": "Supports",
+          "signal_strength": 6
+        },
+        {
+          "date": "2026-07-08",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 21 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
+        },
+        {
+          "date": "2026-07-08",
+          "title": "Trend: AI ↑ 100%",
+          "source": "Hermes.Trend",
+          "summary": "AI: 21 篇 vs 前 0 篇",
+          "stance": "Supports",
+          "signal_strength": 10
+        }
+      ],
+      "assumptions": [
+        {
+          "text": "金融机构的ChatGPT Enterprise成功案例可以推广到其他行业",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "企业AI需求持续增长，不受经济下行影响",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "企业愿意为AI工具付费并能承担大模型供应商锁定风险",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        },
+        {
+          "text": "合规要求不会显著增加部署成本或阻碍采用",
+          "load_bearing": true,
+          "evidence_strength": "weak"
+        }
+      ],
+      "status": "Active",
+      "confidence_history": [
+        {
+          "date": "2026-07-08",
+          "value": 0.9,
+          "trigger": "Initial",
+          "reason": "thesis created"
+        }
+      ],
+      "status_history": [],
+      "parent_id": null,
+      "merged_ids": [],
+      "related_thesis_ids": [],
+      "metadata": {},
+      "investigation_id": "INV-0002",
+      "decision_history": [
+        {
+          "date": "2026-07-08",
+          "decision_type": "monitor",
+          "confidence": 0.9
+        }
+      ],
+      "falsification_conditions": [
+        "任何一家早期采用者（如AP+或MUFG）公开宣布因效果不佳而停止使用ChatGPT Enterprise。",
+        "OpenAI企业版收入连续两个季度环比下降超过20%。",
+        "主要云厂商（AWS、Azure、GCP）推出价格低于ChatGPT Enterprise的等效产品并获得同样规模客户。",
+        "金融监管机构（如APRA、FSA）发布限制金融机构使用外部大模型的新规。"
+      ],
+      "assessment_id": "ASM-0002",
+      "primary_domain": "ai",
+      "secondary_domains": [],
+      "lifecycle_events": [
+        {
+          "date": "2026-07-08",
+          "kind": {
+            "kind": "Created"
+          }
+        }
+      ]
     }
   ],
-  "outcomes": [],
-  "reflections": [],
-  "investigations": []
+  "outcomes": [
+    {
+      "id": "outcome-1783477239",
+      "thesis_id": "thesis-1783476798",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-07-08",
+      "supporting_evidence": [],
+      "actual_signal": "4条支持证据",
+      "delta": "方向正确，持续验证中"
+    },
+    {
+      "id": "outcome-1783477461",
+      "thesis_id": "thesis-1783476798",
+      "description": "证据持续积累 (4 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-07-08",
+      "supporting_evidence": [],
+      "actual_signal": "4条支持证据",
+      "delta": "方向正确，持续验证中"
+    },
+    {
+      "id": "outcome-1783477730",
+      "thesis_id": "thesis-1783476798",
+      "description": "证据持续积累 (5 条)",
+      "verdict": "PartiallyConfirmed",
+      "date": "2026-07-08",
+      "supporting_evidence": [],
+      "actual_signal": "5条支持证据",
+      "delta": "方向正确，持续验证中"
+    }
+  ],
+  "reflections": [
+    {
+      "id": "reflection-1783477239",
+      "thesis_id": "thesis-1783476798",
+      "outcome_id": "outcome-1783477239",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.5,
+      "confidence_now": 0.5,
+      "created_at": "2026-07-08",
+      "primary_domain": "other",
+      "secondary_domains": []
+    },
+    {
+      "id": "reflection-1783477461",
+      "thesis_id": "thesis-1783476798",
+      "outcome_id": "outcome-1783477461",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (4 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.5,
+      "confidence_now": 0.5,
+      "created_at": "2026-07-08",
+      "primary_domain": "other",
+      "secondary_domains": []
+    },
+    {
+      "id": "reflection-1783477730",
+      "thesis_id": "thesis-1783476798",
+      "outcome_id": "outcome-1783477730",
+      "verdict": "partially-confirmed",
+      "error_reason": "判断基本正确，但细节有偏差",
+      "lessons": [
+        "结果: 证据持续积累 (5 条)",
+        "错误原因: 判断基本正确，但细节有偏差"
+      ],
+      "confidence_at_creation": 0.42000000000000004,
+      "confidence_now": 0.42000000000000004,
+      "created_at": "2026-07-08",
+      "primary_domain": "other",
+      "secondary_domains": []
+    }
+  ],
+  "investigations": [
+    {
+      "id": "INV-0001",
+      "thesis_id": "thesis-1783476798",
+      "generated_at": "2026-07-08",
+      "questions": [
+        {
+          "id": "q-thesis-1783476798-0",
+          "text": "A24 的 AI 合作是否导致其他主流制片厂（如 Netflix、华纳）在 6 个月内跟进类似合作？",
+          "importance": 10,
+          "hypothesis": "至少两家大型制片厂会公开宣布与 AI 公司的合作计划",
+          "falsification": "6 个月内没有其他主流制片厂宣布任何形式的 AI 合作",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783476798-1",
+          "text": "合作推出的 AI 辅助电影/内容在主流平台（如院线、流媒体）上线后，其用户评分是否与传统方法制作的内容无显著差异？",
+          "importance": 9,
+          "hypothesis": "AI 辅助内容的平均评分不低于传统内容的 80%",
+          "falsification": "AI 辅助内容的评分显著低于传统内容（p<0.05）",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783476798-2",
+          "text": "知名内容创作者（如头部 YouTuber、导演）是否在 3 个月内公开采用类似 AI 工具并产出作品？",
+          "importance": 8,
+          "hypothesis": "至少 5 位粉丝超百万的创作者使用 AI 工具并公开发布",
+          "falsification": "没有头部创作者公开使用，或出现大规模联合抵制",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783476798-3",
+          "text": "涉及 AI 生成内容的版权诉讼（如集体诉讼）是否在 1 年内被法院驳回或和解而非判定侵权？",
+          "importance": 7,
+          "hypothesis": "主要司法管辖区的判决支持合理使用或促进 AI 创作",
+          "falsification": "法院判决明确禁止 AI 生成的商业内容使用现有版权作品",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783476798-4",
+          "text": "A24 与 AI 公司的合作产品（如脚本、分镜）是否在 6 个月内实现商业化收入（如电影预售、流媒体预购）？",
+          "importance": 9,
+          "hypothesis": "至少有 1 个 AI 辅助项目获得超过 1000 万美元的预售或投资",
+          "falsification": "6 个月内无任何项目达成商业化收入或合作终止",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        }
+      ],
+      "state": "active",
+      "primary_domain": "other",
+      "secondary_domains": []
+    },
+    {
+      "id": "INV-0002",
+      "thesis_id": "thesis-1783477455",
+      "generated_at": "2026-07-08",
+      "questions": [
+        {
+          "id": "q-thesis-1783477455-0",
+          "text": "企业用户是否愿意为AI增强功能支付溢价（如每月20美元/用户）？",
+          "importance": 10,
+          "hypothesis": "企业愿意为AI功能支付至少20%的附加费用",
+          "falsification": "超过50%的潜在客户在定价测试中选择基础版而非AI版",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783477455-1",
+          "text": "在经济下行周期中，企业AI预算是否保持增长或至少不缩减？",
+          "importance": 9,
+          "hypothesis": "AI项目预算同比增长率不低于10%",
+          "falsification": "主要企业客户在连续两个季度内削减AI支出超过20%",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783477455-2",
+          "text": "企业是否能够接受将核心业务数据迁移至第三方大模型平台？",
+          "importance": 8,
+          "hypothesis": "有明确的数据安全协议和合规认证后，超过70%的企业愿意接受",
+          "falsification": "超过50%的潜在客户因数据主权问题拒绝POC",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783477455-3",
+          "text": "金融机构之外的行业（如医疗、制造业）是否具有与金融业相似的高价值、高合规场景？",
+          "importance": 8,
+          "hypothesis": "至少两个非金融行业客户完成POC并签订年合同",
+          "falsification": "在6个月内未能获得非金融行业付费客户",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        },
+        {
+          "id": "q-thesis-1783477455-4",
+          "text": "合规要求（如GDPR、行业监管）是否显著提高了部署成本或延迟了上线时间？",
+          "importance": 7,
+          "hypothesis": "合规相关成本占总部署成本的比例低于20%",
+          "falsification": "平均部署周期因合规审查延长超过3个月",
+          "status": "Unanswered",
+          "answers": [],
+          "created_at": "2026-07-08",
+          "updated_at": "2026-07-08"
+        }
+      ],
+      "state": "active",
+      "primary_domain": "other",
+      "secondary_domains": []
+    }
+  ],
+  "decisions": []
 }
