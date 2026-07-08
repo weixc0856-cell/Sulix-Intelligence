@@ -21,6 +21,7 @@ use crate::artifact::manifest::ContentManifest;
 use crate::config::Config;
 use crate::domain::artifact::ArtifactSet;
 use crate::event_log::{ObjectEvent, ObjectEventType};
+use crate::translation::TranslationCoverage;
 
 /// 发布报告
 #[derive(Debug, Clone)]
@@ -29,6 +30,7 @@ pub struct PublishReport {
     pub rejected_count: usize,
     pub r2_status: String,
     pub manifest_version: u32,
+    pub translation_coverage: Option<TranslationCoverage>,
 }
 
 /// 发布产物到存储后端
@@ -241,5 +243,6 @@ pub async fn publish(
         rejected_count: rejected,
         r2_status,
         manifest_version: manifest.version,
+        translation_coverage: artifacts.translation_coverage,
     })
 }

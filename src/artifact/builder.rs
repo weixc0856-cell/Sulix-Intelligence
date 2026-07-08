@@ -66,5 +66,6 @@ pub fn build_artifact_set(
         events, today.to_string(), asi_score_map, belief_notes_html, refined_domains,
         assessment_count, investigation_count, 0, // decision_count filled later
         archive_days, total_signals,
+        None, // translation_coverage — filled in publishing::agent_publish
     )
 }

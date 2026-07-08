@@ -44,6 +44,9 @@ pub struct Config {
     /// Belief Engine Phase B: WayneOPC 核心信念
     #[serde(default)]
     pub beliefs: Option<Vec<BeliefConfig>>,
+    /// Translation Agent 配置（Layer 2，过渡桥梁）
+    #[serde(default)]
+    pub translation: Option<TranslationConfig>,
 }
 
 /// LLM 配置
@@ -396,6 +399,36 @@ impl Config {
         ))
     }
 }
+
+/// 翻译 Agent 配置（Layer 2，过渡桥梁）
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct TranslationConfig {
+    /// 是否启用翻译
+    #[serde(default)]
+    pub enabled: bool,
+    /// 目标语言列表
+    #[serde(default = "default_translate_locales")]
+    pub target_locales: Vec<String>,
+    /// 参与翻译的目录
+    #[serde(default = "default_translate_dirs")]
+    pub translate_dirs: Vec<String>,
+    /// 单次运行最大文件数
+    #[serde(default = "default_max_files")]
+    pub max_files_per_run: usize,
+    /// 并发数
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+}
+
+fn default_translate_locales() -> Vec<String> {
+    vec!["zh-cn".into(), "zh-tw".into()]
+}
+fn default_translate_dirs() -> Vec<String> {
+    vec!["decision".into(), "thesis".into(), "research".into(), "assessment".into()]
+}
+fn default_max_files() -> usize { 20 }
+fn default_concurrency() -> usize { 3 }
 
 #[cfg(test)]
 mod tests {

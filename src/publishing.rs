@@ -160,6 +160,10 @@ pub async fn agent_publish(
         &inferred,
     ).await?;
 
+    // Stage 5.5: Translation — fill zh-cn/zh-tw MDX via LLM (transitional)
+    // 过渡桥梁：对象级翻译就绪后移除此文件级步骤
+    let translation_coverage = crate::translation::publish_translate(config, api_key).await;
+
     // Collect events from infer stage
     let events = inferred.events;
 
@@ -213,6 +217,7 @@ pub async fn agent_publish(
         0, // decision_count — filled from thesis_decisions.len() in delivery
         counts.archive_days,
         counts.total_signals,
+        Some(translation_coverage),
     );
 
     // Final logging

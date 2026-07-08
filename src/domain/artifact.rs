@@ -34,6 +34,9 @@ pub struct ArtifactSet {
     // Event log entries accumulated during publishing
     pub events: Vec<ObjectEvent>,
 
+    // Translation coverage (Layer 2, transitional)
+    pub translation_coverage: Option<crate::translation::TranslationCoverage>,
+
     // Pipeline metadata
     pub today: String,
     pub asi_score_map: std::collections::HashMap<String, (f64, f64, f64)>,
@@ -69,6 +72,7 @@ impl ArtifactSet {
         decision_count: usize,
         archive_days: usize,
         total_signals: usize,
+        translation_coverage: Option<crate::translation::TranslationCoverage>,
     ) -> Self {
         Self {
             themes, analyses, analyses_zh,
@@ -77,6 +81,7 @@ impl ArtifactSet {
             events, today, asi_score_map, belief_notes_html, refined_domains,
             assessment_count, investigation_count, decision_count,
             archive_days, total_signals,
+            translation_coverage,
         }
     }
 }
