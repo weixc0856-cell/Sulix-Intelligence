@@ -413,12 +413,15 @@ pub struct TranslationConfig {
     /// 参与翻译的目录
     #[serde(default = "default_translate_dirs")]
     pub translate_dirs: Vec<String>,
-    /// 单次运行最大文件数
+    /// 单次运行最大文件数（首跑 5，逐步放开）
     #[serde(default = "default_max_files")]
     pub max_files_per_run: usize,
     /// 并发数
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
+    /// 翻译专用模型（None = 继承 config.llm.model）
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 fn default_translate_locales() -> Vec<String> {
@@ -427,7 +430,7 @@ fn default_translate_locales() -> Vec<String> {
 fn default_translate_dirs() -> Vec<String> {
     vec!["decision".into(), "thesis".into(), "research".into(), "assessment".into()]
 }
-fn default_max_files() -> usize { 20 }
+fn default_max_files() -> usize { 5 }
 fn default_concurrency() -> usize { 3 }
 
 #[cfg(test)]

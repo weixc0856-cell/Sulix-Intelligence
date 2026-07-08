@@ -182,7 +182,31 @@ async fn translate_file(
     Ok(result)
 }
 
-/// 将翻译结果写入磁盘
+/// Integrity check：比对源/译文的三类标记，确保 LLM 未破坏 MDX 结构
+///
+/// 检查项：`<` (MDX 组件)、`` ``` `` (code fence)、`[` (链接)
+/// 差异超过 5% 判定为可疑，译文不落盘。
+fn integrity_check(source: &str, translated: &str) -> Result<(), String> {
+    let counts = |s: &str| -> (usize, usize, usize) {
+        (s.matches('<').count(), s.matches("```").count(), s.matches('[').count())
+    };
+    let (src_lt, src_fence, src_bracket) = counts(source);
+    let (tgt_lt, tgt_fence, tgt_bracket) = counts(translated);
+
+    let pct = |a: usize, b: usize| -> f64 {
+        let max = a.max(b).max(1) as f64;
+        (a as f64 - b as f64).abs() / max
+    };
+
+    let mut issues = Vec::new();
+    if pct(src_lt, tgt_lt) > 0.05 { issues.push(format!("< count: {}→{}", src_lt, tgt_lt)); }
+    if src_fence != tgt_fence { issues.push(format!("``` count: {}→{}", src_fence, tgt_fence)); }
+    if pct(src_bracket, tgt_bracket) > 0.20 { issues.push(format!("[ count: {}→{}", src_bracket, tgt_bracket)); }
+
+    if issues.is_empty() { Ok(()) } else { Err(issues.join("; ")) }
+}
+
+/// 将翻译结果写入磁盘（含追踪字段）
 fn write_translation(
     mdx_dir: &Path,
     locale: &str,
@@ -190,21 +214,24 @@ fn write_translation(
     file_name: &str,
     translated_content: &str,
     body_hash: &str,
+    model: &str,
 ) -> Result<()> {
     let target_dir = mdx_dir.join(locale).join(dir_type);
     std::fs::create_dir_all(&target_dir)?;
     let target_path = target_dir.join(file_name);
 
-    // 在 frontmatter 中注入 translation_source_hash
+    let now = chrono::Utc::now().to_rfc3339();
     let (fm, body) = split_frontmatter(translated_content);
-    let hash_line = format!("translation_source_hash: {}", body_hash);
+
+    let meta_lines = format!(
+        "translation_source_hash: {}\ntranslation_model: {}\ntranslation_updated_at: {}",
+        body_hash, model, now,
+    );
 
     let new_content = if fm.is_empty() {
-        // 没有 frontmatter，创建一个
-        format!("---\n{}\n---\n\n{}", hash_line, body)
+        format!("---\n{}\n---\n\n{}", meta_lines, body)
     } else {
-        // 在现有 frontmatter 末尾加入 hash
-        format!("---\n{}\n{}\n---\n\n{}", fm, hash_line, body)
+        format!("---\n{}\n{}\n---\n\n{}", fm, meta_lines, body)
     };
 
     std::fs::write(&target_path, new_content)?;
@@ -267,23 +294,50 @@ pub async fn publish_translate(
                 }
             }
 
+            let model_name = translation_cfg.model.as_deref().unwrap_or(&config.llm.model);
+            let target_llm = crate::config::LlmConfig {
+                model: model_name.to_string(),
+                api_key: config.llm.api_key.clone(),
+                provider: config.llm.provider.clone(),
+                base_url: config.llm.base_url.clone(),
+                max_tokens: config.llm.max_tokens,
+                temperature: config.llm.temperature,
+                perplexity_key: config.llm.perplexity_key.clone(),
+            };
+
             match translate_file(
                 &source.content,
                 locale,
                 api_key,
-                &config.llm,
+                &target_llm,
             ).await {
                 Ok(translated) => {
-                    if let Err(e) = write_translation(
-                        &mdx_dir, locale,
-                        &source.dir_type, &source.file_name,
-                        &translated, &source.body_hash,
-                    ) {
-                        coverage.failed += 1;
-                        log::warn!("📖 translation: write failed [{}]: {}", source.relative_path, e);
-                    } else {
-                        coverage.translated += 1;
-                        log::info!("📖 translation: {} → {}/{}", source.relative_path, locale, source.file_name);
+                    // Integrity check: 验证 MDX 结构未被 LLM 破坏
+                    match integrity_check(&source.content, &translated) {
+                        Ok(()) => {
+                            if let Err(e) = write_translation(
+                                &mdx_dir, locale,
+                                &source.dir_type, &source.file_name,
+                                &translated, &source.body_hash, model_name,
+                            ) {
+                                coverage.failed += 1;
+                                log::warn!("📖 translation: write failed [{}]: {}", source.relative_path, e);
+                            } else {
+                                coverage.translated += 1;
+                                log::info!("📖 translation: {} → {}/{}", source.relative_path, locale, source.file_name);
+                            }
+                        }
+                        Err(integrity_err) => {
+                            coverage.failed += 1;
+                            log::warn!("📖 translation: integrity check failed [{}]: {}", source.relative_path, integrity_err);
+                            // 拒绝写入，记入 rejected
+                            if let Some(mdx_out) = &config.output.mdx_dir {
+                                let rejected_dir = PathBuf::from(mdx_out).join("rejected").join(locale);
+                                let _ = std::fs::create_dir_all(&rejected_dir);
+                                let rejected_path = rejected_dir.join(&source.file_name);
+                                let _ = std::fs::write(&rejected_path, &translated);
+                            }
+                        }
                     }
                 }
                 Err(e) => {
