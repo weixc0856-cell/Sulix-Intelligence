@@ -23,23 +23,19 @@
 /findings.json
 .ocodeignore
 
-# 旧管线输出（content/posts/ 已被 output/daily/ 替代）
+# 管线生成产物（所有 output/、DailyBrief/、content/posts/）
+# 这些是 Engine 运行时生成的 MDX/HTML/JSON，不应版本控制
+output/
+/DailyBrief/
 /content/posts/
 /content/reports/
-
-# Astro 前端依赖与构建产物
-/astro-frontend/node_modules/
-/astro-frontend/dist/
-/astro-frontend/.astro/
-output/
+/archive/content-posts-legacy/
+/archive/findings.json
+/archive/reviews/
 
 # 操作系统文件
 Thumbs.db
 .DS_Store
-
-# DailyBrief — 全部生成产物（registries/design/manifest/reports）
-# 不含手动配置或模板文件
-/DailyBrief/
 
 # 事件日志与验证报告
 *.jsonl
