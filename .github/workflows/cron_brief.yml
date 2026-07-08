@@ -28,13 +28,18 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
           if [ -n "$R2_PUBLIC_URL" ]; then
-            for f in memory_db.json entity_db.json; do
-              if curl -sf "$R2_PUBLIC_URL/state/$f" -o "data/$f" 2>/dev/null; then
-                echo "✅ $f restored from R2"
-              else
-                echo "⚠️ $f not in R2 yet (first run)"
-              fi
-            done
+            # memory_db.json: engine reads from DailyBrief/ (vault_path)
+            if curl -sf "$R2_PUBLIC_URL/state/memory_db.json" -o DailyBrief/memory_db.json 2>/dev/null; then
+              echo "✅ memory_db.json restored"
+            else
+              echo "⚠️ memory_db.json not in R2 yet (first run)"
+            fi
+            # entity_db.json: engine reads from data/
+            if curl -sf "$R2_PUBLIC_URL/state/entity_db.json" -o "data/entity_db.json" 2>/dev/null; then
+              echo "✅ entity_db.json restored"
+            else
+              echo "⚠️ entity_db.json not in R2 yet (first run)"
+            fi
             if curl -sf "$R2_PUBLIC_URL/state/decision_registry.json" -o DailyBrief/decision_registry.json 2>/dev/null; then
               echo "✅ decision_registry.json restored"
             fi
