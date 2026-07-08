@@ -138,11 +138,6 @@ async fn main() -> Result<()> {
     } else {
         sulix_intel::engine::pipeline_health::PipelineStatus::Success
     };
-    // Use duplicated status if publish had issues
-    #[allow(unused_assignments)]
-    {
-        let _ = &publish_report;
-    }
 
     // 跳过旧 R2/manifest/frontend sync 代码——已由 delivery::publisher 接管
     log::info!(
@@ -157,9 +152,6 @@ async fn main() -> Result<()> {
         &data_dir,
         config.output.frontend_public_dir.as_deref(),
     )?;
-
-    // Validate output contract
-    validate_output_contract(&config, &report).await;
 
     // Non-zero exit if objects were rejected by schema validation
     if publish_report.rejected_count > 0 {
@@ -413,42 +405,6 @@ async fn agent_signal(
 
 use publishing::ResearchOutput;
 
-// ===== Pipeline Step: 主题分析 + 蓝军验证 =====
-
-/// 对单个主题执行分析（英文或中文）。
-///
-/// Pipeline Step 封装：让"主题分析"成为可测试、可替换的独立步骤。
-/// - analyze_theme 失败 → 跳过（返回 None），避免整个管线崩溃
-/// - challenge_theme 失败 → 继续（使用无蓝军分析）
-/// 
-/// 注意：蓝军降级（signal_strength 扣减）已移至 BlueTeamNode 执行，
-/// 此处不再处理。这样保证了降级逻辑在 Graph 编排内原子化执行。
-async fn analyze_and_validate(
-    theme: &sulix_intel::domain::theme::Theme,
-    api_key: &str,
-    llm_config: &config::LlmConfig,
-    prompts: Option<&config::PromptsConfig>,
-    language: &str,
-) -> Option<sulix_intel::domain::theme::ThemeAnalysis> {
-    let mut analysis = match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts).await {
-        Ok(a) => a,
-        Err(e) => {
-            log::warn!("⚠️ 主题分析失败 [{}|{}]: {}", language, theme.title, e);
-            return None;
-        }
-    };
-    match crate::engine::analysis::challenge_theme(&analysis, api_key, llm_config, prompts).await {
-        Ok((assumptions, adverse, next_tests, open_questions)) => {
-            analysis.assumptions = assumptions;
-            analysis.adverse = adverse;
-            analysis.next_tests = next_tests;
-            analysis.open_questions = open_questions;
-        }
-        Err(e) => log::warn!("⚠️ 蓝军验证失败 [{}|{}], 使用无蓝军分析: {}", language, theme.title, e),
-    }
-    Some(analysis)
-}
-
 // ===== Research Agent (+ Memory Agent): 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb =====
 
 /// Scan Agent 分流 → LLM 预去重 → 聚类 → 主题分析 → 蓝军验证 → DiGraph 引擎 → BeliefDb
@@ -555,7 +511,7 @@ async fn agent_research(
     let mut analyses = Vec::new();
     for theme in &themes {
         log::info!("🔍 分析主题: {} ({} 条证据)", theme.title, theme.articles.len());
-        if let Some(a) = analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "en").await {
+        if let Some(a) = publishing::analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "en").await {
             analyses.push(a);
         }
     }
@@ -574,7 +530,7 @@ async fn agent_research(
     // 中文分析
     let mut analyses_zh = Vec::new();
     for theme in &themes {
-        if let Some(a) = analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "zh").await {
+        if let Some(a) = publishing::analyze_and_validate(theme, api_key, &config.llm, config.prompts.as_ref(), "zh").await {
             analyses_zh.push(a);
         }
     }
@@ -589,90 +545,6 @@ async fn agent_research(
         triage,
         new_articles,
     })
-}
-
-// ===== Phase 0: Output Contract Validation =====
-
-/// Validate that all required output artifacts exist and are internally consistent.
-///
-/// This is the **contract enforcement layer** between sulix-engine and sulix-web.
-/// It checks:
-///   1. Manifest file exists and is valid JSON
-///   2. At least one MDX output directory has content (daily / thesis / research)
-///   3. Pipeline report is not in Failed state
-///
-/// Non-fatal: warnings are logged but the pipeline does not fail.
-async fn validate_output_contract(
-    config: &config::Config,
-    report: &sulix_intel::engine::pipeline_health::PipelineReport,
-) {
-    let mut issues: Vec<String> = Vec::new();
-
-    // 1. Check manifest exists
-    if let Some(ref mdx_out) = config.output.mdx_dir {
-        let manifest_path = std::path::PathBuf::from(mdx_out).join("manifest.json");
-        if !manifest_path.exists() {
-            issues.push(format!("Manifest not found: {}", manifest_path.display()));
-        } else {
-            match std::fs::read_to_string(&manifest_path) {
-                Ok(content) => {
-                    if serde_json::from_str::<serde_json::Value>(&content).is_err() {
-                        issues.push(format!("Manifest is not valid JSON: {}", manifest_path.display()));
-                    }
-                }
-                Err(e) => issues.push(format!("Manifest unreadable: {}: {}", manifest_path.display(), e)),
-            }
-        }
-
-        // 2. Check MDX output directories have content
-        let required_dirs = ["daily", "thesis", "research", "investigation"];
-        for dir_name in &required_dirs {
-            let dir_path = std::path::PathBuf::from(mdx_out).join(dir_name);
-            if dir_path.exists() {
-                if let Ok(entries) = std::fs::read_dir(&dir_path) {
-                    let md_count = entries
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                        .count();
-                    if md_count == 0 {
-                        issues.push(format!("MDX dir '{}' exists but contains 0 .md files", dir_name));
-                    }
-                }
-            } else {
-                // Only warn if the pipeline completed successfully — zero-output runs are fine
-                if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::Success {
-                    issues.push(format!("MDX dir '{}' does not exist", dir_name));
-                }
-            }
-        }
-    }
-
-    // 3. Check pipeline report isn't Failed
-    if report.status == sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure
-        || report.status == sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly
-    {
-        issues.push(format!("Pipeline finished with status: {:?}", report.status));
-    }
-
-    // 4. Check frontend content sync if configured
-    if let Some(ref fe_public_dir) = config.output.frontend_public_dir {
-        let fe_path = std::path::Path::new(fe_public_dir);
-        if !fe_path.exists() {
-            issues.push(format!(
-                "Frontend public dir configured but does not exist: {}",
-                fe_public_dir
-            ));
-        }
-    }
-
-    if issues.is_empty() {
-        log::info!("✅ Output contract validation passed");
-    } else {
-        log::warn!("⚠️ Output contract issues:");
-        for issue in &issues {
-            log::warn!("  - {}", issue);
-        }
-    }
 }
 
 // ===== [agent_publish moved to src/publishing.rs] =====
