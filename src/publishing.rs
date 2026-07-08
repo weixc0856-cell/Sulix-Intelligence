@@ -30,6 +30,7 @@ use crate::domain::thesis::ThesisStatus;
 use crate::domain::EditorNote;
 use crate::domain::StrategicDomain;
 use crate::domain::ThesisDecision;
+use crate::event_log::ObjectEvent;
 use crate::engine::decision::map_theses_to_decisions;
 use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::MemoryEngine;
@@ -95,6 +96,8 @@ struct InferredState {
     investigation_reports: Vec<(String, crate::domain::investigation::InvestigationReport, Option<String>, Option<String>)>,
     /// theme title → (primary_domain, secondary_domains) — LLM-refined domains
     refined_domains: HashMap<String, (StrategicDomain, Vec<StrategicDomain>)>,
+    /// Object events collected during infer stage
+    events: Vec<ObjectEvent>,
 }
 
 // ===== Contract Constants =====
@@ -157,8 +160,8 @@ pub async fn agent_publish(
         &inferred,
     ).await?;
 
-    // Collect events from pipeline run
-    let events = Vec::new(); // Step 4: domain constructors will populate this
+    // Collect events from infer stage
+    let events = inferred.events;
 
     // Count MDX outputs for manifest (pre-validation snapshot)
     let mdx_path = config.output.mdx_dir.as_ref().map(PathBuf::from);
@@ -490,6 +493,8 @@ async fn publish_infer(
     state: &mut StateBundle,
     db: &Database,
 ) -> Result<InferredState> {
+    let mut infer_events: Vec<ObjectEvent> = Vec::new();
+
     // Push conflict events to EventLog
     for conflict in &generated.change_summary.conflicts {
         state.event_log.push(crate::event_log::PipelineEvent {
@@ -609,17 +614,14 @@ async fn publish_infer(
             let challenge = thesis.evidences.iter().filter(|e| e.stance == Stance::Challenges).count();
             let support = thesis.evidences.iter().filter(|e| e.stance == Stance::Supports).count();
             if challenge > support {
-                let outcome = Outcome {
-                    id: format!("outcome-{}", chrono::Utc::now().timestamp()),
-                    thesis_id: thesis.id.clone(),
-                    description: format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
-                    verdict: OutcomeVerdict::Invalidated,
-                    date: today.to_string(),
-                    supporting_evidence: vec![],
-                    expected_signal: String::new(),
-                    actual_signal: format!("挑战证据({})超过支持证据({})", challenge, support),
-                    delta: "预期被推翻".to_string(),
-                };
+                let (outcome, event) = Outcome::new(
+                    format!("outcome-{}", chrono::Utc::now().timestamp()),
+                    thesis.id.clone(),
+                    format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
+                    OutcomeVerdict::Invalidated,
+                    today.to_string(),
+                );
+                infer_events.push(event);
                 if let Err(e) = memory.record_outcome(outcome) {
                     log::warn!("⚠️ Outcome 记录失败: {}", e);
                 } else {
@@ -637,17 +639,14 @@ async fn publish_infer(
             }
         }
         if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
-            let outcome = Outcome {
-                id: format!("outcome-{}", chrono::Utc::now().timestamp()),
-                thesis_id: thesis.id.clone(),
-                description: format!("证据持续积累 ({} 条)", thesis.evidences.len()),
-                verdict: OutcomeVerdict::PartiallyConfirmed,
-                date: today.to_string(),
-                supporting_evidence: vec![],
-                expected_signal: String::new(),
-                actual_signal: format!("{}条支持证据", thesis.evidences.len()),
-                delta: "方向正确，持续验证中".to_string(),
-            };
+            let (outcome, event) = Outcome::new(
+                format!("outcome-{}", chrono::Utc::now().timestamp()),
+                thesis.id.clone(),
+                format!("证据持续积累 ({} 条)", thesis.evidences.len()),
+                OutcomeVerdict::PartiallyConfirmed,
+                today.to_string(),
+            );
+            infer_events.push(event);
             if let Err(e) = memory.record_outcome(outcome) {
                 log::warn!("⚠️ Outcome 记录失败: {}", e);
             } else {
@@ -741,6 +740,7 @@ async fn publish_infer(
         editor_notes: generated.editor_notes.clone(),
         beliefs_html,
         investigation_reports,
+        events: infer_events,
         refined_domains: generated.refined_domains.clone(),
     })
 }

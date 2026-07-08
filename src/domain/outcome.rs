@@ -19,6 +19,7 @@
 //!   - serde aliases 确保旧数据向后兼容
 
 use serde::{Deserialize, Serialize};
+use crate::event_log::{ObjectEvent, ObjectEventType};
 
 /// 结果判定 — 判断 vs 现实
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -69,4 +70,39 @@ pub struct Outcome {
     /// 期望 vs 实际的偏差（归因模型: delta，一句话概括）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub delta: String,
+}
+
+impl Outcome {
+    /// 创建新的 Outcome 记录（同时产出审计事件）
+    /// 简化版构造函数：只填核心字段，supporting_evidence/expected/actual/delta 默认空
+    pub fn new(
+        id: String,
+        thesis_id: String,
+        description: String,
+        verdict: OutcomeVerdict,
+        date: String,
+    ) -> (Self, ObjectEvent) {
+        let record = Self {
+            id: id.clone(),
+            thesis_id: thesis_id.clone(),
+            description,
+            verdict,
+            date,
+            supporting_evidence: vec![],
+            expected_signal: String::new(),
+            actual_signal: String::new(),
+            delta: String::new(),
+        };
+        let event = ObjectEvent::new(
+            ObjectEventType::OutcomeRecorded,
+            &record.id,
+            "outcome",
+            serde_json::json!({
+                "verdict": format!("{:?}", record.verdict),
+                "thesis_id": thesis_id,
+            }),
+            "agent_publish",
+        );
+        (record, event)
+    }
 }
