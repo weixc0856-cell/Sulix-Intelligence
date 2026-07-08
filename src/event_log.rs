@@ -2,9 +2,15 @@
 //!
 //! 记录管线中的关键事件（主题创建、合并、SVI 变化、论题更新、冲突检测），
 //! 支持 JSON 持久化与最近 N 条查询。
+//!
+//! # Object Event（Step 2 增强）
+//! 每个 DEC/ASM 创建时写一条 ObjectEvent 到 events/{date}.jsonl。
+//! 包含 payload_hash 和 version 用于冲突检测。
+//! 不做 event sourcing（不从事件重放状态）。
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// 管线事件类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -24,6 +30,83 @@ pub enum PipelineEventType {
     /// Thesis 被证伪（Meta Layer）
     ThesisRefuted,
 }
+
+// ===== Step 2: Object Event 审计日志 =====
+
+/// 对象生命周期事件类型
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectEventType {
+    SignalCreated,
+    AssessmentCreated,
+    AssessmentUpdated,
+    DecisionCreated,
+    DecisionUpdated,
+    OutcomeRecorded,
+    ThesisRefuted,
+    ReflectionGenerated,
+}
+
+/// 对象生命周期事件（审计线）
+/// Append-only JSONL 格式，写入 data/events/{date}.jsonl
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectEvent {
+    pub event_type: ObjectEventType,
+    pub object_id: String,
+    pub object_type: String,
+    pub version: u32,
+    /// null 表示新建
+    pub previous_version: Option<u32>,
+    /// SHA256 hex of the serialized object JSON
+    pub payload_hash: String,
+    pub source: String,
+    pub timestamp: String,
+}
+
+impl ObjectEvent {
+    pub fn new(
+        event_type: ObjectEventType,
+        object_id: &str,
+        object_type: &str,
+        payload: &[u8],
+        version: u32,
+        source: &str,
+    ) -> Self {
+        let hash = {
+            use sha2::Digest;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(payload);
+            format!("{:x}", hasher.finalize())
+        };
+        Self {
+            event_type,
+            object_id: object_id.to_string(),
+            object_type: object_type.to_string(),
+            version,
+            previous_version: if version > 1 { Some(version - 1) } else { None },
+            payload_hash: hash,
+            source: source.to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// 追加写入 JSONL 文件
+    pub fn append_to_log(data_dir: &Path, date: &str, event: &Self) -> Result<()> {
+        let dir = data_dir.join("events");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{}.jsonl", date));
+        let line = serde_json::to_string(event)?;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?
+            .write_all(line.as_bytes())?;
+        Ok(())
+    }
+}
+
+// Ensure std::io::Write is imported for write_all
+use std::io::Write;
 
 /// 单条管线事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
