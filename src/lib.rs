@@ -22,6 +22,7 @@ pub mod pipeline;
 pub mod publishing;
 pub mod question_engine;
 pub mod renderer;
+pub mod schema;
 pub mod source;
 pub mod storage;
 pub mod twitter;

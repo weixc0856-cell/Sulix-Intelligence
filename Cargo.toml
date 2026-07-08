@@ -38,6 +38,9 @@ scraper = "0.27"
 regex = "1.11"
 sha2 = "0.10"
 
+# JSON Schema 生成（从 Rust struct → JSON Schema → TS types）
+schemars = { version = "1", features = ["chrono04"] }
+
 # Cloudflare R2 (S3 兼容 API)
 aws-sdk-s3 = { version = "1", features = ["rt-tokio"] }
 aws-config = { version = "1" }

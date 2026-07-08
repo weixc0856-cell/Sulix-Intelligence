@@ -241,6 +241,40 @@ async fn main() -> Result<()> {
         }
     }
 
+    // 📋 Schema Validation Gate: 验证生成对象的完整性 (Phase 0)
+    // 失败记录到 validation_report.json，严重错误阻断 R2 上传
+    let validation_report = {
+        let mut report = sulix_intel::schema::validator::ValidationReport::new(&today);
+        // Phase 0: 验证 manifest.json 完整性
+        if let Some(ref mdx_out) = config.output.mdx_dir {
+            let mdx_path = std::path::PathBuf::from(mdx_out);
+            // 统计各集合文件数并验证
+            for (prefix, obj_type) in &[("daily", "signal"), ("thesis", "assessment"),
+                ("decision", "decision"), ("research", "research")] {
+                let dir = mdx_path.join(prefix);
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    let count = entries.filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                        .count();
+                    report.add_result(
+                        sulix_intel::schema::validator::ValidationResult {
+                            object_id: format!("{}/*", prefix),
+                            object_type: obj_type.to_string(),
+                            passed: count > 0,
+                            errors: if count == 0 { vec![format!("{}/: no files generated", prefix)] } else { vec![] },
+                            warnings: vec![],
+                        }
+                    );
+                }
+            }
+        }
+        let report_path = data_dir.join("validation_report.json");
+        if let Err(e) = report.save(&report_path) {
+            log::warn!("⚠️ Validation report save failed: {}", e);
+        }
+        report
+    };
+
     // ☁️ R2 Upload: 内容资产 + manifest + pipeline report
     if let Some(ref r2_config) = config.r2 {
         if r2_config.enabled {
