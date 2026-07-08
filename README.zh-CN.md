@@ -2,195 +2,169 @@
   <a href="README.md">🇬🇧 English</a> · <a href="README.zh-CN.md">🇨🇳 中文</a>
 </p>
 
-<p align="center">
-  <img src="assets/logo.svg" width="120" alt="Sulix Intelligence" />
-</p>
-
 # Sulix Intelligence
 
-> **全自动数字 AI 智库 — 个人创业者的认知操作系统。**
+> **全自动认知引擎 — 个人创业者的战略决策操作系统。**
 
-Sulix Intelligence 是一个**认知引擎**，将原始信号处理为结构化知识资产。
+Sulix Intelligence 将原始信号转化为结构化**战略记忆**—— Signal → Assessment → Decision → Outcome。回答的不是「发生了什么」，而是「这件事是否改变我未来 6 个月的决策」。
 
 ```
 原始信号 (RSS/USPTO/Reddit)
     ↓
-管线 (清洗 + 合规 + 去重)
+管线 → Scan Agent → 主题聚类
     ↓
-分析引擎 (SVI + ASI + Confidence + 主题聚类)
+认知引擎 (Memory + Hermes + Decision)
     ↓
-蓝军验证 + Editor Agent
+ArtifactSet (Signals / Assessments / Decisions / Outcomes)
     ↓
-记忆引擎 (Thesis + Evidence + Outcome + Reflection)
+Schema 验证门 (拒绝不完整对象)
     ↓
-MDX 知识资产 → sulix-web (前端) → Cloudflare Pages
+本地存储 + R2 (不可变资产) + 前端同步
+    ↓
+MDX 视图 (从 JSON artifact 派生)
 ```
 
-**回答的问题：** 不是「发生了什么」——而是「这件事是否改变我未来 6 个月的决策」。
+## 架构
+
+```
+                    sulix-engine (Rust)
+                           |
+                    ArtifactSet JSON
+                  ┌─────────┼─────────┐
+                  ↓         ↓         ↓
+                 R2        D1       Frontend
+              (资产)     (索引)     (Astro UI)
+                           |
+                    Cloudflare Worker
+                     JSON API Layer
+                           |
+                    Astro UI Shell
+                  (Bloomberg Terminal)
+```
 
 ## 三仓储架构
 
 | 仓库 | 职责 | 技术栈 |
 |------|------|--------|
-| **sulix-engine** ← 本仓库 | 数据采集、分析、记忆、内容生成 | Rust + feed-rs + DeepSeek API |
-| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | 渲染、导航、UX | Astro + Tailwind + design.css |
-| **sulix-docs** | 产品决策、架构、ADR、研究 | Obsidian Markdown |
-
-跨仓库职责变更需记录 ADR。
+| **sulix-engine** ← 本仓库 | 数据采集、分析、战略记忆 | Rust + DeepSeek API |
+| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | UI 壳、导航、UX | Astro + Tailwind |
+| **sulix-docs** | 产品决策、架构、ADR | Obsidian Markdown |
 
 ## 三层产品
 
-| 产品 | 目标 | 格式 | 价格 |
-|------|------|------|------|
-| **News Layer** | 获客 | 每日 MDX 信号 | $0 |
-| **Research Layer** | 收入 | 多 Agent 研报 · MDX | $99-$4999 |
-| **Memory Layer** | 护城河 | Thesis 追踪 · MDX | 不对外 |
+| 产品 | 目标 | 价格 |
+|------|------|------|
+| **News Layer** | 获客 | $0 |
+| **Research Layer** | 收入 | $99-$4999 |
+| **Memory Layer** | 护城河 | 不对外 |
 
 ## 快速开始
 
 ```bash
-# 1. 克隆并编译
+# 1. 编译
 git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
 cd Sulix-Intelligence
+cp config.example.toml config.toml
 cargo build --release
 
-# 2. 配置
-cp config.example.toml config.toml
-# 在 [llm] 中设置 DeepSeek API key
-# 在 [output] 中设置 mdx_dir = "output"
-
-# 3. 运行
+# 2. 运行（需要 DEEPSEEK_API_KEY）
+export DEEPSEEK_API_KEY="sk-..."
 cargo run --release
 
-# 输出：
-#   output/daily/YYYY-MM-DD-slug.mdx    → 每日信号
-#   output/thesis/YYYY-MM-DD-slug.mdx   → 判断追踪
-#   output/research/YYYY-MM-DD-slug.mdx → Premium 研报
-#   output/reflection/YYYY-MM-DD-slug.mdx → 复盘反思
-
-# 4. 前端预览（sulix-web）
-git clone https://github.com/weixc0856-cell/Intel-Web.git
-cd Intel-Web
+# 3. 前端预览
+cd ../sulix-web
 cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run dev  # → http://localhost:4321
+npm install && npm run dev
 ```
 
 ## 管线
 
 ```
-RSS/USPTO 数据源 → RawSignal → 管线 (清洗 + 合规 + 去重)
-  ↓
-证据快照 (SVI ≥ 5 → 不可变 JSONL)
-  ↓
-Wikipedia 注入 + 正文提取
-  ↓
-实体提取 (EntitySanctionDb)
-  ↓
-Scan Agent v1.1 (4 类标签，3 层分流)
-  ↓
-LLM 预去重 → 主题聚类 (≤5 主题)
-  ↓
-主题分析 (BLUF / Impact / Geopolitical / Supply Chain / Causal Chains)
-  ↓
-ASI + Confidence 评分
-  ↓
-蓝军验证 (承重假设挑战)
-  ↓
-DiGraph 认知引擎 (QE → Belief Engine → Decision Engine)
-  ↓
-Editor Agent (个人影响分析)
-  ↓
-变更检测 + 趋势层
-  ↓
-MemoryEngine (Thesis + Evidence + Outcome + Reflection)
-  ↓
-MDX 输出: daily/  thesis/  research/  reflection/
+数据源采集 (RSS / USPTO / Reddit)
+    ↓ 管线：清洗 → 合规 → 去重
+    ↓ 证据快照 (不可变 JSONL, SVI ≥ 5)
+    ↓ Scan Agent v1.1 (三层分流: Insight / Watchlist / Signal Memory)
+    ↓ LLM 预去重 → 主题聚类 (≤5 主题)
+    ↓ 主题分析 + ASI/Confidence 评分
+    ↓ 蓝军验证 (承重假设挑战)
+    ↓ Editor Agent (个人影响分析)
+    ↓ MemoryEngine (Thesis / Evidence / Outcome / Reflection)
+    ↓ Hermes (变更检测 / 趋势 / 冲突)
+    ↓ Decision Intelligence (Thesis → Decision 映射)
+    ↓ Meta Layer (自动 Outcome 检测 + Reflection 生成)
+    ↓ 验证门 (schema::validator)
+    ↓ Artifact Publisher → 本地 + R2 + 前端同步
+    ↓ Event Log flush (data/events/{date}.jsonl)
 ```
 
-## MDX 知识格式
-
-```mdx
----
-title: AI Agent Infrastructure Consolidation
-date: 2026-06-24
-svi: 8.7
-asi: 7.5
-confidence: 0.81
-type: daily
----
-
-## BLUF
-
-一句话核心结论。
-```
-
-该格式：
-- **Git 友好** — diff、审查、历史
-- **Astro 原生** — `getCollection("daily")` 直接消费
-- **人类可读** — 任意文本编辑器可编辑
-
-## 功能状态
-
-| 功能 | 状态 |
-|------|------|
-| 29 个数据源 + 源评分 | ✅ |
-| SVI 战略异动指数 | ✅ |
-| ASI + Confidence 评分 | ✅ |
-| Scan Agent 3 层分流 | ✅ |
-| Editor Agent (个人影响) | ✅ |
-| 蓝军验证 | ✅ |
-| DiGraph 认知引擎 | ✅ |
-| MemoryEngine (Thesis + Outcome + Reflection) | ✅ |
-| Belief Engine Phase B (WayneOPC) | ✅ |
-| Meta Layer (自动结果检测) | ✅ |
-| MDX 知识输出 (6 集合) | ✅ |
-| Twitter/X 推文管线 | ✅ |
-| Reddit 数据源 | ✅ |
-| 变更检测 (规则 + LLM) | ✅ |
-| Event Log (审计日志) | ✅ |
-| Chronicle (历史数据库) | ✅ |
-| 双语 EN/ZH | ✅ |
-| Substack API 集成 | ✅ |
-
-### 代码结构 (65+ 文件)
+## 代码结构
 
 ```
 src/
-├── domain/        — 7 领域模型
-├── engine/        — 核心引擎
-├── hermes/        — 变更检测 + 趋势
-├── renderer/      — MDX 输出 + HTML
-├── clusterer/     — 主题聚类
-├── agent/         — Scan/Editor/Calibration/Decay
-├── source/        — 数据源适配器
-├── twitter.rs     — 推文管线
-├── publishing.rs  — Publishing Agent
-├── event_log.rs   — 事件日志
-└── main.rs        — 管线编排
+├── domain/           — 8 领域模型 (Theme/Thesis/Evidence/Action/Outcome/Reflection/Decision/ArtifactSet)
+├── engine/           — 认知引擎 (analysis/memory/premium/belief/decision)
+├── publishing/       — 5 阶段发布协调器 → 返回 ArtifactSet
+├── artifact/         — Manifest/Report/Builder (纯函数)
+├── delivery/         — 验证门 → 本地 → R2 → 前端同步 + Event flush
+├── schema/           — Schema 验证 (schemars derive + Validate trait)
+├── storage/          — R2 上传客户端 (S3 兼容), 损坏恢复辅助
+├── renderer/         — MDX/Markdown/HTML 渲染 (MDX 从 JSON 派生)
+├── hermes/           — 变更检测 + 趋势 + 冲突
+├── clusterer/        — 主题聚类 + LLM 预去重 + 合成
+├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
+├── source/           — 数据源适配器 (RSS/USPTO/Reddit)
+├── event_log/        — ObjectEvent 审计追踪 (追加式 JSONL)
+├── main.rs           — 管线编排 (558 行)
+└── lib.rs            — 模块声明
 ```
+
+## Schema 验证门
+
+每个 artifact 在存储前通过验证。被拒对象写入 `data/rejected/{date}/`，触发非零退出码。
+
+| 检查项 | Phase 0 | Phase 1 |
+|--------|---------|---------|
+| 必填字段非空 | ✅ | ✅ |
+| Confidence 在 [0,1] | ✅ | ✅ |
+| Evidence 数组非空 | ⚠️ 警告 | ❌ 拒绝 |
+| Decision 类型合法 | ✅ | ✅ |
+
+## 事件审计
+
+所有对象生命周期事件记录在 `data/events/{date}.jsonl`：
+
+```json
+{"schema_version":1,"event_type":"decision_created","object_id":"DEC-0001","summary":{"confidence":0.72}}
+{"schema_version":1,"event_type":"outcome_recorded","object_id":"OUT-001","summary":{"verdict":"PartiallyConfirmed"}}
+{"schema_version":1,"event_type":"publish_completed","summary":{"passed":3,"rejected":0,"r2_status":"not_configured"}}
+```
+
+事件只含摘要字段（不含全量快照），完整对象历史在 R2 中。
+
+## 配置
+
+| 配置段 | 用途 |
+|--------|------|
+| `[llm]` | API key、模型、端点 |
+| `[[sources]]` | 数据源 (名称、URL、分类、层级、评分) |
+| `[prompts]` | 各分析阶段的系统提示词 |
+| `[output]` | 输出路径 (vault_path, mdx_dir, frontend_public_dir) |
+| `[storage]` | data_dir 持久化状态 |
+| `[r2]` | Cloudflare R2 配置 (bucket, endpoint, public_url) |
 
 ## 部署
 
-### 管线 (cron)
+### CI 管线 (GitHub Actions)
 
-```bash
-# Linux/macOS: 每日 06:00
-0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release
-
-# Windows
-cargo run --release
+```yaml
+# .github/workflows/cron_brief.yml
+# 每日：cargo run --release → R2 → sulix-web 构建 → CF Pages
 ```
 
-### 前端 (sulix-web)
-
-前端为独立仓库：[sulix-web](https://github.com/weixc0856-cell/Intel-Web)
-
-```bash
-git clone https://github.com/weixc0856-cell/Intel-Web.git
-cd Intel-Web
-cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run build
-```
+所需 Secrets：
+- `DEEPSEEK_API_KEY` — LLM 提供商
+- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT` — R2 存储
+- `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` — Pages 部署
 
 ## 许可证
 
