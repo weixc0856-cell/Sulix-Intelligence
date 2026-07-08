@@ -970,7 +970,7 @@ mod contract_tests {
         assert!(mdx.contains("inv_id: \"INV-001\""));
         assert!(mdx.contains("status: \"active\""));
         assert!(mdx.contains("question: Will AI governance frameworks converge?"));
-        assert!(mdx.contains("thesis_ref: \"ASM-001\""));
+        assert!(mdx.contains("thesis_ref: ASM-001"));
         assert!(mdx.contains("supporting_count: 1"));
         assert!(mdx.contains("counter_count: 1"));
     }

@@ -35,6 +35,15 @@ use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::MemoryEngine;
 use crate::renderer::publisher::Publisher;
 use crate::storage;
+use crate::domain::artifact::ArtifactSet;
+
+/// 发布产物计数统计（用于 manifest）
+struct PublishCounts {
+    assessment_count: usize,
+    investigation_count: usize,
+    archive_days: usize,
+    total_signals: usize,
+}
 
 /// Research Agent 的输出（传递给 Publishing Agent）
 pub struct ResearchOutput {
@@ -113,7 +122,7 @@ pub async fn agent_publish(
     today: &str,
     entity_db: &mut crate::entity::EntitySanctionDb,
     research: ResearchOutput,
-) -> Result<()> {
+) -> Result<ArtifactSet> {
     let vault_base = PathBuf::from(&config.output.vault_path);
 
     // Stage 1: Preprocess — load all persistent state
@@ -148,6 +157,61 @@ pub async fn agent_publish(
         &inferred,
     ).await?;
 
+    // Collect events from pipeline run
+    let events = Vec::new(); // Step 4: domain constructors will populate this
+
+    // Count MDX outputs for manifest (pre-validation snapshot)
+    let mdx_path = config.output.mdx_dir.as_ref().map(PathBuf::from);
+    let counts = mdx_path.as_ref().map(|p| {
+        let count_md = |dir: &std::path::Path| -> usize {
+            std::fs::read_dir(dir)
+                .map(|d| d.filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                    .count())
+                .unwrap_or(0)
+        };
+        let count_dates = |dir: &std::path::Path| -> usize {
+            std::fs::read_dir(dir)
+                .map(|d| {
+                    let dates: std::collections::HashSet<String> = d
+                        .filter_map(|e| e.ok())
+                        .filter_map(|e| e.file_name().to_str()
+                            .and_then(|n| n.get(..10))
+                            .filter(|s| s.chars().nth(4) == Some('-'))
+                            .map(|s| s.to_string()))
+                        .collect();
+                    dates.len()
+                }).unwrap_or(0)
+        };
+        PublishCounts {
+            assessment_count: count_md(&p.join("thesis")),
+            investigation_count: count_md(&p.join("investigation")),
+            archive_days: count_dates(&p.join("daily")),
+            total_signals: count_md(&p.join("daily")),
+        }
+    }).unwrap_or(PublishCounts { assessment_count: 0, investigation_count: 0, archive_days: 0, total_signals: 0 });
+
+    // Build ArtifactSet — ownership transfers to delivery publisher
+    let artifacts = ArtifactSet::new(
+        themes, analyses, analyses_zh,
+        inferred.memory,
+        inferred.thesis_decisions,
+        inferred.premium_reports,
+        inferred.editor_notes,
+        inferred.investigation_reports,
+        new_articles,
+        events,
+        today.to_string(),
+        inferred.asi_score_map,
+        String::new(), // belief_notes_html
+        inferred.refined_domains,
+        counts.assessment_count,
+        counts.investigation_count,
+        0, // decision_count — filled from thesis_decisions.len() in delivery
+        counts.archive_days,
+        counts.total_signals,
+    );
+
     // Final logging
     log::info!("📊 {}", crate::llm::llm_audit_summary());
     if !state.event_log.all().is_empty() {
@@ -158,7 +222,7 @@ pub async fn agent_publish(
 
     println!("\n✅ EN 简报: {}", vault_base.join("en").join(&today[..7]).join("index.html").display());
     println!("✅ 看板: {}", vault_base.join("en").join("index.html").display());
-    Ok(())
+    Ok(artifacts)
 }
 
 // ===== Stage 1: Preprocess =====

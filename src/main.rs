@@ -108,8 +108,8 @@ async fn main() -> Result<()> {
         },
     );
 
-    // Publishing Agent: Premium → 渲染 → Chronicle → 看板
-    publishing::agent_publish(
+    // Publishing Agent: 5-stage publish → returns ArtifactSet
+    let artifacts = publishing::agent_publish(
         &config,
         &api_key,
         &db,
@@ -122,213 +122,53 @@ async fn main() -> Result<()> {
     .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
 
-    // 填充下游产出计数（从 MDX 输出目录统计真实文件数）
-    if let Some(ref mdx_out) = config.output.mdx_dir {
-        let mdx_path = std::path::PathBuf::from(mdx_out);
-
-        // assessment_count: output/thesis/ 下的 .md 文件数
-        if let Ok(entries) = std::fs::read_dir(mdx_path.join("thesis")) {
-            let count = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                .count();
-            if count > 0 { report.assessment_count = Some(count); }
-        }
-
-        // investigation_count: output/investigation/ 下的 .md 文件数
-        if let Ok(entries) = std::fs::read_dir(mdx_path.join("investigation")) {
-            let count = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                .count();
-            if count > 0 { report.investigation_count = Some(count); }
-        }
-
-        // 生成 Content Manifest（全站内容权威数据源）
-        // output/manifest.json → CI 复制到 frontend/public/manifest.json
-        let count_md = |dir: &std::path::Path| -> usize {
-            std::fs::read_dir(dir)
-                .map(|d| d.filter_map(|e| e.ok())
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                    .count())
-                .unwrap_or(0)
-        };
-        let count_unique_dates = |dir: &std::path::Path| -> usize {
-            let dates: std::collections::HashSet<String> = std::fs::read_dir(dir)
-                .map(|d| d.filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        e.file_name().to_str()
-                            .and_then(|n| n.get(..10))
-                            .filter(|s| s.chars().nth(4) == Some('-'))
-                            .map(|s| s.to_string())
-                    })
-                    .collect())
-                .unwrap_or_default();
-            dates.len()
-        };
-
-        let total_signals = count_md(&mdx_path.join("daily"));
-        let total_assessments = count_md(&mdx_path.join("thesis"));
-        let investigations = count_md(&mdx_path.join("investigation"));
-        let archive_days = count_unique_dates(&mdx_path.join("daily"));
-
-        // manifest.json saved to vault_path (NOT mdx_dir — that is Astro content root)
-        let manifest_path = PathBuf::from(&config.output.vault_path).join("manifest.json");
-        let prev_version = std::fs::read_to_string(&manifest_path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|v| v["version"].as_u64())
-            .unwrap_or(0) as u32;
-
-        let manifest = sulix_intel::engine::pipeline_health::ContentManifest {
-            contract_version: 1,
-            version: prev_version + 1,
-            generated_at: chrono::Utc::now().to_rfc3339(),
-            date: today.to_string(),
-            daily_today: new_article_count,
-            assessments_active: total_assessments,
-            investigations,
-            decisions: report.decision_count.unwrap_or(0),
-            archive_days,
-            total_signals,
-            total_assessments,
-            pipeline_status: match &report.status {
-                sulix_intel::engine::pipeline_health::PipelineStatus::Success => "healthy".to_string(),
-                sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput => "no_output".to_string(),
-                sulix_intel::engine::pipeline_health::PipelineStatus::StoppedEarly => "stopped_early".to_string(),
-                sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure => "failed".to_string(),
-            },
-            pipeline_observation_count: report.observation_count,
-            pipeline_signal_count: report.signal_count,
-            output_counts: None,
-            frontend_public_dir: config.output.frontend_public_dir.clone(),
-            duration_seconds: Some(report.duration_seconds),
-            stages: Some(report.stages.clone()),
-        };
-        if let Err(e) = manifest.save_as_json(&manifest_path) {
-            log::warn!("⚠️ Content manifest save failed: {}", e);
-        } else {
-            log::info!("📋 Content manifest v{}: {} signals ({} days), {} assessments, {} investigations",
-                manifest.version, total_signals, archive_days, total_assessments, investigations);
-        }
-
-        // Sync manifest.json to frontend public/ directory if configured
-        if let Some(ref fe_public_dir) = config.output.frontend_public_dir {
-            let fe_manifest_path = std::path::PathBuf::from(fe_public_dir).join("manifest.json");
-            if let Err(e) = manifest.save_as_json(&fe_manifest_path) {
-                log::warn!("⚠️ Frontend manifest sync failed: {}", e);
-            } else {
-                log::info!("📋 Manifest synced to frontend public/: {}", fe_manifest_path.display());
-            }
-        }
-    }
-
     report.duration_seconds = start.elapsed().as_secs_f64();
-    if let Err(e) = report.save(&data_dir) {
-        log::warn!("Pipeline report save failed: {}", e);
-    }
-    // Also save to vault_path for local audit
-    if let Err(e) = report.save_as_json(&PathBuf::from(&config.output.vault_path).join("pipeline_report.json")) {
-        log::warn!("Pipeline report vault save failed: {}", e);
-    }
-    // Sync pipeline_report.json to frontend public/ if configured
-    if let Some(ref fe_public_dir) = config.output.frontend_public_dir {
-        let fe_report_path = std::path::PathBuf::from(fe_public_dir).join("pipeline_report.json");
-        if let Err(e) = report.save_as_json(&fe_report_path) {
-            log::warn!("⚠️ Pipeline report frontend sync failed: {}", e);
-        } else {
-            log::info!("📊 Pipeline report synced to frontend public/: {}", fe_report_path.display());
-        }
-    }
 
-    // 📋 Schema Validation Gate: 验证生成对象的完整性 (Phase 0)
-    // 失败记录到 validation_report.json，严重错误阻断 R2 上传
-    let validation_report = {
-        let mut report = sulix_intel::schema::validator::ValidationReport::new(&today);
-        // Phase 0: 验证 manifest.json 完整性
-        if let Some(ref mdx_out) = config.output.mdx_dir {
-            let mdx_path = std::path::PathBuf::from(mdx_out);
-            // 统计各集合文件数并验证
-            for (prefix, obj_type) in &[("daily", "signal"), ("thesis", "assessment"),
-                ("decision", "decision"), ("research", "research")] {
-                let dir = mdx_path.join(prefix);
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    let count = entries.filter_map(|e| e.ok())
-                        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                        .count();
-                    report.add_result(
-                        sulix_intel::schema::validator::ValidationResult {
-                            object_id: format!("{}/*", prefix),
-                            object_type: obj_type.to_string(),
-                            passed: count > 0,
-                            errors: if count == 0 { vec![format!("{}/: no files generated", prefix)] } else { vec![] },
-                            warnings: vec![],
-                        }
-                    );
-                }
-            }
-        }
-        let report_path = data_dir.join("validation_report.json");
-        if let Err(e) = report.save(&report_path) {
-            log::warn!("⚠️ Validation report save failed: {}", e);
-        }
-        report
+    // Verify: if config.r2 is configured but missing env vars, skip R2
+    // Delivery publisher handles this: local write + R2 (if available by env)
+    let publish_report = sulix_intel::delivery::publisher::publish(
+        artifacts,
+        &config,
+        &data_dir,
+        &today,
+    ).await?;
+
+    report.status = if publish_report.rejected_count > 0 {
+        sulix_intel::engine::pipeline_health::PipelineStatus::PartialFailure
+    } else {
+        sulix_intel::engine::pipeline_health::PipelineStatus::Success
     };
-
-    // ☁️ R2 Upload: 内容资产 + manifest + pipeline report
-    if let Some(ref r2_config) = config.r2 {
-        if r2_config.enabled {
-            match sulix_intel::storage::R2Client::from_config(r2_config).await {
-                Ok(r2) => {
-                    // 1. 上传 MDX 内容目录
-                    if let Some(ref mdx_out) = config.output.mdx_dir {
-                        let mdx_path = std::path::PathBuf::from(mdx_out);
-                        for prefix in &["daily", "thesis", "assessment", "research",
-                                        "investigation", "reflection", "decision"] {
-                            let result = r2.upload_dir(&mdx_path, prefix, "md").await;
-                            log::info!("☁️ R2: {}/ — {} 上传成功, {} 失败",
-                                prefix, result.uploaded.len(), result.failed.len());
-                            for (key, err) in &result.failed {
-                                log::warn!("☁️ R2 上传失败 [{}]: {}", key, err);
-                            }
-                        }
-                    }
-                    // 2. 上传 manifest.json
-                    if let Some(ref mdx_out) = config.output.mdx_dir {
-                        let manifest_path = std::path::PathBuf::from(mdx_out).join("manifest.json");
-                        if let Ok(data) = std::fs::read(&manifest_path) {
-                            if let Err(e) = r2.upload_json("manifest.json", &data).await {
-                                log::warn!("⚠️ R2 manifest.json 上传失败: {}", e);
-                            }
-                        }
-                    }
-                    // 3. 上传 pipeline_report.json
-                    let report_paths = [
-                        data_dir.join("pipeline_report.json"),
-                        PathBuf::from(&config.output.vault_path).join("pipeline_report.json"),
-                    ];
-                    for path in &report_paths {
-                        if let Ok(data) = std::fs::read(path) {
-                            if let Err(e) = r2.upload_json("pipeline_report.json", &data).await {
-                                log::warn!("⚠️ R2 pipeline_report.json 上传失败: {}", e);
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => log::warn!("⚠️ R2 客户端初始化失败: {}", e),
-            }
-        }
+    // Use duplicated status if publish had issues
+    #[allow(unused_assignments)]
+    {
+        let _ = &publish_report;
     }
 
-    // Phase 0: Validate output contract — ensure frontend has everything it needs
-    validate_output_contract(&config, &report).await;
-
+    // 跳过旧 R2/manifest/frontend sync 代码——已由 delivery::publisher 接管
     log::info!(
         "✅ Sulix Intelligence 执行完成 ({:.1}s)",
         report.duration_seconds
     );
+
+    // After delivery publish: report dual-write (data/ + public/ + vault)
+    // Note: report duration_seconds is now set, so this is the final version
+    sulix_intel::artifact::report::save_report(
+        &report,
+        &data_dir,
+        config.output.frontend_public_dir.as_deref(),
+    )?;
+
+    // Validate output contract
+    validate_output_contract(&config, &report).await;
+
+    // Non-zero exit if objects were rejected by schema validation
+    if publish_report.rejected_count > 0 {
+        anyhow::bail!(
+            "{} object(s) rejected by schema validation. See data/rejected/{}/",
+            publish_report.rejected_count, today
+        );
+    }
+
     Ok(())
 }
 

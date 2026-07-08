@@ -5,11 +5,13 @@
 pub mod agent;
 
 pub mod archive;
+pub mod artifact;
 pub mod catalog;
 pub mod client;
 pub mod clusterer;
 pub mod config;
 pub mod db;
+pub mod delivery;
 pub mod domain;
 pub mod engine;
 pub mod enricher;
