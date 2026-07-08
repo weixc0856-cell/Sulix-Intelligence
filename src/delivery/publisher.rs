@@ -55,6 +55,16 @@ pub async fn publish(
     let total_investigations = artifacts.investigation_count;
     let decision_count = artifacts.thesis_decisions.len();
 
+    // Lang 不变量验证（Schema 层点位）
+    // 当 AssessmentObject/DecisionObject 等 schema 对象流经 delivery 时，
+    // 在此处调用 schema::validator::validate_localized_fields()
+    // 检查 lang 所指字段是否非空。当前领域类型尚未携带 Localized 字段，
+    // 此点位已接线但无数据流经——重构时解除下方 if-false 块。
+    if false {
+        // let _ = crate::schema::validator::validate_localized_fields("en", []);
+        log::debug!("📋 Schema validation gate ready (awaiting Localized domain fields)");
+    }
+
     // 模拟逐对象验证（Phase 1 展开为真正的 schema::validator 调用）
     if let Some(ref mdx_path) = mdx_out {
         for entry in std::fs::read_dir(mdx_path.join("thesis")).unwrap_or_else(|_| std::fs::read_dir(".").unwrap()) {

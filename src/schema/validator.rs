@@ -68,6 +68,25 @@ impl ValidationReport {
     }
 }
 
+use crate::domain::Localized;
+
+/// 验证一或多个 Localized 字段的 lang 不变量
+///
+/// 检查 `lang` 所指向的语种在提供的字段中是否非空。
+/// 返回 `(field_name, error_message)` 列表。
+pub fn validate_localized_fields<'a>(
+    lang: &str,
+    fields: impl IntoIterator<Item = (&'a str, &'a Localized)>,
+) -> Vec<(String, String)> {
+    let mut errors = Vec::new();
+    for (name, field) in fields {
+        if let Err(msg) = field.validate(lang) {
+            errors.push((name.to_string(), msg));
+        }
+    }
+    errors
+}
+
 /// 验证器 trait
 pub trait Validate {
     fn object_type() -> &'static str;

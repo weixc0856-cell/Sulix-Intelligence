@@ -25,6 +25,7 @@ pub mod editor_note;
 pub mod question_match;
 pub mod thesis;
 pub mod artifact;
+pub mod localized;
 
 // ===== 统一重导出 =====
 // 显式列出的类型 — 只有外部实际消费的类型才暴露。
@@ -41,6 +42,7 @@ pub use outcome::{Outcome, OutcomeVerdict};
 pub use premium::{PremiumReport, SpecialTopic};
 pub use question_match::QuestionMatch;
 pub use reflection::Reflection;
+pub use localized::Localized;
 pub use theme::{AdverseScenario, Assumption, CausalChain, Summary, Theme, ThemeAnalysis};
 pub use thesis::{
     ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,

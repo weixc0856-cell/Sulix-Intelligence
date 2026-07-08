@@ -2,13 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use crate::domain::Localized;
 
 /// 规范信号对象（验证 Schema 用）
 /// 对应 frontend contracts/signal.schema.json
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SignalObject {
     pub id: String,
-    pub title: String,
+    /// 三语言标题
+    pub title: Localized,
     pub date: String,
     pub svi: f64,
     pub asi: f64,
@@ -18,12 +20,18 @@ pub struct SignalObject {
     pub sources: Vec<String>,
     #[serde(default)]
     pub entities: Vec<String>,
-    pub summary: Option<String>,
+    /// 三语言摘要（可选，仅标题翻翻，摘要由分级政策定）
+    #[serde(default)]
+    pub summary: Option<Localized>,
     #[serde(default = "default_locale")]
     pub locale: String,
+    /// 原文语言: "en" | "zh-cn" | "zh-tw"
+    #[serde(default = "default_lang")]
+    pub lang: String,
 }
 
 fn default_locale() -> String { "en".into() }
+fn default_lang() -> String { "en".into() }
 
 impl SignalObject {
     /// 验证必填字段
@@ -36,6 +44,9 @@ impl SignalObject {
         if !(0.0..=10.0).contains(&self.svi) { errors.push("svi: out of range [0,10]".into()); }
         if self.confidence < 0.0 || self.confidence > 1.0 { errors.push("confidence: out of range [0,1]".into()); }
         if self.source.is_empty() { errors.push("source: empty".into()); }
+        if !["en", "zh-cn", "zh-tw"].contains(&self.lang.as_str()) {
+            errors.push(format!("lang: invalid '{}'", self.lang));
+        }
 
         errors
     }

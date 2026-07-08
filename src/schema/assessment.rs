@@ -2,13 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use crate::domain::Localized;
 
 /// 规范评估对象（验证 Schema 用）
 /// 对应 frontend contracts/assessment.schema.json
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AssessmentObject {
     pub id: String,
-    pub title: String,
+    /// 三语言标题
+    pub title: Localized,
     pub date: String,
     pub status: String,
     pub confidence: f64,
@@ -16,20 +18,28 @@ pub struct AssessmentObject {
     pub evidences: i32,
     #[serde(default)]
     pub challenges: i32,
-    pub summary: Option<String>,
+    /// 三语言摘要
+    pub summary: Option<Localized>,
     #[serde(default)]
     pub decision: Option<String>,
+    /// 三语言决策依据
     #[serde(default)]
-    pub decision_rationale: Option<String>,
+    pub decision_rationale: Option<Localized>,
     #[serde(default)]
     pub supporting_evidence: Vec<String>,
     #[serde(default)]
     pub conflicting_evidence: Vec<String>,
+    // TODO: upgrade supporting_evidence/conflicting_evidence to Vec<Localized>
+    // when Evidence struct is created (currently string-only)
     #[serde(default = "default_locale")]
     pub locale: String,
+    /// 原文语言: "en" | "zh-cn" | "zh-tw"
+    #[serde(default = "default_lang")]
+    pub lang: String,
 }
 
 fn default_locale() -> String { "en".into() }
+fn default_lang() -> String { "en".into() }
 
 impl AssessmentObject {
     pub fn validate(&self) -> Vec<String> {
@@ -41,6 +51,9 @@ impl AssessmentObject {
         if self.status.is_empty() { errors.push("status: empty".into()); }
         if self.confidence < 0.0 || self.confidence > 1.0 {
             errors.push("confidence: out of range [0,1]".into());
+        }
+        if !["en", "zh-cn", "zh-tw"].contains(&self.lang.as_str()) {
+            errors.push(format!("lang: invalid '{}'", self.lang));
         }
 
         // Phase 0: warn-only for empty evidence
