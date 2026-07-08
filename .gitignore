@@ -39,11 +39,14 @@ output/
 
 # ---- Cloudflare 本地开发 ----
 .wrangler/
-wrangler.jsonc
+
+# ---- Cloudflare Agent（已迁移至独立仓库 D:\Project\CF_Agent）----
+/agents/
+/agents
 
 # ---- 操作系统文件 ----
 Thumbs.db
 .DS_Store
 
-# ---- Cloudflare Agents SDK（独立 npm 项目，非 Rust crate 的一部分）----
-/agents/
+# ---- Cloudflare Agents SDK（独立 npm 项目）----
+# agents/ has its own .gitignore
