@@ -1,42 +1,46 @@
-# Rust 编译产物
+# ==========================================
+# Rust crate — sulix-engine 标准 .gitignore
+# 只版本控制 src/ + 项目配置
+# ==========================================
+
+# ---- 编译产物 ----
 /target/
 *.pdb
 
-# 本地配置与数据
+# ---- 本地配置（含 API Key, 路径映射） ----
 /config.toml
 /config.local.toml
+*.env
+
+# ---- 管线生成产物 ----
+output/
+/DailyBrief/
+/content/
 /data/
 *.db
 *.db-journal
 *.db-wal
-*.env
+*.jsonl
 
-# Claude Code 工作目录（技能、工作流、会话状态）
+# ---- Claude Code 工作文件 ----
 /.claude/
 /docs/
 .rustc_info.json
 
-# CodeGraph 分析索引（可随时重新生成）
+# ---- 代码分析产物 ----
 /.codegraph/
-
-# 自动化分析产物
 /findings.json
 .ocodeignore
-
-# 管线生成产物（所有 output/、DailyBrief/、content/posts/）
-# 这些是 Engine 运行时生成的 MDX/HTML/JSON，不应版本控制
-output/
-/DailyBrief/
-/content/posts/
-/content/reports/
-/archive/content-posts-legacy/
 /archive/findings.json
 /archive/reviews/
 
-# 操作系统文件
+# ---- 旧归档迁移遗留 ----
+/archive/content-posts-legacy/
+
+# ---- Cloudflare 本地开发 ----
+.wrangler/
+wrangler.jsonc
+
+# ---- 操作系统文件 ----
 Thumbs.db
 .DS_Store
-
-# 事件日志与验证报告
-*.jsonl
-data/validation_report.json
