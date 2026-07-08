@@ -291,9 +291,11 @@ mod tests {
             vec![make_thesis("t1", "Failed Thesis", ThesisStatus::Retired, 3)],
             vec![Outcome {
                 id: "o1".into(),
+                decision_id: "DEC-001".into(),
                 thesis_id: "t1".into(),
                 description: "was wrong".into(),
                 verdict: OutcomeVerdict::Invalidated,
+                impact: crate::domain::outcome::ImpactLevel::High,
                 date: "2026-06-25".into(),
                 supporting_evidence: vec![],
                 expected_signal: String::new(),

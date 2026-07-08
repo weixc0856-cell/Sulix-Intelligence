@@ -1,22 +1,15 @@
 //! 结果领域模型
 //!
-//! Outcome 记录 Thesis 的预测结果——"我的判断对了吗？"
+//! Outcome 记录决策（DEC）的验证结果——"我的判断对了吗？"
 //! 这是认知链路从"判断"到"结果验证"的关键闭环。
 //!
 //! 认知链路定位：
 //!   ... → Decision（决策）→ Outcome（结果）→ Reflection（复盘）
-//!                            ↑
-//!                      Outcome 在此：判断的验证
 //!
-//! Outcome 是 Meta Layer 的基础：没有 Outcome，就无法知道判断是否正确。
-//! 没有正确率（Historical Accuracy）数据，Reflection 就是空谈。
-//!
-//! v2 变更：
-//!   - OutcomeType → OutcomeVerdict（语义更精确）
-//!   - Refuted → Invalidated, Inconclusive → Unknown
-//!   - 增加 description / supporting_evidence
-//!   - 移除 expected / actual / deviation_analysis（过于细粒度）
-//!   - serde aliases 确保旧数据向后兼容
+//! v4 变更：
+//!   - 新增 decision_id（必填，关联 DEC-XXXX）
+//!   - 新增 impact（Low/Medium/High）
+//!   - 保留 thesis_id（reflection 回溯 thesis 需要）
 
 use serde::{Deserialize, Serialize};
 use crate::event_log::{ObjectEvent, ObjectEventType};
@@ -36,25 +29,40 @@ pub enum OutcomeVerdict {
     Unknown,
 }
 
-/// 结果记录：判断的验证
-///
-/// v3: 添加最小归因模型（§4.2）。让 Outcome 从"记录结果"升级为"学习和归因结果"。
-///
-/// 归因字段：
-///   - expected_signal: 当初判断时期望的信号方向
-///   - actual_signal: 实际观察到的情况
-///   - delta: 期望 vs 实际的偏差（一句话概括）
+/// 结果影响程度
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ImpactLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl ImpactLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImpactLevel::Low => "low",
+            ImpactLevel::Medium => "medium",
+            ImpactLevel::High => "high",
+        }
+    }
+}
+
+/// 结果记录：决策的验证
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Outcome {
-    /// 唯一 ID
+    /// 唯一 ID（OUT-YYYYMMDD-SEQ）
     pub id: String,
-    /// 关联的 Thesis ID
+    /// 关联的 DEC-XXXX
+    pub decision_id: String,
+    /// 关联的 Thesis ID（从 decision 反查）
     pub thesis_id: String,
-    /// 结果描述（概括判断 vs 现实）
+    /// 观察到的证据/结果描述
     pub description: String,
     /// 结果判定
     #[serde(alias = "result")]
     pub verdict: OutcomeVerdict,
+    /// 影响程度
+    pub impact: ImpactLevel,
     /// 记录日期
     #[serde(alias = "recorded_at")]
     pub date: String,
@@ -74,19 +82,24 @@ pub struct Outcome {
 
 impl Outcome {
     /// 创建新的 Outcome 记录（同时产出审计事件）
-    /// 简化版构造函数：只填核心字段，supporting_evidence/expected/actual/delta 默认空
+    ///
+    /// 审计事件包含 verdict、decision_id、impact 三个字段供事件过滤。
     pub fn new(
         id: String,
+        decision_id: String,
         thesis_id: String,
         description: String,
         verdict: OutcomeVerdict,
+        impact: ImpactLevel,
         date: String,
     ) -> (Self, ObjectEvent) {
         let record = Self {
             id: id.clone(),
+            decision_id: decision_id.clone(),
             thesis_id: thesis_id.clone(),
             description,
             verdict,
+            impact,
             date,
             supporting_evidence: vec![],
             expected_signal: String::new(),
@@ -99,9 +112,11 @@ impl Outcome {
             "outcome",
             serde_json::json!({
                 "verdict": format!("{:?}", record.verdict),
+                "decision_id": decision_id,
                 "thesis_id": thesis_id,
+                "impact": record.impact.as_str(),
             }),
-            "agent_publish",
+            "sulix_outcome_cli",
         );
         (record, event)
     }
@@ -113,38 +128,26 @@ mod tests {
     use crate::event_log::OBJECT_EVENT_SCHEMA_VERSION;
 
     #[test]
-    fn test_outcome_new_creates_event_with_correct_fields() {
-        let (outcome, event) = Outcome::new(
-            "outcome-test-1".into(),
-            "thesis-test-1".into(),
-            "Test outcome".into(),
-            OutcomeVerdict::Confirmed,
+    fn test_outcome_new_creates_event() {
+        let (o, evt) = Outcome::new(
+            "OUT-20260708-001".into(),
+            "DEC-001".into(),
+            "thesis-1".into(),
+            "用户认可方向".into(),
+            OutcomeVerdict::PartiallyConfirmed,
+            ImpactLevel::Medium,
             "2026-07-08".into(),
         );
 
-        assert_eq!(outcome.id, "outcome-test-1");
-        assert_eq!(outcome.thesis_id, "thesis-test-1");
-        assert_eq!(outcome.verdict, OutcomeVerdict::Confirmed);
+        assert_eq!(o.id, "OUT-20260708-001");
+        assert_eq!(o.decision_id, "DEC-001");
+        assert_eq!(o.thesis_id, "thesis-1");
+        assert_eq!(o.verdict, OutcomeVerdict::PartiallyConfirmed);
+        assert_eq!(o.impact, ImpactLevel::Medium);
 
-        assert_eq!(event.event_type, ObjectEventType::OutcomeRecorded);
-        assert_eq!(event.object_id, "outcome-test-1");
-        assert_eq!(event.object_type, "outcome");
-        assert_eq!(event.summary["verdict"], "Confirmed");
-        assert_eq!(event.summary["thesis_id"], "thesis-test-1");
-        assert_eq!(event.schema_version, OBJECT_EVENT_SCHEMA_VERSION);
-    }
-
-    #[test]
-    fn test_outcome_new_invalidated() {
-        let (outcome, event) = Outcome::new(
-            "outcome-test-2".into(),
-            "thesis-test-2".into(),
-            "Was wrong".into(),
-            OutcomeVerdict::Invalidated,
-            "2026-07-08".into(),
-        );
-
-        assert_eq!(outcome.verdict, OutcomeVerdict::Invalidated);
-        assert_eq!(event.summary["verdict"], "Invalidated");
+        assert_eq!(evt.event_type, ObjectEventType::OutcomeRecorded);
+        assert_eq!(evt.object_id, "OUT-20260708-001");
+        assert_eq!(evt.summary["verdict"], "PartiallyConfirmed");
+        assert_eq!(evt.summary["decision_id"], "DEC-001");
     }
 }

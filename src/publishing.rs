@@ -25,7 +25,7 @@ use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::config::Config;
 use crate::db::Database;
 use crate::domain::evidence::Stance;
-use crate::domain::outcome::{Outcome, OutcomeVerdict};
+use crate::domain::outcome::{ImpactLevel, Outcome, OutcomeVerdict};
 use crate::domain::thesis::ThesisStatus;
 use crate::domain::EditorNote;
 use crate::domain::StrategicDomain;
@@ -621,9 +621,11 @@ async fn publish_infer(
             if challenge > support {
                 let (outcome, event) = Outcome::new(
                     format!("outcome-{}", chrono::Utc::now().timestamp()),
+                    String::new(), // decision_id — empty for legacy auto-outcomes
                     thesis.id.clone(),
                     format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
                     OutcomeVerdict::Invalidated,
+                    ImpactLevel::Medium,
                     today.to_string(),
                 );
                 infer_events.push(event);
@@ -646,9 +648,11 @@ async fn publish_infer(
         if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
             let (outcome, event) = Outcome::new(
                 format!("outcome-{}", chrono::Utc::now().timestamp()),
+                String::new(), // decision_id — empty for legacy auto-outcomes
                 thesis.id.clone(),
                 format!("证据持续积累 ({} 条)", thesis.evidences.len()),
                 OutcomeVerdict::PartiallyConfirmed,
+                ImpactLevel::Medium,
                 today.to_string(),
             );
             infer_events.push(event);

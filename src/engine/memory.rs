@@ -100,7 +100,7 @@ impl MemoryEngine {
     }
 
     /// 写入 `memory_db.json`
-    pub(crate) fn save(&self) -> Result<()> {
+    pub fn save(&self) -> Result<()> {
         if let Some(parent) = self.memory_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -546,6 +546,59 @@ impl MemoryEngine {
         }
 
         Ok(())
+    }
+
+    /// 从 CLI 添加 Outcome（不自动触发 reflection）
+    ///
+    /// - 验证 decision 存在
+    /// - 注入 OutcomeRecorded 事件
+    /// - 回填 decision.outcome_ids 并产 DecisionUpdated 事件
+    /// - 不触发 generate_reflection()（由后续 reflect 命令手动触发）
+    pub fn add_outcome(&mut self, outcome: Outcome) -> Result<Vec<ObjectEvent>> {
+        // 验证 decision 存在
+        let decision = self.decisions.iter_mut().find(|d| d.id == outcome.decision_id)
+            .ok_or_else(|| anyhow::anyhow!("Decision '{}' not found", outcome.decision_id))?;
+
+        let mut events = Vec::new();
+
+        // Outcome 事件
+        let (_, outcome_event) = Outcome::new(
+            outcome.id.clone(),
+            outcome.decision_id.clone(),
+            outcome.thesis_id.clone(),
+            outcome.description.clone(),
+            outcome.verdict.clone(),
+            outcome.impact.clone(),
+            outcome.date.clone(),
+        );
+        events.push(outcome_event);
+
+        // 回填 decision.outcome_ids
+        if !decision.outcome_ids.contains(&outcome.id) {
+            decision.outcome_ids.push(outcome.id.clone());
+            decision.updated = outcome.date.clone();
+
+            // DecisionUpdated 事件
+            let update_event = ObjectEvent::new(
+                ObjectEventType::DecisionUpdated,
+                &decision.id,
+                "decision",
+                serde_json::json!({
+                    "outcome_id": outcome.id,
+                    "outcome_count": decision.outcome_ids.len(),
+                }),
+                "sulix_outcome_cli",
+            );
+            events.push(update_event);
+        }
+
+        self.outcomes.push(outcome);
+        Ok(events)
+    }
+
+    /// 添加反思复盘（由 CLI reflect 命令触发）
+    pub fn add_reflection(&mut self, reflection: Reflection) {
+        self.reflections.push(reflection);
     }
 
     /// 获取所有 Outcome 记录
