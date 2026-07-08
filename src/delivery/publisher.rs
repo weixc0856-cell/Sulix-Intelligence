@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use crate::artifact::manifest::ContentManifest;
 use crate::config::Config;
 use crate::domain::artifact::ArtifactSet;
+use crate::event_log::{ObjectEvent, ObjectEventType};
 
 /// 发布报告
 #[derive(Debug, Clone)]
@@ -176,8 +177,29 @@ pub async fn publish(
         }
     }
 
-    // 6. Event flush: 写入 data/events/{date}.jsonl
-    if !artifacts.events.is_empty() {
+    // 6. Collect all events: pipeline events + publisher events
+    let pipeline_event_count = artifacts.events.len();
+    let mut all_events: Vec<ObjectEvent> = artifacts.events;
+
+    // Add publish_rejected events for rejected objects
+    for _ in 0..rejected {
+        all_events.push(ObjectEvent::new(
+            ObjectEventType::PublishRejected,
+            "unknown", "artifact",
+            serde_json::json!({"reason": "schema validation failed"}),
+            "delivery_publisher",
+        ));
+    }
+
+    // Add publish_completed event (summary anchor for the JSONL)
+    all_events.push(ObjectEvent::complete("delivery_publisher", serde_json::json!({
+        "passed": passed,
+        "rejected": rejected,
+        "r2_status": r2_status,
+    })));
+
+    // 7. Flush all events to data/events/{date}.jsonl
+    if !all_events.is_empty() {
         let events_dir = data_dir.join("events");
         std::fs::create_dir_all(&events_dir)?;
         let events_path = events_dir.join(format!("{}.jsonl", today));
@@ -186,11 +208,13 @@ pub async fn publish(
             .append(true)
             .open(&events_path)?;
         use std::io::Write;
-        for event in &artifacts.events {
+        for event in &all_events {
             let line = serde_json::to_string(event)?;
             writeln!(file, "{}", line)?;
         }
-        log::info!("📋 Events flushed: {} events to {}", artifacts.events.len(), events_path.display());
+        log::info!("📋 Events flushed: {} events ({} pipeline + {} publisher) to {}",
+            all_events.len(), pipeline_event_count, all_events.len() - pipeline_event_count,
+            events_path.display());
     }
 
     Ok(PublishReport {

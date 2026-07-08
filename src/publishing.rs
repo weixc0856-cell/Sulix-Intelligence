@@ -779,7 +779,9 @@ async fn publish_persist(
             .collect();
         for td in &inferred.thesis_decisions {
             if let Some((_, Some(asm_id))) = theses_snapshot.iter().find(|(id, _)| id == &td.thesis_id) {
-                inferred.memory.record_or_update_decision(td, asm_id, today, &mut dec_registry);
+                if let Some(event) = inferred.memory.record_or_update_decision(td, asm_id, today, &mut dec_registry) {
+                    inferred.events.push(event);
+                }
             }
         }
     }

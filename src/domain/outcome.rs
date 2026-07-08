@@ -106,3 +106,45 @@ impl Outcome {
         (record, event)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_log::OBJECT_EVENT_SCHEMA_VERSION;
+
+    #[test]
+    fn test_outcome_new_creates_event_with_correct_fields() {
+        let (outcome, event) = Outcome::new(
+            "outcome-test-1".into(),
+            "thesis-test-1".into(),
+            "Test outcome".into(),
+            OutcomeVerdict::Confirmed,
+            "2026-07-08".into(),
+        );
+
+        assert_eq!(outcome.id, "outcome-test-1");
+        assert_eq!(outcome.thesis_id, "thesis-test-1");
+        assert_eq!(outcome.verdict, OutcomeVerdict::Confirmed);
+
+        assert_eq!(event.event_type, ObjectEventType::OutcomeRecorded);
+        assert_eq!(event.object_id, "outcome-test-1");
+        assert_eq!(event.object_type, "outcome");
+        assert_eq!(event.summary["verdict"], "Confirmed");
+        assert_eq!(event.summary["thesis_id"], "thesis-test-1");
+        assert_eq!(event.schema_version, OBJECT_EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_outcome_new_invalidated() {
+        let (outcome, event) = Outcome::new(
+            "outcome-test-2".into(),
+            "thesis-test-2".into(),
+            "Was wrong".into(),
+            OutcomeVerdict::Invalidated,
+            "2026-07-08".into(),
+        );
+
+        assert_eq!(outcome.verdict, OutcomeVerdict::Invalidated);
+        assert_eq!(event.summary["verdict"], "Invalidated");
+    }
+}

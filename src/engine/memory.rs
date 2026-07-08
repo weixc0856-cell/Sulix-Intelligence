@@ -13,6 +13,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::event_log::{ObjectEvent, ObjectEventType};
 use std::path::PathBuf;
 
 use crate::domain::compute_confidence;
@@ -582,13 +584,14 @@ impl MemoryEngine {
     ///
     /// 仅为有 assessment_id (ASM-XXXX) 的 Thesis 分配 DEC-ID。
     /// Registry 以 asm_id 为主键；thesis_id 仅用于内部引用。
+    /// 返回 `Option<ObjectEvent>` — 创建或更新时都返回对应事件。
     pub fn record_or_update_decision(
         &mut self,
         thesis_decision: &crate::domain::ThesisDecision,
         asm_id: &str,
         today: &str,
         registry: &mut crate::engine::decision_registry::DecisionRegistry,
-    ) {
+    ) -> Option<ObjectEvent> {
         use crate::domain::{DecisionRecord, DecisionState, DecisionTransition};
 
         let type_str = thesis_decision.decision_type.as_key().to_string();
@@ -603,10 +606,13 @@ impl MemoryEngine {
 
         if let Some(rec) = self.decisions.iter_mut().find(|d| d.id == dec_id) {
             // Update in place — push transition if type changed
-            if rec.decision_type != type_str {
+            let old_confidence = rec.confidence;
+            let old_type = rec.decision_type.clone();
+
+            if old_type != type_str {
                 rec.decision_history.push(DecisionTransition {
                     date: today.to_string(),
-                    from: rec.decision_type.clone(),
+                    from: old_type.clone(),
                     to: type_str.clone(),
                     confidence: thesis_decision.confidence,
                     trigger: "evidence-update".to_string(),
@@ -618,10 +624,21 @@ impl MemoryEngine {
             rec.rationale = thesis_decision.rationale.clone();
             rec.stability = stability_str;
             rec.updated = today.to_string();
+
+            // Emit DecisionUpdated event with old/new confidence
+            Some(ObjectEvent::new(
+                ObjectEventType::DecisionUpdated,
+                &dec_id, "decision",
+                serde_json::json!({
+                    "confidence": [old_confidence, thesis_decision.confidence],
+                    "decision_type": [old_type, thesis_decision.decision_type.as_key()],
+                }),
+                "memory_engine",
+            ))
         } else {
             // New canonical Decision
             self.decisions.push(DecisionRecord {
-                id: dec_id,
+                id: dec_id.clone(),
                 asm_id: asm_id.to_string(),
                 thesis_id: thesis_decision.thesis_id.clone(),
                 decision_type: type_str.clone(),
@@ -643,6 +660,17 @@ impl MemoryEngine {
                     trigger: "evidence-update".to_string(),
                 }],
             });
+
+            // Emit DecisionCreated event
+            Some(ObjectEvent::new(
+                ObjectEventType::DecisionCreated,
+                &dec_id, "decision",
+                serde_json::json!({
+                    "confidence": thesis_decision.confidence,
+                    "asm_id": asm_id,
+                }),
+                "memory_engine",
+            ))
         }
     }
 
