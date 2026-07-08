@@ -1,231 +1,170 @@
 <p align="center">
-  <a href="README.md">🇬🇧 English</a> · <a href="README.zh-CN.md">🇨🇳 中文</a>
-</p>
-
-<p align="center">
-  <img src="assets/logo.svg" width="120" alt="Sulix Intelligence" />
+  <a href="README.md">🇬🇧 English</a>
 </p>
 
 # Sulix Intelligence
 
-> **Fully Automated AI Think Tank — Personal Strategy OS for solo entrepreneurs.**
+> **Fully Automated Cognitive Engine — Personal Strategy OS for solo entrepreneurs.**
 
-Sulix Intelligence is a **cognitive engine** that processes raw signals into structured knowledge assets.
+Sulix Intelligence transforms raw signals into structured **strategic memory** — Signal → Assessment → Decision → Outcome. Not "what happened", but "does this change my decision for the next 6 months."
 
 ```
 Raw Signals (RSS/USPTO/Reddit)
     ↓
-Pipeline (sanitize + compliance + dedup)
+Pipeline → Scan Agent → Theme Clustering
     ↓
-AnalysisEngine (SVI + ASI + Confidence + Theme Clustering)
+Cognitive Engines (Memory + Hermes + Decision)
     ↓
-Blue Team Verification + Editor Agent
+ArtifactSet (Signals / Assessments / Decisions / Outcomes)
     ↓
-MemoryEngine (Thesis + Evidence + Outcome + Reflection)
+Schema Validation Gate (reject incomplete objects)
     ↓
-MDX Knowledge Assets → sulix-web (Astro Frontend) → Cloudflare Pages
+Local Storage + R2 (immutable assets) + Frontend Sync
+    ↓
+MDX View (derived from JSON artifacts)
 ```
 
-**Answer:** Not "what happened" — but "does this change my decision for the next 6 months."
+## Architecture
+
+```
+                    sulix-engine (Rust)
+                           |
+                    ArtifactSet JSON
+                  ┌─────────┼─────────┐
+                  ↓         ↓         ↓
+                 R2        D1       Frontend
+              (assets)  (index)    (Astro UI)
+                           |
+                    Cloudflare Worker
+                     JSON API Layer
+                           |
+                    Astro UI Shell
+                  (Bloomberg Terminal)
+```
 
 ## Three-Repository Architecture
 
 | Repo | Responsibility | Tech Stack |
 |------|--------------|------------|
-| **sulix-engine** ← this repo | Data Acquisition, Analysis, Memory, Content Generation | Rust + feed-rs + DeepSeek API |
-| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | Rendering, Navigation, UX | Astro + Tailwind + design.css |
-| **sulix-docs** | Product Decisions, Architecture, ADR, Research | Obsidian Markdown |
-
-Cross-boundary changes require ADR.
+| **sulix-engine** ← this repo | Data Acquisition, Analysis, Strategic Memory | Rust + DeepSeek API |
+| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | UI Shell, Navigation, UX | Astro + Tailwind |
+| **sulix-docs** | Product Decisions, Architecture, ADR | Obsidian Markdown |
 
 ## Products
 
-| Product | Purpose | Format | Price |
-|---------|---------|--------|-------|
-| **News Layer** | User acquisition | Daily MDX signals | $0 |
-| **Research Layer** | Revenue | Multi-agent reports · MDX | $99-$4999 |
-| **Memory Layer** | Moat | Thesis tracking · MDX | Private |
+| Product | Purpose | Price |
+|---------|---------|-------|
+| **News Layer** | User acquisition | $0 |
+| **Research Layer** | Revenue | $99-$4999 |
+| **Memory Layer** | Moat | Private |
 
 ## Quick Start
 
 ```bash
-# 1. Clone and build
+# 1. Build
 git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
 cd Sulix-Intelligence
+cp config.example.toml config.toml
 cargo build --release
 
-# 2. Configure
-cp config.example.toml config.toml
-# Set your DeepSeek API key in [llm] section
-# Set mdx_dir = "output" in [output] section
-
-# 3. Run
+# 2. Run (requires DEEPSEEK_API_KEY)
+export DEEPSEEK_API_KEY="sk-..."
 cargo run --release
 
-# Output:
-#   output/daily/YYYY-MM-DD-slug.mdx    → Daily signals
-#   output/thesis/YYYY-MM-DD-slug.mdx   → Thesis tracking
-#   output/research/YYYY-MM-DD-slug.mdx → Premium reports
-#   output/reflection/YYYY-MM-DD-slug.mdx → Reflections
-
-# 4. Preview with frontend (sulix-web)
-git clone https://github.com/weixc0856-cell/Intel-Web.git
-cd Intel-Web
+# 3. Preview
+cd ../sulix-web
 cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run dev  # → http://localhost:4321
+npm install && npm run dev
 ```
 
 ## Pipeline
 
 ```
-RSS/USPTO Sources → RawSignal → Pipeline (sanitize + compliance + dedup)
-  ↓
-Evidence Snapshot (SVI ≥ 5 → immutable JSONL evidence log)
-  ↓
-Wikipedia Enrichment + Full-Text Extraction
-  ↓
-EntitySanctionDb Extraction
-  ↓
-Scan Agent v1.1 (4-class tags, 3-tier triage: Insight/Watchlist/Memory)
-  ↓
-LLM Pre-dedup → Theme Clustering (≤5 themes)
-  ↓
-Theme Analysis (BLUF / Impact / Geopolitical / Supply Chain / Causal Chains)
-  ↓
-ASI + Confidence Scoring
-  ↓
-Blue Team Verification (load-bearing assumption challenge)
-  ↓
-DiGraph Cognitive Engine (QE → Belief Engine → Decision Engine)
-  ↓
-Editor Agent (personal impact analysis)
-  ↓
-Change Detection + Trend Layer
-  ↓
-MemoryEngine (Thesis + Evidence + Outcome + Reflection)
-  ↓
-MDX Output: daily/  thesis/  research/  reflection/
+Source Acquisition (RSS / USPTO / Reddit)
+    ↓ Pipeline: sanitize → compliance → dedup
+    ↓ Evidence Snapshot (immutable JSONL, SVI ≥ 5)
+    ↓ Scan Agent v1.1 (3-tier: Insight / Watchlist / Signal Memory)
+    ↓ LLM Pre-dedup → Theme Clustering (≤5 themes)
+    ↓ Theme Analysis + ASI/Confidence Scoring
+    ↓ Blue Team Verification (load-bearing assumption challenges)
+    ↓ Editor Agent (personal impact analysis)
+    ↓ MemoryEngine (Thesis / Evidence / Outcome / Reflection)
+    ↓ Hermes (Change Detection / Trends / Conflicts)
+    ↓ Decision Intelligence (Thesis → Decision mapping)
+    ↓ Meta Layer (auto Outcome detection + Reflection generation)
+    ↓ validation gate (schema::validator)
+    ↓ Artifact Publisher → Local + R2 + Frontend Sync
+    ↓ Event Log flush (data/events/{date}.jsonl)
 ```
 
-## MDX Knowledge Format
-
-Sulix generates MDX files with YAML frontmatter. Example `output/daily/2026-06-24-ai-agent.mdx`:
-
-```mdx
----
-title: AI Agent Infrastructure Consolidation
-date: 2026-06-24
-svi: 8.7
-asi: 7.5
-confidence: 0.81
-type: daily
-sources: [Federal Register, SEC]
-entities: [TSMC, NVIDIA]
----
-
-## BLUF
-
-One-sentence bottom line.
-
-## Analysis
-
-Detailed analysis with impact, geopolitical, supply chain.
-
-## Evidence
-
-| Evidence | Interpretation | Confidence |
-|----------|---------------|------------|
-
-## Assumptions
-
-- 🔴 Assumption text (evidence strength: weak)
-
-## Personal Impact
-
-- 👀 Q1: Strengthens your "build apps" thesis (+2) [Explore]
-```
-
-This format is:
-- **Git-friendly** — diff, review, history
-- **Astro-native** — `getCollection("daily")` directly
-- **Human-readable** — edit in any text editor
-
-## Features
-
-| Feature | Status |
-|---------|--------|
-| 29 data sources with Source Scoring | ✅ |
-| SVI Strategic Volatility Index | ✅ |
-| ASI + Confidence scoring | ✅ |
-| Scan Agent 3-tier triage | ✅ |
-| Editor Agent (Personal Impact) | ✅ |
-| Blue Team verification | ✅ |
-| DiGraph Cognitive Engine | ✅ |
-| MemoryEngine (Thesis + Outcome + Reflection) | ✅ |
-| Belief Engine Phase B (WayneOPC) | ✅ |
-| Meta Layer (auto outcome detection) | ✅ |
-| MDX knowledge output (6 collections) | ✅ |
-| Twitter/X tweet pipeline | ✅ |
-| Reddit data source | ✅ |
-| Change Detection (rule + LLM) | ✅ |
-| Event Log (append-only audit trail) | ✅ |
-| Chronicle (history database) | ✅ |
-| Bilingual EN/ZH | ✅ |
-| LLM Audit counters | ✅ |
-| Substack API integration | ✅ |
-
-### Code Structure (65+ files)
+## Code Structure
 
 ```
 src/
-├── domain/        — 7 domain models (Theme/Thesis/Evidence/Observation/Action/Outcome/Reflection)
-├── engine/        — Domain engines (analysis/memory/premium/belief)
-├── hermes/        — Change detection + trends + conflicts
-├── renderer/      — MDX output + HTML (debug) + Markdown
-├── clusterer/     — Theme clustering + synthesis
-├── agent/         — Scan Agent + Editor Agent + Calibration + Decay
-├── source/        — Source adapters (RSS/USPTO/Reddit)
-├── twitter.rs     — X/Twitter auto-tweet pipeline
-├── publishing.rs  — Publishing agent orchestration
-├── event_log.rs   — PipelineEvent audit log
-└── main.rs        — Pipeline orchestration (629 lines)
+├── domain/           — 8 domain models (Theme/Thesis/Evidence/Action/Outcome/Reflection/Decision/ArtifactSet)
+├── engine/           — Cognitive engines (analysis/memory/premium/belief/decision)
+├── publishing/       — 5-stage publish coordinator → returns ArtifactSet
+├── artifact/         — Manifest, Report, Builder (pure functions)
+├── delivery/         — Validation gate → Local → R2 → Frontend sync + Event flush
+├── schema/           — Schema validation (schemars derive + Validate trait)
+├── storage/          — R2 upload client (S3-compatible), corrupt-recovery helpers
+├── renderer/         — MDX/Markdown/HTML rendering (MDX derived from JSON)
+├── hermes/           — Change detection + trends + conflicts
+├── clusterer/        — Theme clustering + LLM pre-dedup + synthesis
+├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
+├── source/           — Source adapters (RSS/USPTO/Reddit)
+├── event_log/        — ObjectEvent audit trail (append-only JSONL)
+├── main.rs           — Pipeline orchestration (558 lines)
+└── lib.rs            — Module declarations
 ```
+
+## Schema Validation Gate
+
+Every artifact passes validation before storage. Rejected objects go to `data/rejected/{date}/` and trigger non-zero exit.
+
+| Check | Phase 0 | Phase 1 |
+|-------|---------|---------|
+| Required fields non-empty | ✅ | ✅ |
+| Confidence in [0,1] | ✅ | ✅ |
+| Evidence array non-empty | ⚠️ warning | ❌ reject |
+| Decision type in enum | ✅ | ✅ |
+
+## Events
+
+All object lifecycle events are recorded in `data/events/{date}.jsonl`:
+
+```json
+{"schema_version":1,"event_type":"decision_created","object_id":"DEC-0001","summary":{"confidence":0.72}}
+{"schema_version":1,"event_type":"outcome_recorded","object_id":"OUT-001","summary":{"verdict":"PartiallyConfirmed"}}
+{"schema_version":1,"event_type":"publish_completed","summary":{"passed":3,"rejected":0,"r2_status":"not_configured"}}
+```
+
+Events contain summaries only (not full snapshots). Full object history in R2.
 
 ## Configuration
 
 | Section | Purpose |
 |---------|---------|
 | `[llm]` | API key, model, endpoint |
-| `[[sources]]` | Data sources with name, URL, category, layer, score |
+| `[[sources]]` | Data sources (name, URL, category, layer, score) |
 | `[prompts]` | System prompts for each analysis stage |
-| `[output]` | Output paths, including `mdx_dir` |
-| `[questions]` | Active decision questions |
-| `[beliefs]` | WayneOPC core beliefs (B1-B10) |
-| `[twitter]` | X/Twitter API config |
-| `[graveyard]` | Decay Agent settings |
+| `[output]` | Output paths (vault_path, mdx_dir, frontend_public_dir) |
+| `[storage]` | data_dir for persistent state |
+| `[r2]` | Cloudflare R2 config (bucket, endpoint, public_url) |
 
 ## Deployment
 
-### Pipeline (cron)
+### CI Pipeline (GitHub Actions)
 
-```bash
-# Daily (Linux/macOS)
-0 6 * * * cd /path/to/Sulix-Intelligence && cargo run --release
-
-# Daily (Windows)
-cargo run --release
+```yaml
+# .github/workflows/cron_brief.yml
+# Daily: cargo run --release → R2 → sulix-web build → CF Pages
 ```
 
-### Frontend
-
-Frontend is a separate repo: [sulix-web](https://github.com/weixc0856-cell/Intel-Web)
-
-```bash
-git clone https://github.com/weixc0856-cell/Intel-Web.git
-cd Intel-Web
-cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run build
-```
+Secrets required:
+- `DEEPSEEK_API_KEY` — LLM provider
+- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT` — R2 storage
+- `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` — Pages deploy
 
 ## License
 
