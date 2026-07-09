@@ -12,6 +12,7 @@
 //!   seo.rs        → Astro Head/Layout 组件职责
 
 pub mod helpers;
+pub mod intel;
 pub mod markdown;
 pub mod mdx;
 pub mod premium;

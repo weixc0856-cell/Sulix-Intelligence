@@ -30,6 +30,9 @@ pub struct PipelineReport {
     /// 去重后今日新增信号数
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signal_count: Option<usize>,
+    /// LLM 调用总数（Layer 2 摘要 + Layer 3 分析等）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_calls_total: Option<u64>,
     /// 聚类后主题数
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme_count: Option<usize>,
@@ -152,6 +155,7 @@ impl PipelineReport {
             duration_seconds: 0.0,
             observation_count: None,
             signal_count: None,
+            llm_calls_total: None,
             theme_count: None,
             assessment_count: None,
             decision_count: None,
