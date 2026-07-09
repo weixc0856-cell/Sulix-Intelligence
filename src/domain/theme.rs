@@ -17,6 +17,10 @@ pub struct Theme {
     pub summary: String,
     pub articles: Vec<Article>,
     pub sources: Vec<String>,
+    /// 是否为聚类失败时的兜底主题（如"今日要闻"）
+    /// fallback 主题不进入 Memory Engine，不分配 ASM/DEC
+    #[serde(default)]
+    pub is_fallback: bool,
 }
 
 /// 承重假设

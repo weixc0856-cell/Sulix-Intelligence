@@ -129,6 +129,7 @@ mod tests {
                 is_internal: false,
             }],
             sources: vec!["s".into()],
+            is_fallback: false,
         }
     }
 

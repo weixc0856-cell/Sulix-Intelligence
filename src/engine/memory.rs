@@ -181,6 +181,11 @@ impl MemoryEngine {
         analyses: &[ThemeAnalysis],
     ) -> Result<()> {
         for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+            // Fallback 主题（聚类失败时的兜底）不进入 Memory Engine
+            if theme.is_fallback {
+                log::info!("🧹 跳过 fallback 主题: {}", theme.title);
+                continue;
+            }
             let title = &theme.title;
             let source = theme
                 .sources
@@ -1113,6 +1118,7 @@ mod tests {
             summary: "test summary".into(),
             articles: vec![],
             sources,
+            is_fallback: false,
         }
     }
 

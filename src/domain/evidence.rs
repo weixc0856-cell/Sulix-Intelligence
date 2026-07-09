@@ -39,6 +39,10 @@ pub struct Evidence {
 }
 
 /// 计算置信度 0.0-1.0（从证据 Support/Challenge 比例）
+/// 证据量饱和常数：控制少量证据时的置信度增长速度
+/// k 越小，单条证据的置信度上限越低；k=3 时 1 条证据 ~62%，3 条 ~75%，10 条 ~88%
+const EVIDENCE_SATURATION_K: f64 = 3.0;
+
 pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
     let support = evidences
         .iter()
@@ -53,7 +57,9 @@ pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
         0.5
     } else {
         let ratio = support / total;
-        (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
+        // 饱和度因子：少量证据时压低置信度，随证据量渐近收敛
+        let saturation = total / (total + EVIDENCE_SATURATION_K);
+        (0.5 + (ratio - 0.5) * saturation).clamp(0.1, 0.98)
     }
 }
 
@@ -62,13 +68,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compute_confidence_all_support() {
+    fn test_compute_confidence_all_support_two_evidences() {
         let evidences = vec![
             Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
             Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
         ];
+        // 2 条全支持: 0.5 + 0.5 * 2/(2+3) = 0.5 + 0.5 * 0.4 = 0.7
         let c = compute_confidence(&evidences);
-        assert!((c - 0.9).abs() < 0.01, "expected ~0.9, got {}", c);
+        assert!((c - 0.7).abs() < 0.01, "expected ~0.7, got {}", c);
+    }
+
+    #[test]
+    fn test_compute_confidence_single_support() {
+        let evidences = vec![
+            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
+        ];
+        // 1 条支持: 0.5 + 0.5 * 1/(1+3) = 0.5 + 0.5 * 0.25 = 0.625
+        let c = compute_confidence(&evidences);
+        assert!((c - 0.625).abs() < 0.01, "expected ~0.625, got {}", c);
     }
 
     #[test]
@@ -76,8 +93,9 @@ mod tests {
         let evidences = vec![
             Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
         ];
+        // 1 条全挑战: 0.5 + (0.0 - 0.5) * 1/4 = 0.5 + (-0.5) * 0.25 = 0.375
         let c = compute_confidence(&evidences);
-        assert!((c - 0.1).abs() < 0.01, "expected ~0.1, got {}", c);
+        assert!((c - 0.375).abs() < 0.01, "expected ~0.375, got {}", c);
     }
 
     #[test]
@@ -91,7 +109,23 @@ mod tests {
             Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
             Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
         ];
+        // S:1 C:1 → ratio=0.5 → 0.5 + 0 * saturation = 0.5
         let c = compute_confidence(&evidences);
         assert!((c - 0.5).abs() < 0.01, "expected ~0.5, got {}", c);
+    }
+
+    #[test]
+    fn test_compute_confidence_large_evidence_settles() {
+        let mut evidences = Vec::new();
+        for i in 0..10 {
+            evidences.push(Evidence {
+                date: "2026-07-01".into(), title: format!("A{}", i),
+                source: "S".into(), summary: "".into(),
+                stance: Stance::Supports, signal_strength: 5,
+            });
+        }
+        // 10 条全支持: 0.5 + 0.5 * 10/13 = 0.5 + 0.5 * 0.769 = 0.8846
+        let c = compute_confidence(&evidences);
+        assert!((c - 0.885).abs() < 0.01, "expected ~0.885, got {}", c);
     }
 }

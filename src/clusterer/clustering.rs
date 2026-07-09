@@ -87,6 +87,7 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
                     summary,
                     articles: theme_articles,
                     sources,
+                    is_fallback: false,
                 });
             }
         }
@@ -101,6 +102,7 @@ article_indices 是文章在输入列表中的序号（从 0 开始）。
             summary: "未能自动聚类，以下为今日全部信号".into(),
             articles: articles.to_vec(),
             sources: all_sources,
+            is_fallback: true,
         });
     }
 

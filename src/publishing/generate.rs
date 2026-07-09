@@ -46,6 +46,10 @@ async fn generate_asi_and_premium(
     let mut premium_reports: Vec<crate::domain::PremiumReport> = vec![];
 
     for (theme, analysis) in themes.iter().zip(analyses.iter()) {
+        // Fallback 主题不触发 Premium 研报生成（无语义价值，不浪费 LLM）
+        if theme.is_fallback {
+            continue;
+        }
         let svi = crate::engine::analysis::calculate_svi(analysis, theme, &config.sources);
         let asi_config = crate::engine::analysis::asi::AsiConfig::default();
         let max_days_old = chrono::Utc::now()

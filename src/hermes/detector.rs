@@ -41,18 +41,16 @@ pub fn detect_changes_rule(
             continue;
         }
 
-        // 检查蓝军输出：有 adverse 或 weak assumption → 可能是冲突
-        let has_adverse = analysis
+        // 冲突判定：adverse scenario 是分析的一部分，不是新到的挑战信号。
+        // 仅当有 high-certainty adverse（signal_strength >= 7）时才标记为冲突，
+        // 否则重复出现的主题视为 Reinforce。
+        let has_strong_adverse = analysis
             .adverse
             .as_ref()
-            .map(|a| !a.scenario.is_empty())
+            .map(|a| !a.scenario.is_empty() && analysis.signal_strength >= 7)
             .unwrap_or(false);
-        let has_weak = analysis
-            .assumptions
-            .iter()
-            .any(|a| a.load_bearing && a.evidence_strength == "weak");
 
-        if has_adverse || has_weak {
+        if has_strong_adverse {
             conflicts.push(ConflictEntry {
                 topic: title.clone(),
                 today_signal: summary.clone(),

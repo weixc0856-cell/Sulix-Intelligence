@@ -10,12 +10,22 @@ use super::ChangeSummary;
 /// 矛盾写入：将 ChangeSummary 中的冲突记到对应 Thesis 的 Challenges Evidence
 pub fn apply_conflicts(changes: &ChangeSummary, memory: &mut dyn ThesisRepository, today: &str) {
     for conflict in &changes.conflicts {
+        // 跳过无实质内容的 conflict（元数据计数不是证据）
+        if conflict.today_signal.is_empty() && conflict.prior_belief.is_empty() {
+            log::warn!("⚠️ Hermes: 跳过空内容 conflict [{}]", conflict.topic);
+            continue;
+        }
         if let Some(thesis) = memory.find_by_title_mut(&conflict.topic) {
             thesis.evidences.push(Evidence {
                 date: today.to_string(),
                 title: conflict.today_signal.clone(),
                 source: "Hermes.Conflict".into(),
-                summary: conflict.prior_belief.clone(),
+                // summary：取实际信号内容而非计数元数据（prior_belief 是"近 7 天出现 N 次"）
+                summary: if conflict.today_signal.is_empty() {
+                    conflict.prior_belief.clone()
+                } else {
+                    conflict.today_signal.clone()
+                },
                 stance: Stance::Challenges,
                 signal_strength: 8,
             });

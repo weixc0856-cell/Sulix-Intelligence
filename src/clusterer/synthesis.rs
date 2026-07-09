@@ -71,6 +71,7 @@ mod tests {
                 article_count
             ],
             sources: vec!["test".into()],
+            is_fallback: false,
         }
     }
 

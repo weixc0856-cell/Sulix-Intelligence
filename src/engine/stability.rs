@@ -61,7 +61,10 @@ pub fn stability_gate(
                 if confidence_delta < CONFIDENCE_HYSTERESIS
                     && td.decision_type != *last_type
                 {
-                    // Suppress the switch: keep yesterday's decision
+                    // Suppress the switch: keep yesterday's decision type
+                    // but retain today's evidence-based confidence (stability_gate
+                    // only smooths decision_type, not confidence — the latter should
+                    // reflect current evidence, not a smoothed value)
                     log::info!(
                         "🛡️ Stability Gate: {} — confidence hysteresis (Δ{:.2}<{:.2}), keeping {:?}",
                         thesis_id,
@@ -70,7 +73,7 @@ pub fn stability_gate(
                         last_type
                     );
                     td.decision_type = last_type.clone();
-                    td.confidence = *last_confidence;
+                    // NOTE: confidence intentionally NOT overridden — stays as today's computed value
                     td.stability = DecisionStability::Stable;
                 }
                 // Rule 2b: Not enough consecutive days for new decision
@@ -84,7 +87,7 @@ pub fn stability_gate(
                         last_type
                     );
                     td.decision_type = last_type.clone();
-                    td.confidence = *last_confidence;
+                    // NOTE: confidence intentionally NOT overridden
                     td.stability = DecisionStability::Volatile;
                 }
                 // Rule 3: Sufficient evidence, allow switch
@@ -199,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn test_confidence_hysteresis_prevents_switch() {
+    fn test_confidence_hysteresis_suppresses_switch_keeps_confidence() {
         let today = vec![make_decision("t1", DecisionType::Exit, 0.82)];
         let mut history = std::collections::HashMap::new();
         history.insert("t1".to_string(), (DecisionType::Build, 0.80));
@@ -207,9 +210,10 @@ mod tests {
         consecutive.insert("t1".to_string(), 5);
 
         let result = stability_gate(today, &history, &consecutive);
-        // Confidence only changed 2% → should keep Build
+        // Confidence only changed 2% → decision_type should keep Build
         assert_eq!(result[0].decision_type, DecisionType::Build);
-        assert_eq!(result[0].confidence, 0.80); // kept yesterday's confidence
+        // But confidence stays as today's computed value (not overridden to yesterday's)
+        assert!((result[0].confidence - 0.82).abs() < 0.01, "expected 0.82, got {}", result[0].confidence);
     }
 
     #[test]
@@ -224,6 +228,8 @@ mod tests {
         // Not enough persistence → keep Build
         assert_eq!(result[0].decision_type, DecisionType::Build);
         assert_eq!(result[0].stability, DecisionStability::Volatile);
+        // Confidence stays as today's computed value
+        assert!((result[0].confidence - 0.4).abs() < 0.01);
     }
 
     #[test]
