@@ -7,6 +7,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: Lint
+        run: cargo clippy
+      - name: Test
+        run: cargo test
+
   pipeline:
     runs-on: ubuntu-latest
     permissions:

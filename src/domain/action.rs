@@ -17,20 +17,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 行动类型（五级行动建议，从"关注"到"退出"）
-///
-/// 与 DecisionType 的区别：
-///   ActionType 是原始的五级信号（Observe-Execute），来自 Editor Agent。
-///   DecisionType 是 Thesis → Decision 的映射结果，带有时间尺度和优先级。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ActionType {
-    Observe,
-    Explore,
-    Invest,
-    Execute,
-    Exit,
-}
-
 /// 决策类型 — Thesis → Decision Intelligence 的映射结果
 ///
 /// 创业者真正关心的不是"Observe"或"Invest"，

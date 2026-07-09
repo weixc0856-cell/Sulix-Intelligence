@@ -18,9 +18,7 @@ pub async fn analyze_theme(
     language: &str,
     prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<ThemeAnalysis> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
+    let client = crate::llm::create_client(120)?;
 
     let is_zh = language == "zh";
     let base_prompt = r#"You are a senior strategic analyst writing for a daily briefing read by startup founders and indie developers.
@@ -232,11 +230,9 @@ pub async fn challenge_theme(
     Vec<String>,
     Vec<String>,
 )> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
-        .build()?;
+    let client = crate::llm::create_client(90)?;
 
-    let base_prompt = "You are a red-team adversarial analyst. Your job is to STRESS-TEST the following strategic analysis.
+    let base_prompt = "You are a red-team adversarial analyst.
 
 Find weaknesses, hidden assumptions, and failure scenarios that the original analyst missed.
 

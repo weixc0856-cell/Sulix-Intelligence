@@ -96,9 +96,7 @@ pub async fn generate_premium_report(
     llm_config: &LlmConfig,
     prompts: Option<&crate::config::PromptsConfig>,
 ) -> Result<PremiumReport> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
+    let client = crate::llm::create_client(120)?;
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     // ---- Stage 1: WhatChanged ----
@@ -221,9 +219,7 @@ pub async fn push_to_substack(
     api_key: &str,
     publication_url: &str,
 ) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::llm::create_llm_client()?;
 
     let md = crate::renderer::render_substack_markdown(report);
     let payload = serde_json::json!({

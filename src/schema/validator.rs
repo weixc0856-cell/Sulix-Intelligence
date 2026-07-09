@@ -106,3 +106,10 @@ pub trait Validate {
         }
     }
 }
+
+// ===== Shared default function for schema serde attributes =====
+
+/// Default locale — used by `#[serde(default = "crate::schema::validator::default_locale")]`
+pub fn default_locale() -> String { "en".into() }
+/// Default language — used by `#[serde(default = "crate::schema::validator::default_lang")]`
+pub fn default_lang() -> String { "en".into() }

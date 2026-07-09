@@ -54,9 +54,7 @@ pub async fn run_maintenance(
         log::info!("🪦 发现 {} 篇过期文章", expired_ids.len());
 
         // 2. 获取每篇的详情并构建埋葬条目
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()?;
+        let client = crate::llm::create_source_client()?;
 
         let mut entries = Vec::new();
 

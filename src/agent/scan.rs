@@ -136,9 +136,7 @@ pub async fn scan_and_triage(
     prompts: Option<&crate::config::PromptsConfig>,
     sources: &[SourceConfig],
 ) -> Result<TriageResult> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()?;
+    let client = crate::llm::create_source_client()?;
 
     let mut insight = Vec::new();
     let mut watchlist = Vec::new();

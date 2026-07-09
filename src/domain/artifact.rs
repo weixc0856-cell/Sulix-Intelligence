@@ -52,6 +52,7 @@ pub struct ArtifactSet {
 }
 
 impl ArtifactSet {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         themes: Vec<Theme>,
         analyses: Vec<ThemeAnalysis>,

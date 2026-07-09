@@ -23,15 +23,12 @@ pub struct SignalObject {
     /// 三语言摘要（可选，仅标题翻翻，摘要由分级政策定）
     #[serde(default)]
     pub summary: Option<Localized>,
-    #[serde(default = "default_locale")]
+    #[serde(default = "crate::schema::validator::default_locale")]
     pub locale: String,
     /// 原文语言: "en" | "zh-cn" | "zh-tw"
-    #[serde(default = "default_lang")]
+    #[serde(default = "crate::schema::validator::default_lang")]
     pub lang: String,
 }
-
-fn default_locale() -> String { "en".into() }
-fn default_lang() -> String { "en".into() }
 
 impl SignalObject {
     /// 验证必填字段
@@ -50,4 +47,10 @@ impl SignalObject {
 
         errors
     }
+}
+
+impl crate::schema::validator::Validate for SignalObject {
+    fn object_type() -> &'static str { "signal" }
+    fn object_id(&self) -> &str { &self.id }
+    fn validate(&self) -> Vec<String> { self.validate() }
 }

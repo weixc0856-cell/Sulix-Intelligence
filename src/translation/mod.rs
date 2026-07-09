@@ -41,10 +41,10 @@ struct SourceFile {
 /// 从文件中提取 YAML frontmatter 和正文
 fn split_frontmatter(content: &str) -> (&str, &str) {
     let content = content.trim_start();
-    if content.starts_with("---") {
-        if let Some(end) = content[3..].find("\n---") {
-            let frontmatter = &content[3..3 + end];
-            let body = &content[3 + end + 5..];
+    if let Some(after_delim) = content.strip_prefix("---") {
+        if let Some(end) = after_delim.find("\n---") {
+            let frontmatter = &after_delim[..end];
+            let body = &after_delim[end + 5..];
             return (frontmatter.trim(), body.trim());
         }
     }
@@ -92,7 +92,7 @@ fn collect_source_files(mdx_dir: &Path, translate_dirs: &[String], max_files: us
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(true, |e| e != "md") {
+            if path.extension().is_none_or(|e| e != "md") {
                 continue;
             }
             let file_name = entry.file_name().to_string_lossy().to_string();

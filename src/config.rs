@@ -1,7 +1,7 @@
 //! 配置模块 — TOML 配置加载
 
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
@@ -277,15 +277,29 @@ fn default_substack_enabled() -> bool {
     false // 默认不启用，避免意外推送测试数据
 }
 
-/// Phase 2: 用户关切问题系统
-///
-/// 在 config.toml 的 [questions] 段中声明。
-/// Question 的 text 字段在 TOML 中为 "question"。
+/// 用户关切问题（来自 config.toml [questions] 段）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Question {
+    pub id: String,
+    /// TOML 中为 "question" 字段
+    #[serde(rename = "question")]
+    pub text: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default = "default_question_priority")]
+    pub priority: u8,
+}
+
+fn default_question_priority() -> u8 {
+    5
+}
+
+/// Phase 2: 用户关切问题系统（当前未连线，保留配置兼容性）
 #[derive(Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct QuestionsConfig {
     #[serde(default)]
-    pub questions: Vec<crate::question_engine::Question>,
+    pub questions: Vec<Question>,
 }
 
 /// News Layer 配置

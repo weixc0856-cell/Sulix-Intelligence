@@ -11,12 +11,30 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use crate::config::LlmConfig;
 use crate::fetcher::Article;
 
 /// 最大重试次数
 const MAX_RETRIES: u32 = 3;
+
+/// Create a reqwest Client with the given timeout in seconds.
+pub fn create_client(timeout_secs: u64) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        .build()?)
+}
+
+/// Convenience: LLM API calls with 30-second timeout.
+pub fn create_llm_client() -> Result<reqwest::Client> {
+    create_client(30)
+}
+
+/// Convenience: external source fetches with 60-second timeout.
+pub fn create_source_client() -> Result<reqwest::Client> {
+    create_client(60)
+}
 
 // ===== LLM 调用审计计数器 =====
 /// 总调用次数
@@ -83,6 +101,35 @@ pub fn group_by_category(articles: &[Article]) -> HashMap<String, Vec<Article>> 
 
 // ===== P1: 重试机制 =====
 
+/// Generic retry loop with exponential backoff.
+/// Skips retry on 4xx errors (auth/billing/rate-limit).
+async fn with_retry<T, F, Fut>(f: F) -> Result<T>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut last_error = None;
+    for attempt in 0..=MAX_RETRIES {
+        if attempt > 0 {
+            let delay_secs = 2u64.pow(attempt);
+            log::warn!("⏳ Retry attempt {} ({}s delay)...", attempt, delay_secs);
+            tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+        }
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("401") || err_str.contains("403") {
+                    log::warn!("❌ Non-retryable error: {}", err_str);
+                    return Err(e);
+                }
+                last_error = Some(e);
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("retry loop exited without error accumulation")))
+}
+
 /// 带指数退避重试的 API 调用
 pub(crate) async fn call_with_retry(
     client: &reqwest::Client,
@@ -91,35 +138,10 @@ pub(crate) async fn call_with_retry(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<Vec<AnalyzedArticleRaw>> {
-    let mut last_error = None;
-
-    for attempt in 0..=MAX_RETRIES {
-        if attempt > 0 {
-            let delay_secs = 2u64.pow(attempt); // 1s, 2s, 4s
-            log::warn!("⏳ 第 {} 次重试 ({}s 后)...", attempt, delay_secs);
-            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
-        }
-
-        match call_completion(client, api_key, llm_config, system_prompt, user_prompt).await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                let err_str = e.to_string();
-
-                // 4xx 错误不重试（auth/billing/rate limit 非临时性问题）
-                if err_str.contains("401") || err_str.contains("403") {
-                    log::warn!("❌ 非临时性错误，不重试: {}", err_str);
-                    return Err(e);
-                }
-
-                last_error = Some(e);
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("重试循环退出但未积累错误")))
+    with_retry(|| call_completion(client, api_key, llm_config, system_prompt, user_prompt)).await
 }
 
-/// 调用 DeepSeek API 返回原始文本，带指数退避重试
+/// 调用 LLM API 返回原始文本，带指数退避重试
 pub(crate) async fn call_with_retry_raw(
     client: &reqwest::Client,
     api_key: &str,
@@ -127,26 +149,7 @@ pub(crate) async fn call_with_retry_raw(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
-    let mut last_error = None;
-    for attempt in 0..=MAX_RETRIES {
-        if attempt > 0 {
-            let delay_secs = 2u64.pow(attempt);
-            log::warn!("⏳ 第 {} 次重试 ({}s 后)...", attempt, delay_secs);
-            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
-        }
-        match call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt).await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                let err_str = e.to_string();
-                if err_str.contains("401") || err_str.contains("403") {
-                    log::warn!("❌ 非临时性错误，不重试: {}", err_str);
-                    return Err(e);
-                }
-                last_error = Some(e);
-            }
-        }
-    }
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("重试循环退出但未积累错误")))
+    with_retry(|| call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt)).await
 }
 
 /// Simple text-in/text-out LLM call (creates its own client).
@@ -161,15 +164,18 @@ pub(crate) async fn call_and_parse(
     call_with_retry_raw(&client, api_key, llm_config, system_prompt, user_prompt).await
 }
 
-/// 不带重试的原始 API 调用（供 call_with_retry_raw 使用）
-async fn call_raw_inner(
+/// Core LLM call: build request, send, extract content string.
+/// Returns the raw content string from the LLM response.
+/// All public/crate callers go through with_retry wrappers.
+async fn call_llm_inner(
     client: &reqwest::Client,
     api_key: &str,
     llm_config: &LlmConfig,
     system_prompt: &str,
     user_prompt: &str,
+    max_tokens: u32,
+    temperature: f32,
 ) -> Result<String> {
-    // LLM 审计计数
     LLM_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
     let input_est = (system_prompt.len() + user_prompt.len()) as u64;
     LLM_INPUT_TOKENS.fetch_add(input_est / 4, Ordering::Relaxed);
@@ -185,11 +191,13 @@ async fn call_raw_inner(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "max_tokens": llm_config.max_tokens.min(2048),
-        "temperature": llm_config.temperature.min(0.2),
+        "max_tokens": max_tokens,
+        "temperature": temperature,
         "response_format": {"type": "json_object"},
         "seed": 42  // fixed seed for deterministic output
     });
+
+    log::debug!("LLM 请求: {} ({} tokens max)", url, max_tokens);
 
     let response = client
         .post(&url)
@@ -205,11 +213,7 @@ async fn call_raw_inner(
             .text()
             .await
             .unwrap_or_else(|e| format!("<body read failed: {}>", e));
-        return Err(anyhow::anyhow!(
-            "DeepSeek API 返回错误 ({}): {}",
-            status,
-            error_text
-        ));
+        return Err(anyhow::anyhow!("LLM API 返回错误 ({}): {}", status, error_text));
     }
 
     let chat_response: ChatResponse = response.json().await?;
@@ -220,13 +224,27 @@ async fn call_raw_inner(
         .ok_or_else(|| anyhow::anyhow!("API 响应中没有 choices"))?
         .clone();
 
-    // LLM 输出审计
     LLM_OUTPUT_TOKENS.fetch_add(content.len() as u64 / 4, Ordering::Relaxed);
 
     Ok(content)
 }
 
-/// 实际调用 LLM API（OpenAI 兼容格式，由 config.base_url 决定 provider）
+/// 不带重试的原始 API 调用 — 返回文本（供 call_with_retry_raw 使用）
+async fn call_raw_inner(
+    client: &reqwest::Client,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String> {
+    call_llm_inner(
+        client, api_key, llm_config, system_prompt, user_prompt,
+        llm_config.max_tokens.min(2048),
+        llm_config.temperature.min(0.2),
+    ).await
+}
+
+/// 实际调用 LLM API 并解析 JSON 响应（供 call_with_retry 使用）
 async fn call_completion(
     client: &reqwest::Client,
     api_key: &str,
@@ -234,54 +252,11 @@ async fn call_completion(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<Vec<AnalyzedArticleRaw>> {
-    let url = format!(
-        "{}/chat/completions",
-        llm_config.base_url.trim_end_matches('/')
-    );
-
-    let request_body = serde_json::json!({
-        "model": llm_config.model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "max_tokens": llm_config.max_tokens,
-        "temperature": llm_config.temperature,
-        "response_format": {"type": "json_object"},
-        "seed": 42  // fixed seed for deterministic output
-    });
-
-    log::debug!("LLM 请求: {} ({} tokens max)", url, llm_config.max_tokens);
-
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&request_body)
-        .send()
-        .await?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<body read failed: {}>", e));
-        return Err(anyhow::anyhow!(
-            "DeepSeek API 返回错误 ({}): {}",
-            status,
-            error_text
-        ));
-    }
-
-    let chat_response: ChatResponse = response.json().await?;
-
-    let content = chat_response
-        .choices
-        .first()
-        .map(|c| &c.message.content)
-        .ok_or_else(|| anyhow::anyhow!("API 响应中没有 choices"))?
-        .clone();
+    let content = call_llm_inner(
+        client, api_key, llm_config, system_prompt, user_prompt,
+        llm_config.max_tokens,
+        llm_config.temperature,
+    ).await?;
 
     parse_json_response(&content).map_err(|e| {
         let end = content.floor_char_boundary(content.len().min(100));
@@ -297,7 +272,7 @@ fn parse_json_response(content: &str) -> Result<Vec<AnalyzedArticleRaw>> {
 }
 
 /// 多策略 JSON 解析（返回 Value，适合自定义字段提取）
-/// 策略：直接解析 → 抽 ```json 围栏 → 抽 ``` 围栏 → 抓首尾花括号
+/// 策略：直接解析 → 抽 ```json 围栏 → 抽 ``` 围栏 → 抓首尾花括号/方括号
 pub(crate) fn parse_json_lenient(raw: &str) -> Result<serde_json::Value> {
     // 策略 1：直接解析
     if let Ok(v) = serde_json::from_str(raw) {
@@ -309,15 +284,37 @@ pub(crate) fn parse_json_lenient(raw: &str) -> Result<serde_json::Value> {
             return Ok(v);
         }
     }
-    // 策略 3：提取 ``` ... ``` 块
+    // 策略 3：提取 ``` ... ``` 块（无 language hint）
     if let Some(inner) = extract_json_block(raw, "```\n") {
         if let Ok(v) = serde_json::from_str(&inner) {
             return Ok(v);
         }
     }
-    // 策略 4：从第一个 { 到最后一个 } 裸提取
+    // 策略 3b: 提取 ```json ... ``` 块（无 trailing \n — leftover after trim)
+    if let Some(inner) = extract_json_block_flexible(raw, "```json") {
+        if let Ok(v) = serde_json::from_str(&inner) {
+            return Ok(v);
+        }
+    }
+    // 策略 3c: 提取 ``` ...  ``` 块（无 trailing \n）
+    if let Some(inner) = extract_json_block_flexible(raw, "```") {
+        if let Ok(v) = serde_json::from_str(&inner) {
+            return Ok(v);
+        }
+    }
+    // 策略 4a：从第一个 { 到最后一个 } 裸提取（对象）
     if let Some(start) = raw.find('{') {
         if let Some(end) = raw.rfind('}') {
+            if end > start {
+                if let Ok(v) = serde_json::from_str(&raw[start..=end]) {
+                    return Ok(v);
+                }
+            }
+        }
+    }
+    // 策略 4b：从第一个 [ 到最后一个 ] 裸提取（数组）
+    if let Some(start) = raw.find('[') {
+        if let Some(end) = raw.rfind(']') {
             if end > start {
                 if let Ok(v) = serde_json::from_str(&raw[start..=end]) {
                     return Ok(v);
@@ -328,12 +325,50 @@ pub(crate) fn parse_json_lenient(raw: &str) -> Result<serde_json::Value> {
     Err(anyhow::anyhow!("所有 JSON 解析策略均失败"))
 }
 
-/// 从文本中提取指定标记之间的内容
+/// 从文本中提取指定标记之间的内容（严格围栏，需要 trailing \n）
 pub(crate) fn extract_json_block(text: &str, marker: &str) -> Option<String> {
     let start = text.find(marker)?;
     let after = &text[start + marker.len()..];
     let end = after.find("```")?;
     Some(after[..end].trim().to_string())
+}
+
+/// 从文本中提取标记之间的内容（灵活围栏，不要求 trailing \n）
+/// 处理 LLM 可能输出的 ```json\n...``` 或 ```json...``` 两种格式
+pub(crate) fn extract_json_block_flexible(text: &str, marker: &str) -> Option<String> {
+    let start = text.find(marker)?;
+    let after = &text[start + marker.len()..];
+    // Skip optional newline after marker
+    let after = after.strip_prefix('\n').unwrap_or(after);
+    let end = after.find("```")?;
+    Some(after[..end].trim().to_string())
+}
+
+/// 从 LLM 响应文本中解析 JSON 数组。
+/// 使用 parse_json_lenient 提取 Value，然后尝试转为数组。
+pub(crate) fn parse_json_array<T: serde::de::DeserializeOwned>(raw: &str) -> Result<Vec<T>> {
+    let val = parse_json_lenient(raw)?;
+    let arr = val.as_array()
+        .ok_or_else(|| anyhow::anyhow!("expected JSON array, got {}", categorize_value(&val)))?;
+    // Try to deserialize each element independently for better error messages
+    let mut result = Vec::with_capacity(arr.len());
+    for (i, item) in arr.iter().enumerate() {
+        result.push(serde_json::from_value(item.clone())
+            .map_err(|e| anyhow::anyhow!("JSON array element {} parse error: {}", i, e))?);
+    }
+    Ok(result)
+}
+
+/// Categorize a JSON value for error messages
+fn categorize_value(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Object(_) => "object",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Null => "null",
+    }
 }
 
 // ========== 内部数据结构 ==========
@@ -358,21 +393,13 @@ struct ArticlesWrapper {
     articles: Vec<AnalyzedArticleRaw>,
 }
 
-/// Raw LLM response struct — all fields kept for deserialization completeness.
-/// Fields that are consumed downstream are read; the rest are retained for API contract alignment
-/// with the LLM response schema.
+/// Raw LLM response struct — only fields consumed downstream.
+/// Serde ignores unknown fields by default, so extra API fields are harmless.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct AnalyzedArticleRaw {
-    /// id field from LLM response; unused internally, retained for deserialization
-    #[serde(default, rename = "id")]
-    pub(crate) _id: String,
     pub(crate) title: String,
     pub(crate) importance: u8,
     pub(crate) relevance: String,
-    pub(crate) time_horizon: String,
-    pub(crate) action: String,
-    pub(crate) confidence: String,
     pub(crate) judgment: String,
 }
 

@@ -22,7 +22,6 @@ pub mod hermes;
 pub mod llm;
 pub mod pipeline;
 pub mod publishing;
-pub mod question_engine;
 pub mod renderer;
 pub mod schema;
 pub mod source;

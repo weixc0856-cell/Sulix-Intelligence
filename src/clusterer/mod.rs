@@ -11,9 +11,9 @@ pub mod clustering;
 pub mod llm_prededup;
 pub mod synthesis;
 
-// ===== 重导（向后兼容）=====
+// ===== Explicit re-exports (was wildcard `pub use clustering::*` — narrowed for API clarity) =====
 
-pub use clustering::*;
-pub use llm_prededup::*;
-pub use synthesis::*;
+pub use clustering::cluster_articles;
+pub use llm_prededup::llm_prededup;
+pub use synthesis::synthesize;
 

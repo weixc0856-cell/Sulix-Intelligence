@@ -641,7 +641,7 @@ impl MemoryEngine {
         change.applied = true;
 
         use crate::domain::thesis::BeliefDb;
-        let db = BeliefDb::new(&change);
+        let db = BeliefDb::new(change);
         Ok(db)
     }
 

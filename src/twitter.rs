@@ -55,10 +55,7 @@ pub async fn push_tweet(text: &str, config: &TwitterConfig) {
     if !config.enabled || text.is_empty() {
         return;
     }
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-    {
+    let client = match crate::llm::create_client(15) {
         Ok(c) => c,
         Err(e) => {
             log::warn!("⚠️ Twitter: 无法创建 HTTP client: {}", e);

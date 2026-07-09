@@ -173,6 +173,10 @@ pub struct EntitySanctionDb {
     pub sanctioned: HashMap<String, Entity>,
     /// 待审核的实体
     pub unsanctioned: HashMap<String, Entity>,
+    /// 名称索引 (lowercase_name → ()) — 用于 O(1) 存在性检查
+    /// 由 add_entity 维护，向后兼容旧 JSON（无此字段时默认空）
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    name_index: HashMap<String, ()>,
 }
 
 impl Default for EntitySanctionDb {
@@ -186,17 +190,25 @@ impl EntitySanctionDb {
         Self {
             sanctioned: HashMap::new(),
             unsanctioned: HashMap::new(),
+            name_index: HashMap::new(),
         }
     }
 
     /// 添加实体（默认进入 unsanctioned）
     pub fn add_entity(&mut self, entity: Entity) {
+        let name_lower = entity.name.to_lowercase();
         let id = entity.id.clone();
         if entity.sanctioned {
             self.sanctioned.insert(id, entity);
         } else {
             self.unsanctioned.insert(id, entity);
         }
+        self.name_index.insert(name_lower, ());
+    }
+
+    /// O(1) 名称存在性检查（替代 O(n) values().any()）
+    pub fn name_exists(&self, name: &str) -> bool {
+        self.name_index.contains_key(&name.to_lowercase())
     }
 
     /// 加载/保存到 JSON 文件
@@ -289,6 +301,25 @@ mod tests {
         assert!(entities.contains(&"NVIDIA".to_string()));
         assert!(entities.contains(&"Chiplet".to_string()));
         assert!(entities.contains(&"CUDA".to_string()));
+    }
+
+    #[test]
+    fn test_name_exists() {
+        let mut db = EntitySanctionDb::new();
+        assert!(!db.name_exists("TSMC"));
+        db.add_entity(Entity {
+            id: "e1".into(),
+            entity_type: EntityType::Organization,
+            name: "TSMC".into(),
+            aliases: vec![],
+            sanctioned: true,
+            external_refs: vec![],
+            relationships: vec![],
+        });
+        assert!(db.name_exists("TSMC"));
+        assert!(db.name_exists("tsmc")); // case-insensitive
+        assert!(db.name_exists("Tsmc")); // case-insensitive
+        assert!(!db.name_exists("Intel"));
     }
 
     #[test]

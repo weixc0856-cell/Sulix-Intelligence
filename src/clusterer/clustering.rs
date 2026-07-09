@@ -19,9 +19,7 @@ pub async fn cluster_articles(
         return Ok(Vec::new());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
+    let client = crate::llm::create_client(120)?;
 
     let system_prompt = r#"你是一个情报分析师。你的任务是将以下文章聚类为不超过 5 个主题。
 

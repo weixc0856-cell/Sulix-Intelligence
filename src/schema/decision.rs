@@ -22,15 +22,12 @@ pub struct DecisionObject {
     pub stability: Option<String>,
     pub state: Option<String>,
     pub primary_domain: Option<String>,
-    #[serde(default = "default_locale")]
+    #[serde(default = "crate::schema::validator::default_locale")]
     pub locale: String,
     /// 原文语言: "en" | "zh-cn" | "zh-tw"
-    #[serde(default = "default_lang")]
+    #[serde(default = "crate::schema::validator::default_lang")]
     pub lang: String,
 }
-
-fn default_locale() -> String { "en".into() }
-fn default_lang() -> String { "en".into() }
 
 impl DecisionObject {
     pub fn validate(&self) -> Vec<String> {
@@ -55,4 +52,10 @@ impl DecisionObject {
 
         errors
     }
+}
+
+impl crate::schema::validator::Validate for DecisionObject {
+    fn object_type() -> &'static str { "decision" }
+    fn object_id(&self) -> &str { &self.id }
+    fn validate(&self) -> Vec<String> { self.validate() }
 }

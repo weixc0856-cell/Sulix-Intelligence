@@ -301,7 +301,7 @@ fn cmd_list(_args: &[String]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("{:<20} {:<10} {:<14} {:<8} {}", "ID", "Decision", "Verdict", "Impact", "Evidence");
+    println!("{:<20} {:<10} {:<14} {:<8} Evidence", "ID", "Decision", "Verdict", "Impact");
     println!("{}", "-".repeat(80));
     for o in outcomes.iter().rev().take(20) {
         let v = format!("{:?}", o.verdict);

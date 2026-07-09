@@ -56,3 +56,42 @@ pub fn compute_confidence(evidences: &[Evidence]) -> f64 {
         (0.5 + (ratio - 0.5) * 0.8).clamp(0.1, 0.98)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_confidence_all_support() {
+        let evidences = vec![
+            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
+            Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
+        ];
+        let c = compute_confidence(&evidences);
+        assert!((c - 0.9).abs() < 0.01, "expected ~0.9, got {}", c);
+    }
+
+    #[test]
+    fn test_compute_confidence_all_challenge() {
+        let evidences = vec![
+            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
+        ];
+        let c = compute_confidence(&evidences);
+        assert!((c - 0.1).abs() < 0.01, "expected ~0.1, got {}", c);
+    }
+
+    #[test]
+    fn test_compute_confidence_empty() {
+        assert!((compute_confidence(&[]) - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_compute_confidence_mixed() {
+        let evidences = vec![
+            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
+            Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
+        ];
+        let c = compute_confidence(&evidences);
+        assert!((c - 0.5).abs() < 0.01, "expected ~0.5, got {}", c);
+    }
+}

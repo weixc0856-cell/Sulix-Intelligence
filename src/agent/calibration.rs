@@ -23,9 +23,7 @@ pub async fn calibrate(
     prompts: Option<&crate::config::PromptsConfig>,
     language: &str,
 ) -> Result<String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::llm::create_llm_client()?;
 
     let system_prompt_inner = if language == "en" {
         r#"You are a cognitive calibration specialist. Your job is NOT to summarize — it is to ask questions.

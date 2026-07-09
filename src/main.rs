@@ -252,28 +252,16 @@ async fn init() -> Result<(
 
 // ===== Signal Agent: 抓取 → 去重 → 丰富 =====
 
-/// 源抓取 → Pipeline 清洗去重 → SQLite 去重 → Trend 写入 → 证据快照 → 丰富 → 实体提取
-/// 返回 None 表示今日无新文章（管线提前终止）
-async fn agent_signal(
+/// 获取所有启用的信号源
+async fn fetch_all_sources(
     config: &config::Config,
-    db: &db::Database,
-    catalog: &catalog::DataCatalog,
-    today: &str,
-    mut entity_db: entity::EntitySanctionDb,
-) -> Result<
-    Option<(
-        Vec<fetcher::Article>,
-        Vec<SourceStatus>,
-        entity::EntitySanctionDb,
-    )>,
-> {
-    // 源抓取
+    date_range: &str,
+) -> (Vec<source::RawSignal>, Vec<SourceStatus>) {
     log::info!("开始拉取信号源...");
     let enabled_sources: Vec<&config::SourceConfig> =
         config.sources.iter().filter(|s| s.enabled).collect();
     let mut all_signals = Vec::new();
     let mut source_statuses: Vec<SourceStatus> = Vec::new();
-    let date_range = &config.output.date_range;
     for sc in &enabled_sources {
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
@@ -288,19 +276,31 @@ async fn agent_signal(
         }
     }
     log::info!("拉取完成: 共 {} 条原始信号", all_signals.len());
+    (all_signals, source_statuses)
+}
 
+/// Pipeline 清洗 → SQLite 去重 → Trend → 证据快照 → 丰富
+/// 返回 None 表示今日无新文章
+async fn process_signal_articles(
+    signals: Vec<source::RawSignal>,
+    config: &config::Config,
+    db: &db::Database,
+    catalog: &catalog::DataCatalog,
+    today: &str,
+) -> Result<Option<Vec<fetcher::Article>>> {
     // Pipeline 清洗去重
-    let before_pipeline = all_signals.len();
-    pipeline::run_pipeline_with_config(&mut all_signals, config.dedup.as_ref())?;
+    let before_pipeline = signals.len();
+    let mut sigs = signals;
+    pipeline::run_pipeline_with_config(&mut sigs, config.dedup.as_ref())?;
     log::info!(
         "Pipeline: {} → {} 条（清洗/合规/去重）",
         before_pipeline,
-        all_signals.len()
+        sigs.len()
     );
-    catalog.save_step(1, "raw_signals", &all_signals)?;
+    catalog.save_step(1, "raw_signals", &sigs)?;
 
     // Article 转换 + SQLite 去重
-    let articles: Vec<fetcher::Article> = all_signals
+    let articles: Vec<fetcher::Article> = sigs
         .into_iter()
         .map(|s| fetcher::Article {
             id: s.id,
@@ -331,29 +331,43 @@ async fn agent_signal(
     }
 
     // Trend Layer 写入
-    {
-        use std::collections::HashMap;
-        let mut cat_counts: HashMap<&str, u32> = HashMap::new();
-        for a in &new_articles {
-            *cat_counts.entry(&a.category).or_insert(0) += 1;
-        }
-        let stats: Vec<db::CategoryStat> = cat_counts
-            .into_iter()
-            .map(|(cat, count)| db::CategoryStat {
-                category: cat.to_string(),
-                article_count: count,
-            })
-            .collect();
-        if let Err(e) = db.upsert_daily_stats(today, &stats) {
-            log::warn!("⚠️ Trend Layer 写入失败: {}", e);
-        }
-    }
+    write_trend_layer(&new_articles, db, today);
 
     // 证据快照
-    let vault_path = &config.output.vault_path;
-    for article in &new_articles {
+    capture_evidence_snapshots(&new_articles, &config.output.vault_path);
+
+    // Wikipedia 注入 + 正文提取
+    enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
+    catalog.save_step(3, "enriched_signals", &new_articles)?;
+    fetcher::enrich_articles_content(&mut new_articles, 5).await;
+
+    Ok(Some(new_articles))
+}
+
+/// 写入 Trend Layer 分类统计
+fn write_trend_layer(articles: &[fetcher::Article], db: &db::Database, today: &str) {
+    use std::collections::HashMap;
+    let mut cat_counts: HashMap<&str, u32> = HashMap::new();
+    for a in articles {
+        *cat_counts.entry(&a.category).or_insert(0) += 1;
+    }
+    let stats: Vec<db::CategoryStat> = cat_counts
+        .into_iter()
+        .map(|(cat, count)| db::CategoryStat {
+            category: cat.to_string(),
+            article_count: count,
+        })
+        .collect();
+    if let Err(e) = db.upsert_daily_stats(today, &stats) {
+        log::warn!("⚠️ Trend Layer 写入失败: {}", e);
+    }
+}
+
+/// 捕获证据快照（SVI >= 7 的原始信号存档）
+fn capture_evidence_snapshots(articles: &[fetcher::Article], vault_path: &str) {
+    for article in articles {
         if article.content.is_some() || article.summary.is_some() {
-            let signal = sulix_intel::source::RawSignal {
+            let signal = source::RawSignal {
                 id: article.id.clone(),
                 title: article.title.clone(),
                 url: article.url.clone(),
@@ -372,14 +386,14 @@ async fn agent_signal(
             }
         }
     }
+}
 
-    // Wikipedia 注入 + 正文提取
-    enricher::enrich_with_wikipedia(&mut new_articles, 3).await;
-    catalog.save_step(3, "enriched_signals", &new_articles)?;
-    fetcher::enrich_articles_content(&mut new_articles, 5).await;
-
-    // 实体提取
-    for article in &new_articles {
+/// 从文章提取实体并更新 EntitySanctionDb
+fn extract_entities_from_articles(
+    articles: &[fetcher::Article],
+    entity_db: &mut entity::EntitySanctionDb,
+) {
+    for article in articles {
         let combined = format!(
             "{} {}",
             article.title,
@@ -387,9 +401,7 @@ async fn agent_signal(
         );
         let names = entity::extract_entities_from_text(&combined);
         for name in &names {
-            let exists = entity_db.sanctioned.values().any(|e| e.name == *name)
-                || entity_db.unsanctioned.values().any(|e| e.name == *name);
-            if !exists {
+            if !entity_db.name_exists(name) {
                 let ent = entity::Entity {
                     id: format!(
                         "ent-{}-{}",
@@ -418,6 +430,34 @@ async fn agent_signal(
         entity_db.sanctioned.len(),
         entity_db.unsanctioned.len()
     );
+}
+
+/// 源抓取 → Pipeline 清洗去重 → SQLite 去重 → Trend 写入 → 证据快照 → 丰富 → 实体提取
+/// 返回 None 表示今日无新文章（管线提前终止）
+async fn agent_signal(
+    config: &config::Config,
+    db: &db::Database,
+    catalog: &catalog::DataCatalog,
+    today: &str,
+    mut entity_db: entity::EntitySanctionDb,
+) -> Result<
+    Option<(
+        Vec<fetcher::Article>,
+        Vec<SourceStatus>,
+        entity::EntitySanctionDb,
+    )>,
+> {
+    let date_range = &config.output.date_range;
+    let (all_signals, source_statuses) = fetch_all_sources(config, date_range).await;
+
+    let Some(new_articles) = process_signal_articles(
+        all_signals, config, db, catalog, today,
+    ).await? else {
+        return Ok(None);
+    };
+
+    // 实体提取
+    extract_entities_from_articles(&new_articles, &mut entity_db);
 
     Ok(Some((new_articles, source_statuses, entity_db)))
 }

@@ -32,9 +32,7 @@ pub async fn llm_prededup(
             .push(art.clone());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::llm::create_llm_client()?;
 
     let system_prompt = prompts
         .map(|p| p.get_cluster_articles(PREDEDUP_SYSTEM_PROMPT))

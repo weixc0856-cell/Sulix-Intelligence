@@ -134,9 +134,7 @@ Output json. 输出严格 JSON 数组，每项格式：
         history_json, today_json
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
+    let client = crate::llm::create_llm_client()
         .ok()?;
 
     let raw =
@@ -147,44 +145,12 @@ Output json. 输出严格 JSON 数组，每项格式：
             })
             .ok()?;
 
-    // 多步容错解析：JSON fence 剥离 → 提取数组段
-    let raw_clean = raw
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-
-    // 尝试直接解析为 Vec<ChangeDetectionEntry>
-    let entries_result: Result<Vec<ChangeDetectionEntry>, _> = serde_json::from_str(raw_clean);
-    let entries = match entries_result {
+    // Use shared multi-strategy JSON array parser from llm.rs
+    let entries: Vec<ChangeDetectionEntry> = match crate::llm::parse_json_array(&raw) {
         Ok(e) => e,
-        Err(_) => {
-            // 尝试提取 JSON 数组段（LLM 可能在数组前后加了额外文字）
-            if let Some(arr_start) = raw_clean.find('[') {
-                if let Some(arr_end) = raw_clean.rfind(']') {
-                    let slice = &raw_clean[arr_start..=arr_end];
-                    match serde_json::from_str::<Vec<ChangeDetectionEntry>>(slice) {
-                        Ok(e) => e,
-                        Err(e2) => {
-                            log::warn!(
-                                "LLM Change Detection JSON 解析失败 (fallback 尝试也失败): {}",
-                                e2
-                            );
-                            return None;
-                        }
-                    }
-                } else {
-                    log::warn!("LLM Change Detection 响应中未找到 JSON 数组");
-                    return None;
-                }
-            } else {
-                log::warn!(
-                    "LLM Change Detection 响应中未找到 JSON 数组: {}",
-                    &raw_clean[..raw_clean.len().min(200)]
-                );
-                return None;
-            }
+        Err(e) => {
+            log::warn!("LLM Change Detection JSON 解析失败: {}", e);
+            return None;
         }
     };
 

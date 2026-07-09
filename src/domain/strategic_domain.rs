@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// LLM 提示词约束：你必须从以下领域中选择最匹配的一个。
 /// 如果无法确定，选择 Other。允许选择多个 secondary 领域。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum StrategicDomain {
     /// 人工智能 — LLM、Agent、模型能力、AI 政策、AI 创业
     #[serde(rename = "ai")]
@@ -49,6 +49,7 @@ pub enum StrategicDomain {
     #[serde(rename = "healthcare")]
     Healthcare,
     /// 其他 — 无法归入以上任何领域
+    #[default]
     #[serde(rename = "other")]
     Other,
 }
@@ -322,12 +323,6 @@ fn priority(d: StrategicDomain) -> u8 {
 impl std::fmt::Display for StrategicDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.label())
-    }
-}
-
-impl Default for StrategicDomain {
-    fn default() -> Self {
-        StrategicDomain::Other
     }
 }
 

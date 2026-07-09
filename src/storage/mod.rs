@@ -43,3 +43,52 @@ pub fn with_corrupt_recovery<T>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_with_corrupt_recovery_missing_file() {
+        let path = Path::new("nonexistent_file_for_test.json");
+        // When file doesn't exist, fallback is called (not the load function)
+        let result: i32 = with_corrupt_recovery(path, |_| Ok(42), || 0);
+        assert_eq!(result, 0); // fallback returns 0 for missing file
+    }
+
+    #[test]
+    fn test_with_corrupt_recovery_valid_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_valid_recovery.json");
+        fs::write(&path, "{\"key\": \"value\"}").unwrap();
+        let result: serde_json::Value = with_corrupt_recovery(
+            &path,
+            |p| Ok(serde_json::from_str::<serde_json::Value>(&fs::read_to_string(p).unwrap()).unwrap()),
+            || serde_json::json!({}),
+        );
+        assert_eq!(result["key"], "value");
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_with_corrupt_recovery_corrupt_file_fallback() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_corrupt_recovery.json");
+        fs::write(&path, "not valid json").unwrap();
+        let result: i32 = with_corrupt_recovery(
+            &path,
+            |p| { let _ = fs::read_to_string(p)?; anyhow::bail!("simulated parse error"); },
+            || 99,
+        );
+        assert_eq!(result, 99);
+        // cleanup: corrupt backup file
+        for entry in fs::read_dir(&dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name().to_string_lossy().contains("test_corrupt_recovery.json.corrupt.") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+        let _ = fs::remove_file(&path);
+    }
+}

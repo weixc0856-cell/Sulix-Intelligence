@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// 从 publishing 输出构建 ArtifactSet
+#[allow(clippy::too_many_arguments)]
 pub fn build_artifact_set(
     themes: Vec<Theme>,
     analyses: Vec<ThemeAnalysis>,

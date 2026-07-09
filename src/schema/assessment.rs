@@ -31,15 +31,12 @@ pub struct AssessmentObject {
     pub conflicting_evidence: Vec<String>,
     // TODO: upgrade supporting_evidence/conflicting_evidence to Vec<Localized>
     // when Evidence struct is created (currently string-only)
-    #[serde(default = "default_locale")]
+    #[serde(default = "crate::schema::validator::default_locale")]
     pub locale: String,
     /// 原文语言: "en" | "zh-cn" | "zh-tw"
-    #[serde(default = "default_lang")]
+    #[serde(default = "crate::schema::validator::default_lang")]
     pub lang: String,
 }
-
-fn default_locale() -> String { "en".into() }
-fn default_lang() -> String { "en".into() }
 
 impl AssessmentObject {
     pub fn validate(&self) -> Vec<String> {
@@ -63,4 +60,10 @@ impl AssessmentObject {
 
         errors
     }
+}
+
+impl crate::schema::validator::Validate for AssessmentObject {
+    fn object_type() -> &'static str { "assessment" }
+    fn object_id(&self) -> &str { &self.id }
+    fn validate(&self) -> Vec<String> { self.validate() }
 }
