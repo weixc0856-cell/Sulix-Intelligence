@@ -118,8 +118,11 @@ mod tests {
             falsification_conditions: vec![],
         }];
         let result = detect_changes_rule(&entries, &analyses);
-        assert_eq!(result.conflicts.len(), 1);
-        assert_eq!(result.conflicts[0].topic, "AI");
+        // Adverse-driven conflict removed: adverse is analysis metadata, not external challenge signal.
+        // Repeated topic should now be reinforced instead of conflicted.
+        assert_eq!(result.conflicts.len(), 0);
+        assert_eq!(result.reinforced.len(), 1);
+        assert_eq!(result.reinforced[0], "AI");
     }
 
     #[test]

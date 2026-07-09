@@ -212,11 +212,13 @@ fn detect_outcomes(
                         log::warn!("⚠️ Outcome 记录失败: {}", e);
                     } else {
                         // 补充 emit ReflectionGenerated（record_outcome 已自动产 reflection）
-                        if let Some(latest_reflection) = memory.all_reflections().last() {
+                        if let Some(reflection) = memory.all_reflections().iter()
+                            .find(|r| r.outcome_id == recorded_outcome_id)
+                        {
                             infer_events.push(ObjectEvent::new(
                                 crate::event_log::ObjectEventType::ReflectionGenerated,
-                                &latest_reflection.id, "reflection",
-                                serde_json::json!({"thesis_id": thesis.id, "outcome_id": latest_reflection.outcome_id}),
+                                &reflection.id, "reflection",
+                                serde_json::json!({"thesis_id": thesis.id, "outcome_id": reflection.outcome_id}),
                                 "infer",
                             ));
                         }
@@ -263,6 +265,7 @@ fn detect_outcomes(
                 log::debug!("🧠 Cooldown: thesis '{}' PartiallyConfirmed 冷却期内，跳过", thesis.title);
             } else {
                 let outcome_id = crate::domain::outcome::generate_outcome_id(&existing_outcomes, today);
+                let outcome_id_ref = outcome_id.clone();
                 let dec_id = resolve_decision_id(&thesis, dec_registry);
                 let (outcome, event) = Outcome::new(
                     outcome_id, dec_id,
@@ -274,11 +277,13 @@ fn detect_outcomes(
                     log::warn!("⚠️ Outcome 记录失败: {}", e);
                 } else {
                     // 补充 emit ReflectionGenerated
-                    if let Some(latest_reflection) = memory.all_reflections().last() {
+                    if let Some(reflection) = memory.all_reflections().iter()
+                        .find(|r| r.outcome_id == outcome_id_ref)
+                    {
                         infer_events.push(ObjectEvent::new(
                             crate::event_log::ObjectEventType::ReflectionGenerated,
-                            &latest_reflection.id, "reflection",
-                            serde_json::json!({"thesis_id": thesis.id, "outcome_id": latest_reflection.outcome_id}),
+                            &reflection.id, "reflection",
+                            serde_json::json!({"thesis_id": thesis.id, "outcome_id": reflection.outcome_id}),
                             "infer",
                         ));
                     }

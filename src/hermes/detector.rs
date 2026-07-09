@@ -25,13 +25,12 @@ pub fn detect_changes_rule(
 
     // 从 chronicle 条目中提取近期主题摘要
     let recent_topics: Vec<&str> = recent_entries.iter().map(|e| e.topic.as_str()).collect();
-    let mut conflicts = Vec::new();
+    let conflicts = Vec::new();
     let mut reinforced = Vec::new();
     let mut new_signals = Vec::new();
 
     for analysis in analyses {
         let title = &analysis.theme_title;
-        let summary = &analysis.bluf;
 
         // 检查 chronicle 中是否有相同 topic
         let prior: Vec<&&str> = recent_topics.iter().filter(|t| t == &title).collect();
@@ -41,24 +40,10 @@ pub fn detect_changes_rule(
             continue;
         }
 
-        // 冲突判定：adverse scenario 是分析的一部分，不是新到的挑战信号。
-        // 仅当有 high-certainty adverse（signal_strength >= 7）时才标记为冲突，
-        // 否则重复出现的主题视为 Reinforce。
-        let has_strong_adverse = analysis
-            .adverse
-            .as_ref()
-            .map(|a| !a.scenario.is_empty() && analysis.signal_strength >= 7)
-            .unwrap_or(false);
-
-        if has_strong_adverse {
-            conflicts.push(ConflictEntry {
-                topic: title.clone(),
-                today_signal: summary.clone(),
-                prior_belief: format!("近 7 天出现 {} 次", prior.len()),
-            });
-        } else {
-            reinforced.push(title.clone());
-        }
+        // 冲突判定：adverse scenario 是分析的一部分（assumptions 的脆弱性标注），
+        // 不是新到的挑战信号。Conflict 要求语义对立——今日立场与既有 thesis 方向相反。
+        // 重复出现的主题视为 Reinforce。
+        reinforced.push(title.clone());
     }
 
     let no_change = reinforced.len();
