@@ -97,6 +97,8 @@ pub async fn publish(
     // let _ = crate::schema::validator::validate_localized_fields("en", []);
     log::debug!("📋 Schema validation gate ready (awaiting Localized domain fields)");
 
+    // TODO(STEP-3.5): Replace string validation with AssessmentObject/DecisionObject validation.
+    // Connect schema validators into delivery pipeline.
     // 模拟逐对象验证（Phase 1 展开为真正的 schema::validator 调用）
     if let Some(ref mdx_path) = mdx_out {
         let thesis_dir = mdx_path.join("thesis");
@@ -264,6 +266,44 @@ pub async fn publish(
                         if let Ok(data) = std::fs::read(&entity_path) {
                             if let Err(e) = r2.upload_json("state/entity_db.json", &data).await {
                                 log::warn!("⚠️ R2 state/entity_db.json upload failed: {}", e);
+                            }
+                        }
+                    }
+
+                    // intel.db (SQLite — checkpointed before main exits)
+                    let intel_db_path = data_dir.join("intel.db");
+                    if intel_db_path.exists() {
+                        if let Ok(data) = std::fs::read(&intel_db_path) {
+                            if let Err(e) = r2.upload("state/intel.db", &data, "application/octet-stream").await {
+                                log::warn!("⚠️ R2 state/intel.db upload failed: {}", e);
+                            }
+                        }
+                    }
+                    // database.json (ChronicleDb — Hermes dependency)
+                    let db_path = data_dir.join("database.json");
+                    if db_path.exists() {
+                        if let Ok(data) = std::fs::read(&db_path) {
+                            if let Err(e) = r2.upload_json("state/database.json", &data).await {
+                                log::warn!("⚠️ R2 state/database.json upload failed: {}", e);
+                            }
+                        }
+                    }
+                    // event_log.json (EventLog — reset between CI runs)
+                    let el_path = data_dir.join("event_log.json");
+                    if el_path.exists() {
+                        if let Ok(data) = std::fs::read(&el_path) {
+                            if let Err(e) = r2.upload_json("state/event_log.json", &data).await {
+                                log::warn!("⚠️ R2 state/event_log.json upload failed: {}", e);
+                            }
+                        }
+                    }
+                    // events/{date}.jsonl (当日对象审计事件快照)
+                    // 注：CLI 追加的事件晚于此快照，完整审计线以本地为准，直到 CLI 也学会推送
+                    let events_path = data_dir.join("events").join(format!("{}.jsonl", today));
+                    if events_path.exists() {
+                        if let Ok(data) = std::fs::read(&events_path) {
+                            if let Err(e) = r2.upload(&format!("events/{}.jsonl", today), &data, "application/json").await {
+                                log::warn!("⚠️ R2 events/{}.jsonl upload failed: {}", today, e);
                             }
                         }
                     }

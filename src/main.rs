@@ -112,6 +112,11 @@ async fn main() -> Result<()> {
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
     report.duration_seconds = start.elapsed().as_secs_f64();
 
+    // WAL checkpoint: flush all DB writes before uploading intel.db to R2
+    if let Err(e) = ctx.db.checkpoint_wal() {
+        log::warn!("⚠️ WAL checkpoint failed: {}", e);
+    }
+
     // Assemble PublishBundle + deliver
     let intel_paths = collect_intel_paths(intel_published, &intel_output_dir);
     let llm_calls_total = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed) - llm_calls_before;
