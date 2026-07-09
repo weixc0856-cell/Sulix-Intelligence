@@ -34,6 +34,19 @@ pub struct ContentManifest {
     pub archive_days: usize,
     pub total_signals: usize,
     pub total_assessments: usize,
+    /// 漏斗指标（信号生产管道各阶段计数）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funnel_fetched: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funnel_deduped: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funnel_scored: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funnel_tier2_intel: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funnel_tier3_research: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_calls_total: Option<u64>,
     pub pipeline_status: String,
     /// CI run ID (GITHUB_RUN_ID)，本地运行为 "local"
     #[serde(default)]
@@ -53,7 +66,8 @@ pub struct ContentManifest {
 }
 
 impl ContentManifest {
-    /// 从 pipeline 输出构建 manifest（不含 counts——由 delivery 回填）
+    pub const CONTRACT_VERSION: u32 = 2; // v2 adds funnel metrics
+
     pub fn new(
         date: &str,
         prev_version: u32,
@@ -65,7 +79,7 @@ impl ContentManifest {
         stages: Option<Vec<crate::engine::pipeline_health::PipelineStage>>,
     ) -> Self {
         Self {
-            contract_version: 1,
+            contract_version: Self::CONTRACT_VERSION,
             version: prev_version + 1,
             generated_at: chrono::Utc::now().to_rfc3339(),
             date: date.to_string(),
@@ -76,6 +90,12 @@ impl ContentManifest {
             archive_days: 0,
             total_signals: 0,
             total_assessments: 0,
+            funnel_fetched: None,
+            funnel_deduped: None,
+            funnel_scored: None,
+            funnel_tier2_intel: None,
+            funnel_tier3_research: None,
+            llm_calls_total: None,
             pipeline_status: status.to_string(),
             pipeline_run_id: std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string()),
             pipeline_observation_count: observation_count,
@@ -87,7 +107,7 @@ impl ContentManifest {
         }
     }
 
-    /// 回填验证门后的真实计数（由 delivery::publisher 在验证通过后调用）
+    /// 回填验证门后的真实计数
     pub fn with_counts(mut self, assessments: usize, investigations: usize, decisions: usize, archive_days: usize, total_signals: usize) -> Self {
         self.assessments_active = assessments;
         self.investigations = investigations;
@@ -95,6 +115,17 @@ impl ContentManifest {
         self.archive_days = archive_days;
         self.total_signals = total_signals;
         self.total_assessments = assessments;
+        self
+    }
+
+    /// 回填漏斗指标
+    pub fn with_funnel(mut self, fetched: usize, deduped: usize, scored: usize, tier2: usize, tier3: usize, llm_calls: u64) -> Self {
+        self.funnel_fetched = Some(fetched);
+        self.funnel_deduped = Some(deduped);
+        self.funnel_scored = Some(scored);
+        self.funnel_tier2_intel = Some(tier2);
+        self.funnel_tier3_research = Some(tier3);
+        self.llm_calls_total = Some(llm_calls);
         self
     }
 

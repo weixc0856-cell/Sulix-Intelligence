@@ -65,71 +65,91 @@ async fn main() -> Result<()> {
     };
     entity_db = entity_db_fetched;
 
-    // Research Agent: 分流 → 聚类 → 分析 → 认知引擎 → BeliefDb
-    let new_article_count = new_articles.len(); // 保存在 new_articles 被 move 前
-    // 快照分类计数（在 new_articles move 前）
-    let category_snapshot: std::collections::HashMap<String, usize> = {
-        let mut m = std::collections::HashMap::new();
-        for a in &new_articles {
-            if !a.is_internal {
-                *m.entry(a.category.clone()).or_insert(0) += 1;
-            }
-        }
-        m
-    };
-    let total_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
+    // ===== Scan + Route: Signal Classification → 三路分叉 =====
+    let article_count = new_articles.len();
+    let total_raw_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
+    let grouped = llm::group_by_category(&new_articles);
 
-    let research = agent_research(
-        &config,
+    let (tier3, tier2, tier1_count, triage) = agent::scan::classify_and_route(
+        &grouped,
         &api_key,
-        &catalog,
-        new_articles,
-    )
-    .await?;
-    // 填充报告聚合字段（前端消费稳定接口）
-    report.observation_count = Some(total_signals);
-    report.signal_count = Some(new_article_count);
-    report.theme_count = Some(research.themes.len());
-    if !category_snapshot.is_empty() {
-        report.category_counts = Some(category_snapshot);
-    }
-    if research.themes.is_empty() {
-        report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
-    }
-    report.add_stage(
-        "agent_research",
-        total_signals,
-        research.themes.len(),
-        if research.themes.is_empty() {
-            StageStatus::Skipped
-        } else {
-            StageStatus::Success
-        },
-    );
+        &config.llm,
+        config.prompts.as_ref(),
+        &config.sources,
+    ).await?;
+
+    log::info!("📊 Signal Funnel: {} raw → {} articles → T3:{} T2:{} T1:{}",
+        total_raw_signals, article_count, tier3.len(), tier2.len(), tier1_count);
+
+    // Layer 1: Raw archive (not shown in frontend)
+    // Phase 0: counted in manifest, no actual R2 upload yet
+    // TODO: wire raw storage to R2 /intel/raw/ path
+
+    // Layer 2: Daily Intel (score ≥ 3)
+    let intel_output_dir = PathBuf::from(&config.output.vault_path).join("intel").join("daily");
+    let intel_published = sulix_intel::publishing::layer2::publish_intel(
+        &tier2, &today, &intel_output_dir,
+    ).unwrap_or(0);
+
+    // Layer 3: Research (score ≥ 7) — existing full pipeline
+    let llm_calls = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    let research = if !tier3.is_empty() {
+        let insight_articles: Vec<fetcher::Article> = triage.insight.clone();
+        let r = agent_research(
+            &config, &api_key, &catalog,
+            insight_articles,
+        ).await?;
+        report.theme_count = Some(r.themes.len());
+        if r.themes.is_empty() {
+            report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
+        }
+        report.add_stage("agent_research", tier3.len(), r.themes.len(),
+            if r.themes.is_empty() { StageStatus::Skipped } else { StageStatus::Success });
+        r
+    } else {
+        report.add_stage("agent_research", 0, 0, StageStatus::Skipped);
+        ResearchOutput {
+            themes: vec![], analyses: vec![], analyses_zh: vec![],
+            triage, new_articles: vec![],
+        }
+    };
+
+    report.observation_count = Some(total_raw_signals);
+    report.signal_count = Some(article_count);
 
     // Publishing Agent: 5-stage publish → returns ArtifactSet
     let artifacts = publishing::agent_publish(
-        &config,
-        &api_key,
-        &db,
-        &catalog,
-        &data_dir,
-        &today,
-        &mut entity_db,
-        research,
-    )
-    .await?;
+        &config, &api_key, &db, &catalog, &data_dir, &today,
+        &mut entity_db, research,
+    ).await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
 
     report.duration_seconds = start.elapsed().as_secs_f64();
 
-    // Verify: if config.r2 is configured but missing env vars, skip R2
-    // Delivery publisher handles this: local write + R2 (if available by env)
+    // Build PublishBundle with all layers
+    let mut intel_paths = Vec::new();
+    if intel_published > 0 {
+        if let Ok(entries) = std::fs::read_dir(&intel_output_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "json") {
+                    intel_paths.push(path);
+                }
+            }
+        }
+    }
+    let llm_calls_final = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed) - llm_calls;
+
     let publish_report = sulix_intel::delivery::publisher::publish(
-        artifacts,
-        &config,
-        &data_dir,
-        &today,
+        sulix_intel::delivery::publisher::PublishBundle {
+            layer3_artifacts: artifacts,
+            intel_paths,
+            raw_count: tier1_count,
+            funnel_fetched: total_raw_signals,
+            funnel_deduped: article_count,
+            llm_calls: llm_calls_final as u64,
+        },
+        &config, &data_dir, &today,
     ).await?;
 
     report.status = if publish_report.rejected_count > 0 {

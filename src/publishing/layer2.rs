@@ -1,49 +1,48 @@
 //! Layer 2 — Daily Intel 轻量发布器
 //!
-//! 接收来自 Scan Agent 分诊后的文章（score ≥ 3），输出 JSON 到 /intel/daily/。
+//! 接收来自 classify_and_route 的 SignalAssessment（score ≥ 3），
+//! 输出 JSON 到 /intel/daily/。
 //! Phase 0: 仅输出标题/来源/链接（无 LLM 摘要）。
-//! Phase 1+: 按 SVI ≥ 5 触发 LLM 压缩摘要。
 
 use anyhow::Result;
 use std::path::Path;
 
-use crate::fetcher::Article;
+use crate::agent::scan::SignalAssessment;
 use crate::renderer::intel::IntelEntry;
 use crate::renderer::intel::render_intel_json;
 
 /// 发布 Layer 2 intel 条目到 /intel/daily/{date}-{slug}.json
 /// 返回已发布数量
 pub fn publish_intel(
-    articles: &[Article],
+    assessments: &[SignalAssessment],
     today: &str,
     intel_dir: &Path,
 ) -> Result<usize> {
     let mut published = 0usize;
 
-    // 直接使用 Article 的 summary 字段作为摘要（如果有）
-    // Phase 0: 无额外 LLM 调用
-    for article in articles {
-        let summary = article.summary.clone().or_else(|| {
-            // 从 content 取前 200 字符作为粗摘要（无 LLM）
-            article.content.as_ref().map(|c| {
-                c.chars().take(200).collect::<String>()
-            })
-        });
+    std::fs::create_dir_all(intel_dir)?;
+
+    for assessment in assessments {
+        let summary = None; // Phase 0: 无 LLM 摘要
+
+        let impact = if assessment.score >= 7 { "high" }
+            else if assessment.score >= 5 { "medium" }
+            else { "low" };
 
         let entry = IntelEntry {
-            id: format!("intel-{}-{}", today, article.id),
-            title: article.title.clone(),
+            id: format!("intel-{}-{}", today, assessment.article_id),
+            title: assessment.title.clone(),
             date: today.to_string(),
-            source: article.source.clone(),
-            url: article.url.clone(),
-            domain: article.category.clone(),
-            svi: 0,  // Phase 0: 暂无 svi，未来从 Scan result 传入
-            impact: "low".to_string(),
+            source: assessment.source.clone(),
+            url: assessment.url.clone(),
+            domain: assessment.domain.clone(),
+            svi: assessment.score,
+            impact: impact.to_string(),
             summary,
             related_thesis: None,
         };
 
-        let slug = slugify(&article.title);
+        let slug = slugify(&assessment.title);
         let path = intel_dir.join(format!("{}-{}.json", today, slug));
         let json = render_intel_json(&entry);
         match std::fs::write(&path, &json) {

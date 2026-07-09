@@ -23,6 +23,16 @@ use crate::domain::artifact::ArtifactSet;
 use crate::event_log::{ObjectEvent, ObjectEventType};
 use crate::translation::TranslationCoverage;
 
+/// 发布包 — 包含所有层级的产出
+pub struct PublishBundle {
+    pub layer3_artifacts: ArtifactSet,
+    pub intel_paths: Vec<PathBuf>,
+    pub raw_count: usize,
+    pub funnel_fetched: usize,
+    pub funnel_deduped: usize,
+    pub llm_calls: u64,
+}
+
 /// 发布报告
 #[derive(Debug, Clone)]
 pub struct PublishReport {
@@ -35,13 +45,14 @@ pub struct PublishReport {
 
 /// 发布产物到存储后端
 ///
-/// ownership 从 publishing 移交：ArtifactSet 被 consume
+/// ownership 从 publishing 移交：PublishBundle 被 consume
 pub async fn publish(
-    artifacts: ArtifactSet,
+    bundle: PublishBundle,
     config: &Config,
     data_dir: &Path,
     today: &str,
 ) -> Result<PublishReport> {
+    let artifacts = bundle.layer3_artifacts;
     let mut passed = 0usize;
     let mut rejected = 0usize;
 
@@ -110,6 +121,13 @@ pub async fn publish(
         decision_count,
         artifacts.archive_days,
         artifacts.total_signals,
+    ).with_funnel(
+        bundle.funnel_fetched,
+        bundle.funnel_deduped,
+        bundle.funnel_fetched, // scored = fetched (same count in Phase 0)
+        bundle.intel_paths.len(),
+        total_assessments.saturating_sub(rejected),
+        bundle.llm_calls,
     );
 
     // 4. Local write — manifest to vault_path and frontend public/ (NOT to mdx_dir — that is Astro content root)
@@ -162,6 +180,21 @@ pub async fn publish(
                             total_fail += result.failed.len();
                             for (key, err) in &result.failed {
                                 log::warn!("☁️ R2 upload failed [{}]: {}", key, err);
+                            }
+                        }
+                    }
+
+                    // Upload intel JSON files (Layer 2)
+                    for intel_path in &bundle.intel_paths {
+                        if intel_path.exists() {
+                            if let Ok(data) = std::fs::read(intel_path) {
+                                let r2_key = format!("intel/daily/{}", intel_path.file_name().unwrap_or_default().to_string_lossy());
+                                if let Err(e) = r2.upload(&r2_key, &data, "application/json").await {
+                                    log::warn!("☁️ R2 intel upload failed [{}]: {}", r2_key, e);
+                                    total_fail += 1;
+                                } else {
+                                    total_ok += 1;
+                                }
                             }
                         }
                     }

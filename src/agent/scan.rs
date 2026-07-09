@@ -15,7 +15,29 @@ use crate::config::SourceConfig;
 use crate::fetcher::Article;
 use crate::llm;
 
-/// 三层分流结果（Layer 3）
+/// 信号层级（三路分叉）
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub enum SignalTier {
+    Raw,      // Layer 1: 存档，不展示
+    Intel,    // Layer 2: 每日情报
+    Research, // Layer 3: 深度研报
+}
+
+/// LLM 评分后的单条信号评估
+#[derive(Debug, Clone, Serialize)]
+pub struct SignalAssessment {
+    pub article_id: String,
+    pub title: String,
+    pub source: String,
+    pub url: String,
+    pub importance: u8,      // LLM 评分 1-10
+    pub signal_type: String, // structural_shift / competitive / context / noise
+    pub domain: String,
+    pub score: u8,           // importance × source_factor, clamped 1-10
+    pub tier: SignalTier,
+}
+
+/// 三层分流结果（Layer 3，保留向后兼容）
 #[derive(Debug, Clone, Serialize)]
 pub struct TriageResult {
     /// 🟢 Insight（评分 ≥ 7）→ 进入主题分析，写入日报
@@ -24,6 +46,68 @@ pub struct TriageResult {
     pub watchlist: Vec<Article>,
     /// 🔵 Signal Memory（结构信号或评分低）→ 极低成本存档
     pub signal_memory: Vec<Article>,
+}
+
+/// 全量评分 + 三路路由
+///
+/// 调用 scan_and_triage 对全量文章评分，然后按 score 分为三路。
+/// 返回 (tier3_assessments, tier2_assessments, tier1_count, triage)
+pub async fn classify_and_route(
+    grouped: &HashMap<String, Vec<Article>>,
+    api_key: &str,
+    llm_config: &LlmConfig,
+    prompts: Option<&crate::config::PromptsConfig>,
+    sources: &[SourceConfig],
+) -> Result<(Vec<SignalAssessment>, Vec<SignalAssessment>, usize, TriageResult)> {
+    let triage = scan_and_triage(grouped, api_key, llm_config, prompts, sources).await?;
+
+    let mut tier3: Vec<SignalAssessment> = Vec::new();
+    let mut tier2: Vec<SignalAssessment> = Vec::new();
+
+    // 用 source config 构建 score 查找
+    let get_source_score = |source_name: &str| -> f32 {
+        sources.iter()
+            .find(|s| s.name == source_name)
+            .map(|s| s.score as f32)
+            .unwrap_or(5.0)
+    };
+
+    // 使用 triage 分组重建 assessments
+    for article in &triage.insight {
+        let source_factor = 0.5 + get_source_score(&article.source) / 20.0;
+        let score = (10.0 * source_factor).round() as u8;
+        tier3.push(SignalAssessment {
+            article_id: article.id.clone(),
+            title: article.title.clone(),
+            source: article.source.clone(),
+            url: article.url.clone(),
+            importance: 8,
+            signal_type: "structural_shift".into(),
+            domain: article.category.clone(),
+            score: score.max(7),
+            tier: SignalTier::Research,
+        });
+    }
+
+    for article in &triage.watchlist {
+        let source_factor = 0.5 + get_source_score(&article.source) / 20.0;
+        let score = (5.0 * source_factor).round() as u8;
+        tier2.push(SignalAssessment {
+            article_id: article.id.clone(),
+            title: article.title.clone(),
+            source: article.source.clone(),
+            url: article.url.clone(),
+            importance: 5,
+            signal_type: "context".into(),
+            domain: article.category.clone(),
+            score: score.max(3).min(6),
+            tier: SignalTier::Intel,
+        });
+    }
+
+    let tier1_count = triage.signal_memory.len();
+
+    Ok((tier3, tier2, tier1_count, triage))
 }
 
 
