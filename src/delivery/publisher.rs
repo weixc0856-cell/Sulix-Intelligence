@@ -33,6 +33,20 @@ pub struct PublishBundle {
     pub llm_calls: u64,
 }
 
+impl PublishBundle {
+    /// 从各层产出组装发布包
+    pub fn new(
+        research: ArtifactSet,
+        intel_paths: Vec<PathBuf>,
+        raw_count: usize,
+        funnel_fetched: usize,
+        funnel_deduped: usize,
+        llm_calls: u64,
+    ) -> Self {
+        Self { research, intel_paths, raw_count, funnel_fetched, funnel_deduped, llm_calls }
+    }
+}
+
 /// 发布报告
 #[derive(Debug, Clone)]
 pub struct PublishReport {
