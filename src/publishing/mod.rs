@@ -36,6 +36,7 @@ use crate::engine::investigation::generate_investigation;
 use crate::engine::memory::MemoryEngine;
 use crate::renderer::publisher::Publisher;
 use crate::storage;
+use crate::agent::scan::ClassifiedSignal;
 use crate::domain::artifact::ArtifactSet;
 
 /// 发布产物计数统计（用于 manifest）
@@ -125,6 +126,7 @@ pub async fn agent_publish(
     today: &str,
     entity_db: &mut crate::entity::EntitySanctionDb,
     research: ResearchOutput,
+    intel_signals: &[ClassifiedSignal],
 ) -> Result<ArtifactSet> {
     let vault_base = PathBuf::from(&config.output.vault_path);
 
@@ -146,6 +148,9 @@ pub async fn agent_publish(
         &themes, &analyses, &analyses_zh, &new_articles,
         &generated, &mut state, db,
     ).await?;
+
+    // Stage 3.5: Memory 回流 — Intel signals → Thesis 轻量匹配
+    let intel_fed = inferred.memory.feed_intel(intel_signals, today);
 
     // Stage 4: Persist — write all state to disk
     publish_persist(

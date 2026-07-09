@@ -14,6 +14,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::agent::scan::ClassifiedSignal;
 use crate::event_log::{ObjectEvent, ObjectEventType};
 use std::path::PathBuf;
 
@@ -904,6 +905,74 @@ impl MemoryEngine {
             .find(|(_, t)| Self::title_overlap(title, &t.title))
             .map(|(i, _)| i);
         pos.map(move |i| &mut self.theses[i])
+    }
+
+    /// 回流 Layer 2 intel 信号到 Thesis 系统
+    ///
+    /// 轻量匹配（无 LLM）：对每条 intel 信号做标题匹配。
+    /// - 匹配到已有 Thesis → 追加一条 Evidence（Stance::Supports）
+    /// - 未匹配到 → 创建 Proposed 状态 Thesis 作为弱信号
+    /// 不调用 LLM，不做全分析。
+    pub fn feed_intel(&mut self, signals: &[ClassifiedSignal], today: &str) -> u32 {
+        use crate::domain::thesis::Thesis;
+        use crate::domain::evidence::{Evidence, Stance};
+
+        let mut fed = 0u32;
+        for cs in signals {
+            let title = &cs.assessment.title;
+            let source = &cs.assessment.source;
+
+            if let Some(existing) = self.find_by_title_mut(title) {
+                // Matched: append lightweight evidence
+                existing.evidences.push(Evidence {
+                    date: today.to_string(),
+                    title: title.clone(),
+                    source: source.clone(),
+                    summary: cs.assessment.domain.clone(),
+                    stance: Stance::Supports,
+                    signal_strength: cs.assessment.score as u8,
+                });
+                existing.updated = today.to_string();
+                fed += 1;
+            } else {
+                // No match: create Proposed thesis as weak signal
+                let (primary_domain, secondary_domains) =
+                    crate::domain::StrategicDomain::classify(title);
+                use std::collections::HashMap;
+                self.theses.push(Thesis {
+                    id: format!("thesis-{}", chrono::Utc::now().timestamp()),
+                    title: title.clone(),
+                    created: today.to_string(),
+                    updated: today.to_string(),
+                    evidences: vec![Evidence {
+                        date: today.to_string(),
+                        title: title.clone(),
+                        source: source.clone(),
+                        summary: cs.assessment.domain.clone(),
+                        stance: Stance::Supports,
+                        signal_strength: cs.assessment.score as u8,
+                    }],
+                    assumptions: vec![],
+                    status: crate::domain::thesis::ThesisStatus::Proposed,
+                    confidence_history: vec![],
+                    status_history: vec![],
+                    parent_id: None,
+                    merged_ids: vec![],
+                    related_thesis_ids: vec![],
+                    metadata: HashMap::new(),
+                    investigation_id: None,
+                    decision_history: vec![],
+                    falsification_conditions: vec![],
+                    assessment_id: None,
+                    primary_domain,
+                    secondary_domains,
+                    lifecycle_events: vec![],
+                });
+                fed += 1;
+            }
+        }
+        log::info!("🧠 Memory: fed {} intel signals into thesis tracking", fed);
+        fed
     }
 
     /// 强制创建一个新 Thesis（供 Hermes discovery 使用）

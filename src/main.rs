@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
     // Phase 0: counted in manifest, no actual R2 upload yet
 
     // Layer 2: Daily Intel (score ≥ 3)
-    let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals.into_iter().map(|cs| cs.assessment).collect();
+    let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals.iter().map(|cs| cs.assessment.clone()).collect();
     let intel_output_dir = PathBuf::from(&config.output.vault_path).join("intel").join("daily");
     let intel_published = sulix_intel::publishing::layer2::publish_intel(
         &intel_assessments, &today, &intel_output_dir,
@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
     // Publishing Agent: 5-stage publish → returns ArtifactSet
     let artifacts = publishing::agent_publish(
         &config, &api_key, &db, &catalog, &data_dir, &today,
-        &mut entity_db, research,
+        &mut entity_db, research, &intel_signals,
     ).await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
 
