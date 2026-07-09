@@ -11,6 +11,7 @@
 pub mod signal;
 pub mod assessment;
 pub mod decision;
+pub mod mapper;
 pub mod validator;
 
 pub use validator::ValidationReport;

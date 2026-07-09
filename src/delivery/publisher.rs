@@ -21,6 +21,7 @@ use crate::artifact::manifest::ContentManifest;
 use crate::config::Config;
 use crate::domain::artifact::ArtifactSet;
 use crate::event_log::{ObjectEvent, ObjectEventType};
+use crate::schema::validator::Validate;
 use crate::translation::TranslationCoverage;
 
 /// 发布包 — 包含所有层级的产出
@@ -78,56 +79,53 @@ pub async fn publish(
     let mut passed = 0usize;
     let mut rejected = 0usize;
 
-    // 1. Schema validation — 逐对象检查
-    // Phase 0: 仅验证 manifest 层面（确保有文件产出）
-    // Phase 1+: 逐对象验证 schema
-    let mdx_out = config.output.mdx_dir.as_deref().map(PathBuf::from);
+    // 1. Schema validation — 对象级验证（audit-mode: detects, records, alerts — does not yet block）
+    // TODO(STEP-3.6): Move validation before emit. Rejected objects skip rendering.
+    // TODO(STEP-4): Add cross-object reference validation (e.g. Decision→Assessment existence).
     let rejected_dir = data_dir.join("rejected").join(today);
     std::fs::create_dir_all(&rejected_dir)?;
+
+    let mut report = crate::schema::validator::ValidationReport::new(today);
+    for obj in &artifacts.assessment_objects {
+        report.add_result(obj.check());
+    }
+    for obj in &artifacts.decision_objects {
+        report.add_result(obj.check());
+    }
+
+    // 写入验证报告
+    let validation_dir = data_dir.join("validation");
+    std::fs::create_dir_all(&validation_dir)?;
+    let report_path = validation_dir.join(format!("{}.json", today));
+    if let Err(e) = report.save(&report_path) {
+        log::warn!("⚠️ Validation report save failed: {}", e);
+    }
+
+    // rejected 对象写完整快照（含 errors，不进 R2）
+    for result in &report.results {
+        if result.passed {
+            passed += 1;
+        } else {
+            rejected += 1;
+            let rejected_path = rejected_dir.join(format!("{}-{}.json", result.object_type, result.object_id));
+            if let Ok(snapshot_json) = serde_json::to_string_pretty(&serde_json::json!({
+                "object_type": result.object_type,
+                "object_id": result.object_id,
+                "errors": result.errors,
+                "warnings": result.warnings,
+            })) {
+                let _ = std::fs::write(&rejected_path, &snapshot_json);
+                log::warn!("📋 Rejected: {} {} ({:?})", result.object_type, result.object_id, result.errors);
+            }
+        }
+    }
 
     // 验证各种 artifact 计数
     let total_assessments = artifacts.assessment_count;
     let total_investigations = artifacts.investigation_count;
     let decision_count = artifacts.thesis_decisions.len();
 
-    // Schema validation gate: calls are wired but no data flows yet
-    // because domain types don't carry Localized fields.
-    // When AssessmentObject/DecisionObject flow through delivery,
-    // uncomment the line below to validate lang/field invariants.
-    // let _ = crate::schema::validator::validate_localized_fields("en", []);
-    log::debug!("📋 Schema validation gate ready (awaiting Localized domain fields)");
-
-    // TODO(STEP-3.5): Replace string validation with AssessmentObject/DecisionObject validation.
-    // Connect schema validators into delivery pipeline.
-    // 模拟逐对象验证（Phase 1 展开为真正的 schema::validator 调用）
-    if let Some(ref mdx_path) = mdx_out {
-        let thesis_dir = mdx_path.join("thesis");
-        let entries: Vec<_> = match std::fs::read_dir(&thesis_dir) {
-            Ok(d) => d.filter_map(|e| e.ok()).collect(),
-            Err(e) => {
-                log::warn!("⚠️ Cannot read thesis dir {}: {}", thesis_dir.display(), e);
-                Vec::new()
-            }
-        };
-        for e in entries {
-            if e.path().extension().is_some_and(|ext| ext == "md") {
-                let content = std::fs::read_to_string(e.path()).unwrap_or_default();
-                // 简单验证：检查必填字段是否存在
-                if content.contains("title:") && content.contains("confidence:") {
-                    passed += 1;
-                } else {
-                    rejected += 1;
-                    // 写入 rejected 目录留证
-                    let dest = rejected_dir.join(e.file_name());
-                    let _ = std::fs::copy(e.path(), &dest);
-                    log::warn!("📋 Rejected: {} (missing required fields)", e.file_name().to_string_lossy());
-                }
-            }
-        }
-    }
-
     // 2. 补发 publish_rejected 事件（审计线不中断）
-    // Phase 1 实现，Phase 0 跳过
 
     // 3. 生成 manifest（此刻计数 = 验证通过后的真实上传数）
     let manifest = ContentManifest::new(
@@ -330,14 +328,20 @@ pub async fn publish(
     let pipeline_event_count = artifacts.events.len();
     let mut all_events: Vec<ObjectEvent> = artifacts.events;
 
-    // Add publish_rejected events for rejected objects
-    for _ in 0..rejected {
-        all_events.push(ObjectEvent::new(
-            ObjectEventType::PublishRejected,
-            "unknown", "artifact",
-            serde_json::json!({"reason": "schema validation failed"}),
-            "delivery_publisher",
-        ));
+    // Add publish_rejected events for rejected objects（带真实 object_id）
+    for result in &report.results {
+        if !result.passed {
+            all_events.push(ObjectEvent::new(
+                ObjectEventType::PublishRejected,
+                &result.object_id,
+                &result.object_type,
+                serde_json::json!({
+                    "errors": result.errors,
+                    "warnings": result.warnings,
+                }),
+                "delivery_publisher",
+            ));
+        }
     }
 
     // Add publish_completed event (summary anchor for the JSONL)

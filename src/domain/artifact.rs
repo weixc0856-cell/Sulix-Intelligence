@@ -9,6 +9,8 @@ use crate::domain::EditorNote;
 use crate::engine::memory::MemoryEngine;
 use crate::domain::premium::PremiumReport;
 use crate::event_log::ObjectEvent;
+use crate::schema::assessment::AssessmentObject;
+use crate::schema::decision::DecisionObject;
 
 /// Pipeline 输出的全部产物集合
 pub struct ArtifactSet {
@@ -43,6 +45,11 @@ pub struct ArtifactSet {
     pub belief_notes_html: String,
     pub refined_domains: std::collections::HashMap<String, (crate::domain::StrategicDomain, Vec<crate::domain::StrategicDomain>)>,
 
+    /// Canonical domain objects for validation/audit（不是渲染产物）
+    pub assessment_objects: Vec<AssessmentObject>,
+    /// Canonical domain objects for validation/audit（不是渲染产物）
+    pub decision_objects: Vec<DecisionObject>,
+
     // Report metadata for manifest
     pub assessment_count: usize,
     pub investigation_count: usize,
@@ -52,6 +59,7 @@ pub struct ArtifactSet {
 }
 
 impl ArtifactSet {
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -69,6 +77,8 @@ impl ArtifactSet {
         asi_score_map: std::collections::HashMap<String, (f64, f64, f64)>,
         belief_notes_html: String,
         refined_domains: std::collections::HashMap<String, (crate::domain::StrategicDomain, Vec<crate::domain::StrategicDomain>)>,
+        assessment_objects: Vec<AssessmentObject>,
+        decision_objects: Vec<DecisionObject>,
         assessment_count: usize,
         investigation_count: usize,
         decision_count: usize,
@@ -81,6 +91,7 @@ impl ArtifactSet {
             memory, thesis_decisions, premium_reports,
             editor_notes, investigation_reports, new_articles,
             events, today, asi_score_map, belief_notes_html, refined_domains,
+            assessment_objects, decision_objects,
             assessment_count, investigation_count, decision_count,
             archive_days, total_signals,
             translation_coverage,

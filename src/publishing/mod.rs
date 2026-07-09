@@ -97,6 +97,20 @@ pub async fn agent_publish(
     // Collect events from infer stage
     let events = inferred.events;
 
+    // Stage 5.75: 构建 schema 验证对象（仅活跃集）
+    use crate::domain::thesis::ThesisStatus;
+    let assessment_objects: Vec<_> = inferred.memory.theses().iter()
+        .filter(|t| matches!(t.status, ThesisStatus::Active | ThesisStatus::Strengthening | ThesisStatus::Weakening))
+        .map(|t| {
+            let decision = inferred.thesis_decisions.iter()
+                .find(|d| d.thesis_id == t.id);
+            crate::schema::mapper::thesis_to_assessment(t, decision, "en")
+        })
+        .collect();
+    let decision_objects: Vec<_> = inferred.memory.all_decisions().iter()
+        .map(|r| crate::schema::mapper::decision_record_to_object(r, "en"))
+        .collect();
+
     // Count MDX outputs for manifest (pre-validation snapshot)
     let mdx_path = config.output.mdx_dir.as_ref().map(PathBuf::from);
     let counts = mdx_path.as_ref().map(|p| {
@@ -142,6 +156,8 @@ pub async fn agent_publish(
         inferred.asi_score_map,
         String::new(),
         inferred.refined_domains,
+        assessment_objects,
+        decision_objects,
         counts.assessment_count,
         counts.investigation_count,
         0,

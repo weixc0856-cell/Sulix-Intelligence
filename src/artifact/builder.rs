@@ -65,6 +65,8 @@ pub fn build_artifact_set(
         memory, thesis_decisions, premium_reports,
         editor_notes, investigation_reports, new_articles,
         events, today.to_string(), asi_score_map, belief_notes_html, refined_domains,
+        vec![], // assessment_objects — Step 3.5: built in agent_publish
+        vec![], // decision_objects
         assessment_count, investigation_count, 0, // decision_count filled later
         archive_days, total_signals,
         None, // translation_coverage — filled in publishing::agent_publish
