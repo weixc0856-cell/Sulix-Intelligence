@@ -66,6 +66,8 @@ pub struct ContentManifest {
 }
 
 impl ContentManifest {
+    pub const CONTRACT_VERSION: u32 = 2; // v2 adds funnel metrics
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         date: &str,
         prev_version: u32,

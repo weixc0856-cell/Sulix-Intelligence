@@ -75,6 +75,7 @@ pub struct DecisionRecord {
 }
 
 impl DecisionRecord {
+    #[allow(clippy::too_many_arguments)]
     /// 创建新的规范 Decision 记录（同时产出审计事件）
     #[allow(clippy::too_many_arguments)]
     pub fn new(

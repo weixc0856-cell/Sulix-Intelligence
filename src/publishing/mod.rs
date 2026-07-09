@@ -18,6 +18,7 @@ use anyhow::Result;
 
 use crate::config::Config;
 use crate::db::Database;
+use crate::agent::scan::ClassifiedSignal;
 use crate::domain::artifact::ArtifactSet;
 
 pub use helpers::{ResearchOutput, analyze_and_validate};
