@@ -11,17 +11,16 @@ Sulix Intelligence transforms raw signals into structured **strategic memory** �
 ```
 Raw Signals (RSS/USPTO/Reddit)
     ↓
-Pipeline → Scan Agent → Theme Clustering
-    ↓
-Cognitive Engines (Memory + Hermes + Decision)
-    ↓
-ArtifactSet (Signals / Assessments / Decisions / Outcomes)
-    ↓
-Schema Validation Gate (reject incomplete objects)
-    ↓
-Local Storage + R2 (immutable assets) + Frontend Sync
-    ↓
-MDX View (derived from JSON artifacts)
+Pipeline → classify_and_route (Scan Agent 前移分诊)
+    ├──→ Archive (全量原文, 不可见, 零 LLM)
+    ├──→ Intel (score ≥ 3 → Layer 2 Daily Intel, JSON)
+    └──→ Research (score ≥ 7 → 全管线)
+              ↓
+    Cognitive Engines (Memory + Hermes + Decision)
+              ↓
+    ArtifactSet → PublishBundle (Research + Intel + Raw)
+              ↓
+    Schema Validation Gate → Local + R2 + Frontend Sync
 ```
 
 ## Architecture

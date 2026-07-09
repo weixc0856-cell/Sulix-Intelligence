@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     let total_raw_signals: usize = source_statuses.iter().map(|s| s.signal_count).sum();
     let grouped = llm::group_by_category(&new_articles);
 
-    let (tier3, tier2, tier1_count, triage) = agent::scan::classify_and_route(
+    let (research_signals, intel_signals, archive_count, triage) = agent::scan::classify_and_route(
         &grouped,
         &api_key,
         &config.llm,
@@ -78,22 +78,22 @@ async fn main() -> Result<()> {
         &config.sources,
     ).await?;
 
-    log::info!("📊 Signal Funnel: {} raw → {} articles → T3:{} T2:{} T1:{}",
-        total_raw_signals, article_count, tier3.len(), tier2.len(), tier1_count);
+    log::info!("📊 Signal Funnel: {} raw → {} articles → Research:{} Intel:{} Archive:{}",
+        total_raw_signals, article_count, research_signals.len(), intel_signals.len(), archive_count);
 
     // Layer 1: Raw archive (not shown in frontend)
     // Phase 0: counted in manifest, no actual R2 upload yet
-    // TODO: wire raw storage to R2 /intel/raw/ path
 
     // Layer 2: Daily Intel (score ≥ 3)
+    let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals.into_iter().map(|cs| cs.assessment).collect();
     let intel_output_dir = PathBuf::from(&config.output.vault_path).join("intel").join("daily");
     let intel_published = sulix_intel::publishing::layer2::publish_intel(
-        &tier2, &today, &intel_output_dir,
+        &intel_assessments, &today, &intel_output_dir,
     ).unwrap_or(0);
 
     // Layer 3: Research (score ≥ 7) — existing full pipeline
     let llm_calls = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-    let research = if !tier3.is_empty() {
+    let research = if !research_signals.is_empty() {
         let insight_articles: Vec<fetcher::Article> = triage.insight.clone();
         let r = agent_research(
             &config, &api_key, &catalog,
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
         if r.themes.is_empty() {
             report.status = sulix_intel::engine::pipeline_health::PipelineStatus::NoOutput;
         }
-        report.add_stage("agent_research", tier3.len(), r.themes.len(),
+        report.add_stage("agent_research", research_signals.len(), r.themes.len(),
             if r.themes.is_empty() { StageStatus::Skipped } else { StageStatus::Success });
         r
     } else {
@@ -142,9 +142,9 @@ async fn main() -> Result<()> {
 
     let publish_report = sulix_intel::delivery::publisher::publish(
         sulix_intel::delivery::publisher::PublishBundle {
-            layer3_artifacts: artifacts,
+            research: artifacts,
             intel_paths,
-            raw_count: tier1_count,
+            raw_count: archive_count,
             funnel_fetched: total_raw_signals,
             funnel_deduped: article_count,
             llm_calls: llm_calls_final as u64,

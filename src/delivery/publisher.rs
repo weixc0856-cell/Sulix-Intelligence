@@ -25,7 +25,7 @@ use crate::translation::TranslationCoverage;
 
 /// 发布包 — 包含所有层级的产出
 pub struct PublishBundle {
-    pub layer3_artifacts: ArtifactSet,
+    pub research: ArtifactSet,
     pub intel_paths: Vec<PathBuf>,
     pub raw_count: usize,
     pub funnel_fetched: usize,
@@ -52,7 +52,7 @@ pub async fn publish(
     data_dir: &Path,
     today: &str,
 ) -> Result<PublishReport> {
-    let artifacts = bundle.layer3_artifacts;
+    let artifacts = bundle.research;
     let mut passed = 0usize;
     let mut rejected = 0usize;
 
