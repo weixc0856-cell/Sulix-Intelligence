@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
     // Layer 3: Research (score ≥ 7)
     let llm_calls_before = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
     let research = if !research_signals.is_empty() {
-        let insight_articles: Vec<fetcher::Article> = triage.insight.clone();
+        let insight_articles: Vec<fetcher::Article> = triage.insight.iter().map(|t| t.article.clone()).collect();
         let r = agent::research::agent_research(
             &ctx.config, &ctx.api_key, &ctx.catalog, insight_articles,
         ).await?;

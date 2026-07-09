@@ -40,10 +40,12 @@ pub struct SignalAssessment {
     pub title: String,
     pub source: String,
     pub url: String,
-    pub importance: u8,        // LLM 评分 1-10
+    /// LLM 语义重要性评分 1-10（LLM 未评估时会话兜底值）。与分析层 SVI 同名异义（known-debt）。
+    pub importance: u8,
     pub signal_type: SignalType,
     pub domain: String,
-    pub score: u8,             // importance × source_factor
+    /// 路由分数（importance × source_factor）。不是分析层 SVI（同名异义，known-debt）。
+    pub score: u8,
     pub route: SignalRoute,
 }
 
@@ -54,11 +56,21 @@ pub struct ClassifiedSignal {
     pub assessment: SignalAssessment,
 }
 
+/// 携带 LLM 评分元数据的三层分流条目
+#[derive(Debug, Clone, Serialize)]
+pub struct TriagedArticle {
+    pub article: Article,
+    /// LLM 原始重要性评分 1-10。None = LLM 批次失败/未评估（系统兜底赋值）。
+    pub importance: Option<u8>,
+    /// 解析后的 LLM 信号类型。
+    pub signal_type: SignalType,
+}
+
 /// 三层分流结果（Layer 3，保留向后兼容）
 #[derive(Debug, Clone, Serialize)]
 pub struct TriageResult {
-    pub insight: Vec<Article>,
-    pub watchlist: Vec<Article>,
+    pub insight: Vec<TriagedArticle>,
+    pub watchlist: Vec<TriagedArticle>,
     pub signal_memory: Vec<Article>,
 }
 
@@ -84,39 +96,41 @@ pub async fn classify_and_route(
             .unwrap_or(5.0)
     };
 
-    for article in &triage.insight {
-        let sf = 0.5 + get_source_score(&article.source) / 20.0;
-        let score = (10.0 * sf).round() as u8;
+    for entry in &triage.insight {
+        let sf = 0.5 + get_source_score(&entry.article.source) / 20.0;
+        let llm_val = entry.importance.unwrap_or(7); // None → 7 (等价既有 fallback 语义)
+        let score = ((llm_val as f32) * sf).round() as u8;
         research_signals.push(ClassifiedSignal {
-            article: article.clone(),
+            article: entry.article.clone(),
             assessment: SignalAssessment {
-                article_id: article.id.clone(),
-                title: article.title.clone(),
-                source: article.source.clone(),
-                url: article.url.clone(),
-                importance: 8,
-                signal_type: SignalType::StructuralShift,
-                domain: article.category.clone(),
-                score: score.max(7),
+                article_id: entry.article.id.clone(),
+                title: entry.article.title.clone(),
+                source: entry.article.source.clone(),
+                url: entry.article.url.clone(),
+                importance: llm_val,
+                signal_type: entry.signal_type.clone(),
+                domain: entry.article.category.clone(),
+                score: score.clamp(0, 10),
                 route: SignalRoute::Research,
             },
         });
     }
 
-    for article in &triage.watchlist {
-        let sf = 0.5 + get_source_score(&article.source) / 20.0;
-        let score = (5.0 * sf).round() as u8;
+    for entry in &triage.watchlist {
+        let sf = 0.5 + get_source_score(&entry.article.source) / 20.0;
+        let llm_val = entry.importance.unwrap_or(5);
+        let score = ((llm_val as f32) * sf).round() as u8;
         intel_signals.push(ClassifiedSignal {
-            article: article.clone(),
+            article: entry.article.clone(),
             assessment: SignalAssessment {
-                article_id: article.id.clone(),
-                title: article.title.clone(),
-                source: article.source.clone(),
-                url: article.url.clone(),
-                importance: 5,
-                signal_type: SignalType::ContextUpdate,
-                domain: article.category.clone(),
-                score: score.max(3).min(6),
+                article_id: entry.article.id.clone(),
+                title: entry.article.title.clone(),
+                source: entry.article.source.clone(),
+                url: entry.article.url.clone(),
+                importance: llm_val,
+                signal_type: entry.signal_type.clone(),
+                domain: entry.article.category.clone(),
+                score: score.clamp(0, 10),
                 route: SignalRoute::Intel,
             },
         });
@@ -174,7 +188,7 @@ pub async fn scan_and_triage(
                     for article in batch {
                         // 找匹配的 LLM 输出
                         let matched = raw_results.iter().find(|r| r.title == article.title);
-                        let importance = matched.map(|r| r.importance.clamp(1, 10)).unwrap_or(5);
+                        let importance = matched.map(|r| r.importance.clamp(1, 10)); // Option<u8>
                         let tag = matched
                             .map(|r| r.relevance.as_str())
                             .unwrap_or("Context Update");
@@ -195,7 +209,7 @@ pub async fn scan_and_triage(
                             .map(|s| s.score as f32)
                             .unwrap_or(5.0);
                         let source_factor = 0.5 + source_score / 20.0; // 0.55 (score=1) .. 1.0 (score=10)
-                        let weighted = (importance as f32 * source_factor).round() as u8;
+                        let weighted = (importance.unwrap_or(5) as f32 * source_factor).round() as u8;
 
                         // 三层分流
                         let composite = if tag == "Structural Shift" {
@@ -204,14 +218,24 @@ pub async fn scan_and_triage(
                             weighted
                         };
 
+                        let signal_type = parse_signal_type(tag);
+
                         if composite >= 7 {
-                            insight.push(article.clone());
+                            insight.push(TriagedArticle {
+                                article: article.clone(),
+                                importance,
+                                signal_type,
+                            });
                         } else if composite >= 3 {
                             // TODO(Phase 2): 接入 Belief Engine 后启用 ContradictionTracker
                             // 当前逻辑为纯分数路由 (composite >= 3 → watchlist)，信念冲突检测
                             // 依赖不存在的 Editor Agent/Belief Engine。
                             // ContradictionRecord struct 已定义，留待 Phase B 接入。
-                            watchlist.push(article.clone());
+                            watchlist.push(TriagedArticle {
+                                article: article.clone(),
+                                importance,
+                                signal_type,
+                            });
                         } else if tag == "Noise" {
                             signal_memory.push(article.clone());
                         } else {
@@ -222,7 +246,13 @@ pub async fn scan_and_triage(
                 }
                 Err(e) => {
                     log::warn!("⚠️ Scan Agent 批次失败 ({}), 全部进入 insight", e);
-                    insight.extend(batch.iter().cloned());
+                    for a in batch.iter().cloned() {
+                        insight.push(TriagedArticle {
+                            article: a,
+                            importance: None,
+                            signal_type: SignalType::ContextUpdate,
+                        });
+                    }
                 }
             }
 
@@ -305,6 +335,21 @@ fn build_scan_user_prompt(category: &str, batch_idx: usize, articles: &[Article]
     }
 
     prompt
+}
+
+/// 将 LLM 返回的 relevance 标签解析为 SignalType 枚举。
+/// 未知标签使用 ContextUpdate 兜底并 log::warn（标签漂移检测）。
+fn parse_signal_type(label: &str) -> SignalType {
+    match label {
+        "Structural Shift" => SignalType::StructuralShift,
+        "Competitive Signal" => SignalType::CompetitiveSignal,
+        "Context Update" => SignalType::ContextUpdate,
+        "Noise" => SignalType::Noise,
+        other => {
+            log::warn!("⚠️ Scan Agent: unknown relevance tag '{other}', defaulting to ContextUpdate");
+            SignalType::ContextUpdate
+        }
+    }
 }
 
 #[cfg(test)]
@@ -405,5 +450,27 @@ mod tests {
             };
             assert_eq!(valid, "Context Update");
         }
+    }
+
+    #[test]
+    fn test_parse_signal_type_standard() {
+        // 标准标签
+        assert_eq!(parse_signal_type("Structural Shift"), SignalType::StructuralShift);
+        assert_eq!(parse_signal_type("Competitive Signal"), SignalType::CompetitiveSignal);
+        assert_eq!(parse_signal_type("Context Update"), SignalType::ContextUpdate);
+        assert_eq!(parse_signal_type("Noise"), SignalType::Noise);
+    }
+
+    #[test]
+    fn test_parse_signal_type_unknown_fallback() {
+        // 未知标签 → ContextUpdate + log::warn
+        let result = parse_signal_type("Structral Shift");
+        assert_eq!(result, SignalType::ContextUpdate);
+    }
+
+    #[test]
+    fn test_parse_signal_type_empty_fallback() {
+        let result = parse_signal_type("");
+        assert_eq!(result, SignalType::ContextUpdate);
     }
 }

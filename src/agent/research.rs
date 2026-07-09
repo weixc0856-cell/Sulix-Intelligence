@@ -49,7 +49,11 @@ pub async fn agent_research(
                 Err(e) => {
                     log::warn!("Scan Agent 失败 ({}), 全部进入 Insight", e);
                     crate::agent::scan::TriageResult {
-                        insight: new_articles.clone(),
+                        insight: new_articles.iter().map(|a| crate::agent::scan::TriagedArticle {
+                            article: a.clone(),
+                            importance: None,
+                            signal_type: crate::agent::scan::SignalType::ContextUpdate,
+                        }).collect(),
                         watchlist: vec![],
                         signal_memory: vec![],
                     }
@@ -57,14 +61,22 @@ pub async fn agent_research(
             }
         } else {
             crate::agent::scan::TriageResult {
-                insight: new_articles.clone(),
+                insight: new_articles.iter().map(|a| crate::agent::scan::TriagedArticle {
+                    article: a.clone(),
+                    importance: None,
+                    signal_type: crate::agent::scan::SignalType::ContextUpdate,
+                }).collect(),
                 watchlist: vec![],
                 signal_memory: vec![],
             }
         }
     } else {
         crate::agent::scan::TriageResult {
-            insight: new_articles.clone(),
+            insight: new_articles.iter().map(|a| crate::agent::scan::TriagedArticle {
+                article: a.clone(),
+                importance: None,
+                signal_type: crate::agent::scan::SignalType::ContextUpdate,
+            }).collect(),
             watchlist: vec![],
             signal_memory: vec![],
         }
@@ -83,7 +95,7 @@ pub async fn agent_research(
     }
 
     // 聚类（只对 Insight 层）
-    let mut insight_articles = triage.insight.clone();
+    let mut insight_articles: Vec<crate::fetcher::Article> = triage.insight.iter().map(|t| t.article.clone()).collect();
     if let Some(ref nl) = config.news_layer {
         if nl.llm_prededup {
             let before = insight_articles.len();
