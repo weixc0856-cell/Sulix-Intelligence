@@ -41,41 +41,60 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           # S3 API (reuses upload credentials) — no public URL, no CDN cache
-          aws s3 sync s3://sulix-content/state/ DailyBrief/ \
-            --endpoint-url "$R2_ENDPOINT" \
-            --region auto 2>&1 || echo "⚠️ state sync failed (first run?)"
-          # entity_db lives in data/ not DailyBrief/
-          aws s3 sync s3://sulix-content/state/ data/ \
-            --endpoint-url "$R2_ENDPOINT" \
-            --region auto \
-            --exclude "*" --include "entity_db.json" 2>&1 || true
-
-          # Full-or-nothing check: if ANY state file exists, ALL must be present & valid
-          STATE_FILES="memory_db.json decision_registry.json assessment_registry.json investigation_registry.json"
-          FOUND=0
-          MISSING=0
-          for f in $STATE_FILES; do
-            if [ -f "DailyBrief/$f" ]; then
-              FOUND=$((FOUND + 1))
-            else
-              MISSING=$((MISSING + 1))
-            fi
-          done
-          if [ $FOUND -gt 0 ] && [ $MISSING -gt 0 ]; then
-            echo "❌ Partial state restore: $FOUND found, $MISSING missing — aborting"
-            exit 1
-          elif [ $FOUND -eq 0 ]; then
-            echo "⚠️ No state files found — first run"
-          else
-            echo "✅ All $FOUND state files restored"
-            for f in $STATE_FILES; do
-              if ! jq empty "DailyBrief/$f" 2>/dev/null; then
-                echo "❌ Corrupt state file: $f"
-                exit 1
-              fi
-            done
-            echo "✅ All state files valid JSON"
-          fi
+          # Use Node.js with @aws-sdk/client-s3 (pre-installed through Rust cache doesn't help here)
+          npm install @aws-sdk/client-s3 --silent --no-audit --no-fund 2>/dev/null
+          node -e "
+            const { S3Client, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+            const fs = require('fs');
+            const client = new S3Client({
+              region: 'auto',
+              endpoint: process.env.R2_ENDPOINT,
+              credentials: {
+                accessKeyId: process.env.R2_ACCESS_KEY_ID,
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+              }
+            });
+            async function main() {
+              const list = await client.send(new ListObjectsV2Command({ Bucket: 'sulix-content', Prefix: 'state/' }));
+              if (!list.Contents || list.Contents.length === 0) {
+                console.log('No state files found — first run');
+                return;
+              }
+              const count = list.Contents.length;
+              for (const obj of list.Contents) {
+                const key = obj.Key;
+                const filename = key.replace('state/', '');
+                // Determine target dir: entity_db.json -> data/, rest -> DailyBrief/
+                const targetDir = filename === 'entity_db.json' ? 'data' : 'DailyBrief';
+                const data = await client.send(new GetObjectCommand({ Bucket: 'sulix-content', Key: key }));
+                const chunks = [];
+                for await (const chunk of data.Body) { chunks.push(chunk); }
+                fs.writeFileSync(targetDir + '/' + filename, Buffer.concat(chunks));
+                console.log('  Restored: ' + targetDir + '/' + filename);
+              }
+              console.log('✅ All ' + count + ' state files restored');
+              // Full-or-nothing check: 4 critical files must all exist
+              const critical = ['memory_db.json','decision_registry.json','assessment_registry.json','investigation_registry.json'];
+              const found = critical.filter(f => fs.existsSync('DailyBrief/' + f)).length;
+              const missing = critical.filter(f => !fs.existsSync('DailyBrief/' + f)).length;
+              if (found > 0 && missing > 0) {
+                console.log('❌ Partial state restore: ' + found + ' found, ' + missing + ' missing');
+                process.exit(1);
+              }
+              if (found === 0) console.log('⚠️ No critical state files — first run');
+              else console.log('✅ All critical state files present');
+              // Validate JSON integrity
+              for (const f of critical) {
+                const p = 'DailyBrief/' + f;
+                if (fs.existsSync(p)) {
+                  try { JSON.parse(fs.readFileSync(p, 'utf-8')); }
+                  catch(e) { console.log('❌ Corrupt state file: ' + f); process.exit(1); }
+                }
+              }
+              if (found > 0) console.log('✅ All state files valid JSON');
+            }
+            main().catch(e => { console.error(e.message); process.exit(1); });
+          " 2>&1
 
       - name: Run Pipeline
         env:
