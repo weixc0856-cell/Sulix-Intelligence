@@ -57,6 +57,14 @@ pub struct PublishReport {
     pub translation_coverage: Option<TranslationCoverage>,
 }
 
+impl PublishReport {
+    /// R2 上传是否失败（检查状态字符串前缀）
+    /// 腐化面仅限于此：新增 r2_status 输出值时必须更新此方法。
+    pub fn r2_failed(&self) -> bool {
+        self.r2_status.starts_with("failed") || self.r2_status.starts_with("partial_failure")
+    }
+}
+
 /// 发布产物到存储后端
 ///
 /// ownership 从 publishing 移交：PublishBundle 被 consume

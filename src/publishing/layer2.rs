@@ -42,7 +42,7 @@ pub fn publish_intel(
             related_thesis: None,
         };
 
-        let slug = slugify(&assessment.title);
+        let slug = slugify(&assessment.title, &assessment.article_id);
         let path = intel_dir.join(format!("{}-{}.json", today, slug));
         let json = render_intel_json(&entry);
         match std::fs::write(&path, &json) {
@@ -56,12 +56,27 @@ pub fn publish_intel(
 }
 
 /// 简单的 slug 生成
-fn slugify(title: &str) -> String {
-    title.chars()
+///
+/// article_id 尾部拼入防止碰撞（article_id 已是 URL hash，无需重算 sha256）。
+fn slugify(title: &str, article_id: &str) -> String {
+    let slug: String = title.chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == ' ')
         .take(40)
         .collect::<String>()
         .trim()
         .to_lowercase()
-        .replace(' ', "-")
+        .replace(' ', "-");
+    let suffix: String = article_id.chars()
+        .filter(|c| c.is_alphanumeric())
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    if slug.is_empty() {
+        suffix
+    } else {
+        format!("{}-{}", slug, suffix)
+    }
 }

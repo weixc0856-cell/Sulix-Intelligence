@@ -84,15 +84,14 @@ pub async fn agent_publish(
     ).await?;
 
     // Stage 5.5: Translation — fill zh-cn/zh-tw MDX via LLM (transitional)
-    // Stage 5.5: Translation -- fire-and-forget (transitional bridge)
     // Object-level i18n will replace this file-level step.
+    // Failure degrades gracefully — does not block EN pipeline.
     let translation_coverage = {
-        let config = config.clone();
-        let ak = api_key.to_string();
-        tokio::spawn(async move {
-            let _cov = crate::translation::publish_translate(&config, &ak).await;
-        });
-        None
+        let cov = crate::translation::publish_translate(&config, &api_key).await;
+        if cov.failed > 0 {
+            log::warn!("⚠️ Translation degraded: {}/{} files failed", cov.failed, cov.total_files);
+        }
+        Some(cov)
     };
 
     // Collect events from infer stage

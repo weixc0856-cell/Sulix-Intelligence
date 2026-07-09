@@ -71,9 +71,17 @@ async fn main() -> Result<()> {
     // Layer 2: Daily Intel (score ≥ 3)
     let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals.iter().map(|cs| cs.assessment.clone()).collect();
     let intel_output_dir = PathBuf::from(&ctx.config.output.vault_path).join("intel").join("daily");
-    let intel_published = sulix_intel::publishing::layer2::publish_intel(
+    let intel_published = match sulix_intel::publishing::layer2::publish_intel(
         &intel_assessments, &ctx.today, &intel_output_dir,
-    ).unwrap_or(0);
+    ) {
+        Ok(n) => n,
+        Err(e) => {
+            log::error!("⚠️ Layer 2 intel publish failed: {}", e);
+            report.add_stage("layer2_intel", intel_assessments.len(), 0,
+                sulix_intel::engine::pipeline_health::StageStatus::Failed);
+            0
+        }
+    };
 
     // Layer 3: Research (score ≥ 7)
     let llm_calls_before = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
@@ -125,6 +133,11 @@ async fn main() -> Result<()> {
     if publish_report.rejected_count > 0 {
         anyhow::bail!("{} object(s) rejected by schema validation. See data/rejected/{}/",
             publish_report.rejected_count, ctx.today);
+    }
+
+    // R2 失败 bail 放在 report.save 之后，确保本地报告不丢
+    if publish_report.r2_failed() {
+        anyhow::bail!("R2 upload: {}", publish_report.r2_status);
     }
 
     Ok(())
