@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::archive::ChronicleDb;
 use crate::config::Config;
+use crate::engine::decision_registry::DecisionRegistry;
 use crate::engine::memory::MemoryEngine;
 use crate::storage;
 
@@ -19,6 +20,7 @@ pub struct StateBundle {
     pub registry_path: PathBuf,
     pub inv_registry: crate::engine::investigation_registry::InvestigationRegistry,
     pub inv_registry_path: PathBuf,
+    pub decision_registry: DecisionRegistry,
 }
 
 /// Preprocess: 加载所有持久化状态（EventLog, Chronicle, Memory）
@@ -51,12 +53,16 @@ pub async fn publish_preprocess(data_dir: &Path, config: &Config) -> StateBundle
     let inv_registry_path = PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
     let inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(&inv_registry_path);
 
+    let decision_registry_path = PathBuf::from(&config.output.vault_path).join("decision_registry.json");
+    let decision_registry = DecisionRegistry::load_or_new(&decision_registry_path);
+
     StateBundle {
         event_log, event_log_path,
         chronicle, chronicle_path,
         memory_for_linking, memory_path,
         registry, registry_path,
         inv_registry, inv_registry_path,
+        decision_registry,
     }
 }
 

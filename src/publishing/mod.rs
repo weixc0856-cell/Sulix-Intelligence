@@ -68,7 +68,7 @@ pub async fn agent_publish(
     ).await?;
 
     // Stage 3.5: Memory 回流 — Intel signals → Thesis 轻量匹配
-    let intel_fed = inferred.memory.feed_intel(intel_signals, today);
+    let _intel_fed = inferred.memory.feed_intel(intel_signals, today);
 
     // Stage 4: Persist — write all state to disk
     persist::publish_persist(

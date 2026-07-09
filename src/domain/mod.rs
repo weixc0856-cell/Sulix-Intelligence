@@ -37,7 +37,7 @@ pub use revision::{build_revision_history, Revision};
 pub use editor_note::EditorNote;
 pub use evidence::{compute_confidence, Evidence, FactBaseEntry, Stance};
 pub use investigation::{Investigation, InvestigationReport, Question, QuestionStatus};
-pub use outcome::{Outcome, OutcomeVerdict};
+pub use outcome::{generate_outcome_id, Outcome, OutcomeVerdict};
 pub use premium::{PremiumReport, SpecialTopic};
 pub use reflection::Reflection;
 pub use localized::Localized;

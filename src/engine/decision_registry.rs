@@ -61,11 +61,33 @@ impl DecisionRegistry {
     }
 
     /// Find DEC-ID by ASM-ID (primary lookup)
+    ///
+    /// Returns the first active DEC. Use `find_all_by_asm` when ambiguity
+    /// detection is required (1:many ASM→DEC).
     pub fn find_by_asm(&self, asm_id: &str) -> Option<String> {
         self.decisions
             .iter()
             .find(|(_, entry)| entry.asm_id == asm_id && entry.state == "active")
             .map(|(dec_id, _)| dec_id.clone())
+    }
+
+    /// Find all active DEC-IDs for a given ASM-ID.
+    ///
+    /// Used by detect_outcomes() to detect ambiguity (1:many ASM→DEC).
+    /// Returns empty vec when no matches.
+    pub fn find_all_by_asm(&self, asm_id: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self.decisions
+            .iter()
+            .filter(|(_, entry)| entry.asm_id == asm_id && entry.state == "active")
+            .map(|(dec_id, _)| dec_id.clone())
+            .collect();
+        // Sort by created date (descending) via entry.updated, so latest comes first
+        ids.sort_by(|a, b| {
+            let a_date = self.decisions.get(a).map(|e| e.updated.as_str()).unwrap_or("");
+            let b_date = self.decisions.get(b).map(|e| e.updated.as_str()).unwrap_or("");
+            b_date.cmp(a_date) // descending
+        });
+        ids
     }
 
     /// Register a new Decision for an ASM, return DEC-ID
@@ -128,6 +150,50 @@ mod tests {
         let entry = reg.decisions.get(&dec_id).unwrap();
         assert_eq!(entry.current_type, "build");
         assert_eq!(entry.updated, "2026-06-27");
+    }
+
+    #[test]
+    fn test_find_all_by_asm_single() {
+        let mut reg = DecisionRegistry::new();
+        reg.register("ASM-0001", "t1", "2026-07-01", "monitor");
+        let all = reg.find_all_by_asm("ASM-0001");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0], "DEC-0001");
+    }
+
+    #[test]
+    fn test_find_all_by_asm_none() {
+        let reg = DecisionRegistry::new();
+        assert!(reg.find_all_by_asm("ASM-9999").is_empty());
+    }
+
+    #[test]
+    fn test_find_all_by_asm_returns_active_only() {
+        let mut reg = DecisionRegistry::new();
+        reg.register("ASM-0001", "t1", "2026-07-01", "monitor");
+        // Manually set to non-active to simulate archived
+        if let Some(e) = reg.decisions.get_mut("DEC-0001") {
+            e.state = "archived".to_string();
+        }
+        assert!(reg.find_all_by_asm("ASM-0001").is_empty());
+    }
+
+    #[test]
+    fn test_find_all_by_asm_multiple_warns() {
+        let mut reg = DecisionRegistry::new();
+        // Can't have two active for same ASM with current API, but test the method edge
+        let d1 = reg.register("ASM-0001", "t1", "2026-07-01", "monitor");
+        let d2 = reg.register("ASM-0001", "t2", "2026-07-02", "build");
+        // Manually set first one to "active" as well (registry doesn't enforce unique)
+        if let Some(e) = reg.decisions.get_mut(&d1) {
+            e.state = "active".to_string();
+        }
+        // Now both are active — verify find_all returns both
+        let all = reg.find_all_by_asm("ASM-0001");
+        assert_eq!(all.len(), 2);
+        // Latest first (sorted by updated descending)
+        assert_eq!(all[0], d2);
+        assert_eq!(all[1], d1);
     }
 
     #[test]

@@ -231,10 +231,14 @@ pub async fn publish(
                         }
                     }
 
-                    // Upload state files for CI persistence (memory_db, entity_db, etc.)
+                    // Upload state files for CI persistence (memory_db, registries, entity_db)
+                    // Note: adding a new state file? Add it here AND ensure it's
+                    // included in CI's aws s3 sync (cron_brief.yml "Pull persistent state" step).
                     let state_files = [
                         (config.output.vault_path.as_str(), "memory_db.json"),
                         (config.output.vault_path.as_str(), "decision_registry.json"),
+                        (config.output.vault_path.as_str(), "assessment_registry.json"),
+                        (config.output.vault_path.as_str(), "investigation_registry.json"),
                     ];
                     for (base_dir, filename) in &state_files {
                         let state_path = PathBuf::from(base_dir).join(filename);

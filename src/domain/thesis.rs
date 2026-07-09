@@ -242,13 +242,13 @@ impl BeliefDb {
             beliefs: vec![BeliefStatement {
                 id: format!("belief-{}", chrono::Utc::now().timestamp()),
                 text: change.belief_text.clone(),
-                confidence: change.suggested_confidence,
+                confidence: change.suggested_strength,
                 category: change.category.clone(),
                 evidence_ids: vec![],
             }],
             recent_updates: vec![BeliefUpdate {
                 belief_id: String::new(),
-                delta: change.suggested_confidence as i8,
+                delta: change.suggested_strength as i8,
                 evidence_type: crate::domain::evidence::Stance::Supports,
                 reasoning: format!("Approved from outcome {}", change.outcome_id),
                 is_contradiction: false,

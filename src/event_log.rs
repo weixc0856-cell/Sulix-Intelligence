@@ -45,6 +45,8 @@ pub enum ObjectEventType {
     OutcomeRecorded,
     ThesisRefuted,
     ReflectionGenerated,
+    /// 信念变更被人工批准（BeliefChangeCandidate → BeliefDb）
+    BeliefChangeApplied,
     /// 对象被验证门拒绝（不阻止管线完成）
     PublishRejected,
     /// 单次发布完成（汇总事件，summary 放 passed/rejected/r2_status）

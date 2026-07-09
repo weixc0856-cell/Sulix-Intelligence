@@ -10,13 +10,14 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::domain::evidence::Stance;
 use crate::domain::outcome::{ImpactLevel, Outcome, OutcomeVerdict};
+use crate::domain::reflection::Reflection;
 use crate::domain::thesis::ThesisStatus;
 use crate::domain::StrategicDomain;
 use crate::domain::ThesisDecision;
 use crate::event_log::ObjectEvent;
 use crate::engine::decision::map_theses_to_decisions;
 use crate::engine::investigation::generate_investigation;
-use crate::engine::memory::MemoryEngine;
+use crate::engine::memory::{BeliefChangeCandidate, MemoryEngine};
 use crate::archive::{ChronicleDb, ChronicleEntry};
 
 use super::preprocess::StateBundle;
@@ -168,57 +169,129 @@ async fn run_investigation_engine(
 }
 
 /// Meta Layer: Outcome 检测 + Reflection 生成（Retired→Invalidated, Strengthening→PartiallyConfirmed）
+///
+/// @techdebt: 职责膨胀（Outcome 检测/DEC 反查/冷却期/事件 emit），
+/// 未来抽取 OutcomeService（engine/outcome.rs）。
 fn detect_outcomes(
     memory: &mut MemoryEngine,
     today: &str,
     state: &mut StateBundle,
     infer_events: &mut Vec<ObjectEvent>,
+    dec_registry: &crate::engine::decision_registry::DecisionRegistry,
 ) -> String {
     for thesis in memory.theses().to_owned() {
+        // 冷却期检查：同一 thesis + 同一 verdict 类型，30 天内已产出 → 跳过
+        let cooldown_valid = |verdict: &OutcomeVerdict, existing: &[Outcome]| -> bool {
+            let cooldown_days = 30;
+            existing.iter().any(|o| {
+                o.thesis_id == thesis.id
+                    && o.verdict == *verdict
+                    && is_within_days(&o.date, today, cooldown_days)
+            })
+        };
+
+        // ===== 规则 1: Retired + 挑战 > 支持 → Invalidated =====
         if thesis.status == ThesisStatus::Retired {
             let challenge = thesis.evidences.iter().filter(|e| e.stance == Stance::Challenges).count();
             let support = thesis.evidences.iter().filter(|e| e.stance == Stance::Supports).count();
             if challenge > support {
+                let existing_outcomes: Vec<Outcome> = memory.all_outcomes().to_vec();
+                if cooldown_valid(&OutcomeVerdict::Invalidated, &existing_outcomes) {
+                    log::debug!("🧠 Cooldown: thesis '{}' Invalidated 冷却期内，跳过", thesis.title);
+                } else {
+                    let outcome_id = crate::domain::outcome::generate_outcome_id(&existing_outcomes, today);
+                    let dec_id = resolve_decision_id(&thesis, dec_registry);
+                    let (outcome, event) = Outcome::new(
+                        outcome_id, dec_id,
+                        thesis.id.clone(), format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
+                        OutcomeVerdict::Invalidated, ImpactLevel::Medium, today.to_string(),
+                    );
+                    let recorded_outcome_id = outcome.id.clone();
+                    infer_events.push(event);
+                    if let Err(e) = memory.record_outcome(outcome) {
+                        log::warn!("⚠️ Outcome 记录失败: {}", e);
+                    } else {
+                        // 补充 emit ReflectionGenerated（record_outcome 已自动产 reflection）
+                        if let Some(latest_reflection) = memory.all_reflections().last() {
+                            infer_events.push(ObjectEvent::new(
+                                crate::event_log::ObjectEventType::ReflectionGenerated,
+                                &latest_reflection.id, "reflection",
+                                serde_json::json!({"thesis_id": thesis.id, "outcome_id": latest_reflection.outcome_id}),
+                                "infer",
+                            ));
+                        }
+                        // 自动创建 BeliefChangeCandidate（终局性 verdict → 高信号候选）
+                        let belief_text = extract_belief_text(
+                            memory.all_reflections(),
+                            &recorded_outcome_id,
+                            &thesis.title,
+                        );
+                        let cand = BeliefChangeCandidate {
+                            id: format!("cand-auto-{}-{}", thesis.id, chrono::Utc::now().timestamp()),
+                            reflection_id: memory.all_reflections().iter()
+                                .find(|r| r.outcome_id == recorded_outcome_id)
+                                .map(|r| r.id.clone())
+                                .unwrap_or_default(),
+                            outcome_id: recorded_outcome_id.clone(),
+                            thesis_id: thesis.id.clone(),
+                            belief_text,
+                            suggested_strength: 7u8,
+                            category: "thesis_invalidated".to_string(),
+                            created_at: today.to_string(),
+                            applied_confidence: None,
+                            applied: false,
+                        };
+                        memory.add_belief_change(cand);
+                        state.event_log.push(crate::event_log::PipelineEvent {
+                            id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
+                            event_type: crate::event_log::PipelineEventType::ThesisRefuted,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            description: format!("论题 '{}' 被证伪", thesis.title),
+                            thesis_id: Some(thesis.id.clone()), related_events: vec![],
+                            data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
+                        });
+                        log::info!("🧠 Meta Layer: Thesis '{}' → Invalidated (S={}, C={})", thesis.title, support, challenge);
+                    }
+                }
+            }
+        }
+
+        // ===== 规则 2: Strengthening + 证据 ≥ 2 → PartiallyConfirmed =====
+        if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
+            let existing_outcomes: Vec<Outcome> = memory.all_outcomes().to_vec();
+            if cooldown_valid(&OutcomeVerdict::PartiallyConfirmed, &existing_outcomes) {
+                log::debug!("🧠 Cooldown: thesis '{}' PartiallyConfirmed 冷却期内，跳过", thesis.title);
+            } else {
+                let outcome_id = crate::domain::outcome::generate_outcome_id(&existing_outcomes, today);
+                let dec_id = resolve_decision_id(&thesis, dec_registry);
                 let (outcome, event) = Outcome::new(
-                    format!("outcome-{}", chrono::Utc::now().timestamp()), String::new(),
-                    thesis.id.clone(), format!("被证伪: 挑战证据 ({}) 超过支持证据 ({})", challenge, support),
-                    OutcomeVerdict::Invalidated, ImpactLevel::Medium, today.to_string(),
+                    outcome_id, dec_id,
+                    thesis.id.clone(), format!("证据持续积累 ({} 条)", thesis.evidences.len()),
+                    OutcomeVerdict::PartiallyConfirmed, ImpactLevel::Medium, today.to_string(),
                 );
                 infer_events.push(event);
                 if let Err(e) = memory.record_outcome(outcome) {
                     log::warn!("⚠️ Outcome 记录失败: {}", e);
                 } else {
+                    // 补充 emit ReflectionGenerated
+                    if let Some(latest_reflection) = memory.all_reflections().last() {
+                        infer_events.push(ObjectEvent::new(
+                            crate::event_log::ObjectEventType::ReflectionGenerated,
+                            &latest_reflection.id, "reflection",
+                            serde_json::json!({"thesis_id": thesis.id, "outcome_id": latest_reflection.outcome_id}),
+                            "infer",
+                        ));
+                    }
                     state.event_log.push(crate::event_log::PipelineEvent {
                         id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
-                        event_type: crate::event_log::PipelineEventType::ThesisRefuted,
+                        event_type: crate::event_log::PipelineEventType::OutcomeRecorded,
                         timestamp: chrono::Utc::now().to_rfc3339(),
-                        description: format!("论题 '{}' 被证伪", thesis.title),
+                        description: format!("论题 '{}' 获得证据强化", thesis.title),
                         thesis_id: Some(thesis.id.clone()), related_events: vec![],
-                        data: serde_json::json!({"thesis_title": thesis.title, "support": support, "challenge": challenge}),
+                        data: serde_json::json!({"thesis_title": thesis.title, "evidence_count": thesis.evidences.len()}),
                     });
-                    log::info!("🧠 Meta Layer: Thesis '{}' → Invalidated (S={}, C={})", thesis.title, support, challenge);
+                    log::info!("🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)", thesis.title, thesis.evidences.len());
                 }
-            }
-        }
-        if thesis.status == ThesisStatus::Strengthening && thesis.evidences.len() >= 2 {
-            let (outcome, event) = Outcome::new(
-                format!("outcome-{}", chrono::Utc::now().timestamp()), String::new(),
-                thesis.id.clone(), format!("证据持续积累 ({} 条)", thesis.evidences.len()),
-                OutcomeVerdict::PartiallyConfirmed, ImpactLevel::Medium, today.to_string(),
-            );
-            infer_events.push(event);
-            if let Err(e) = memory.record_outcome(outcome) {
-                log::warn!("⚠️ Outcome 记录失败: {}", e);
-            } else {
-                state.event_log.push(crate::event_log::PipelineEvent {
-                    id: format!("evt-{}", EVENT_COUNTER.fetch_add(1, Ordering::SeqCst)),
-                    event_type: crate::event_log::PipelineEventType::OutcomeRecorded,
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    description: format!("论题 '{}' 获得证据强化", thesis.title),
-                    thesis_id: Some(thesis.id.clone()), related_events: vec![],
-                    data: serde_json::json!({"thesis_title": thesis.title, "evidence_count": thesis.evidences.len()}),
-                });
-                log::info!("🧠 Meta Layer: Thesis '{}' → Strengthening ({} evidence)", thesis.title, thesis.evidences.len());
             }
         }
     }
@@ -238,6 +311,56 @@ fn detect_outcomes(
   <div style="font-family:'JetBrains Mono',monospace;font-size:0.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#dc2626;margin-bottom:0.25rem">🎯 判断更新</div>
   {}</div>"#, recent_outcomes.join(""))
     }
+}
+
+/// 通过 thesis → assessment_id → DecisionRegistry 反查 DEC-ID。
+///
+/// 边界处理：
+/// - 无 assessment_id 或查不到 DEC → 留空 + warn，不阻塞
+/// - 查到多个 active DEC（1:many ASM→DEC）→ 取最新 + warn("ambiguous")
+fn resolve_decision_id(
+    thesis: &crate::domain::thesis::Thesis,
+    dec_registry: &crate::engine::decision_registry::DecisionRegistry,
+) -> String {
+    let Some(ref asm_id) = thesis.assessment_id else {
+        log::warn!("⚠️ detect_outcomes: thesis '{}' 无 assessment_id，decision_id 留空", thesis.title);
+        return String::new();
+    };
+    let candidates = dec_registry.find_all_by_asm(asm_id);
+    if candidates.is_empty() {
+        log::warn!("⚠️ detect_outcomes: ASM {} 无对应 DEC，decision_id 留空", asm_id);
+        return String::new();
+    }
+    if candidates.len() > 1 {
+        log::warn!("⚠️ detect_outcomes: ASM {} 对应 {} 个 active DEC，取最新",
+            asm_id, candidates.len());
+    }
+    candidates.into_iter().next().unwrap_or_default()
+}
+
+/// 检查 date_str 是否在 today 之前 N 天内
+fn is_within_days(date_str: &str, today: &str, days: u32) -> bool {
+    let date = match chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    let today_d = match chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    let diff = (today_d - date).num_days();
+    diff >= 0 && diff <= days as i64
+}
+
+/// 从 Reflection 提取候选信念文本。
+///
+/// 优先从关联 reflection 的 lessons 提取（引用查找，非位置耦合）。
+/// 未来升级为 LLM 生成时，此处是唯一修改点（@backlog: LLM belief_text 须带 scope 约束）。
+fn extract_belief_text(reflections: &[Reflection], outcome_id: &str, thesis_title: &str) -> String {
+    reflections.iter()
+        .find(|r| r.outcome_id == outcome_id)
+        .and_then(|r| r.lessons.first().cloned())
+        .unwrap_or_else(|| format!("Thesis '{}' refuted by evidence — re-evaluate underlying assumptions", thesis_title))
 }
 
 // ===== Coordinator =====
@@ -277,7 +400,11 @@ pub async fn publish_infer(
     ).await;
 
     // 5. Meta Layer: Outcomes
-    let outcome_notifications_html = detect_outcomes(&mut memory, today, state, &mut infer_events);
+    let dec_reg = state.decision_registry.clone();
+    let outcome_notifications_html = detect_outcomes(
+        &mut memory, today, state, &mut infer_events,
+        &dec_reg,
+    );
 
     // 6. Decision Intelligence
     let thesis_decisions_raw = map_theses_to_decisions(&memory);

@@ -36,24 +36,45 @@ jobs:
 
       - name: Pull persistent state from R2
         env:
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          if [ -n "$R2_PUBLIC_URL" ]; then
-            # memory_db.json: engine reads from DailyBrief/ (vault_path)
-            if curl -sf "$R2_PUBLIC_URL/state/memory_db.json" -o DailyBrief/memory_db.json 2>/dev/null; then
-              echo "✅ memory_db.json restored"
+          # S3 API (reuses upload credentials) — no public URL, no CDN cache
+          aws s3 sync s3://sulix-content/state/ DailyBrief/ \
+            --endpoint-url "$R2_ENDPOINT" \
+            --region auto 2>&1 || echo "⚠️ state sync failed (first run?)"
+          # entity_db lives in data/ not DailyBrief/
+          aws s3 sync s3://sulix-content/state/ data/ \
+            --endpoint-url "$R2_ENDPOINT" \
+            --region auto \
+            --exclude "*" --include "entity_db.json" 2>&1 || true
+
+          # Full-or-nothing check: if ANY state file exists, ALL must be present & valid
+          STATE_FILES="memory_db.json decision_registry.json assessment_registry.json investigation_registry.json"
+          FOUND=0
+          MISSING=0
+          for f in $STATE_FILES; do
+            if [ -f "DailyBrief/$f" ]; then
+              FOUND=$((FOUND + 1))
             else
-              echo "⚠️ memory_db.json not in R2 yet (first run)"
+              MISSING=$((MISSING + 1))
             fi
-            # entity_db.json: engine reads from data/
-            if curl -sf "$R2_PUBLIC_URL/state/entity_db.json" -o "data/entity_db.json" 2>/dev/null; then
-              echo "✅ entity_db.json restored"
-            else
-              echo "⚠️ entity_db.json not in R2 yet (first run)"
-            fi
-            if curl -sf "$R2_PUBLIC_URL/state/decision_registry.json" -o DailyBrief/decision_registry.json 2>/dev/null; then
-              echo "✅ decision_registry.json restored"
-            fi
+          done
+          if [ $FOUND -gt 0 ] && [ $MISSING -gt 0 ]; then
+            echo "❌ Partial state restore: $FOUND found, $MISSING missing — aborting"
+            exit 1
+          elif [ $FOUND -eq 0 ]; then
+            echo "⚠️ No state files found — first run"
+          else
+            echo "✅ All $FOUND state files restored"
+            for f in $STATE_FILES; do
+              if ! jq empty "DailyBrief/$f" 2>/dev/null; then
+                echo "❌ Corrupt state file: $f"
+                exit 1
+              fi
+            done
+            echo "✅ All state files valid JSON"
           fi
 
       - name: Run Pipeline

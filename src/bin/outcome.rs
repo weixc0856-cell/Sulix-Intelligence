@@ -62,18 +62,11 @@ fn today() -> String {
     chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
 
-/// 生成 OUT-YYYYMMDD-SEQ 格式 ID
+/// 生成 OUT-YYYYMMDD-SEQ 格式 ID（委托 domain 层）
 fn generate_outcome_id(vault_path: &Path) -> anyhow::Result<String> {
     let memory = load_memory(vault_path)?;
     let existing = memory.all_outcomes();
-    let date_prefix = today();
-    let max_seq = existing.iter()
-        .filter_map(|o| o.id.strip_prefix(&format!("OUT-{}", date_prefix)))
-        .filter_map(|s| s.strip_prefix('-'))
-        .filter_map(|s| s.parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
-    Ok(format!("OUT-{}-{:03}", date_prefix, max_seq + 1))
+    Ok(sulix_intel::domain::outcome::generate_outcome_id(existing, &today()))
 }
 
 /// 双写者防护：检查管线是否在运行
@@ -206,8 +199,16 @@ fn cmd_reflect(args: &[String]) -> anyhow::Result<()> {
     }
     let outcome_id = &args[1];
 
-    let (_, vault_path) = load_config()?;
+    let (config, vault_path) = load_config()?;
+    let data_dir = config.storage.as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("./data"));
+    check_pipeline_lock(&data_dir)?;
     let mut memory = load_memory(&vault_path)?;
+
+    let mem_path = vault_path.join("memory_db.json");
+    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
 
     // Find outcome
     let outcome = memory.all_outcomes().iter()
@@ -220,6 +221,13 @@ fn cmd_reflect(args: &[String]) -> anyhow::Result<()> {
     memory.add_reflection(reflection);
     memory.save()?;
 
+    if let Some(before_mtime) = before {
+        let after = check_mtime(&mem_path)?;
+        if after != before_mtime {
+            eprintln!("Warning: memory_db.json was modified concurrently");
+        }
+    }
+
     println!("✅ Reflection generated for {outcome_id}");
     Ok(())
 }
@@ -230,8 +238,16 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
     }
     let outcome_id = &args[1];
 
-    let (_, vault_path) = load_config()?;
+    let (config, vault_path) = load_config()?;
+    let data_dir = config.storage.as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("./data"));
+    check_pipeline_lock(&data_dir)?;
     let mut memory = load_memory(&vault_path)?;
+
+    let mem_path = vault_path.join("memory_db.json");
+    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
 
     // Find outcome
     let outcome = memory.all_outcomes().iter()
@@ -256,7 +272,7 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
         outcome_id: outcome_id.to_string(),
         thesis_id: outcome.thesis_id.clone(),
         belief_text,
-        suggested_confidence: 6, // Default: medium-high
+        suggested_strength: 6, // Default: medium-high
         category: "manual".to_string(),
         created_at: chrono::Utc::now().format("%Y-%m-%d").to_string(),
         applied_confidence: None,
@@ -266,10 +282,17 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
     memory.add_belief_change(change.clone());
     memory.save()?;
 
+    if let Some(before_mtime) = before {
+        let after = check_mtime(&mem_path)?;
+        if after != before_mtime {
+            eprintln!("Warning: memory_db.json was modified concurrently");
+        }
+    }
+
     println!("✅ BeliefChangeCandidate {} proposed", change.id);
     println!("   Based on: {}", outcome_id);
     println!("   Belief: {}", change.belief_text);
-    println!("   Suggested confidence: {}/10", change.suggested_confidence);
+    println!("   Suggested strength: {}/10", change.suggested_strength);
     println!("   Run 'sulix-outcome apply-belief {}' to approve", change.id);
     Ok(())
 }
@@ -280,14 +303,45 @@ fn cmd_apply_belief(args: &[String]) -> anyhow::Result<()> {
     }
     let change_id = &args[1];
 
-    let (_, vault_path) = load_config()?;
+    let (config, vault_path) = load_config()?;
+    let data_dir = config.storage.as_ref()
+        .and_then(|s| s.data_dir.as_deref())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("./data"));
+    check_pipeline_lock(&data_dir)?;
     let mut memory = load_memory(&vault_path)?;
 
-    let db = memory.apply_belief_change(change_id)?;
+    let mem_path = vault_path.join("memory_db.json");
+    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
+
+    let event = memory.apply_belief_change(change_id)?;
     memory.save()?;
 
+    if let Some(before_mtime) = before {
+        let after = check_mtime(&mem_path)?;
+        if after != before_mtime {
+            eprintln!("Warning: memory_db.json was modified concurrently");
+        }
+    }
+
+    // 写事件到 JSONL
+    let events_dir = data_dir.join("events");
+    std::fs::create_dir_all(&events_dir)?;
+    let events_path = events_dir.join(format!("{}.jsonl", today()));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&events_path)?;
+    use std::io::Write;
+    let line = serde_json::to_string(&event)?;
+    writeln!(file, "{}", line)?;
+
+    let belief_count = memory.belief_db()
+        .map(|db| db.beliefs.len())
+        .unwrap_or(0);
     println!("✅ BeliefChange {change_id} approved");
-    println!("   BeliefDb updated: {} beliefs", db.beliefs.len());
+    println!("   BeliefDb updated: {belief_count} beliefs");
+    println!("   Event written to data/events/{}.jsonl", today());
     Ok(())
 }
 
@@ -326,11 +380,8 @@ fn cmd_status(_args: &[String]) -> anyhow::Result<()> {
     let partial = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::PartiallyConfirmed).count();
     let invalidated = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Invalidated).count();
     let unknown = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Unknown).count();
-    let _reflected_count = memory.all_outcomes().iter()
-        .filter(|_o| {
-            // Placeholder — Day 2: link reflections to outcome_ids
-            false
-        })
+    let reflected_count = memory.all_outcomes().iter()
+        .filter(|o| memory.all_reflections().iter().any(|r| r.outcome_id == o.id))
         .count();
 
     let accuracy = if total > 0 {
@@ -344,6 +395,7 @@ fn cmd_status(_args: &[String]) -> anyhow::Result<()> {
     println!("   Confirmed: {confirmed}");
     println!("   Partial: {partial}");
     println!("   Invalidated: {invalidated}");
+    println!("   Reflected: {total} ({reflected_count} with reflection)");
     println!("   Unknown: {unknown}");
     println!("   Accuracy: {:.1}%", accuracy * 100.0);
     Ok(())

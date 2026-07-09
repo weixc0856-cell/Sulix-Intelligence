@@ -70,4 +70,12 @@ pub async fn publish_persist(
     if let Err(e) = db.record_report(today, &format!("Daily brief - {} topics", inferred.memory.theses().len()), 0) {
         log::warn!("⚠️ DB report 记录失败: {}", e);
     }
+
+    // Registry health snapshot (for CI log — ASM reset detection)
+    log::info!("📊 Registry counts: ASM={}, INV={}, DEC={}, OUT={}",
+        state.registry.assessments.len(),
+        state.inv_registry.investigations.len(),
+        dec_registry.decisions.len(),
+        inferred.memory.all_outcomes().len(),
+    );
 }

@@ -49,6 +49,9 @@ pub struct MemoryEngine {
     /// 信念变更提案（Day 3: Reflection → Belief，人工批准）
     #[serde(default)]
     belief_changes: Vec<BeliefChangeCandidate>,
+    /// 已批准的 BeliefDb 快照（apply_belief_change 写入）
+    #[serde(default)]
+    belief_db: Option<crate::domain::thesis::BeliefDb>,
     /// memory_db.json 路径
     #[serde(skip)]
     memory_path: PathBuf,
@@ -86,6 +89,7 @@ impl MemoryEngine {
             investigations: Vec::new(),
             decisions: Vec::new(),
             belief_changes: Vec::new(),
+            belief_db: None,
             memory_path,
         }
     }
@@ -101,6 +105,7 @@ impl MemoryEngine {
             self.investigations = loaded.investigations;
             self.decisions = loaded.decisions;
             self.belief_changes = loaded.belief_changes;
+            self.belief_db = loaded.belief_db;
         }
         Ok(())
     }
@@ -620,7 +625,19 @@ impl MemoryEngine {
     // ===== Belief Change (Day 3: Reflection → Belief, human approval) =====
 
     /// 添加信念变更提案
+    ///
+    /// 去重：同 thesis + 同 category + 未 applied → 跳过（防止管线自动提案堆积同质候选）
     pub fn add_belief_change(&mut self, change: BeliefChangeCandidate) {
+        let is_duplicate = self.belief_changes.iter().any(|c| {
+            c.thesis_id == change.thesis_id
+                && c.category == change.category
+                && !c.applied
+        });
+        if is_duplicate {
+            log::debug!("🧠 add_belief_change: duplicate (thesis={}, category={}), skipped",
+                change.thesis_id, change.category);
+            return;
+        }
         self.belief_changes.push(change);
     }
 
@@ -629,10 +646,16 @@ impl MemoryEngine {
         &self.belief_changes
     }
 
+    /// 获取已批准的 BeliefDb 快照
+    pub fn belief_db(&self) -> Option<&crate::domain::thesis::BeliefDb> {
+        self.belief_db.as_ref()
+    }
+
     /// 应用信念变更（人工批准）
     ///
-    /// 返回应用后的 BeliefDb 快照。
-    pub fn apply_belief_change(&mut self, change_id: &str) -> Result<crate::domain::thesis::BeliefDb> {
+    /// 写入 self.belief_db 并产出审计事件。
+    /// 不再返回 BeliefDb（调用者通过 belief_db() 访问）。
+    pub fn apply_belief_change(&mut self, change_id: &str) -> Result<ObjectEvent> {
         let change = self.belief_changes.iter_mut()
             .find(|c| c.id == change_id)
             .ok_or_else(|| anyhow::anyhow!("BeliefChange '{}' not found", change_id))?;
@@ -641,13 +664,31 @@ impl MemoryEngine {
             anyhow::bail!("BeliefChange '{}' already applied", change_id);
         }
 
-        let confidence = change.suggested_confidence;
-        change.applied_confidence = Some(confidence);
+        let strength = change.suggested_strength;
+        change.applied_confidence = Some(strength);
         change.applied = true;
 
         use crate::domain::thesis::BeliefDb;
         let db = BeliefDb::new(change);
-        Ok(db)
+
+        // 写入 self.belief_db（覆写式快照，每次 apply 覆盖）
+        self.belief_db = Some(db);
+
+        // 产出审计事件
+        let event = ObjectEvent::new(
+            crate::event_log::ObjectEventType::BeliefChangeApplied,
+            change_id,
+            "belief_change",
+            serde_json::json!({
+                "belief_text": change.belief_text,
+                "strength": strength,
+                "category": change.category,
+                "outcome_id": change.outcome_id,
+                "thesis_id": change.thesis_id,
+            }),
+            "memory_engine",
+        );
+        Ok(event)
     }
 
     /// 记录今日决策到 thesis.decision_history（Stability Layer 持久化）
@@ -1050,7 +1091,7 @@ pub struct BeliefChangeCandidate {
     /// 建议的信念文本
     pub belief_text: String,
     /// 建议的置信度 1-10
-    pub suggested_confidence: u8,
+    pub suggested_strength: u8,
     /// 类别
     pub category: String,
     /// 创建时间
@@ -1075,6 +1116,8 @@ struct MemoryEngineData {
     decisions: Vec<crate::domain::DecisionRecord>,
     #[serde(default)]
     belief_changes: Vec<BeliefChangeCandidate>,
+    #[serde(default)]
+    belief_db: Option<crate::domain::thesis::BeliefDb>,
 }
 
 impl From<&MemoryEngine> for MemoryEngineData {
@@ -1086,6 +1129,7 @@ impl From<&MemoryEngine> for MemoryEngineData {
             investigations: mem.investigations.clone(),
             decisions: mem.decisions.clone(),
             belief_changes: mem.belief_changes.clone(),
+            belief_db: mem.belief_db.clone(),
         }
     }
 }
