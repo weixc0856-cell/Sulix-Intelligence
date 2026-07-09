@@ -101,11 +101,12 @@ npm install && npm run dev
 
 ```
 src/
-├── domain/           — 8 领域模型 (Theme/Thesis/Evidence/Action/Outcome/Reflection/Decision/ArtifactSet)
+├── domain/           — 9 领域模型 (+ Localized, + Day 3 Belief proposal)
 ├── engine/           — 认知引擎 (analysis/memory/premium/belief/decision)
 ├── publishing/       — 5 阶段发布协调器 → 返回 ArtifactSet
 ├── artifact/         — Manifest/Report/Builder (纯函数)
 ├── delivery/         — 验证门 → 本地 → R2 → 前端同步 + Event flush
+├── translation/      — LLM 文件级翻译 (Phase 1 过渡桥梁)
 ├── schema/           — Schema 验证 (schemars derive + Validate trait)
 ├── storage/          — R2 上传客户端 (S3 兼容), 损坏恢复辅助
 ├── renderer/         — MDX/Markdown/HTML 渲染 (MDX 从 JSON 派生)
@@ -114,7 +115,8 @@ src/
 ├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
 ├── source/           — 数据源适配器 (RSS/USPTO/Reddit)
 ├── event_log/        — ObjectEvent 审计追踪 (追加式 JSONL)
-├── main.rs           — 管线编排 (558 行)
+├── bin/outcome.rs    — Outcome 追踪 CLI (record/list/audit)
+├── main.rs           — 管线编排 (~500 行)
 └── lib.rs            — 模块声明
 ```
 
@@ -140,6 +142,27 @@ src/
 ```
 
 事件只含摘要字段（不含全量快照），完整对象历史在 R2 中。
+
+## 翻译（本地化资产）
+
+Phase 1 过渡层：LLM 驱动的文件级翻译，将 MDX 输出翻译为 `zh-cn` 和 `zh-tw` 变体。
+
+```
+Engine 输出 (en) → Translation Agent → zh-cn/*.md + zh-tw/*.md
+```
+
+`src/translation/` 模块处理完整性检查、模型覆盖和追踪元数据。每个语言版本的 frontmatter 嵌入 `is_translated`、`machine_translated` 等跟踪字段以实现下游审计。
+
+## Outcome 追踪 CLI
+
+```
+cargo run --bin outcome
+```
+
+独立 CLI 工具，用于记录和审查决策结果：
+- `outcome record <id> <verdict>` — 记录新结果
+- `outcome list` — 列出最近结果
+- `outcome audit <id>` — 完整审计线索及置信度历史
 
 ## 配置
 

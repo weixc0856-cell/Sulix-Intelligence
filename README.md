@@ -101,11 +101,12 @@ Source Acquisition (RSS / USPTO / Reddit)
 
 ```
 src/
-├── domain/           — 8 domain models (Theme/Thesis/Evidence/Action/Outcome/Reflection/Decision/ArtifactSet)
+├── domain/           — 9 domain models (+ Localized, + Day 3 Belief proposal)
 ├── engine/           — Cognitive engines (analysis/memory/premium/belief/decision)
 ├── publishing/       — 5-stage publish coordinator → returns ArtifactSet
 ├── artifact/         — Manifest, Report, Builder (pure functions)
 ├── delivery/         — Validation gate → Local → R2 → Frontend sync + Event flush
+├── translation/      — LLM file-level translation (Phase 1 transitional bridge)
 ├── schema/           — Schema validation (schemars derive + Validate trait)
 ├── storage/          — R2 upload client (S3-compatible), corrupt-recovery helpers
 ├── renderer/         — MDX/Markdown/HTML rendering (MDX derived from JSON)
@@ -114,9 +115,31 @@ src/
 ├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
 ├── source/           — Source adapters (RSS/USPTO/Reddit)
 ├── event_log/        — ObjectEvent audit trail (append-only JSONL)
-├── main.rs           — Pipeline orchestration (558 lines)
+├── bin/outcome.rs    — Outcome Tracking CLI (record/list/audit)
+├── main.rs           — Pipeline orchestration (~500 lines)
 └── lib.rs            — Module declarations
 ```
+
+## Translation (Localized Assets)
+
+Phase 1 transitional layer: LLM-driven file-level translation of MDX output into `zh-cn` and `zh-tw` variants.
+
+```
+Engine Output (en) → Translation Agent → zh-cn/*.md + zh-tw/*.md
+```
+
+The `src/translation/` module handles integrity checks, model overrides, and tracking metadata. Tracking fields (`is_translated`, `machine_translated`) embedded in each locale's frontmatter enable downstream audit.
+
+## Outcome Tracking CLI
+
+```
+cargo run --bin outcome
+```
+
+Standalone CLI for recording and reviewing decision outcomes:
+- `outcome record <id> <verdict>` — record new outcome
+- `outcome list` — list recent outcomes
+- `outcome audit <id>` — full audit trail with confidence history
 
 ## Schema Validation Gate
 
