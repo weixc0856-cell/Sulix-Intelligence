@@ -178,7 +178,8 @@ pub fn derive_investigation_report(
 
     // Derive status from thesis status
     let status = match thesis.status {
-        crate::domain::thesis::ThesisStatus::Dormant | crate::domain::thesis::ThesisStatus::Retired => "archived",
+        crate::domain::thesis::ThesisStatus::Dormant
+        | crate::domain::thesis::ThesisStatus::Retired => "archived",
         _ => "active",
     };
 

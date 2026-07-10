@@ -66,7 +66,10 @@ fn today() -> String {
 fn generate_outcome_id(vault_path: &Path) -> anyhow::Result<String> {
     let memory = load_memory(vault_path)?;
     let existing = memory.all_outcomes();
-    Ok(sulix_intel::domain::outcome::generate_outcome_id(existing, &today()))
+    Ok(sulix_intel::domain::outcome::generate_outcome_id(
+        existing,
+        &today(),
+    ))
 }
 
 /// 双写者防护：检查管线是否在运行
@@ -90,7 +93,9 @@ fn check_mtime(path: &Path) -> anyhow::Result<SystemTime> {
 fn cmd_record(args: &[String]) -> anyhow::Result<()> {
     // Parse: record DEC-ID --verdict <v> --evidence <text> --impact <level>
     if args.len() < 2 {
-        anyhow::bail!("Usage: sulix-outcome record DEC-ID --verdict <v> --evidence <text> --impact <level>");
+        anyhow::bail!(
+            "Usage: sulix-outcome record DEC-ID --verdict <v> --evidence <text> --impact <level>"
+        );
     }
     let dec_id = &args[1];
 
@@ -100,16 +105,31 @@ fn cmd_record(args: &[String]) -> anyhow::Result<()> {
     let mut i = 2;
     while i < args.len() {
         match args[i].as_str() {
-            "--verdict" => { i += 1; verdict_str = args.get(i).map_or("", |s| s); }
-            "--evidence" => { i += 1; evidence = args.get(i).map_or("", |s| s); }
-            "--impact" => { i += 1; impact_str = args.get(i).map_or("", |s| s); }
-            _ => { anyhow::bail!("Unknown option: {}", args[i]); }
+            "--verdict" => {
+                i += 1;
+                verdict_str = args.get(i).map_or("", |s| s);
+            }
+            "--evidence" => {
+                i += 1;
+                evidence = args.get(i).map_or("", |s| s);
+            }
+            "--impact" => {
+                i += 1;
+                impact_str = args.get(i).map_or("", |s| s);
+            }
+            _ => {
+                anyhow::bail!("Unknown option: {}", args[i]);
+            }
         }
         i += 1;
     }
 
-    if verdict_str.is_empty() { anyhow::bail!("--verdict is required (confirmed|partial|invalidated|unknown)"); }
-    if evidence.is_empty() { anyhow::bail!("--evidence is required"); }
+    if verdict_str.is_empty() {
+        anyhow::bail!("--verdict is required (confirmed|partial|invalidated|unknown)");
+    }
+    if evidence.is_empty() {
+        anyhow::bail!("--evidence is required");
+    }
 
     let verdict = match verdict_str {
         "confirmed" => sulix_intel::domain::outcome::OutcomeVerdict::Confirmed,
@@ -127,7 +147,9 @@ fn cmd_record(args: &[String]) -> anyhow::Result<()> {
     };
 
     let (config, vault_path) = load_config()?;
-    let data_dir = config.storage.as_ref()
+    let data_dir = config
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"));
@@ -139,7 +161,9 @@ fn cmd_record(args: &[String]) -> anyhow::Result<()> {
     let mut memory = load_memory(&vault_path)?;
 
     // 验证 decision 存在
-    let decision = memory.all_decisions().iter()
+    let decision = memory
+        .all_decisions()
+        .iter()
         .find(|d| d.id == *dec_id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Decision '{dec_id}' not found"))?;
@@ -154,11 +178,16 @@ fn cmd_record(args: &[String]) -> anyhow::Result<()> {
         verdict,
         impact,
         today(),
-    ).0; // Take just the Outcome, events are added by add_outcome()
+    )
+    .0; // Take just the Outcome, events are added by add_outcome()
 
     // 写前 mtime 检查
     let mem_path = vault_path.join("memory_db.json");
-    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
+    let before = if mem_path.exists() {
+        Some(check_mtime(&mem_path)?)
+    } else {
+        None
+    };
 
     // 写入
     let events = memory.add_outcome(outcome)?;
@@ -200,7 +229,9 @@ fn cmd_reflect(args: &[String]) -> anyhow::Result<()> {
     let outcome_id = &args[1];
 
     let (config, vault_path) = load_config()?;
-    let data_dir = config.storage.as_ref()
+    let data_dir = config
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"));
@@ -208,10 +239,16 @@ fn cmd_reflect(args: &[String]) -> anyhow::Result<()> {
     let mut memory = load_memory(&vault_path)?;
 
     let mem_path = vault_path.join("memory_db.json");
-    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
+    let before = if mem_path.exists() {
+        Some(check_mtime(&mem_path)?)
+    } else {
+        None
+    };
 
     // Find outcome
-    let outcome = memory.all_outcomes().iter()
+    let outcome = memory
+        .all_outcomes()
+        .iter()
         .find(|o| o.id == *outcome_id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Outcome '{outcome_id}' not found"))?;
@@ -239,7 +276,9 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
     let outcome_id = &args[1];
 
     let (config, vault_path) = load_config()?;
-    let data_dir = config.storage.as_ref()
+    let data_dir = config
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"));
@@ -247,22 +286,38 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
     let mut memory = load_memory(&vault_path)?;
 
     let mem_path = vault_path.join("memory_db.json");
-    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
+    let before = if mem_path.exists() {
+        Some(check_mtime(&mem_path)?)
+    } else {
+        None
+    };
 
     // Find outcome
-    let outcome = memory.all_outcomes().iter()
+    let outcome = memory
+        .all_outcomes()
+        .iter()
         .find(|o| o.id == *outcome_id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Outcome '{}' not found", outcome_id))?;
 
     // Find matching reflection
-    let reflection = memory.all_reflections().iter()
+    let reflection = memory
+        .all_reflections()
+        .iter()
         .find(|r| r.outcome_id == *outcome_id)
         .cloned()
-        .ok_or_else(|| anyhow::anyhow!("No reflection found for outcome '{}'. Run 'sulix-outcome reflect {}' first.", outcome_id, outcome_id))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No reflection found for outcome '{}'. Run 'sulix-outcome reflect {}' first.",
+                outcome_id,
+                outcome_id
+            )
+        })?;
 
     // Generate belief text from reflection lessons
-    let belief_text = reflection.lessons.first()
+    let belief_text = reflection
+        .lessons
+        .first()
         .cloned()
         .unwrap_or_else(|| format!("Reflection on {}", outcome_id));
 
@@ -293,7 +348,10 @@ fn cmd_propose_belief(args: &[String]) -> anyhow::Result<()> {
     println!("   Based on: {}", outcome_id);
     println!("   Belief: {}", change.belief_text);
     println!("   Suggested strength: {}/10", change.suggested_strength);
-    println!("   Run 'sulix-outcome apply-belief {}' to approve", change.id);
+    println!(
+        "   Run 'sulix-outcome apply-belief {}' to approve",
+        change.id
+    );
     Ok(())
 }
 
@@ -304,7 +362,9 @@ fn cmd_apply_belief(args: &[String]) -> anyhow::Result<()> {
     let change_id = &args[1];
 
     let (config, vault_path) = load_config()?;
-    let data_dir = config.storage.as_ref()
+    let data_dir = config
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"));
@@ -312,7 +372,11 @@ fn cmd_apply_belief(args: &[String]) -> anyhow::Result<()> {
     let mut memory = load_memory(&vault_path)?;
 
     let mem_path = vault_path.join("memory_db.json");
-    let before = if mem_path.exists() { Some(check_mtime(&mem_path)?) } else { None };
+    let before = if mem_path.exists() {
+        Some(check_mtime(&mem_path)?)
+    } else {
+        None
+    };
 
     let event = memory.apply_belief_change(change_id)?;
     memory.save()?;
@@ -336,9 +400,7 @@ fn cmd_apply_belief(args: &[String]) -> anyhow::Result<()> {
     let line = serde_json::to_string(&event)?;
     writeln!(file, "{}", line)?;
 
-    let belief_count = memory.belief_db()
-        .map(|db| db.beliefs.len())
-        .unwrap_or(0);
+    let belief_count = memory.belief_db().map(|db| db.beliefs.len()).unwrap_or(0);
     println!("✅ BeliefChange {change_id} approved");
     println!("   BeliefDb updated: {belief_count} beliefs");
     println!("   Event written to data/events/{}.jsonl", today());
@@ -355,7 +417,10 @@ fn cmd_list(_args: &[String]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("{:<20} {:<10} {:<14} {:<8} Evidence", "ID", "Decision", "Verdict", "Impact");
+    println!(
+        "{:<20} {:<10} {:<14} {:<8} Evidence",
+        "ID", "Decision", "Verdict", "Impact"
+    );
     println!("{}", "-".repeat(80));
     for o in outcomes.iter().rev().take(20) {
         let v = format!("{:?}", o.verdict);
@@ -364,8 +429,14 @@ fn cmd_list(_args: &[String]) -> anyhow::Result<()> {
         } else {
             o.description.clone()
         };
-        println!("{:<20} {:<10} {:<14} {:<8} {}",
-            o.id, o.decision_id, v, o.impact.as_str(), ev);
+        println!(
+            "{:<20} {:<10} {:<14} {:<8} {}",
+            o.id,
+            o.decision_id,
+            v,
+            o.impact.as_str(),
+            ev
+        );
     }
     Ok(())
 }
@@ -376,12 +447,31 @@ fn cmd_status(_args: &[String]) -> anyhow::Result<()> {
     let outcomes = memory.all_outcomes();
 
     let total = outcomes.len();
-    let confirmed = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Confirmed).count();
-    let partial = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::PartiallyConfirmed).count();
-    let invalidated = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Invalidated).count();
-    let unknown = outcomes.iter().filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Unknown).count();
-    let reflected_count = memory.all_outcomes().iter()
-        .filter(|o| memory.all_reflections().iter().any(|r| r.outcome_id == o.id))
+    let confirmed = outcomes
+        .iter()
+        .filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Confirmed)
+        .count();
+    let partial = outcomes
+        .iter()
+        .filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::PartiallyConfirmed)
+        .count();
+    let invalidated = outcomes
+        .iter()
+        .filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Invalidated)
+        .count();
+    let unknown = outcomes
+        .iter()
+        .filter(|o| o.verdict == sulix_intel::domain::outcome::OutcomeVerdict::Unknown)
+        .count();
+    let reflected_count = memory
+        .all_outcomes()
+        .iter()
+        .filter(|o| {
+            memory
+                .all_reflections()
+                .iter()
+                .any(|r| r.outcome_id == o.id)
+        })
         .count();
 
     let accuracy = if total > 0 {

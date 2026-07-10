@@ -16,10 +16,11 @@
 //!   任意两个 Revision 之间的 diff 才是真正的 Decision Explainability。
 //!   `diff(r1, r2)` → 清晰展示 confidence/decision/evidence 的变化。
 
-use serde::{Deserialize, Serialize};
-use crate::domain::thesis::{ConfidenceSnapshot, ConfidenceTrigger, DecisionSnapshot,
-    StatusTransition, Thesis};
 use crate::domain::evidence::{Evidence, Stance};
+use crate::domain::thesis::{
+    ConfidenceSnapshot, ConfidenceTrigger, DecisionSnapshot, StatusTransition, Thesis,
+};
+use serde::{Deserialize, Serialize};
 
 /// 一个统一化的判断修订 — 类似 Git revision
 ///
@@ -73,7 +74,10 @@ impl Revision {
     pub fn is_meaningful(&self) -> bool {
         self.decision_change.is_some()
             || self.status_change.is_some()
-            || self.confidence_delta.map(|d| d.abs() >= 5.0).unwrap_or(false)
+            || self
+                .confidence_delta
+                .map(|d| d.abs() >= 5.0)
+                .unwrap_or(false)
             || !self.evidence_added.is_empty()
             || !self.challenges_added.is_empty()
     }
@@ -83,7 +87,11 @@ impl Revision {
         let mut parts: Vec<String> = vec![];
 
         if let Some((ref from, ref to)) = self.decision_change {
-            parts.push(format!("Decision: {} → {}", from.to_uppercase(), to.to_uppercase()));
+            parts.push(format!(
+                "Decision: {} → {}",
+                from.to_uppercase(),
+                to.to_uppercase()
+            ));
         }
 
         if let Some(delta) = self.confidence_delta {
@@ -214,9 +222,7 @@ pub fn build_revision_history(thesis: &Thesis) -> Vec<Revision> {
             None
         };
 
-        let confidence_trigger = confidence_snaps
-            .last()
-            .map(|s| trigger_label(&s.trigger));
+        let confidence_trigger = confidence_snaps.last().map(|s| trigger_label(&s.trigger));
 
         // Decision changes on this date
         let decision_snaps: Vec<&DecisionSnapshot> = thesis
@@ -228,10 +234,7 @@ pub fn build_revision_history(thesis: &Thesis) -> Vec<Revision> {
         let decision_change = if let Some(last) = decision_snaps.last() {
             let new_type = &last.decision_type;
             if prev_decision.as_ref() != Some(new_type) && prev_decision.is_some() {
-                let change = Some((
-                    prev_decision.clone().unwrap_or_default(),
-                    new_type.clone(),
-                ));
+                let change = Some((prev_decision.clone().unwrap_or_default(), new_type.clone()));
                 prev_decision = Some(new_type.clone());
                 change
             } else {
@@ -255,7 +258,9 @@ pub fn build_revision_history(thesis: &Thesis) -> Vec<Revision> {
             let new_status = format!("{:?}", last.to).to_lowercase();
             if prev_status.as_ref() != Some(&new_status) {
                 let change = Some((
-                    prev_status.clone().unwrap_or_else(|| format!("{:?}", last.from).to_lowercase()),
+                    prev_status
+                        .clone()
+                        .unwrap_or_else(|| format!("{:?}", last.from).to_lowercase()),
                     new_status.clone(),
                 ));
                 prev_status = Some(new_status);
@@ -356,10 +361,11 @@ fn revision_count(revisions: &[Revision]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::thesis::{ConfidenceSnapshot, ConfidenceTrigger, DecisionSnapshot,
-        Thesis, ThesisStatus};
     use crate::domain::evidence::{Evidence, Stance};
     use crate::domain::strategic_domain::StrategicDomain;
+    use crate::domain::thesis::{
+        ConfidenceSnapshot, ConfidenceTrigger, DecisionSnapshot, Thesis, ThesisStatus,
+    };
 
     fn make_evidence(date: &str, title: &str, stance: Stance) -> Evidence {
         Evidence {
@@ -522,14 +528,12 @@ mod tests {
             ],
             assumptions: vec![],
             status: ThesisStatus::Active,
-            confidence_history: vec![
-                ConfidenceSnapshot {
-                    date: "2026-06-01".into(),
-                    value: 0.65,
-                    trigger: ConfidenceTrigger::Initial,
-                    reason: "First evidence".into(),
-                },
-            ],
+            confidence_history: vec![ConfidenceSnapshot {
+                date: "2026-06-01".into(),
+                value: 0.65,
+                trigger: ConfidenceTrigger::Initial,
+                reason: "First evidence".into(),
+            }],
             decision_history: vec![],
             status_history: vec![],
             parent_id: None,

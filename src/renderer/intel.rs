@@ -33,22 +33,26 @@ pub fn render_intel_json(entry: &IntelEntry) -> String {
         "impact": entry.impact,
         "summary": entry.summary,
         "related_thesis": entry.related_thesis,
-    }).to_string()
+    })
+    .to_string()
 }
 
 /// 渲染情报列表为 JSON 数组字符串
 pub fn render_intel_list(entries: &[IntelEntry]) -> String {
-    let items: Vec<serde_json::Value> = entries.iter()
-        .map(|e| serde_json::json!({
-            "id": e.id,
-            "title": e.title,
-            "date": e.date,
-            "source": e.source,
-            "domain": e.domain,
-            "svi": e.svi,
-            "impact": e.impact,
-            "summary": e.summary,
-        }))
+    let items: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "title": e.title,
+                "date": e.date,
+                "source": e.source,
+                "domain": e.domain,
+                "svi": e.svi,
+                "impact": e.impact,
+                "summary": e.summary,
+            })
+        })
         .collect();
     serde_json::to_string_pretty(&items).unwrap_or_default()
 }

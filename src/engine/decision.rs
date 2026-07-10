@@ -14,9 +14,9 @@
 
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::outcome::OutcomeVerdict;
+use crate::domain::thesis::ThesisStatus;
 use crate::domain::ThesisDecision;
 use crate::engine::memory::MemoryEngine;
-use crate::domain::thesis::ThesisStatus;
 
 /// 将 Memory Engine 中的所有活跃 Thesis 映射为决策建议
 pub fn map_theses_to_decisions(memory: &MemoryEngine) -> Vec<ThesisDecision> {
@@ -148,8 +148,10 @@ fn map_thesis_to_decision(
                     raw_type // 连续 2 天 → 允许切换
                 } else {
                     // 只有 1 天 → 抑制翻转，用历史中最近的决策
-                    crate::domain::action::DecisionType::from_key(&history.last().unwrap().decision_type)
-                        .unwrap_or(raw_type)
+                    crate::domain::action::DecisionType::from_key(
+                        &history.last().unwrap().decision_type,
+                    )
+                    .unwrap_or(raw_type)
                 }
             }
         }
@@ -212,7 +214,6 @@ fn map_thesis_to_decision(
         stability,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

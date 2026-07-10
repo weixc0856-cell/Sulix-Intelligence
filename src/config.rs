@@ -114,7 +114,9 @@ pub struct R2Config {
     pub enabled: bool,
 }
 
-fn default_r2_enabled() -> bool { true }
+fn default_r2_enabled() -> bool {
+    true
+}
 
 /// RSS 源配置
 #[derive(Debug, Deserialize, Clone)]
@@ -151,7 +153,6 @@ impl SourceConfig {
     pub fn is_internal(&self) -> bool {
         self.layer == 1
     }
-
 }
 
 fn default_layer() -> u8 {
@@ -442,10 +443,19 @@ fn default_translate_locales() -> Vec<String> {
     vec!["zh-cn".into(), "zh-tw".into()]
 }
 fn default_translate_dirs() -> Vec<String> {
-    vec!["decision".into(), "thesis".into(), "research".into(), "assessment".into()]
+    vec![
+        "decision".into(),
+        "thesis".into(),
+        "research".into(),
+        "assessment".into(),
+    ]
 }
-fn default_max_files() -> usize { 5 }
-fn default_concurrency() -> usize { 3 }
+fn default_max_files() -> usize {
+    5
+}
+fn default_concurrency() -> usize {
+    3
+}
 
 #[cfg(test)]
 mod tests {

@@ -58,9 +58,7 @@ pub fn stability_gate(
             else {
                 // Rule 2a: Confidence hysteresis — small changes don't flip recommendation
                 let confidence_delta = (td.confidence - last_confidence).abs();
-                if confidence_delta < CONFIDENCE_HYSTERESIS
-                    && td.decision_type != *last_type
-                {
+                if confidence_delta < CONFIDENCE_HYSTERESIS && td.decision_type != *last_type {
                     // Suppress the switch: keep yesterday's decision type
                     // but retain today's evidence-based confidence (stability_gate
                     // only smooths decision_type, not confidence — the latter should
@@ -150,7 +148,10 @@ pub fn build_consecutive_days_map(
         }
         let last_type = &thesis.decision_history.last().unwrap().decision_type;
         // Count consecutive same-type entries from the end
-        let consecutive = thesis.decision_history.iter().rev()
+        let consecutive = thesis
+            .decision_history
+            .iter()
+            .rev()
             .take_while(|s| &s.decision_type == last_type)
             .count();
         map.insert(thesis.id.clone(), consecutive);
@@ -213,7 +214,11 @@ mod tests {
         // Confidence only changed 2% → decision_type should keep Build
         assert_eq!(result[0].decision_type, DecisionType::Build);
         // But confidence stays as today's computed value (not overridden to yesterday's)
-        assert!((result[0].confidence - 0.82).abs() < 0.01, "expected 0.82, got {}", result[0].confidence);
+        assert!(
+            (result[0].confidence - 0.82).abs() < 0.01,
+            "expected 0.82, got {}",
+            result[0].confidence
+        );
     }
 
     #[test]

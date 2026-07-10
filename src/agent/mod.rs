@@ -10,6 +10,6 @@
 pub mod calibration;
 pub mod decay;
 pub mod editor;
+pub mod research;
 pub mod scan;
 pub mod signal;
-pub mod research;

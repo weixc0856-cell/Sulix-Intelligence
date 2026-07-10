@@ -17,11 +17,13 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use crate::artifact::manifest::ContentManifest;
 use crate::config::Config;
 use crate::domain::artifact::ArtifactSet;
 use crate::event_log::{ObjectEvent, ObjectEventType};
-use crate::schema::validator::Validate;
+use crate::schema::validator::{ValidationResult, Validate};
 use crate::translation::TranslationCoverage;
 
 /// 发布包 — 包含所有层级的产出
@@ -44,7 +46,14 @@ impl PublishBundle {
         funnel_deduped: usize,
         llm_calls: u64,
     ) -> Self {
-        Self { research, intel_paths, raw_count, funnel_fetched, funnel_deduped, llm_calls }
+        Self {
+            research,
+            intel_paths,
+            raw_count,
+            funnel_fetched,
+            funnel_deduped,
+            llm_calls,
+        }
     }
 }
 
@@ -63,6 +72,26 @@ impl PublishReport {
     /// 腐化面仅限于此：新增 r2_status 输出值时必须更新此方法。
     pub fn r2_failed(&self) -> bool {
         self.r2_status.starts_with("failed") || self.r2_status.starts_with("partial_failure")
+    }
+}
+
+/// 写 rejected 对象完整快照（含 errors + 对象本体，不进 R2）
+fn write_rejected_snapshot<T: Serialize>(
+    obj: &T,
+    result: &ValidationResult,
+    rejected_dir: &Path,
+) {
+    if let Ok(obj_json) = serde_json::to_value(obj) {
+        let snapshot = serde_json::json!({
+            "object": obj_json,
+            "object_type": result.object_type,
+            "object_id": result.object_id,
+            "errors": result.errors,
+            "warnings": result.warnings,
+        });
+        let path = rejected_dir.join(format!("{}-{}.json", result.object_type, result.object_id));
+        let _ = std::fs::write(&path, serde_json::to_string_pretty(&snapshot).unwrap_or_default());
+        log::warn!("📋 Rejected: {} {} ({:?})", result.object_type, result.object_id, result.errors);
     }
 }
 
@@ -86,11 +115,29 @@ pub async fn publish(
     std::fs::create_dir_all(&rejected_dir)?;
 
     let mut report = crate::schema::validator::ValidationReport::new(today);
+
+    // validation + rejected snapshot 在同一个循环内（防止索引偏移）
     for obj in &artifacts.assessment_objects {
-        report.add_result(obj.check());
+        let result = obj.check();
+        let passed_obj = result.passed;
+        report.add_result(result);
+        if passed_obj {
+            passed += 1;
+        } else {
+            rejected += 1;
+            write_rejected_snapshot(obj, &report.results.last().unwrap(), &rejected_dir);
+        }
     }
     for obj in &artifacts.decision_objects {
-        report.add_result(obj.check());
+        let result = obj.check();
+        let passed_obj = result.passed;
+        report.add_result(result);
+        if passed_obj {
+            passed += 1;
+        } else {
+            rejected += 1;
+            write_rejected_snapshot(obj, &report.results.last().unwrap(), &rejected_dir);
+        }
     }
 
     // 写入验证报告
@@ -99,25 +146,6 @@ pub async fn publish(
     let report_path = validation_dir.join(format!("{}.json", today));
     if let Err(e) = report.save(&report_path) {
         log::warn!("⚠️ Validation report save failed: {}", e);
-    }
-
-    // rejected 对象写完整快照（含 errors，不进 R2）
-    for result in &report.results {
-        if result.passed {
-            passed += 1;
-        } else {
-            rejected += 1;
-            let rejected_path = rejected_dir.join(format!("{}-{}.json", result.object_type, result.object_id));
-            if let Ok(snapshot_json) = serde_json::to_string_pretty(&serde_json::json!({
-                "object_type": result.object_type,
-                "object_id": result.object_id,
-                "errors": result.errors,
-                "warnings": result.warnings,
-            })) {
-                let _ = std::fs::write(&rejected_path, &snapshot_json);
-                log::warn!("📋 Rejected: {} {} ({:?})", result.object_type, result.object_id, result.errors);
-            }
-        }
     }
 
     // 验证各种 artifact 计数
@@ -133,27 +161,29 @@ pub async fn publish(
         0, // prev_version — will be read from existing file
         config.output.frontend_public_dir.clone(),
         "healthy",
-        None,  // observation_count
-        None,  // signal_count
-        None,  // duration_seconds
-        None,  // stages
+        None, // observation_count
+        None, // signal_count
+        None, // duration_seconds
+        None, // stages
     );
 
     // 回填真实计数
-    let manifest = manifest.with_counts(
-        total_assessments.saturating_sub(rejected),
-        total_investigations,
-        decision_count,
-        artifacts.archive_days,
-        artifacts.total_signals,
-    ).with_funnel(
-        bundle.funnel_fetched,
-        bundle.funnel_deduped,
-        bundle.funnel_fetched, // scored = fetched (same count in Phase 0)
-        bundle.intel_paths.len(),
-        total_assessments.saturating_sub(rejected),
-        bundle.llm_calls,
-    );
+    let manifest = manifest
+        .with_counts(
+            total_assessments.saturating_sub(rejected),
+            total_investigations,
+            decision_count,
+            artifacts.archive_days,
+            artifacts.total_signals,
+        )
+        .with_funnel(
+            bundle.funnel_fetched,
+            bundle.funnel_deduped,
+            bundle.funnel_fetched, // scored = fetched (same count in Phase 0)
+            bundle.intel_paths.len(),
+            total_assessments.saturating_sub(rejected),
+            bundle.llm_calls,
+        );
 
     // 4. Local write — manifest to vault_path and frontend public/ (NOT to mdx_dir — that is Astro content root)
     {
@@ -186,7 +216,9 @@ pub async fn publish(
     }
 
     // 5. R2 upload (if configured — soft error, recorded in r2_status)
+    // r2_client 保留到函数尾部，用于 flush 后补传 events/ 文件
     let mut r2_status = "not_configured".to_string();
+    let mut r2_client: Option<crate::storage::R2Client> = None;
     if let Some(ref r2_config) = config.r2 {
         if r2_config.enabled {
             match crate::storage::R2Client::from_config(r2_config).await {
@@ -197,10 +229,19 @@ pub async fn publish(
                     // Upload MDX content directories
                     if let Some(ref mdx_out) = config.output.mdx_dir {
                         let mdx_path = PathBuf::from(mdx_out);
-                        for prefix in &["daily", "thesis", "assessment", "research",
-                                        "investigation", "reflection", "decision"] {
+                        for prefix in &[
+                            "daily",
+                            "thesis",
+                            "assessment",
+                            "research",
+                            "investigation",
+                            "reflection",
+                            "decision",
+                        ] {
                             // Upload with trailing slash so keys are like "daily/file.md", not "dailyfile.md"
-                            let result = r2.upload_dir(&mdx_path, &format!("{}/", prefix), "md").await;
+                            let result = r2
+                                .upload_dir(&mdx_path, &format!("{}/", prefix), "md")
+                                .await;
                             total_ok += result.uploaded.len();
                             total_fail += result.failed.len();
                             for (key, err) in &result.failed {
@@ -213,8 +254,12 @@ pub async fn publish(
                     for intel_path in &bundle.intel_paths {
                         if intel_path.exists() {
                             if let Ok(data) = std::fs::read(intel_path) {
-                                let r2_key = format!("intel/daily/{}", intel_path.file_name().unwrap_or_default().to_string_lossy());
-                                if let Err(e) = r2.upload(&r2_key, &data, "application/json").await {
+                                let r2_key = format!(
+                                    "intel/daily/{}",
+                                    intel_path.file_name().unwrap_or_default().to_string_lossy()
+                                );
+                                if let Err(e) = r2.upload(&r2_key, &data, "application/json").await
+                                {
                                     log::warn!("☁️ R2 intel upload failed [{}]: {}", r2_key, e);
                                     total_fail += 1;
                                 } else {
@@ -245,8 +290,14 @@ pub async fn publish(
                     let state_files = [
                         (config.output.vault_path.as_str(), "memory_db.json"),
                         (config.output.vault_path.as_str(), "decision_registry.json"),
-                        (config.output.vault_path.as_str(), "assessment_registry.json"),
-                        (config.output.vault_path.as_str(), "investigation_registry.json"),
+                        (
+                            config.output.vault_path.as_str(),
+                            "assessment_registry.json",
+                        ),
+                        (
+                            config.output.vault_path.as_str(),
+                            "investigation_registry.json",
+                        ),
                     ];
                     for (base_dir, filename) in &state_files {
                         let state_path = PathBuf::from(base_dir).join(filename);
@@ -272,7 +323,10 @@ pub async fn publish(
                     let intel_db_path = data_dir.join("intel.db");
                     if intel_db_path.exists() {
                         if let Ok(data) = std::fs::read(&intel_db_path) {
-                            if let Err(e) = r2.upload("state/intel.db", &data, "application/octet-stream").await {
+                            if let Err(e) = r2
+                                .upload("state/intel.db", &data, "application/octet-stream")
+                                .await
+                            {
                                 log::warn!("⚠️ R2 state/intel.db upload failed: {}", e);
                             }
                         }
@@ -295,26 +349,16 @@ pub async fn publish(
                             }
                         }
                     }
-                    // events/{date}.jsonl (当日对象审计事件快照)
-                    // 注：CLI 追加的事件晚于此快照，完整审计线以本地为准，直到 CLI 也学会推送
-                    let events_path = data_dir.join("events").join(format!("{}.jsonl", today));
-                    if events_path.exists() {
-                        if let Ok(data) = std::fs::read(&events_path) {
-                            if let Err(e) = r2.upload(&format!("events/{}.jsonl", today), &data, "application/json").await {
-                                log::warn!("⚠️ R2 events/{}.jsonl upload failed: {}", today, e);
-                            }
-                        }
-                    }
-
-
                     if total_fail > 0 {
-                        r2_status = format!("partial_failure ({}/{})", total_ok, total_ok + total_fail);
+                        r2_status =
+                            format!("partial_failure ({}/{})", total_ok, total_ok + total_fail);
                     } else if total_ok > 0 {
                         r2_status = format!("ok ({} files)", total_ok);
                     } else {
                         r2_status = "no_files".to_string();
                     }
                     log::info!("☁️ R2 upload complete: {}", r2_status);
+                    r2_client = Some(r2);
                 }
                 Err(e) => {
                     r2_status = format!("failed: {}", e);
@@ -345,11 +389,14 @@ pub async fn publish(
     }
 
     // Add publish_completed event (summary anchor for the JSONL)
-    all_events.push(ObjectEvent::complete("delivery_publisher", serde_json::json!({
-        "passed": passed,
-        "rejected": rejected,
-        "r2_status": r2_status,
-    })));
+    all_events.push(ObjectEvent::complete(
+        "delivery_publisher",
+        serde_json::json!({
+            "passed": passed,
+            "rejected": rejected,
+            "r2_status": r2_status,
+        }),
+    ));
 
     // 7. Flush all events to data/events/{date}.jsonl
     if !all_events.is_empty() {
@@ -365,9 +412,24 @@ pub async fn publish(
             let line = serde_json::to_string(event)?;
             writeln!(file, "{}", line)?;
         }
-        log::info!("📋 Events flushed: {} events ({} pipeline + {} publisher) to {}",
-            all_events.len(), pipeline_event_count, all_events.len() - pipeline_event_count,
-            events_path.display());
+        log::info!(
+            "📋 Events flushed: {} events ({} pipeline + {} publisher) to {}",
+            all_events.len(),
+            pipeline_event_count,
+            all_events.len() - pipeline_event_count,
+            events_path.display()
+        );
+
+        // 7b. 补传 events 到 R2（flush 后才能上传，确保 publish_completed 在档）
+        // events 上传失败不回写 events（自引用循环），以 CI log 为准
+        if let Some(r2) = &r2_client {
+            if let Ok(data) = std::fs::read(&events_path) {
+                if let Err(e) = r2.upload(&format!("events/{}.jsonl", today), &data, "application/json").await
+                {
+                    log::warn!("⚠️ R2 events/{}.jsonl upload failed: {}", today, e);
+                }
+            }
+        }
     }
 
     Ok(PublishReport {

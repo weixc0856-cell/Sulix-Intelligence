@@ -76,15 +76,24 @@ impl DecisionRegistry {
     /// Used by detect_outcomes() to detect ambiguity (1:many ASM→DEC).
     /// Returns empty vec when no matches.
     pub fn find_all_by_asm(&self, asm_id: &str) -> Vec<String> {
-        let mut ids: Vec<String> = self.decisions
+        let mut ids: Vec<String> = self
+            .decisions
             .iter()
             .filter(|(_, entry)| entry.asm_id == asm_id && entry.state == "active")
             .map(|(dec_id, _)| dec_id.clone())
             .collect();
         // Sort by created date (descending) via entry.updated, so latest comes first
         ids.sort_by(|a, b| {
-            let a_date = self.decisions.get(a).map(|e| e.updated.as_str()).unwrap_or("");
-            let b_date = self.decisions.get(b).map(|e| e.updated.as_str()).unwrap_or("");
+            let a_date = self
+                .decisions
+                .get(a)
+                .map(|e| e.updated.as_str())
+                .unwrap_or("");
+            let b_date = self
+                .decisions
+                .get(b)
+                .map(|e| e.updated.as_str())
+                .unwrap_or("");
             b_date.cmp(a_date) // descending
         });
         ids

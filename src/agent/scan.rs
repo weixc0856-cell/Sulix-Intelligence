@@ -1,4 +1,4 @@
-﻿//! Scan Agent — 信号初筛模块（Gate v1.1 保真版）
+//! Scan Agent — 信号初筛模块（Gate v1.1 保真版）
 //!
 //! v1.1 核心变化：
 //! - Layer 0: 不评分，只结构化（保真接收）
@@ -28,9 +28,9 @@ pub enum SignalType {
 /// 发布路由（三路分叉）
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum SignalRoute {
-    Archive,   // 存档，不展示
-    Intel,     // 每日情报
-    Research,  // 深度研报
+    Archive,  // 存档，不展示
+    Intel,    // 每日情报
+    Research, // 深度研报
 }
 
 /// LLM 评分后的单条信号评估
@@ -47,6 +47,9 @@ pub struct SignalAssessment {
     /// 路由分数（importance × source_factor）。不是分析层 SVI（同名异义，known-debt）。
     pub score: u8,
     pub route: SignalRoute,
+    /// 是否为 LLM 未评估的系统兜底值（批次失败或缺席匹配）
+    #[serde(default)]
+    pub is_fallback: bool,
 }
 
 /// 携带原文和评分的完整信号
@@ -83,14 +86,20 @@ pub async fn classify_and_route(
     llm_config: &LlmConfig,
     prompts: Option<&crate::config::PromptsConfig>,
     sources: &[SourceConfig],
-) -> Result<(Vec<ClassifiedSignal>, Vec<ClassifiedSignal>, usize, TriageResult)> {
+) -> Result<(
+    Vec<ClassifiedSignal>,
+    Vec<ClassifiedSignal>,
+    usize,
+    TriageResult,
+)> {
     let triage = scan_and_triage(grouped, api_key, llm_config, prompts, sources).await?;
 
     let mut research_signals: Vec<ClassifiedSignal> = Vec::new();
     let mut intel_signals: Vec<ClassifiedSignal> = Vec::new();
 
     let get_source_score = |source_name: &str| -> f32 {
-        sources.iter()
+        sources
+            .iter()
             .find(|s| s.name == source_name)
             .map(|s| s.score as f32)
             .unwrap_or(5.0)
@@ -112,6 +121,7 @@ pub async fn classify_and_route(
                 domain: entry.article.category.clone(),
                 score: score.clamp(0, 10),
                 route: SignalRoute::Research,
+                is_fallback: entry.importance.is_none(),
             },
         });
     }
@@ -132,6 +142,7 @@ pub async fn classify_and_route(
                 domain: entry.article.category.clone(),
                 score: score.clamp(0, 10),
                 route: SignalRoute::Intel,
+                is_fallback: entry.importance.is_none(),
             },
         });
     }
@@ -140,7 +151,6 @@ pub async fn classify_and_route(
 
     Ok((research_signals, intel_signals, archive_count, triage))
 }
-
 
 /// 对分组后的文章执行信号标记和三层分流（v1.1）
 pub async fn scan_and_triage(
@@ -209,7 +219,8 @@ pub async fn scan_and_triage(
                             .map(|s| s.score as f32)
                             .unwrap_or(5.0);
                         let source_factor = 0.5 + source_score / 20.0; // 0.55 (score=1) .. 1.0 (score=10)
-                        let weighted = (importance.unwrap_or(5) as f32 * source_factor).round() as u8;
+                        let weighted =
+                            (importance.unwrap_or(5) as f32 * source_factor).round() as u8;
 
                         // 三层分流
                         let composite = if tag == "Structural Shift" {
@@ -346,7 +357,9 @@ fn parse_signal_type(label: &str) -> SignalType {
         "Context Update" => SignalType::ContextUpdate,
         "Noise" => SignalType::Noise,
         other => {
-            log::warn!("⚠️ Scan Agent: unknown relevance tag '{other}', defaulting to ContextUpdate");
+            log::warn!(
+                "⚠️ Scan Agent: unknown relevance tag '{other}', defaulting to ContextUpdate"
+            );
             SignalType::ContextUpdate
         }
     }
@@ -455,9 +468,18 @@ mod tests {
     #[test]
     fn test_parse_signal_type_standard() {
         // 标准标签
-        assert_eq!(parse_signal_type("Structural Shift"), SignalType::StructuralShift);
-        assert_eq!(parse_signal_type("Competitive Signal"), SignalType::CompetitiveSignal);
-        assert_eq!(parse_signal_type("Context Update"), SignalType::ContextUpdate);
+        assert_eq!(
+            parse_signal_type("Structural Shift"),
+            SignalType::StructuralShift
+        );
+        assert_eq!(
+            parse_signal_type("Competitive Signal"),
+            SignalType::CompetitiveSignal
+        );
+        assert_eq!(
+            parse_signal_type("Context Update"),
+            SignalType::ContextUpdate
+        );
         assert_eq!(parse_signal_type("Noise"), SignalType::Noise);
     }
 

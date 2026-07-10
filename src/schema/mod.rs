@@ -8,10 +8,10 @@
 //!
 //! 未通过验证的对象**不上传 R2**，写入 validation_report.json。
 
-pub mod signal;
 pub mod assessment;
 pub mod decision;
 pub mod mapper;
+pub mod signal;
 pub mod validator;
 
 pub use validator::ValidationReport;

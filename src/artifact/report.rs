@@ -14,7 +14,9 @@ pub fn save_report(
     frontend_public_dir: Option<&str>,
 ) -> Result<()> {
     // 1. Save to data/{date}/pipeline_report.json
-    report.save(data_dir).map_err(|e| anyhow::anyhow!("{:#}", e))?;
+    report
+        .save(data_dir)
+        .map_err(|e| anyhow::anyhow!("{:#}", e))?;
 
     // 2. Save to vault_path for local audit
     let vault_path = std::env::var("VAULT_PATH").unwrap_or_else(|_| "./DailyBrief".into());

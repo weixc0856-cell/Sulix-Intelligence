@@ -185,7 +185,11 @@ Evidence Level (4 levels):
     // 解析证伪条件（First Principle: Falsifiability）
     let falsification_conditions: Vec<String> = parsed["falsification_conditions"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(ThemeAnalysis {

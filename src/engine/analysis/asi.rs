@@ -83,11 +83,7 @@ pub struct AsiResult {
 ///   signal_strength >= 5 → 0.6（中等）
 ///   signal_strength >= 3 → 0.3（偏低）
 ///   else → 0.1（噪音）
-pub fn calculate_asi(
-    signal_strength: u8,
-    max_days_old: i64,
-    config: &AsiConfig,
-) -> AsiResult {
+pub fn calculate_asi(signal_strength: u8, max_days_old: i64, config: &AsiConfig) -> AsiResult {
     // 1. UserRelevance — currently static (QuestionEngine not wired)
     let user_relevance = 0.3;
 

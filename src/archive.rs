@@ -71,5 +71,4 @@ impl ChronicleDb {
         sorted.sort_by(|a, b| b.date.cmp(&a.date));
         sorted
     }
-
 }

@@ -214,7 +214,10 @@ fn sanitize_html_structure(html: &str) -> String {
                 | "img"
         );
         if is_keep {
-            caps.get(0).expect("capture group 0 always exists on match").as_str().to_string()
+            caps.get(0)
+                .expect("capture group 0 always exists on match")
+                .as_str()
+                .to_string()
         } else {
             String::new()
         }

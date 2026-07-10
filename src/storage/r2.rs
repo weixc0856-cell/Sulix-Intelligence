@@ -12,9 +12,9 @@
 
 use anyhow::{Context, Result};
 use aws_credential_types::Credentials;
+use aws_sdk_s3::config::{BehaviorVersion, Region};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
-use aws_sdk_s3::config::{BehaviorVersion, Region};
 use std::path::Path;
 
 /// 批量上传结果
@@ -90,12 +90,7 @@ impl R2Client {
     /// `local_base`: 本地基础路径（如 output/）
     /// `r2_prefix`: R2 前缀（如 "daily/"）
     /// `ext`: 文件扩展名过滤（如 "md"）
-    pub async fn upload_dir(
-        &self,
-        local_base: &Path,
-        r2_prefix: &str,
-        ext: &str,
-    ) -> UploadResult {
+    pub async fn upload_dir(&self, local_base: &Path, r2_prefix: &str, ext: &str) -> UploadResult {
         let mut uploaded = Vec::new();
         let mut failed = Vec::new();
 

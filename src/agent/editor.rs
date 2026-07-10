@@ -27,10 +27,7 @@ use crate::domain::thesis::Thesis;
 ///
 /// 输出：
 ///   - Vec<EditorNote>: 每条问题一条（或零条），描述今日信息如何改变了用户的判断
-pub fn analyze_personal_impact(
-    analyses: &[ThemeAnalysis],
-    theses: &[Thesis],
-) -> Vec<EditorNote> {
+pub fn analyze_personal_impact(analyses: &[ThemeAnalysis], theses: &[Thesis]) -> Vec<EditorNote> {
     // QuestionEngine 未连线，always returns empty
     let _ = analyses;
     let _ = theses;

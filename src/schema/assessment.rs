@@ -1,8 +1,8 @@
 //! Schematized Assessment — 规范评估对象的验证定义
 
-use serde::{Deserialize, Serialize};
-use schemars::JsonSchema;
 use crate::domain::Localized;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// 规范评估对象（验证 Schema 用）
 /// 对应 frontend contracts/assessment.schema.json
@@ -42,10 +42,18 @@ impl AssessmentObject {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if self.id.is_empty() { errors.push("id: empty".into()); }
-        if self.title.is_empty() { errors.push("title: empty".into()); }
-        if self.date.is_empty() { errors.push("date: empty".into()); }
-        if self.status.is_empty() { errors.push("status: empty".into()); }
+        if self.id.is_empty() {
+            errors.push("id: empty".into());
+        }
+        if self.title.is_empty() {
+            errors.push("title: empty".into());
+        }
+        if self.date.is_empty() {
+            errors.push("date: empty".into());
+        }
+        if self.status.is_empty() {
+            errors.push("status: empty".into());
+        }
         if self.confidence < 0.0 || self.confidence > 1.0 {
             errors.push("confidence: out of range [0,1]".into());
         }
@@ -63,7 +71,13 @@ impl AssessmentObject {
 }
 
 impl crate::schema::validator::Validate for AssessmentObject {
-    fn object_type() -> &'static str { "assessment" }
-    fn object_id(&self) -> &str { &self.id }
-    fn validate(&self) -> Vec<String> { self.validate() }
+    fn object_type() -> &'static str {
+        "assessment"
+    }
+    fn object_id(&self) -> &str {
+        &self.id
+    }
+    fn validate(&self) -> Vec<String> {
+        self.validate()
+    }
 }

@@ -117,7 +117,10 @@ mod tests {
         let mut reg = InvestigationRegistry::new();
         let inv_id = reg.register("ASM-0001", "thesis-123", "2026-06-26");
         assert_eq!(inv_id, "INV-0001");
-        assert_eq!(reg.find_active_by_asm("ASM-0001"), Some("INV-0001".to_string()));
+        assert_eq!(
+            reg.find_active_by_asm("ASM-0001"),
+            Some("INV-0001".to_string())
+        );
     }
 
     #[test]
@@ -138,7 +141,10 @@ mod tests {
         // Old is superseded
         assert_eq!(reg.investigations["INV-0001"].state, "superseded");
         // New is active
-        assert_eq!(reg.find_active_by_asm("ASM-0001"), Some("INV-0002".to_string()));
+        assert_eq!(
+            reg.find_active_by_asm("ASM-0001"),
+            Some("INV-0002".to_string())
+        );
     }
 
     #[test]

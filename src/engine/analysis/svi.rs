@@ -1,7 +1,7 @@
 //! SVI 评分 — calculate_svi + map_to_scl
 
-use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::config::SourceConfig;
+use crate::domain::theme::{Theme, ThemeAnalysis};
 
 // ===== SVI 权重常量 =====
 

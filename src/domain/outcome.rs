@@ -11,15 +11,16 @@
 //!   - 新增 impact（Low/Medium/High）
 //!   - 保留 thesis_id（reflection 回溯 thesis 需要）
 
-use serde::{Deserialize, Serialize};
 use crate::event_log::{ObjectEvent, ObjectEventType};
+use serde::{Deserialize, Serialize};
 
 /// 生成 OUT-YYYYMMDD-SEQ 格式 ID（domain 层统一生成器）
 ///
 /// 供 CLI 和管线共同使用。SEQ 从已有 Outcome 列表推导，
 /// 按日期分组后取当天最大 SEQ + 1。
 pub fn generate_outcome_id(existing: &[Outcome], date: &str) -> String {
-    let max_seq = existing.iter()
+    let max_seq = existing
+        .iter()
         .filter_map(|o| o.id.strip_prefix(&format!("OUT-{}", date)))
         .filter_map(|s| s.strip_prefix('-'))
         .filter_map(|s| s.parse::<u32>().ok())
@@ -152,19 +153,29 @@ mod tests {
     fn test_generate_outcome_id_increments_seq() {
         let existing = vec![
             Outcome {
-                id: "OUT-2026-07-09-001".into(), decision_id: "DEC-001".into(),
-                thesis_id: "t1".into(), description: "test".into(),
-                verdict: OutcomeVerdict::Confirmed, impact: ImpactLevel::Medium,
-                date: "2026-07-09".into(), supporting_evidence: vec![],
-                expected_signal: String::new(), actual_signal: String::new(),
+                id: "OUT-2026-07-09-001".into(),
+                decision_id: "DEC-001".into(),
+                thesis_id: "t1".into(),
+                description: "test".into(),
+                verdict: OutcomeVerdict::Confirmed,
+                impact: ImpactLevel::Medium,
+                date: "2026-07-09".into(),
+                supporting_evidence: vec![],
+                expected_signal: String::new(),
+                actual_signal: String::new(),
                 delta: String::new(),
             },
             Outcome {
-                id: "OUT-2026-07-09-002".into(), decision_id: "DEC-002".into(),
-                thesis_id: "t2".into(), description: "test".into(),
-                verdict: OutcomeVerdict::PartiallyConfirmed, impact: ImpactLevel::Low,
-                date: "2026-07-09".into(), supporting_evidence: vec![],
-                expected_signal: String::new(), actual_signal: String::new(),
+                id: "OUT-2026-07-09-002".into(),
+                decision_id: "DEC-002".into(),
+                thesis_id: "t2".into(),
+                description: "test".into(),
+                verdict: OutcomeVerdict::PartiallyConfirmed,
+                impact: ImpactLevel::Low,
+                date: "2026-07-09".into(),
+                supporting_evidence: vec![],
+                expected_signal: String::new(),
+                actual_signal: String::new(),
                 delta: String::new(),
             },
         ];
@@ -174,16 +185,19 @@ mod tests {
 
     #[test]
     fn test_generate_outcome_id_ignores_other_dates() {
-        let existing = vec![
-            Outcome {
-                id: "OUT-2026-07-09-005".into(), decision_id: "DEC-001".into(),
-                thesis_id: "t1".into(), description: "test".into(),
-                verdict: OutcomeVerdict::Confirmed, impact: ImpactLevel::Medium,
-                date: "2026-07-09".into(), supporting_evidence: vec![],
-                expected_signal: String::new(), actual_signal: String::new(),
-                delta: String::new(),
-            },
-        ];
+        let existing = vec![Outcome {
+            id: "OUT-2026-07-09-005".into(),
+            decision_id: "DEC-001".into(),
+            thesis_id: "t1".into(),
+            description: "test".into(),
+            verdict: OutcomeVerdict::Confirmed,
+            impact: ImpactLevel::Medium,
+            date: "2026-07-09".into(),
+            supporting_evidence: vec![],
+            expected_signal: String::new(),
+            actual_signal: String::new(),
+            delta: String::new(),
+        }];
         // Different date should not see existing
         let id = generate_outcome_id(&existing, "2026-07-10");
         assert_eq!(id, "OUT-2026-07-10-001");

@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 
-use crate::{config, db, catalog, entity, fetcher, source, pipeline, enricher};
+use crate::{catalog, config, db, enricher, entity, fetcher, pipeline, source};
 
 /// 信号源抓取计数
 #[derive(Debug, Clone)]
@@ -26,7 +26,9 @@ async fn fetch_all_sources(
         match source::fetch_source(sc, date_range).await {
             Ok(mut signals) => {
                 log::info!("  [{}] → {} 条信号", sc.name, signals.len());
-                source_statuses.push(SourceStatus { signal_count: signals.len() });
+                source_statuses.push(SourceStatus {
+                    signal_count: signals.len(),
+                });
                 all_signals.append(&mut signals);
             }
             Err(e) => {
@@ -210,9 +212,9 @@ pub async fn agent_signal(
     let date_range = &config.output.date_range;
     let (all_signals, source_statuses) = fetch_all_sources(config, date_range).await;
 
-    let Some(new_articles) = process_signal_articles(
-        all_signals, config, db, catalog, today,
-    ).await? else {
+    let Some(new_articles) =
+        process_signal_articles(all_signals, config, db, catalog, today).await?
+    else {
         return Ok(None);
     };
 

@@ -70,8 +70,22 @@ mod tests {
     #[test]
     fn test_compute_confidence_all_support_two_evidences() {
         let evidences = vec![
-            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
-            Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
+            Evidence {
+                date: "2026-07-01".into(),
+                title: "A".into(),
+                source: "S".into(),
+                summary: "".into(),
+                stance: Stance::Supports,
+                signal_strength: 5,
+            },
+            Evidence {
+                date: "2026-07-01".into(),
+                title: "B".into(),
+                source: "S".into(),
+                summary: "".into(),
+                stance: Stance::Supports,
+                signal_strength: 5,
+            },
         ];
         // 2 条全支持: 0.5 + 0.5 * 2/(2+3) = 0.5 + 0.5 * 0.4 = 0.7
         let c = compute_confidence(&evidences);
@@ -80,9 +94,14 @@ mod tests {
 
     #[test]
     fn test_compute_confidence_single_support() {
-        let evidences = vec![
-            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
-        ];
+        let evidences = vec![Evidence {
+            date: "2026-07-01".into(),
+            title: "A".into(),
+            source: "S".into(),
+            summary: "".into(),
+            stance: Stance::Supports,
+            signal_strength: 5,
+        }];
         // 1 条支持: 0.5 + 0.5 * 1/(1+3) = 0.5 + 0.5 * 0.25 = 0.625
         let c = compute_confidence(&evidences);
         assert!((c - 0.625).abs() < 0.01, "expected ~0.625, got {}", c);
@@ -90,9 +109,14 @@ mod tests {
 
     #[test]
     fn test_compute_confidence_all_challenge() {
-        let evidences = vec![
-            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
-        ];
+        let evidences = vec![Evidence {
+            date: "2026-07-01".into(),
+            title: "A".into(),
+            source: "S".into(),
+            summary: "".into(),
+            stance: Stance::Challenges,
+            signal_strength: 5,
+        }];
         // 1 条全挑战: 0.5 + (0.0 - 0.5) * 1/4 = 0.5 + (-0.5) * 0.25 = 0.375
         let c = compute_confidence(&evidences);
         assert!((c - 0.375).abs() < 0.01, "expected ~0.375, got {}", c);
@@ -106,8 +130,22 @@ mod tests {
     #[test]
     fn test_compute_confidence_mixed() {
         let evidences = vec![
-            Evidence { date: "2026-07-01".into(), title: "A".into(), source: "S".into(), summary: "".into(), stance: Stance::Supports, signal_strength: 5 },
-            Evidence { date: "2026-07-01".into(), title: "B".into(), source: "S".into(), summary: "".into(), stance: Stance::Challenges, signal_strength: 5 },
+            Evidence {
+                date: "2026-07-01".into(),
+                title: "A".into(),
+                source: "S".into(),
+                summary: "".into(),
+                stance: Stance::Supports,
+                signal_strength: 5,
+            },
+            Evidence {
+                date: "2026-07-01".into(),
+                title: "B".into(),
+                source: "S".into(),
+                summary: "".into(),
+                stance: Stance::Challenges,
+                signal_strength: 5,
+            },
         ];
         // S:1 C:1 → ratio=0.5 → 0.5 + 0 * saturation = 0.5
         let c = compute_confidence(&evidences);
@@ -119,9 +157,12 @@ mod tests {
         let mut evidences = Vec::new();
         for i in 0..10 {
             evidences.push(Evidence {
-                date: "2026-07-01".into(), title: format!("A{}", i),
-                source: "S".into(), summary: "".into(),
-                stance: Stance::Supports, signal_strength: 5,
+                date: "2026-07-01".into(),
+                title: format!("A{}", i),
+                source: "S".into(),
+                summary: "".into(),
+                stance: Stance::Supports,
+                signal_strength: 5,
             });
         }
         // 10 条全支持: 0.5 + 0.5 * 10/13 = 0.5 + 0.5 * 0.769 = 0.8846

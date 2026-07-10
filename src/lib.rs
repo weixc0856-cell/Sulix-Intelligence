@@ -26,5 +26,5 @@ pub mod renderer;
 pub mod schema;
 pub mod source;
 pub mod storage;
-pub mod twitter;
 pub mod translation;
+pub mod twitter;

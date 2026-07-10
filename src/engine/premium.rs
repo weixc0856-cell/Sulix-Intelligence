@@ -9,11 +9,11 @@
 //!   阶段驱动使管线可扩展——可任意插入 "AdversarialReview" 等新阶段，
 //!   而无需每次新增一个 Agent 角色。
 
-use anyhow::Result;
+use crate::config::LlmConfig;
 use crate::domain::premium::PremiumReport;
 use crate::domain::theme::Theme;
-use crate::config::LlmConfig;
 use crate::llm;
+use anyhow::Result;
 
 // ===== Stage 1: WhatChanged =====
 

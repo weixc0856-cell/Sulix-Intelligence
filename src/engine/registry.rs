@@ -11,9 +11,9 @@
 //! 文件存储：
 //!   vault_path/assessment_registry.json
 
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Generic helper: load JSON from file, return default on failure/missing.
 ///
@@ -114,8 +114,7 @@ impl AssessmentRegistry {
     /// 检查 canonical_title 和所有 aliases
     pub fn find_similar(&self, title: &str) -> Option<String> {
         for (asm_id, entry) in &self.assessments {
-            let candidates = std::iter::once(&entry.canonical_title)
-                .chain(entry.aliases.iter());
+            let candidates = std::iter::once(&entry.canonical_title).chain(entry.aliases.iter());
             for known in candidates {
                 if jaccard_similarity(title, known) >= 0.75 || is_subset_match(title, known) {
                     return Some(asm_id.clone());
@@ -193,7 +192,9 @@ mod tests {
         let mut reg = AssessmentRegistry::new();
         reg.register("AI Infrastructure Consolidation", "2026-06-12", "t1");
         // Exact match
-        assert!(reg.find_similar("AI Infrastructure Consolidation").is_some());
+        assert!(reg
+            .find_similar("AI Infrastructure Consolidation")
+            .is_some());
         // High overlap match
         assert!(reg.find_similar("AI Infrastructure").is_some());
     }

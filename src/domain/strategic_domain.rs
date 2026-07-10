@@ -120,55 +120,192 @@ impl StrategicDomain {
     fn keywords(&self) -> &'static [&'static str] {
         match self {
             StrategicDomain::AI => &[
-                "ai", "artificial intelligence", "llm", "gpt", "openai", "anthropic",
-                "claude", "gemini", "deepmind", "model", "transformer", "agent",
-                "chatgpt", "copilot", "foundation model", "alignment", "agi",
-                "deepseek", "reasoning", "inference", "training", "fine-tune",
-                "langchain", "vector database", "embedding", "rag", "retrieval",
-                "multimodal", "rlhf", "mixture of experts",
-                "人工智能", "大模型", "智能体", "深度学习",
+                "ai",
+                "artificial intelligence",
+                "llm",
+                "gpt",
+                "openai",
+                "anthropic",
+                "claude",
+                "gemini",
+                "deepmind",
+                "model",
+                "transformer",
+                "agent",
+                "chatgpt",
+                "copilot",
+                "foundation model",
+                "alignment",
+                "agi",
+                "deepseek",
+                "reasoning",
+                "inference",
+                "training",
+                "fine-tune",
+                "langchain",
+                "vector database",
+                "embedding",
+                "rag",
+                "retrieval",
+                "multimodal",
+                "rlhf",
+                "mixture of experts",
+                "人工智能",
+                "大模型",
+                "智能体",
+                "深度学习",
             ],
             StrategicDomain::Semiconductor => &[
-                "chip", "semiconductor", "tsmc", "nvidia", "hbm", "gpu", "tpu",
-                "wafer", "foundry", "lithography", "euv", "samsung",
-                "micron", "sk hynix", "broadcom", "qualcomm", "arm", "risc-v",
-                "cowos", "advanced packaging", "substrate", "silicon",
-                "export control", "chip ban", "bIs",
-                "芯片", "半导体", "晶圆", "光刻", "制程",
+                "chip",
+                "semiconductor",
+                "tsmc",
+                "nvidia",
+                "hbm",
+                "gpu",
+                "tpu",
+                "wafer",
+                "foundry",
+                "lithography",
+                "euv",
+                "samsung",
+                "micron",
+                "sk hynix",
+                "broadcom",
+                "qualcomm",
+                "arm",
+                "risc-v",
+                "cowos",
+                "advanced packaging",
+                "substrate",
+                "silicon",
+                "export control",
+                "chip ban",
+                "bIs",
+                "芯片",
+                "半导体",
+                "晶圆",
+                "光刻",
+                "制程",
             ],
             StrategicDomain::Space => &[
-                "space", "spacex", "starship", "rocket", "nasa", "satellite",
-                "starlink", "orbit", "launch", "blue origin", "mars", "lunar",
-                "iss", "space station", "asteroid", "leo", "geo", "falcon",
-                "航天", "火箭", "卫星", "轨道",
+                "space",
+                "spacex",
+                "starship",
+                "rocket",
+                "nasa",
+                "satellite",
+                "starlink",
+                "orbit",
+                "launch",
+                "blue origin",
+                "mars",
+                "lunar",
+                "iss",
+                "space station",
+                "asteroid",
+                "leo",
+                "geo",
+                "falcon",
+                "航天",
+                "火箭",
+                "卫星",
+                "轨道",
             ],
             StrategicDomain::Robotics => &[
-                "robot", "robotics", "humanoid", "autonomous", "drone",
-                "boston dynamics", "figure", "tesla bot", "optimus", "embodied",
-                "manipulation", "locomotion", "slam", "ros", "self-driving",
-                "机器人", "自动驾驶", "无人机", "具身智能",
+                "robot",
+                "robotics",
+                "humanoid",
+                "autonomous",
+                "drone",
+                "boston dynamics",
+                "figure",
+                "tesla bot",
+                "optimus",
+                "embodied",
+                "manipulation",
+                "locomotion",
+                "slam",
+                "ros",
+                "self-driving",
+                "机器人",
+                "自动驾驶",
+                "无人机",
+                "具身智能",
             ],
             StrategicDomain::Defense => &[
-                "defense", "military", "pentagon", "dod", "weapon", "army",
-                "navy", "air force", "missile", "cyber warfare", "nato",
-                "国防", "军事", "武器", "五角大楼",
+                "defense",
+                "military",
+                "pentagon",
+                "dod",
+                "weapon",
+                "army",
+                "navy",
+                "air force",
+                "missile",
+                "cyber warfare",
+                "nato",
+                "国防",
+                "军事",
+                "武器",
+                "五角大楼",
             ],
             StrategicDomain::Energy => &[
-                "energy", "power", "nuclear", "solar", "wind", "grid",
-                "datacenter power", "fusion", "battery", "electricity",
-                "reactor", "sMR",
-                "能源", "电力", "核能", "太阳能", "电池",
+                "energy",
+                "power",
+                "nuclear",
+                "solar",
+                "wind",
+                "grid",
+                "datacenter power",
+                "fusion",
+                "battery",
+                "electricity",
+                "reactor",
+                "sMR",
+                "能源",
+                "电力",
+                "核能",
+                "太阳能",
+                "电池",
             ],
             StrategicDomain::Macro => &[
-                "economy", "gdp", "inflation", "fed", "interest rate",
-                "trade war", "tariff", "decoupling", "supply chain",
-                "fiscal", "monetary", "imf", "world bank", "recession",
-                "宏观", "经济", "通胀", "利率", "贸易战", "关税",
+                "economy",
+                "gdp",
+                "inflation",
+                "fed",
+                "interest rate",
+                "trade war",
+                "tariff",
+                "decoupling",
+                "supply chain",
+                "fiscal",
+                "monetary",
+                "imf",
+                "world bank",
+                "recession",
+                "宏观",
+                "经济",
+                "通胀",
+                "利率",
+                "贸易战",
+                "关税",
             ],
             StrategicDomain::Healthcare => &[
-                "health", "medical", "pharma", "drug", "fda", "biotech",
-                "crispr", "mrna", "vaccine", "clinical trial", "diagnostic",
-                "医疗", "生物", "制药", "疫苗",
+                "health",
+                "medical",
+                "pharma",
+                "drug",
+                "fda",
+                "biotech",
+                "crispr",
+                "mrna",
+                "vaccine",
+                "clinical trial",
+                "diagnostic",
+                "医疗",
+                "生物",
+                "制药",
+                "疫苗",
             ],
             StrategicDomain::Other => &[],
         }
@@ -207,21 +344,19 @@ impl StrategicDomain {
             .collect();
 
         // 按分数降序排序
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| {
-            // 平局时按优先级：Semiconductor > AI > Space > ...
-            priority(a.1).cmp(&priority(b.1))
-        }));
+        scored.sort_by(|a, b| {
+            b.0.cmp(&a.0).then_with(|| {
+                // 平局时按优先级：Semiconductor > AI > Space > ...
+                priority(a.1).cmp(&priority(b.1))
+            })
+        });
 
         if scored.is_empty() {
             return (StrategicDomain::Other, vec![]);
         }
 
         let primary = scored[0].1;
-        let secondary: Vec<StrategicDomain> = scored
-            .iter()
-            .skip(1)
-            .map(|(_, d)| *d)
-            .collect();
+        let secondary: Vec<StrategicDomain> = scored.iter().skip(1).map(|(_, d)| *d).collect();
 
         (primary, secondary)
     }
@@ -300,8 +435,7 @@ impl StrategicDomain {
     pub fn validate_llm_output(response: &str) -> bool {
         let (primary, _) = StrategicDomain::parse_llm_response(response);
         // 只要 primary 被正确识别就算合法
-        primary != StrategicDomain::Other
-            || response.contains("primary: other")
+        primary != StrategicDomain::Other || response.contains("primary: other")
     }
 }
 
@@ -373,9 +507,8 @@ mod tests {
 
     #[test]
     fn test_multi_domain_cross_ai_chip() {
-        let (primary, secondary) = StrategicDomain::classify(
-            "OpenAI partners with TSMC for custom AI chip manufacturing",
-        );
+        let (primary, secondary) =
+            StrategicDomain::classify("OpenAI partners with TSMC for custom AI chip manufacturing");
         assert_eq!(primary, StrategicDomain::Semiconductor); // chip-related keywords dominate
         assert!(secondary.contains(&StrategicDomain::AI));
     }
@@ -386,9 +519,7 @@ mod tests {
             "US export controls on AI chips to China spark trade war concerns",
         );
         // Should pick up semiconductor + macro + AI
-        assert!(
-            primary == StrategicDomain::Semiconductor || primary == StrategicDomain::Macro
-        );
+        assert!(primary == StrategicDomain::Semiconductor || primary == StrategicDomain::Macro);
     }
 
     #[test]
@@ -469,7 +600,9 @@ mod tests {
 
     #[test]
     fn test_validate_llm_output_invalid() {
-        assert!(!StrategicDomain::validate_llm_output("primary: blockchain\n"));
+        assert!(!StrategicDomain::validate_llm_output(
+            "primary: blockchain\n"
+        ));
     }
 
     // ── Serialization ──

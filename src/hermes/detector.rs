@@ -1,8 +1,8 @@
 //! 变更检测：规则版 + LLM 语义版
 
 use crate::archive::ChronicleEntry;
-use crate::domain::theme::ThemeAnalysis;
 use crate::config::LlmConfig;
+use crate::domain::theme::ThemeAnalysis;
 
 use super::{ChangeDetectionEntry, ChangeSummary, ConflictEntry, SemanticRelation};
 
@@ -117,8 +117,7 @@ Output json. 输出严格 JSON 数组，每项格式：
         history_json, today_json
     );
 
-    let client = crate::llm::create_llm_client()
-        .ok()?;
+    let client = crate::llm::create_llm_client().ok()?;
 
     let raw =
         crate::llm::call_with_retry_raw(&client, api_key, llm_config, system_prompt, &user_prompt)

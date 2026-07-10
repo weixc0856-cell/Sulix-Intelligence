@@ -8,8 +8,8 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::agent::scan::SignalAssessment;
-use crate::renderer::intel::IntelEntry;
 use crate::renderer::intel::render_intel_json;
+use crate::renderer::intel::IntelEntry;
 
 /// 发布 Layer 2 intel 条目到 /intel/daily/{date}-{slug}.json
 /// 返回已发布数量
@@ -25,9 +25,13 @@ pub fn publish_intel(
     for assessment in assessments {
         let summary = None; // Phase 0: 无 LLM 摘要
 
-        let impact = if assessment.score >= 7 { "high" }
-            else if assessment.score >= 5 { "medium" }
-            else { "low" };
+        let impact = if assessment.score >= 7 {
+            "high"
+        } else if assessment.score >= 5 {
+            "medium"
+        } else {
+            "low"
+        };
 
         let entry = IntelEntry {
             id: format!("intel-{}-{}", today, assessment.article_id),
@@ -51,7 +55,11 @@ pub fn publish_intel(
         }
     }
 
-    log::info!("📰 Layer 2: {} intel items published to {}", published, intel_dir.display());
+    log::info!(
+        "📰 Layer 2: {} intel items published to {}",
+        published,
+        intel_dir.display()
+    );
     Ok(published)
 }
 
@@ -59,14 +67,16 @@ pub fn publish_intel(
 ///
 /// article_id 尾部拼入防止碰撞（article_id 已是 URL hash，无需重算 sha256）。
 fn slugify(title: &str, article_id: &str) -> String {
-    let slug: String = title.chars()
+    let slug: String = title
+        .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == ' ')
         .take(40)
         .collect::<String>()
         .trim()
         .to_lowercase()
         .replace(' ', "-");
-    let suffix: String = article_id.chars()
+    let suffix: String = article_id
+        .chars()
         .filter(|c| c.is_alphanumeric())
         .rev()
         .take(8)

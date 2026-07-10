@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use sulix_intel::agent;
 use sulix_intel::config;
 use sulix_intel::db;
+use sulix_intel::engine::pipeline_health::{PipelineReport, PipelineStatus, StageStatus};
 use sulix_intel::entity;
 use sulix_intel::fetcher;
 use sulix_intel::publishing;
 use sulix_intel::source;
 use sulix_intel::storage;
-use sulix_intel::engine::pipeline_health::{PipelineReport, StageStatus, PipelineStatus};
 
 /// Init() 的命名返回值
 struct InitContext {
@@ -38,9 +38,24 @@ async fn main() -> Result<()> {
     let mut report = PipelineReport::new(&ctx.today);
 
     // Signal Agent: 抓取 → 去重 → 丰富 → 实体提取
-    let signal_result = agent::signal::agent_signal(&ctx.config, &ctx.db, &ctx.catalog, &ctx.today, ctx.entity_db).await;
-    report.add_stage("agent_signal", 0, 0,
-        if signal_result.is_ok() { StageStatus::Success } else { StageStatus::Failed });
+    let signal_result = agent::signal::agent_signal(
+        &ctx.config,
+        &ctx.db,
+        &ctx.catalog,
+        &ctx.today,
+        ctx.entity_db,
+    )
+    .await;
+    report.add_stage(
+        "agent_signal",
+        0,
+        0,
+        if signal_result.is_ok() {
+            StageStatus::Success
+        } else {
+            StageStatus::Failed
+        },
+    );
 
     let Some((new_articles, source_statuses, mut entity_db)) = signal_result? else {
         log::warn!("Pipeline: 0 new articles — done");
@@ -63,42 +78,87 @@ async fn main() -> Result<()> {
         &ctx.config.llm,
         ctx.config.prompts.as_ref(),
         &ctx.config.sources,
-    ).await?;
+    )
+    .await?;
 
-    log::info!("📊 Signal Funnel: {} raw → {} articles → Research:{} Intel:{} Archive:{}",
-        total_raw_signals, article_count, research_signals.len(), intel_signals.len(), archive_count);
+    let fallback_count = research_signals.iter()
+        .chain(intel_signals.iter())
+        .filter(|s| s.assessment.is_fallback)
+        .count();
+    report.fallback_assessed_count = Some(fallback_count);
+
+    log::info!(
+        "📊 Signal Funnel: {} raw → {} articles → Research:{} Intel:{} Archive:{}",
+        total_raw_signals,
+        article_count,
+        research_signals.len(),
+        intel_signals.len(),
+        archive_count
+    );
 
     // Layer 2: Daily Intel (score ≥ 3)
-    let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals.iter().map(|cs| cs.assessment.clone()).collect();
-    let intel_output_dir = PathBuf::from(&ctx.config.output.vault_path).join("intel").join("daily");
+    let intel_assessments: Vec<sulix_intel::agent::scan::SignalAssessment> = intel_signals
+        .iter()
+        .map(|cs| cs.assessment.clone())
+        .collect();
+    let intel_output_dir = PathBuf::from(&ctx.config.output.vault_path)
+        .join("intel")
+        .join("daily");
     let intel_published = match sulix_intel::publishing::layer2::publish_intel(
-        &intel_assessments, &ctx.today, &intel_output_dir,
+        &intel_assessments,
+        &ctx.today,
+        &intel_output_dir,
     ) {
         Ok(n) => n,
         Err(e) => {
             log::error!("⚠️ Layer 2 intel publish failed: {}", e);
-            report.add_stage("layer2_intel", intel_assessments.len(), 0,
-                sulix_intel::engine::pipeline_health::StageStatus::Failed);
+            report.add_stage(
+                "layer2_intel",
+                intel_assessments.len(),
+                0,
+                sulix_intel::engine::pipeline_health::StageStatus::Failed,
+            );
             0
         }
     };
 
     // Layer 3: Research (score ≥ 7)
-    let llm_calls_before = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    let llm_calls_before =
+        sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed);
     let research = if !research_signals.is_empty() {
-        let insight_articles: Vec<fetcher::Article> = triage.insight.iter().map(|t| t.article.clone()).collect();
+        let insight_articles: Vec<fetcher::Article> =
+            triage.insight.iter().map(|t| t.article.clone()).collect();
         let r = agent::research::agent_research(
-            &ctx.config, &ctx.api_key, &ctx.catalog, insight_articles,
-        ).await?;
+            &ctx.config,
+            &ctx.api_key,
+            &ctx.catalog,
+            insight_articles,
+        )
+        .await?;
         report.theme_count = Some(r.themes.len());
-        if r.themes.is_empty() { report.status = PipelineStatus::NoOutput; }
-        report.add_stage("agent_research", research_signals.len(), r.themes.len(),
-            if r.themes.is_empty() { StageStatus::Skipped } else { StageStatus::Success });
+        if r.themes.is_empty() {
+            report.status = PipelineStatus::NoOutput;
+        }
+        report.add_stage(
+            "agent_research",
+            research_signals.len(),
+            r.themes.len(),
+            if r.themes.is_empty() {
+                StageStatus::Skipped
+            } else {
+                StageStatus::Success
+            },
+        );
         r
     } else {
         report.add_stage("agent_research", 0, 0, StageStatus::Skipped);
-        publishing::ResearchOutput { themes: vec![], analyses: vec![], analyses_zh: vec![],
-            triage, new_articles: vec![] }
+        publishing::ResearchOutput {
+            themes: vec![],
+            analyses: vec![],
+            analyses_zh: vec![],
+            triage,
+            new_articles: vec![],
+        }
     };
 
     report.observation_count = Some(total_raw_signals);
@@ -106,9 +166,17 @@ async fn main() -> Result<()> {
 
     // Publishing Agent: 5-stage publish → ArtifactSet
     let artifacts = publishing::agent_publish(
-        &ctx.config, &ctx.api_key, &ctx.db, &ctx.catalog, &ctx.data_dir, &ctx.today,
-        &mut entity_db, research, &intel_signals,
-    ).await?;
+        &ctx.config,
+        &ctx.api_key,
+        &ctx.db,
+        &ctx.catalog,
+        &ctx.data_dir,
+        &ctx.today,
+        &mut entity_db,
+        research,
+        &intel_signals,
+    )
+    .await?;
     report.add_stage("agent_publish", 0, 0, StageStatus::Success);
     report.duration_seconds = start.elapsed().as_secs_f64();
 
@@ -119,25 +187,47 @@ async fn main() -> Result<()> {
 
     // Assemble PublishBundle + deliver
     let intel_paths = collect_intel_paths(intel_published, &intel_output_dir);
-    let llm_calls_total = sulix_intel::llm::LLM_CALL_COUNT.load(std::sync::atomic::Ordering::Relaxed) - llm_calls_before;
+    let llm_calls_total = sulix_intel::llm::LLM_CALL_COUNT
+        .load(std::sync::atomic::Ordering::Relaxed)
+        - llm_calls_before;
 
     let publish_report = sulix_intel::delivery::publisher::publish(
         sulix_intel::delivery::publisher::PublishBundle::new(
-            artifacts, intel_paths, archive_count, total_raw_signals, article_count, llm_calls_total,
+            artifacts,
+            intel_paths,
+            archive_count,
+            total_raw_signals,
+            article_count,
+            llm_calls_total,
         ),
-        &ctx.config, &ctx.data_dir, &ctx.today,
-    ).await?;
+        &ctx.config,
+        &ctx.data_dir,
+        &ctx.today,
+    )
+    .await?;
 
-    report.status = if publish_report.rejected_count > 0 { PipelineStatus::PartialFailure } else { PipelineStatus::Success };
+    report.status = if publish_report.rejected_count > 0 {
+        PipelineStatus::PartialFailure
+    } else {
+        PipelineStatus::Success
+    };
 
-    log::info!("✅ Sulix Intelligence 执行完成 ({:.1}s)", report.duration_seconds);
+    log::info!(
+        "✅ Sulix Intelligence 执行完成 ({:.1}s)",
+        report.duration_seconds
+    );
     sulix_intel::artifact::report::save_report(
-        &report, &ctx.data_dir, ctx.config.output.frontend_public_dir.as_deref(),
+        &report,
+        &ctx.data_dir,
+        ctx.config.output.frontend_public_dir.as_deref(),
     )?;
 
     if publish_report.rejected_count > 0 {
-        anyhow::bail!("{} object(s) rejected by schema validation. See data/rejected/{}/",
-            publish_report.rejected_count, ctx.today);
+        anyhow::bail!(
+            "{} object(s) rejected by schema validation. See data/rejected/{}/",
+            publish_report.rejected_count,
+            ctx.today
+        );
     }
 
     // R2 失败 bail 放在 report.save 之后，确保本地报告不丢
@@ -150,7 +240,9 @@ async fn main() -> Result<()> {
 
 /// 收集发布的 intel JSON 文件路径
 fn collect_intel_paths(published: usize, output_dir: &std::path::Path) -> Vec<PathBuf> {
-    if published == 0 { return vec![]; }
+    if published == 0 {
+        return vec![];
+    }
     let mut paths = Vec::new();
     if let Ok(entries) = std::fs::read_dir(output_dir) {
         for entry in entries.flatten() {
@@ -173,7 +265,11 @@ async fn init() -> Result<InitContext> {
         config.output.vault_path = ci_path;
     }
     let api_key = config.get_api_key()?;
-    log::info!("配置加载完成: {} 个数据源, LLM 模型: {}", config.sources.len(), config.llm.model);
+    log::info!(
+        "配置加载完成: {} 个数据源, LLM 模型: {}",
+        config.sources.len(),
+        config.llm.model
+    );
 
     // 加载特殊专题
     let special_topics = source::load_special_topics(&config.output.vault_path);
@@ -191,7 +287,9 @@ async fn init() -> Result<InitContext> {
 
     // 初始化认知审计链
     let data_dir = config
-        .storage.as_ref().and_then(|s| s.data_dir.as_deref())
+        .storage
+        .as_ref()
+        .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("data"));
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -212,5 +310,13 @@ async fn init() -> Result<InitContext> {
         },
     );
 
-    Ok(InitContext { config, api_key, db, catalog, data_dir, today, entity_db })
+    Ok(InitContext {
+        config,
+        api_key,
+        db,
+        catalog,
+        data_dir,
+        today,
+        entity_db,
+    })
 }

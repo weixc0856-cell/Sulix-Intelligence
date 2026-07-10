@@ -3,12 +3,12 @@
 //! 职责：将引擎内部的 domain 类型映射为 schema 验证对象。
 //! 纪律：纯转换，零兜底。缺失字段不补 default/fallback，validator 据此报错。
 
-use crate::domain::evidence::Stance;
-use crate::domain::Localized;
-use crate::domain::thesis::Thesis;
-use crate::domain::ThesisDecision;
-use crate::domain::DecisionRecord;
 use crate::domain::compute_confidence;
+use crate::domain::evidence::Stance;
+use crate::domain::thesis::Thesis;
+use crate::domain::DecisionRecord;
+use crate::domain::Localized;
+use crate::domain::ThesisDecision;
 use crate::schema::assessment::AssessmentObject;
 use crate::schema::decision::DecisionObject;
 
@@ -24,8 +24,16 @@ pub fn thesis_to_assessment(
         date: thesis.updated.clone(),
         status: format!("{:?}", thesis.status).to_lowercase(),
         confidence: compute_confidence(&thesis.evidences),
-        evidences: thesis.evidences.iter().filter(|e| e.stance == Stance::Supports).count() as i32,
-        challenges: thesis.evidences.iter().filter(|e| e.stance == Stance::Challenges).count() as i32,
+        evidences: thesis
+            .evidences
+            .iter()
+            .filter(|e| e.stance == Stance::Supports)
+            .count() as i32,
+        challenges: thesis
+            .evidences
+            .iter()
+            .filter(|e| e.stance == Stance::Challenges)
+            .count() as i32,
         summary: None,
         decision: decision.map(|d| d.decision_type.as_key().to_string()),
         decision_rationale: decision.map(|d| Localized::en_only(&d.rationale)),
@@ -37,10 +45,7 @@ pub fn thesis_to_assessment(
 }
 
 /// DecisionRecord → DecisionObject
-pub fn decision_record_to_object(
-    record: &DecisionRecord,
-    locale: &str,
-) -> DecisionObject {
+pub fn decision_record_to_object(record: &DecisionRecord, locale: &str) -> DecisionObject {
     DecisionObject {
         id: record.id.clone(),
         title: Localized::en_only(&format!("{} — {}", record.id, record.decision_type)),

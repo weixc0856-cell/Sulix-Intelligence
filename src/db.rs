@@ -309,7 +309,8 @@ impl Database {
     /// WAL checkpoint before reading intel.db for R2 state upload.
     /// Ensures all recent writes are flushed from WAL into the main DB file.
     pub fn checkpoint_wal(&self) -> Result<()> {
-        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         log::debug!("📦 SQLite WAL checkpoint complete");
         Ok(())
     }

@@ -5,11 +5,11 @@
 //! 过渡桥梁：对象级翻译（Step 3.5: 对象接入 delivery 后，MDX 从 Localized 字段渲染）
 //! 就绪后，本模块的文件遍历逻辑弃用。
 
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use sha2::{Sha256, Digest};
 use anyhow::Result;
 use serde_json;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::config::{Config, LlmConfig};
 
@@ -79,7 +79,11 @@ fn read_translation_hash(content: &str) -> Option<String> {
 }
 
 /// 收集需要翻译的源文件
-fn collect_source_files(mdx_dir: &Path, translate_dirs: &[String], max_files: usize) -> Vec<SourceFile> {
+fn collect_source_files(
+    mdx_dir: &Path,
+    translate_dirs: &[String],
+    max_files: usize,
+) -> Vec<SourceFile> {
     let mut files = Vec::new();
     for dir_type in translate_dirs {
         let dir_path = mdx_dir.join(dir_type);
@@ -121,15 +125,50 @@ fn collect_source_files(mdx_dir: &Path, translate_dirs: &[String], max_files: us
 /// 构建翻译 prompt
 fn build_translation_prompt(content: &str, target_locale: &str) -> String {
     let immutable_fields = [
-        "id", "slug", "date", "version", "dec_id", "asm_id", "inv_id", "assessment_id",
-        "svi", "asi", "confidence", "evidences", "challenges", "signal_strength",
-        "locale", "lang", "status", "decision", "decision_type", "horizon", "stability",
-        "primary_domain", "secondary_domains", "state", "stage", "is_premium",
-        "contract_version", "created", "updated", "generated_at",
-        "thesis_ref", "question", "verdict", "type", "source",
+        "id",
+        "slug",
+        "date",
+        "version",
+        "dec_id",
+        "asm_id",
+        "inv_id",
+        "assessment_id",
+        "svi",
+        "asi",
+        "confidence",
+        "evidences",
+        "challenges",
+        "signal_strength",
+        "locale",
+        "lang",
+        "status",
+        "decision",
+        "decision_type",
+        "horizon",
+        "stability",
+        "primary_domain",
+        "secondary_domains",
+        "state",
+        "stage",
+        "is_premium",
+        "contract_version",
+        "created",
+        "updated",
+        "generated_at",
+        "thesis_ref",
+        "question",
+        "verdict",
+        "type",
+        "source",
         "translation_source_hash",
     ];
-    let translate_fields = ["title", "summary", "question", "rationale", "decision_rationale"];
+    let translate_fields = [
+        "title",
+        "summary",
+        "question",
+        "rationale",
+        "decision_rationale",
+    ];
 
     format!(
         r#"你是一个专业的战略内容翻译。保留原文的决策力度、不确定性表达和判断框架。
@@ -188,7 +227,11 @@ async fn translate_file(
 /// 差异超过 5% 判定为可疑，译文不落盘。
 fn integrity_check(source: &str, translated: &str) -> Result<(), String> {
     let counts = |s: &str| -> (usize, usize, usize) {
-        (s.matches('<').count(), s.matches("```").count(), s.matches('[').count())
+        (
+            s.matches('<').count(),
+            s.matches("```").count(),
+            s.matches('[').count(),
+        )
     };
     let (src_lt, src_fence, src_bracket) = counts(source);
     let (tgt_lt, tgt_fence, tgt_bracket) = counts(translated);
@@ -199,11 +242,21 @@ fn integrity_check(source: &str, translated: &str) -> Result<(), String> {
     };
 
     let mut issues = Vec::new();
-    if pct(src_lt, tgt_lt) > 0.05 { issues.push(format!("< count: {}→{}", src_lt, tgt_lt)); }
-    if src_fence != tgt_fence { issues.push(format!("``` count: {}→{}", src_fence, tgt_fence)); }
-    if pct(src_bracket, tgt_bracket) > 0.20 { issues.push(format!("[ count: {}→{}", src_bracket, tgt_bracket)); }
+    if pct(src_lt, tgt_lt) > 0.05 {
+        issues.push(format!("< count: {}→{}", src_lt, tgt_lt));
+    }
+    if src_fence != tgt_fence {
+        issues.push(format!("``` count: {}→{}", src_fence, tgt_fence));
+    }
+    if pct(src_bracket, tgt_bracket) > 0.20 {
+        issues.push(format!("[ count: {}→{}", src_bracket, tgt_bracket));
+    }
 
-    if issues.is_empty() { Ok(()) } else { Err(issues.join("; ")) }
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(issues.join("; "))
+    }
 }
 
 /// 将翻译结果写入磁盘（含追踪字段）
@@ -241,10 +294,7 @@ fn write_translation(
 /// 发布翻译—遍历英文 MDX，对各目标语言调用 LLM 补齐
 ///
 /// 永不返回 Err：失败记入 coverage 而非中断管线。
-pub async fn publish_translate(
-    config: &Config,
-    api_key: &str,
-) -> TranslationCoverage {
+pub async fn publish_translate(config: &Config, api_key: &str) -> TranslationCoverage {
     let start = std::time::Instant::now();
     let translation_cfg = match &config.translation {
         Some(cfg) if cfg.enabled => cfg,
@@ -259,7 +309,11 @@ pub async fn publish_translate(
         }
     };
 
-    let sources = collect_source_files(&mdx_dir, &translation_cfg.translate_dirs, translation_cfg.max_files_per_run);
+    let sources = collect_source_files(
+        &mdx_dir,
+        &translation_cfg.translate_dirs,
+        translation_cfg.max_files_per_run,
+    );
     let total_locales = translation_cfg.target_locales.len();
     if sources.is_empty() {
         log::info!("📖 translation: no source files to translate");
@@ -275,12 +329,18 @@ pub async fn publish_translate(
         for source in &sources {
             if !source.content.starts_with("---") {
                 coverage.skipped += 1;
-                log::debug!("📖 translation: skip {} (no frontmatter)", source.relative_path);
+                log::debug!(
+                    "📖 translation: skip {} (no frontmatter)",
+                    source.relative_path
+                );
                 continue;
             }
 
             // Check if target exists and hash matches
-            let target_path = mdx_dir.join(locale).join(&source.dir_type).join(&source.file_name);
+            let target_path = mdx_dir
+                .join(locale)
+                .join(&source.dir_type)
+                .join(&source.file_name);
             if target_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&target_path) {
                     if let Some(stored_hash) = read_translation_hash(&content) {
@@ -294,7 +354,10 @@ pub async fn publish_translate(
                 }
             }
 
-            let model_name = translation_cfg.model.as_deref().unwrap_or(&config.llm.model);
+            let model_name = translation_cfg
+                .model
+                .as_deref()
+                .unwrap_or(&config.llm.model);
             let target_llm = crate::config::LlmConfig {
                 model: model_name.to_string(),
                 api_key: config.llm.api_key.clone(),
@@ -305,34 +368,47 @@ pub async fn publish_translate(
                 perplexity_key: config.llm.perplexity_key.clone(),
             };
 
-            match translate_file(
-                &source.content,
-                locale,
-                api_key,
-                &target_llm,
-            ).await {
+            match translate_file(&source.content, locale, api_key, &target_llm).await {
                 Ok(translated) => {
                     // Integrity check: 验证 MDX 结构未被 LLM 破坏
                     match integrity_check(&source.content, &translated) {
                         Ok(()) => {
                             if let Err(e) = write_translation(
-                                &mdx_dir, locale,
-                                &source.dir_type, &source.file_name,
-                                &translated, &source.body_hash, model_name,
+                                &mdx_dir,
+                                locale,
+                                &source.dir_type,
+                                &source.file_name,
+                                &translated,
+                                &source.body_hash,
+                                model_name,
                             ) {
                                 coverage.failed += 1;
-                                log::warn!("📖 translation: write failed [{}]: {}", source.relative_path, e);
+                                log::warn!(
+                                    "📖 translation: write failed [{}]: {}",
+                                    source.relative_path,
+                                    e
+                                );
                             } else {
                                 coverage.translated += 1;
-                                log::info!("📖 translation: {} → {}/{}", source.relative_path, locale, source.file_name);
+                                log::info!(
+                                    "📖 translation: {} → {}/{}",
+                                    source.relative_path,
+                                    locale,
+                                    source.file_name
+                                );
                             }
                         }
                         Err(integrity_err) => {
                             coverage.failed += 1;
-                            log::warn!("📖 translation: integrity check failed [{}]: {}", source.relative_path, integrity_err);
+                            log::warn!(
+                                "📖 translation: integrity check failed [{}]: {}",
+                                source.relative_path,
+                                integrity_err
+                            );
                             // 拒绝写入，记入 rejected
                             if let Some(mdx_out) = &config.output.mdx_dir {
-                                let rejected_dir = PathBuf::from(mdx_out).join("rejected").join(locale);
+                                let rejected_dir =
+                                    PathBuf::from(mdx_out).join("rejected").join(locale);
                                 let _ = std::fs::create_dir_all(&rejected_dir);
                                 let rejected_path = rejected_dir.join(&source.file_name);
                                 let _ = std::fs::write(&rejected_path, &translated);
@@ -342,16 +418,25 @@ pub async fn publish_translate(
                 }
                 Err(e) => {
                     coverage.failed += 1;
-                    log::warn!("📖 translation: LLM failed [{}]: {}", source.relative_path, e);
+                    log::warn!(
+                        "📖 translation: LLM failed [{}]: {}",
+                        source.relative_path,
+                        e
+                    );
                 }
             }
         }
     }
 
     coverage.duration_seconds = start.elapsed().as_secs_f64();
-    log::info!("📖 translation: {}/{} translated ({} skipped, {} stale, {} failed) in {:.1}s",
-        coverage.translated, coverage.total_files,
-        coverage.skipped, coverage.stale, coverage.failed,
-        coverage.duration_seconds);
+    log::info!(
+        "📖 translation: {}/{} translated ({} skipped, {} stale, {} failed) in {:.1}s",
+        coverage.translated,
+        coverage.total_files,
+        coverage.skipped,
+        coverage.stale,
+        coverage.failed,
+        coverage.duration_seconds
+    );
     coverage
 }

@@ -50,18 +50,27 @@ pub async fn publish_preprocess(data_dir: &Path, config: &Config) -> StateBundle
     let registry_path = PathBuf::from(&config.output.vault_path).join("assessment_registry.json");
     let registry = crate::engine::registry::AssessmentRegistry::load_or_new(&registry_path);
 
-    let inv_registry_path = PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
-    let inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(&inv_registry_path);
+    let inv_registry_path =
+        PathBuf::from(&config.output.vault_path).join("investigation_registry.json");
+    let inv_registry = crate::engine::investigation_registry::InvestigationRegistry::load_or_new(
+        &inv_registry_path,
+    );
 
-    let decision_registry_path = PathBuf::from(&config.output.vault_path).join("decision_registry.json");
+    let decision_registry_path =
+        PathBuf::from(&config.output.vault_path).join("decision_registry.json");
     let decision_registry = DecisionRegistry::load_or_new(&decision_registry_path);
 
     StateBundle {
-        event_log, event_log_path,
-        chronicle, chronicle_path,
-        memory_for_linking, memory_path,
-        registry, registry_path,
-        inv_registry, inv_registry_path,
+        event_log,
+        event_log_path,
+        chronicle,
+        chronicle_path,
+        memory_for_linking,
+        memory_path,
+        registry,
+        registry_path,
+        inv_registry,
+        inv_registry_path,
         decision_registry,
     }
 }

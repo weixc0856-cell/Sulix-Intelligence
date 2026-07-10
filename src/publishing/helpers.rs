@@ -13,8 +13,22 @@ pub struct ResearchOutput {
 
 impl ResearchOutput {
     #[allow(clippy::type_complexity)]
-    pub fn destructure(self) -> (Vec<Theme>, Vec<ThemeAnalysis>, Vec<ThemeAnalysis>, Vec<crate::fetcher::Article>, crate::agent::scan::TriageResult) {
-        (self.themes, self.analyses, self.analyses_zh, self.new_articles, self.triage)
+    pub fn destructure(
+        self,
+    ) -> (
+        Vec<Theme>,
+        Vec<ThemeAnalysis>,
+        Vec<ThemeAnalysis>,
+        Vec<crate::fetcher::Article>,
+        crate::agent::scan::TriageResult,
+    ) {
+        (
+            self.themes,
+            self.analyses,
+            self.analyses_zh,
+            self.new_articles,
+            self.triage,
+        )
     }
 }
 
@@ -42,13 +56,16 @@ pub async fn analyze_and_validate(
     prompts: Option<&crate::config::PromptsConfig>,
     language: &str,
 ) -> Option<ThemeAnalysis> {
-    let mut analysis = match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts).await {
-        Ok(a) => a,
-        Err(e) => {
-            log::warn!("⚠️ 主题分析失败 [{}|{}]: {}", language, theme.title, e);
-            return None;
-        }
-    };
+    let mut analysis =
+        match crate::engine::analysis::analyze_theme(theme, api_key, llm_config, language, prompts)
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                log::warn!("⚠️ 主题分析失败 [{}|{}]: {}", language, theme.title, e);
+                return None;
+            }
+        };
     match crate::engine::analysis::challenge_theme(&analysis, api_key, llm_config, prompts).await {
         Ok((assumptions, adverse, next_tests, open_questions)) => {
             analysis.assumptions = assumptions;
@@ -56,7 +73,12 @@ pub async fn analyze_and_validate(
             analysis.next_tests = next_tests;
             analysis.open_questions = open_questions;
         }
-        Err(e) => log::warn!("⚠️ 蓝军验证失败 [{}|{}], 使用无蓝军分析: {}", language, theme.title, e),
+        Err(e) => log::warn!(
+            "⚠️ 蓝军验证失败 [{}|{}], 使用无蓝军分析: {}",
+            language,
+            theme.title,
+            e
+        ),
     }
     Some(analysis)
 }

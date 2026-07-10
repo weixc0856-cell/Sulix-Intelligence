@@ -1,8 +1,8 @@
 //! Schematized Decision — 规范决策对象的验证定义
 
-use serde::{Deserialize, Serialize};
-use schemars::JsonSchema;
 use crate::domain::Localized;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// 规范决策对象（验证 Schema 用）
 /// 对应 frontend contracts/decision.schema.json
@@ -33,10 +33,18 @@ impl DecisionObject {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if self.id.is_empty() { errors.push("id: empty".into()); }
-        if self.title.is_empty() { errors.push("title: empty".into()); }
-        if self.decision_type.is_empty() { errors.push("decision_type: empty".into()); }
-        if self.horizon.is_empty() { errors.push("horizon: empty".into()); }
+        if self.id.is_empty() {
+            errors.push("id: empty".into());
+        }
+        if self.title.is_empty() {
+            errors.push("title: empty".into());
+        }
+        if self.decision_type.is_empty() {
+            errors.push("decision_type: empty".into());
+        }
+        if self.horizon.is_empty() {
+            errors.push("horizon: empty".into());
+        }
         if self.confidence < 0.0 || self.confidence > 1.0 {
             errors.push("confidence: out of range [0,1]".into());
         }
@@ -55,7 +63,13 @@ impl DecisionObject {
 }
 
 impl crate::schema::validator::Validate for DecisionObject {
-    fn object_type() -> &'static str { "decision" }
-    fn object_id(&self) -> &str { &self.id }
-    fn validate(&self) -> Vec<String> { self.validate() }
+    fn object_type() -> &'static str {
+        "decision"
+    }
+    fn object_id(&self) -> &str {
+        &self.id
+    }
+    fn validate(&self) -> Vec<String> {
+        self.validate()
+    }
 }

@@ -108,7 +108,14 @@ impl ContentManifest {
     }
 
     /// 回填验证门后的真实计数
-    pub fn with_counts(mut self, assessments: usize, investigations: usize, decisions: usize, archive_days: usize, total_signals: usize) -> Self {
+    pub fn with_counts(
+        mut self,
+        assessments: usize,
+        investigations: usize,
+        decisions: usize,
+        archive_days: usize,
+        total_signals: usize,
+    ) -> Self {
         self.assessments_active = assessments;
         self.investigations = investigations;
         self.decisions = decisions;
@@ -119,7 +126,15 @@ impl ContentManifest {
     }
 
     /// 回填漏斗指标
-    pub fn with_funnel(mut self, fetched: usize, deduped: usize, scored: usize, tier2: usize, tier3: usize, llm_calls: u64) -> Self {
+    pub fn with_funnel(
+        mut self,
+        fetched: usize,
+        deduped: usize,
+        scored: usize,
+        tier2: usize,
+        tier3: usize,
+        llm_calls: u64,
+    ) -> Self {
         self.funnel_fetched = Some(fetched);
         self.funnel_deduped = Some(deduped);
         self.funnel_scored = Some(scored);

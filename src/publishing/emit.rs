@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::config::Config;
+use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::renderer::publisher::Publisher;
 
 use super::infer::InferredState;
@@ -24,13 +24,22 @@ pub async fn publish_emit(
 ) -> Result<()> {
     // Markdown 输出
     let md_ctx = crate::renderer::publisher::PublishContext {
-        themes: themes.to_vec(), analyses: analyses.to_vec(),
-        date: today.to_string(), locale: "en".to_string(),
-        theses: vec![], reports: vec![], canonical_decisions: vec![],
-        asi_scores: HashMap::new(), editor_notes: vec![],
-        belief_notes_html: String::new(), articles: vec![],
-        mdx_output_dir: None, output_dir: vault_base.clone(),
-        reflections: vec![], thesis_decisions: vec![], outcomes: vec![],
+        themes: themes.to_vec(),
+        analyses: analyses.to_vec(),
+        date: today.to_string(),
+        locale: "en".to_string(),
+        theses: vec![],
+        reports: vec![],
+        canonical_decisions: vec![],
+        asi_scores: HashMap::new(),
+        editor_notes: vec![],
+        belief_notes_html: String::new(),
+        articles: vec![],
+        mdx_output_dir: None,
+        output_dir: vault_base.clone(),
+        reflections: vec![],
+        thesis_decisions: vec![],
+        outcomes: vec![],
     };
     crate::renderer::publisher::MarkdownPublisher::new().publish(&md_ctx)?;
     log::info!("📝 Markdown 输出: {} 个主题", themes.len());
@@ -38,8 +47,10 @@ pub async fn publish_emit(
     // MDX 输出（主要输出格式）
     if let Some(ref mdx_out) = config.output.mdx_dir {
         let mdx_ctx = crate::renderer::publisher::PublishContext {
-            themes: themes.to_vec(), analyses: analyses.to_vec(),
-            date: today.to_string(), locale: "en".to_string(),
+            themes: themes.to_vec(),
+            analyses: analyses.to_vec(),
+            date: today.to_string(),
+            locale: "en".to_string(),
             theses: inferred.memory.theses().to_vec(),
             reports: inferred.premium_reports.clone(),
             canonical_decisions: inferred.memory.all_decisions().to_vec(),
@@ -65,13 +76,20 @@ pub async fn publish_emit(
             } else {
                 for (slug, report, assessment_id, inv_id) in &inferred.investigation_reports {
                     let mdx = crate::renderer::mdx::render_investigation_mdx(
-                        report, slug, assessment_id.as_deref(), inv_id.as_deref(), "en",
+                        report,
+                        slug,
+                        assessment_id.as_deref(),
+                        inv_id.as_deref(),
+                        "en",
                     );
                     if let Err(e) = std::fs::write(inv_dir.join(format!("{}.md", slug)), &mdx) {
                         log::warn!("⚠️ Investigation MDX write failed [{}]: {}", slug, e);
                     }
                 }
-                log::info!("📝 Investigation MDX: {} 篇", inferred.investigation_reports.len());
+                log::info!(
+                    "📝 Investigation MDX: {} 篇",
+                    inferred.investigation_reports.len()
+                );
             }
         }
     }

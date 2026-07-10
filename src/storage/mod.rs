@@ -33,11 +33,7 @@ pub fn with_corrupt_recovery<T>(
                 path.to_string_lossy(),
                 chrono::Utc::now().format("%Y%m%d_%H%M%S")
             );
-            log::warn!(
-                "⚠️ 持久化数据损坏 ({}), 备份到 {} 后重建",
-                e,
-                backup
-            );
+            log::warn!("⚠️ 持久化数据损坏 ({}), 备份到 {} 后重建", e, backup);
             let _ = std::fs::rename(path, &backup);
             fallback()
         }
@@ -64,7 +60,12 @@ mod tests {
         fs::write(&path, "{\"key\": \"value\"}").unwrap();
         let result: serde_json::Value = with_corrupt_recovery(
             &path,
-            |p| Ok(serde_json::from_str::<serde_json::Value>(&fs::read_to_string(p).unwrap()).unwrap()),
+            |p| {
+                Ok(
+                    serde_json::from_str::<serde_json::Value>(&fs::read_to_string(p).unwrap())
+                        .unwrap(),
+                )
+            },
             || serde_json::json!({}),
         );
         assert_eq!(result["key"], "value");
@@ -78,14 +79,21 @@ mod tests {
         fs::write(&path, "not valid json").unwrap();
         let result: i32 = with_corrupt_recovery(
             &path,
-            |p| { let _ = fs::read_to_string(p)?; anyhow::bail!("simulated parse error"); },
+            |p| {
+                let _ = fs::read_to_string(p)?;
+                anyhow::bail!("simulated parse error");
+            },
             || 99,
         );
         assert_eq!(result, 99);
         // cleanup: corrupt backup file
         for entry in fs::read_dir(&dir).unwrap() {
             let entry = entry.unwrap();
-            if entry.file_name().to_string_lossy().contains("test_corrupt_recovery.json.corrupt.") {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .contains("test_corrupt_recovery.json.corrupt.")
+            {
                 let _ = fs::remove_file(entry.path());
             }
         }

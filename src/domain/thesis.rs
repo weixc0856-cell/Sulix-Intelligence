@@ -15,8 +15,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::strategic_domain::StrategicDomain;
 use crate::domain::evidence::{Evidence, Stance};
+use crate::domain::strategic_domain::StrategicDomain;
 use crate::domain::theme::Assumption;
 
 /// Thesis 状态 — 完整生命周期

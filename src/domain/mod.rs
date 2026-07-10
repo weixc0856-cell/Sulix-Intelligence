@@ -12,19 +12,19 @@
 //! - reflection:  反思复盘（为什么对/错）
 
 pub mod action;
-pub mod strategic_domain;
-pub mod revision;
+pub mod artifact;
+pub mod decision;
+pub mod editor_note;
 pub mod evidence;
 pub mod investigation;
+pub mod localized;
 pub mod outcome;
 pub mod premium;
 pub mod reflection;
+pub mod revision;
+pub mod strategic_domain;
 pub mod theme;
-pub mod decision;
-pub mod editor_note;
 pub mod thesis;
-pub mod artifact;
-pub mod localized;
 
 // ===== 统一重导出 =====
 // 显式列出的类型 — 只有外部实际消费的类型才暴露。
@@ -32,15 +32,15 @@ pub mod localized;
 
 pub use action::{DecisionHorizon, DecisionStability, DecisionType};
 pub use decision::{DecisionRecord, DecisionState, DecisionTransition, ThesisDecision};
-pub use strategic_domain::StrategicDomain;
-pub use revision::{build_revision_history, Revision};
 pub use editor_note::EditorNote;
 pub use evidence::{compute_confidence, Evidence, FactBaseEntry, Stance};
 pub use investigation::{Investigation, InvestigationReport, Question, QuestionStatus};
+pub use localized::Localized;
 pub use outcome::{generate_outcome_id, Outcome, OutcomeVerdict};
 pub use premium::{PremiumReport, SpecialTopic};
 pub use reflection::Reflection;
-pub use localized::Localized;
+pub use revision::{build_revision_history, Revision};
+pub use strategic_domain::StrategicDomain;
 pub use theme::{AdverseScenario, Assumption, CausalChain, Summary, Theme, ThemeAnalysis};
 pub use thesis::{
     ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,

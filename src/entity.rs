@@ -21,8 +21,18 @@ use std::collections::HashMap;
 /// 而非各自维护重复的硬编码数组。
 pub fn known_entities() -> &'static [&'static str] {
     &[
-        "TSMC", "ASML", "NVIDIA", "OPENAI", "ANTHROPIC",
-        "GOOGLE", "META", "MICROSOFT", "INTEL", "AMD", "ARM", "HBM",
+        "TSMC",
+        "ASML",
+        "NVIDIA",
+        "OPENAI",
+        "ANTHROPIC",
+        "GOOGLE",
+        "META",
+        "MICROSOFT",
+        "INTEL",
+        "AMD",
+        "ARM",
+        "HBM",
     ]
 }
 

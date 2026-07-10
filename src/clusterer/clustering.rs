@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 
-use crate::domain::theme::Theme;
 use crate::config::LlmConfig;
+use crate::domain::theme::Theme;
 use crate::fetcher::Article;
 use crate::llm;
 

@@ -5,10 +5,10 @@
 //! TODO: 在 Phase 2 中统一 DecisionState / DecisionTransition / DecisionRecord
 //!       与 ThesisDecision 之间的关系，消除重复建模。
 
-use serde::{Deserialize, Serialize};
 use crate::domain::action::{DecisionHorizon, DecisionStability, DecisionType};
 use crate::domain::strategic_domain::StrategicDomain;
 use crate::event_log::{ObjectEvent, ObjectEventType};
+use serde::{Deserialize, Serialize};
 
 // ===== Canonical Decision Object (DEC-XXXX) =====
 
@@ -18,8 +18,12 @@ use crate::event_log::{ObjectEvent, ObjectEventType};
 pub enum DecisionState {
     #[default]
     Active,
-    Archived { reason: String },
-    Superseded { by: String }, // by DEC-XXXX
+    Archived {
+        reason: String,
+    },
+    Superseded {
+        by: String,
+    }, // by DEC-XXXX
     Expired,
 }
 

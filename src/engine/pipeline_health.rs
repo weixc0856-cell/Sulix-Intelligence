@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// 私有辅助：将序列化值写入 JSON 文件（创建父目录）
-fn write_json_to_file<T: Serialize>(value: &T, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_json_to_file<T: Serialize>(
+    value: &T,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -48,6 +51,9 @@ pub struct PipelineReport {
     /// 信号按分类的分布（前端 Observation 漏斗分解用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category_counts: Option<std::collections::HashMap<String, usize>>,
+    /// LLM 未评估、系统兜底的信号数（批次失败等）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_assessed_count: Option<usize>,
     pub stages: Vec<PipelineStage>,
     pub status: PipelineStatus,
 }
@@ -161,6 +167,7 @@ impl PipelineReport {
             decision_count: None,
             investigation_count: None,
             category_counts: None,
+            fallback_assessed_count: None,
             stages: Vec::new(),
             status: PipelineStatus::Success,
         }

@@ -11,13 +11,13 @@
 //! - Markdown 正文：人类可读，机器可解析
 //! - 无需 HTML 模板引擎，无需 CSS
 
+use crate::domain::decision::ThesisDecision;
 use crate::domain::evidence::Stance;
 use crate::domain::investigation::InvestigationReport;
 use crate::domain::outcome::Outcome;
 use crate::domain::reflection::Reflection;
 use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::{LifecycleEventKind, Thesis};
-use crate::domain::decision::ThesisDecision;
 use crate::domain::EditorNote;
 use crate::domain::PremiumReport;
 use crate::renderer::helpers::yaml_escape;
@@ -82,10 +82,12 @@ pub(crate) fn render_daily_mdx(
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: daily\n");
     // StrategicDomain classification from theme title + analysis content
-    let (daily_primary, daily_secondary) = crate::domain::StrategicDomain::classify(
-        &format!("{} {}", theme.title, analysis.bluf)
-    );
-    mdx.push_str(&format!("primary_domain: \"{}\"\n", daily_primary.label().to_lowercase()));
+    let (daily_primary, daily_secondary) =
+        crate::domain::StrategicDomain::classify(&format!("{} {}", theme.title, analysis.bluf));
+    mdx.push_str(&format!(
+        "primary_domain: \"{}\"\n",
+        daily_primary.label().to_lowercase()
+    ));
     if !daily_secondary.is_empty() {
         mdx.push_str("secondary_domains:\n");
         for sd in &daily_secondary {
@@ -245,7 +247,9 @@ pub(crate) fn render_thesis_mdx(
     // 计算近 7 天新增证据数（用于前端"Why Now?"）
     let today_date = chrono::NaiveDate::parse_from_str(&thesis.updated, "%Y-%m-%d")
         .unwrap_or_else(|_| chrono::Local::now().date_naive());
-    let evidences_recent = thesis.evidences.iter()
+    let evidences_recent = thesis
+        .evidences
+        .iter()
         .filter(|e| {
             chrono::NaiveDate::parse_from_str(&e.date, "%Y-%m-%d")
                 .is_ok_and(|d| (today_date - d).num_days() <= 7)
@@ -254,10 +258,11 @@ pub(crate) fn render_thesis_mdx(
 
     // 计算置信度 delta（vs 7 天前，用于 What Changed）
     let week_ago = today_date - chrono::Duration::days(7);
-    let old_confidence = thesis.confidence_history.iter()
+    let old_confidence = thesis
+        .confidence_history
+        .iter()
         .rfind(|snap| {
-            chrono::NaiveDate::parse_from_str(&snap.date, "%Y-%m-%d")
-                .is_ok_and(|d| d <= week_ago)
+            chrono::NaiveDate::parse_from_str(&snap.date, "%Y-%m-%d").is_ok_and(|d| d <= week_ago)
         })
         .map(|snap| snap.value)
         .unwrap_or(confidence);
@@ -328,8 +333,15 @@ pub(crate) fn render_thesis_mdx(
     }
     // 决策连续天数（Stability Layer：前端显示 "Stable N days"）
     if !thesis.decision_history.is_empty() {
-        let last_type = thesis.decision_history.last().map(|s| s.decision_type.as_str()).unwrap_or("");
-        let decision_days = thesis.decision_history.iter().rev()
+        let last_type = thesis
+            .decision_history
+            .last()
+            .map(|s| s.decision_type.as_str())
+            .unwrap_or("");
+        let decision_days = thesis
+            .decision_history
+            .iter()
+            .rev()
             .take_while(|s| s.decision_type == last_type)
             .count();
         if decision_days >= 2 {
@@ -339,10 +351,16 @@ pub(crate) fn render_thesis_mdx(
     // 来源归因（top-3 不重复来源，供前端"4 independent sources"展示）
     {
         let mut seen = std::collections::HashSet::new();
-        let unique_sources: Vec<String> = thesis.evidences.iter()
+        let unique_sources: Vec<String> = thesis
+            .evidences
+            .iter()
             .filter_map(|e| {
                 let s = e.source.trim().to_string();
-                if !s.is_empty() && seen.insert(s.clone()) { Some(s) } else { None }
+                if !s.is_empty() && seen.insert(s.clone()) {
+                    Some(s)
+                } else {
+                    None
+                }
             })
             .take(3)
             .collect();
@@ -374,10 +392,7 @@ pub(crate) fn render_thesis_mdx(
     }
     // Decision Intelligence frontmatter
     if let Some(dec) = decision {
-        mdx.push_str(&format!(
-            "decision: \"{}\"\n",
-            dec.decision_type.as_key()
-        ));
+        mdx.push_str(&format!("decision: \"{}\"\n", dec.decision_type.as_key()));
         mdx.push_str(&format!(
             "decision_rationale: {}\n",
             yaml_escape(&dec.rationale)
@@ -429,7 +444,9 @@ pub(crate) fn render_thesis_mdx(
     // Assessment Ledger 用：提供决策时间线
     {
         let mut last_decision: Option<String> = None;
-        let decision_changes: Vec<_> = thesis.decision_history.iter()
+        let decision_changes: Vec<_> = thesis
+            .decision_history
+            .iter()
             .filter(|snap| {
                 if Some(&snap.decision_type) != last_decision.as_ref() {
                     last_decision = Some(snap.decision_type.clone());
@@ -444,9 +461,7 @@ pub(crate) fn render_thesis_mdx(
             for snap in &decision_changes {
                 mdx.push_str(&format!(
                     "  - date: \"{}\"\n    decision: \"{}\"\n    confidence: {:.2}\n",
-                    snap.date,
-                    snap.decision_type,
-                    snap.confidence
+                    snap.date, snap.decision_type, snap.confidence
                 ));
             }
         }
@@ -457,18 +472,19 @@ pub(crate) fn render_thesis_mdx(
             for snap in &recent_decisions {
                 mdx.push_str(&format!(
                     "  - date: \"{}\"\n    decision: \"{}\"\n    confidence: {:.2}\n",
-                    snap.date,
-                    snap.decision_type,
-                    snap.confidence
+                    snap.date, snap.decision_type, snap.confidence
                 ));
             }
         }
     }
     // Evidence Attribution — 支持/反对证据摘要（Evidence 区块详细化用）
     {
-        let supporting: Vec<String> = thesis.evidences.iter()
+        let supporting: Vec<String> = thesis
+            .evidences
+            .iter()
             .filter(|e| e.stance == Stance::Supports)
-            .rev().take(5)
+            .rev()
+            .take(5)
             .map(|e| format!("[{}] {}", e.source, e.summary))
             .collect();
         if !supporting.is_empty() {
@@ -477,9 +493,12 @@ pub(crate) fn render_thesis_mdx(
                 mdx.push_str(&format!("  - {}\n", yaml_escape(e)));
             }
         }
-        let conflicting: Vec<String> = thesis.evidences.iter()
+        let conflicting: Vec<String> = thesis
+            .evidences
+            .iter()
             .filter(|e| e.stance == Stance::Challenges)
-            .rev().take(3)
+            .rev()
+            .take(3)
             .map(|e| format!("[{}] {}", e.source, e.summary))
             .collect();
         if !conflicting.is_empty() {
@@ -504,18 +523,13 @@ pub(crate) fn render_thesis_mdx(
                     mdx.push_str(&format!("    confidence_delta: {:.1}\n", delta));
                 }
                 if let Some((ref from, ref to)) = v.decision_change {
-                    mdx.push_str(&format!(
-                        "    decision_change: \"{}->{}\"\n", from, to
-                    ));
+                    mdx.push_str(&format!("    decision_change: \"{}->{}\"\n", from, to));
                 }
                 if let Some((ref _from, ref to)) = v.status_change {
                     mdx.push_str(&format!("    status_change: \"{}\"\n", yaml_escape(to)));
                 }
                 if !v.evidence_added.is_empty() {
-                    mdx.push_str(&format!(
-                        "    evidence_added: {}\n",
-                        v.evidence_added.len()
-                    ));
+                    mdx.push_str(&format!("    evidence_added: {}\n", v.evidence_added.len()));
                 }
                 if !v.challenges_added.is_empty() {
                     mdx.push_str(&format!(
@@ -523,10 +537,7 @@ pub(crate) fn render_thesis_mdx(
                         v.challenges_added.len()
                     ));
                 }
-                mdx.push_str(&format!(
-                    "    summary: {}\n",
-                    yaml_escape(&v.summary())
-                ));
+                mdx.push_str(&format!("    summary: {}\n", yaml_escape(&v.summary())));
             }
         }
     }
@@ -620,7 +631,7 @@ pub(crate) fn render_research_mdx(report: &PremiumReport, locale: &str) -> Strin
     mdx.push_str(&format!("is_premium: {}\n", report.is_premium));
     mdx.push_str("type: research\n");
     let (research_primary, research_secondary) = crate::domain::StrategicDomain::classify(
-        &format!("{} {}", report.theme_title, report.executive_summary)
+        &format!("{} {}", report.theme_title, report.executive_summary),
     );
     mdx.push_str(&format!(
         "primary_domain: \"{}\"\n",
@@ -666,7 +677,11 @@ pub(crate) fn render_research_mdx(report: &PremiumReport, locale: &str) -> Strin
 /// 渲染每日文章摘要 MDX（所有去重后文章的列表页）
 ///
 /// 输出到 output/daily/digest-{date}.mdx，供前端 Signal Feed 展示。
-pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &str, locale: &str) -> String {
+pub(crate) fn render_digest_mdx(
+    articles: &[crate::fetcher::Article],
+    today: &str,
+    locale: &str,
+) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
     mdx.push_str(&format!("title: \"Daily Signal Digest — {}\"\n", today));
@@ -676,10 +691,7 @@ pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &st
     mdx.push_str(&format!("article_count: {}\n", articles.len()));
     mdx.push_str("---\n\n");
 
-    mdx.push_str(&format!(
-        "## Signal Feed — {} articles\n\n",
-        articles.len()
-    ));
+    mdx.push_str(&format!("## Signal Feed — {} articles\n\n", articles.len()));
 
     for article in articles {
         let source = yaml_escape(&article.source);
@@ -716,7 +728,12 @@ pub(crate) fn render_digest_mdx(articles: &[crate::fetcher::Article], today: &st
 }
 
 /// 渲染复盘反思 MDX
-pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str, assessment_id: Option<&str>, locale: &str) -> String {
+pub(crate) fn render_reflection_mdx(
+    reflection: &Reflection,
+    thesis_title: &str,
+    assessment_id: Option<&str>,
+    locale: &str,
+) -> String {
     let _slug = format!("reflection-{}", reflection.id.replace(':', "-"));
 
     let mut mdx = String::new();
@@ -768,10 +785,19 @@ pub(crate) fn render_reflection_mdx(reflection: &Reflection, thesis_title: &str,
 /// 结构：Core Question → Supporting Evidence → Counter Evidence
 ///       → Key Unknowns → Falsification Conditions → Preliminary Conclusion
 /// 输出到 output/investigation/{slug}.md
-pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str, assessment_id: Option<&str>, inv_id: Option<&str>, locale: &str) -> String {
+pub(crate) fn render_investigation_mdx(
+    report: &InvestigationReport,
+    slug: &str,
+    assessment_id: Option<&str>,
+    inv_id: Option<&str>,
+    locale: &str,
+) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
-    mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Investigation: {}", report.thesis_title))));
+    mdx.push_str(&format!(
+        "title: {}\n",
+        yaml_escape(&format!("Investigation: {}", report.thesis_title))
+    ));
     mdx.push_str(&format!("date: \"{}\"\n", report.date));
     mdx.push_str(&format!("locale: \"{}\"\n", locale));
     mdx.push_str("type: investigation\n");
@@ -783,15 +809,24 @@ pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str,
         mdx.push_str(&format!("inv_id: \"{}\"\n", id));
     }
     mdx.push_str(&format!("status: \"{}\"\n", report.status));
-    mdx.push_str(&format!("question: {}\n", yaml_escape(&report.core_question)));
+    mdx.push_str(&format!(
+        "question: {}\n",
+        yaml_escape(&report.core_question)
+    ));
     // thesis_ref: 优先用稳定的 ASM-ID，fallback 到 title-derived slug
     let thesis_ref = assessment_id.unwrap_or(slug);
     mdx.push_str(&format!("thesis_ref: {}\n", yaml_escape(thesis_ref)));
     if !report.supporting_evidence.is_empty() {
-        mdx.push_str(&format!("supporting_count: {}\n", report.supporting_evidence.len()));
+        mdx.push_str(&format!(
+            "supporting_count: {}\n",
+            report.supporting_evidence.len()
+        ));
     }
     if !report.counter_evidence.is_empty() {
-        mdx.push_str(&format!("counter_count: {}\n", report.counter_evidence.len()));
+        mdx.push_str(&format!(
+            "counter_count: {}\n",
+            report.counter_evidence.len()
+        ));
     }
     mdx.push_str("---\n\n");
 
@@ -841,7 +876,14 @@ pub(crate) fn render_investigation_mdx(report: &InvestigationReport, slug: &str,
 pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &str) -> String {
     let mut mdx = String::new();
     mdx.push_str("---\n");
-    mdx.push_str(&format!("title: {}\n", yaml_escape(&format!("Decision {}: {}", dec.id, dec.decision_type.to_uppercase()))));
+    mdx.push_str(&format!(
+        "title: {}\n",
+        yaml_escape(&format!(
+            "Decision {}: {}",
+            dec.id,
+            dec.decision_type.to_uppercase()
+        ))
+    ));
     mdx.push_str(&format!("dec_id: \"{}\"\n", dec.id));
     mdx.push_str(&format!("asm_id: \"{}\"\n", dec.asm_id));
     mdx.push_str(&format!("decision: \"{}\"\n", dec.decision_type));
@@ -875,13 +917,28 @@ pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &
     }
     mdx.push_str("---\n\n");
     mdx.push_str(&format!("## Decision {}\n\n", dec.id));
-    mdx.push_str(&format!("**{}** — Linked to [{}]\n\n", dec.decision_type.to_uppercase(), dec.asm_id));
-    mdx.push_str(&format!("Confidence: {:.0}%  |  Horizon: {}  |  Stability: {}\n\n", dec.confidence * 100.0, dec.horizon, dec.stability));
+    mdx.push_str(&format!(
+        "**{}** — Linked to [{}]\n\n",
+        dec.decision_type.to_uppercase(),
+        dec.asm_id
+    ));
+    mdx.push_str(&format!(
+        "Confidence: {:.0}%  |  Horizon: {}  |  Stability: {}\n\n",
+        dec.confidence * 100.0,
+        dec.horizon,
+        dec.stability
+    ));
     mdx.push_str(&format!("> {}\n\n", dec.rationale));
     if dec.decision_history.len() > 1 {
         mdx.push_str("## Transition History\n\n");
         for t in &dec.decision_history {
-            mdx.push_str(&format!("- `{}` {} → {} ({:.0}% confidence)\n", t.date, t.from, t.to, t.confidence * 100.0));
+            mdx.push_str(&format!(
+                "- `{}` {} → {} ({:.0}% confidence)\n",
+                t.date,
+                t.from,
+                t.to,
+                t.confidence * 100.0
+            ));
         }
         mdx.push('\n');
     }
@@ -891,9 +948,9 @@ pub(crate) fn render_decision_mdx(dec: &crate::domain::DecisionRecord, locale: &
 #[cfg(test)]
 mod contract_tests {
     use super::*;
-    use crate::domain::reflection::Reflection;
-    use crate::domain::investigation::InvestigationReport;
     use crate::domain::decision::DecisionRecord;
+    use crate::domain::investigation::InvestigationReport;
+    use crate::domain::reflection::Reflection;
     use crate::domain::PremiumReport;
 
     #[test]
@@ -963,7 +1020,8 @@ mod contract_tests {
             primary_domain: crate::domain::StrategicDomain::default(),
             secondary_domains: vec![],
         };
-        let mdx = render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"), "en");
+        let mdx =
+            render_investigation_mdx(&report, "test-slug", Some("ASM-001"), Some("INV-001"), "en");
         assert!(mdx.starts_with("---\n"));
         assert!(mdx.contains("title: \"Investigation: AI Governance\""));
         assert!(mdx.contains("date: \"2026-06-26\""));

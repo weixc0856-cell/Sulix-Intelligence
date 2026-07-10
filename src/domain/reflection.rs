@@ -51,5 +51,3 @@ pub struct Reflection {
     #[serde(default)]
     pub secondary_domains: Vec<StrategicDomain>,
 }
-
-

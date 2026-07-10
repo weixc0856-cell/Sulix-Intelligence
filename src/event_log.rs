@@ -71,7 +71,9 @@ pub struct ObjectEvent {
     pub timestamp: String,
 }
 
-fn default_schema_version() -> u32 { OBJECT_EVENT_SCHEMA_VERSION }
+fn default_schema_version() -> u32 {
+    OBJECT_EVENT_SCHEMA_VERSION
+}
 
 impl ObjectEvent {
     pub fn new(
@@ -96,7 +98,8 @@ impl ObjectEvent {
     pub fn complete(source: &str, summary: serde_json::Value) -> Self {
         Self::new(
             ObjectEventType::PublishCompleted,
-            "pipeline", "pipeline",
+            "pipeline",
+            "pipeline",
             summary,
             source,
         )

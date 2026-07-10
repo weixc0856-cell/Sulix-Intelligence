@@ -25,8 +25,8 @@ use crate::domain::outcome::{Outcome, OutcomeVerdict};
 use crate::domain::reflection::Reflection;
 use crate::domain::theme::{Theme, ThemeAnalysis};
 use crate::domain::thesis::{
-    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind,
-    StatusTransition, Thesis, ThesisStatus, TransitionTrigger,
+    ConfidenceSnapshot, ConfidenceTrigger, LifecycleEvent, LifecycleEventKind, StatusTransition,
+    Thesis, ThesisStatus, TransitionTrigger,
 };
 
 /// 信念追踪引擎
@@ -136,7 +136,11 @@ impl MemoryEngine {
         self.investigations
             .iter()
             .find(|inv| inv.thesis_id == thesis_id && inv.state == "active")
-            .or_else(|| self.investigations.iter().find(|inv| inv.thesis_id == thesis_id))
+            .or_else(|| {
+                self.investigations
+                    .iter()
+                    .find(|inv| inv.thesis_id == thesis_id)
+            })
     }
 
     /// Upsert Investigation by id (insert or replace in place)
@@ -231,8 +235,12 @@ impl MemoryEngine {
                 });
                 self.theses[idx].updated = today.to_string();
                 // 管理生命周期：记录 Updated 事件（去重：同一天不重复）
-                let already_updated_today = self.theses[idx].lifecycle_events.last()
-                    .map(|e| e.date == today && matches!(e.kind, LifecycleEventKind::Updated { .. }))
+                let already_updated_today = self.theses[idx]
+                    .lifecycle_events
+                    .last()
+                    .map(|e| {
+                        e.date == today && matches!(e.kind, LifecycleEventKind::Updated { .. })
+                    })
                     .unwrap_or(false);
                 if !already_updated_today {
                     let evidence_count = self.theses[idx].evidences.len();
@@ -246,7 +254,8 @@ impl MemoryEngine {
 
                 // 同步证伪条件（覆盖更新，条件会随证据演化）
                 if !analysis.falsification_conditions.is_empty() {
-                    self.theses[idx].falsification_conditions = analysis.falsification_conditions.clone();
+                    self.theses[idx].falsification_conditions =
+                        analysis.falsification_conditions.clone();
                 }
 
                 // 记录状态变更
@@ -376,8 +385,13 @@ impl MemoryEngine {
             // 如果 A 的所有词都包含在 B 中，或反之，视为同一 thesis。
             // 处理 LLM 每次稍微改变标题的情况（如"AI Infrastructure" vs "AI Infrastructure Consolidation"）。
             if words.len() >= 2 {
-                let all_q_in_t = words.iter().all(|w| target_words.iter().any(|tw| tw.eq_ignore_ascii_case(w)));
-                let all_t_in_q = target_words.len() >= 2 && target_words.iter().all(|tw| words.iter().any(|w| w.eq_ignore_ascii_case(tw)));
+                let all_q_in_t = words
+                    .iter()
+                    .all(|w| target_words.iter().any(|tw| tw.eq_ignore_ascii_case(w)));
+                let all_t_in_q = target_words.len() >= 2
+                    && target_words
+                        .iter()
+                        .all(|tw| words.iter().any(|w| w.eq_ignore_ascii_case(tw)));
                 if all_q_in_t || all_t_in_q {
                     return true;
                 }
@@ -572,7 +586,10 @@ impl MemoryEngine {
     /// - 不触发 generate_reflection()（由后续 reflect 命令手动触发）
     pub fn add_outcome(&mut self, outcome: Outcome) -> Result<Vec<ObjectEvent>> {
         // 验证 decision 存在
-        let decision = self.decisions.iter_mut().find(|d| d.id == outcome.decision_id)
+        let decision = self
+            .decisions
+            .iter_mut()
+            .find(|d| d.id == outcome.decision_id)
             .ok_or_else(|| anyhow::anyhow!("Decision '{}' not found", outcome.decision_id))?;
 
         let mut events = Vec::new();
@@ -629,13 +646,14 @@ impl MemoryEngine {
     /// 去重：同 thesis + 同 category + 未 applied → 跳过（防止管线自动提案堆积同质候选）
     pub fn add_belief_change(&mut self, change: BeliefChangeCandidate) {
         let is_duplicate = self.belief_changes.iter().any(|c| {
-            c.thesis_id == change.thesis_id
-                && c.category == change.category
-                && !c.applied
+            c.thesis_id == change.thesis_id && c.category == change.category && !c.applied
         });
         if is_duplicate {
-            log::debug!("🧠 add_belief_change: duplicate (thesis={}, category={}), skipped",
-                change.thesis_id, change.category);
+            log::debug!(
+                "🧠 add_belief_change: duplicate (thesis={}, category={}), skipped",
+                change.thesis_id,
+                change.category
+            );
             return;
         }
         self.belief_changes.push(change);
@@ -656,7 +674,9 @@ impl MemoryEngine {
     /// 写入 self.belief_db 并产出审计事件。
     /// 不再返回 BeliefDb（调用者通过 belief_db() 访问）。
     pub fn apply_belief_change(&mut self, change_id: &str) -> Result<ObjectEvent> {
-        let change = self.belief_changes.iter_mut()
+        let change = self
+            .belief_changes
+            .iter_mut()
             .find(|c| c.id == change_id)
             .ok_or_else(|| anyhow::anyhow!("BeliefChange '{}' not found", change_id))?;
 
@@ -695,17 +715,27 @@ impl MemoryEngine {
     ///
     /// 在 publishing.rs 的 map_theses_to_decisions() 之后调用，
     /// 确保决策历史在 memory.save() 前写入。
-    pub fn record_decision(&mut self, thesis_id: &str, today: &str, decision_type: &str, confidence: f64) {
+    pub fn record_decision(
+        &mut self,
+        thesis_id: &str,
+        today: &str,
+        decision_type: &str,
+        confidence: f64,
+    ) {
         if let Some(thesis) = self.theses.iter_mut().find(|t| t.id == thesis_id) {
             // 避免同一天重复写入
-            let already_today = thesis.decision_history.last()
+            let already_today = thesis
+                .decision_history
+                .last()
                 .is_some_and(|s| s.date == today);
             if !already_today {
-                thesis.decision_history.push(crate::domain::thesis::DecisionSnapshot {
-                    date: today.to_string(),
-                    decision_type: decision_type.to_string(),
-                    confidence,
-                });
+                thesis
+                    .decision_history
+                    .push(crate::domain::thesis::DecisionSnapshot {
+                        date: today.to_string(),
+                        decision_type: decision_type.to_string(),
+                        confidence,
+                    });
             }
             // 只保留最近 30 天（防止无限增长）
             let keep_from = thesis.decision_history.len().saturating_sub(30);
@@ -766,7 +796,8 @@ impl MemoryEngine {
             // Emit DecisionUpdated event with old/new confidence
             Some(ObjectEvent::new(
                 ObjectEventType::DecisionUpdated,
-                &dec_id, "decision",
+                &dec_id,
+                "decision",
                 serde_json::json!({
                     "confidence": [old_confidence, thesis_decision.confidence],
                     "decision_type": [old_type, thesis_decision.decision_type.as_key()],
@@ -788,8 +819,13 @@ impl MemoryEngine {
                 created: today.to_string(),
                 updated: today.to_string(),
                 outcome_ids: vec![],
-                primary_domain: crate::domain::StrategicDomain::classify_primary(&thesis_decision.thesis_title),
-                secondary_domains: crate::domain::StrategicDomain::classify(&thesis_decision.thesis_title).1,
+                primary_domain: crate::domain::StrategicDomain::classify_primary(
+                    &thesis_decision.thesis_title,
+                ),
+                secondary_domains: crate::domain::StrategicDomain::classify(
+                    &thesis_decision.thesis_title,
+                )
+                .1,
                 decision_history: vec![DecisionTransition {
                     date: today.to_string(),
                     from: "initial".to_string(),
@@ -802,7 +838,8 @@ impl MemoryEngine {
             // Emit DecisionCreated event
             Some(ObjectEvent::new(
                 ObjectEventType::DecisionCreated,
-                &dec_id, "decision",
+                &dec_id,
+                "decision",
                 serde_json::json!({
                     "confidence": thesis_decision.confidence,
                     "asm_id": asm_id,
@@ -841,7 +878,11 @@ impl MemoryEngine {
             };
 
             // 给对应 thesis 绑定 assessment_id
-            if let Some(thesis) = self.theses.iter_mut().find(|t| Self::title_overlap(title, &t.title)) {
+            if let Some(thesis) = self
+                .theses
+                .iter_mut()
+                .find(|t| Self::title_overlap(title, &t.title))
+            {
                 if thesis.assessment_id.is_none() {
                     thesis.assessment_id = Some(asm_id.clone());
                 }
@@ -960,8 +1001,8 @@ impl MemoryEngine {
     /// - 未匹配到 → 创建 Proposed 状态 Thesis 作为弱信号
     /// 不调用 LLM，不做全分析。
     pub fn feed_intel(&mut self, signals: &[ClassifiedSignal], today: &str) -> u32 {
-        use crate::domain::thesis::Thesis;
         use crate::domain::evidence::{Evidence, Stance};
+        use crate::domain::thesis::Thesis;
 
         let mut fed = 0u32;
         for cs in signals {

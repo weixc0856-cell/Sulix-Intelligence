@@ -1,7 +1,7 @@
 //! 通用验证器 — 对 Schema 对象执行批量验证 + 生成验证报告
 
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// 验证结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,8 +58,12 @@ impl ValidationReport {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(path, json)?;
-        log::info!("📋 Validation report: {}/{} passed ({} warnings)",
-            self.passed, self.total_objects, self.warnings);
+        log::info!(
+            "📋 Validation report: {}/{} passed ({} warnings)",
+            self.passed,
+            self.total_objects,
+            self.warnings
+        );
         Ok(())
     }
 
@@ -92,7 +96,9 @@ pub trait Validate {
     fn object_type() -> &'static str;
     fn object_id(&self) -> &str;
     fn validate(&self) -> Vec<String>;
-    fn warnings(&self) -> Vec<String> { vec![] }
+    fn warnings(&self) -> Vec<String> {
+        vec![]
+    }
 
     fn check(&self) -> ValidationResult {
         let errors = self.validate();
@@ -110,6 +116,10 @@ pub trait Validate {
 // ===== Shared default function for schema serde attributes =====
 
 /// Default locale — used by `#[serde(default = "crate::schema::validator::default_locale")]`
-pub fn default_locale() -> String { "en".into() }
+pub fn default_locale() -> String {
+    "en".into()
+}
 /// Default language — used by `#[serde(default = "crate::schema::validator::default_lang")]`
-pub fn default_lang() -> String { "en".into() }
+pub fn default_lang() -> String {
+    "en".into()
+}

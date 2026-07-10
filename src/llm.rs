@@ -127,7 +127,8 @@ where
             }
         }
     }
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("retry loop exited without error accumulation")))
+    Err(last_error
+        .unwrap_or_else(|| anyhow::anyhow!("retry loop exited without error accumulation")))
 }
 
 /// 带指数退避重试的 API 调用
@@ -213,7 +214,11 @@ async fn call_llm_inner(
             .text()
             .await
             .unwrap_or_else(|e| format!("<body read failed: {}>", e));
-        return Err(anyhow::anyhow!("LLM API 返回错误 ({}): {}", status, error_text));
+        return Err(anyhow::anyhow!(
+            "LLM API 返回错误 ({}): {}",
+            status,
+            error_text
+        ));
     }
 
     let chat_response: ChatResponse = response.json().await?;
@@ -238,10 +243,15 @@ async fn call_raw_inner(
     user_prompt: &str,
 ) -> Result<String> {
     call_llm_inner(
-        client, api_key, llm_config, system_prompt, user_prompt,
+        client,
+        api_key,
+        llm_config,
+        system_prompt,
+        user_prompt,
         llm_config.max_tokens.min(2048),
         llm_config.temperature.min(0.2),
-    ).await
+    )
+    .await
 }
 
 /// 实际调用 LLM API 并解析 JSON 响应（供 call_with_retry 使用）
@@ -253,10 +263,15 @@ async fn call_completion(
     user_prompt: &str,
 ) -> Result<Vec<AnalyzedArticleRaw>> {
     let content = call_llm_inner(
-        client, api_key, llm_config, system_prompt, user_prompt,
+        client,
+        api_key,
+        llm_config,
+        system_prompt,
+        user_prompt,
         llm_config.max_tokens,
         llm_config.temperature,
-    ).await?;
+    )
+    .await?;
 
     parse_json_response(&content).map_err(|e| {
         let end = content.floor_char_boundary(content.len().min(100));
@@ -348,13 +363,16 @@ pub(crate) fn extract_json_block_flexible(text: &str, marker: &str) -> Option<St
 /// 使用 parse_json_lenient 提取 Value，然后尝试转为数组。
 pub(crate) fn parse_json_array<T: serde::de::DeserializeOwned>(raw: &str) -> Result<Vec<T>> {
     let val = parse_json_lenient(raw)?;
-    let arr = val.as_array()
+    let arr = val
+        .as_array()
         .ok_or_else(|| anyhow::anyhow!("expected JSON array, got {}", categorize_value(&val)))?;
     // Try to deserialize each element independently for better error messages
     let mut result = Vec::with_capacity(arr.len());
     for (i, item) in arr.iter().enumerate() {
-        result.push(serde_json::from_value(item.clone())
-            .map_err(|e| anyhow::anyhow!("JSON array element {} parse error: {}", i, e))?);
+        result.push(
+            serde_json::from_value(item.clone())
+                .map_err(|e| anyhow::anyhow!("JSON array element {} parse error: {}", i, e))?,
+        );
     }
     Ok(result)
 }
