@@ -126,31 +126,103 @@ jobs:
           cargo build --release -p sulix-cli
           cargo run -p sulix-cli --release
 
-      - name: Check R2 Manifest
-        id: check_manifest
+      - name: Upload content to R2
+        if: success()
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          MANIFEST=$(curl -sf "$R2_ENDPOINT/sulix-content/manifest.json" 2>/dev/null) || {
-            echo "⚠️ manifest.json not found on R2 (pipeline may have early-exited with no new content)"
-            echo "no_new_content=true" >> $GITHUB_OUTPUT
-            exit 0
-          }
-          RUN_ID=$(echo "$MANIFEST" | jq -r '.pipeline_run_id // "unknown"')
-          echo "📋 Manifest run_id: $RUN_ID (expected: ${{ github.run_id }})"
-          if [ "$RUN_ID" = "${{ github.run_id }}" ]; then
-            echo "✅ Manifest verified: run_id matches"
-          elif [ "$RUN_ID" = "local" ]; then
-            echo "⚠️ Manifest run_id is 'local'"
-          else
-            echo "❌ Manifest run_id mismatch"
-            exit 1
-          fi
+          npm install @aws-sdk/client-s3 --silent --no-audit --no-fund 2>/dev/null
+          node -e "
+            const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+            const fs = require('fs');
+            const path = require('path');
+            const client = new S3Client({
+              region: 'auto',
+              endpoint: process.env.R2_ENDPOINT,
+              credentials: {
+                accessKeyId: process.env.R2_ACCESS_KEY_ID,
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+              }
+            });
+
+            async function uploadFile(localPath, remoteKey) {
+              if (!fs.existsSync(localPath)) return 0;
+              const stat = fs.statSync(localPath);
+              if (!stat.isFile()) return 0;
+              const content = fs.readFileSync(localPath);
+              await client.send(new PutObjectCommand({
+                Bucket: 'sulix-content',
+                Key: remoteKey,
+                Body: content,
+                ContentType: localPath.endsWith('.md') ? 'text/markdown' :
+                            localPath.endsWith('.json') ? 'application/json' :
+                            localPath.endsWith('.jsonl') ? 'application/jsonl' :
+                            'application/octet-stream'
+              }));
+              console.log('  Uploaded: ' + remoteKey);
+              return 1;
+            }
+
+            function walkDir(dir, basePrefix) {
+              let count = 0;
+              if (!fs.existsSync(dir)) return Promise.resolve(0);
+              const entries = fs.readdirSync(dir, { withFileTypes: true });
+              return Promise.all(entries.map(async entry => {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  return walkDir(fullPath, basePrefix + entry.name + '/');
+                }
+                const remoteKey = basePrefix + entry.name;
+                await uploadFile(fullPath, remoteKey);
+                return 1;
+              })).then(results => results.reduce((a,b) => a + b, 0));
+            }
+
+            async function main() {
+              let total = 0;
+
+              // Upload thesis MDX (from data/intelligence_mdx/thesis/)
+              if (fs.existsSync('data/intelligence_mdx/thesis')) {
+                total += await walkDir('data/intelligence_mdx/thesis', 'content/thesis/');
+              }
+              // Upload decision MDX
+              if (fs.existsSync('data/intelligence_mdx/decision')) {
+                total += await walkDir('data/intelligence_mdx/decision', 'content/decision/');
+              }
+              // Upload state files
+              const stateFiles = [
+                ['data/memory_db.json', 'state/memory_db.json'],
+                ['data/decision_history.jsonl', 'state/decision_history.jsonl'],
+                ['data/intel.db', 'state/intel.db']
+              ];
+              for (const [local, remote] of stateFiles) {
+                total += await uploadFile(local, remote);
+              }
+
+              // Generate and upload manifest
+              const manifest = {
+                pipeline_run_id: process.env.GITHUB_RUN_ID || 'local',
+                pipeline_trigger: process.env.GITHUB_RUN_TRIGGER || 'manual',
+                completed_at: new Date().toISOString(),
+                file_count: total
+              };
+              fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2));
+              await uploadFile('manifest.json', 'manifest.json');
+              total += 1;
+
+              console.log('  Total files uploaded: ' + total);
+              if (total > 1) {
+                fs.writeFileSync(process.env.GITHUB_OUTPUT || '/dev/null',
+                  'upload_count=' + total + '\n', { flag: 'a' });
+              }
+            }
+            main().catch(e => { console.error(e.message); process.exit(1); });
+          " 2>&1
 
       - name: Trigger Frontend Deploy
-        if: success() && steps.check_manifest.outputs.no_new_content != 'true'
+        if: success()
         run: |
           echo "🚀 Triggering intel-web deploy..."
           gh workflow run deploy.yml -R weixc0856-cell/Intel-Web
@@ -160,5 +232,5 @@ jobs:
       - name: Summary
         run: |
           echo "✅ Pipeline complete"
-          echo "   R2: state files + content uploaded"
-          echo "   Frontend: ${{ (steps.check_manifest.outputs.no_new_content == 'true' && 'skipped (no new content)') || 'triggered' }}"
+          echo "   Content: MDX files uploaded to R2"
+          echo "   State: memory_db.json + decision_history.jsonl persisted"

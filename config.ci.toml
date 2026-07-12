@@ -1,6 +1,5 @@
 # Sulix Intelligence — CI 配置
 # 用于 GitHub Actions runner，路径均为相对路径
-# 本地开发使用 config.toml（.gitignore）
 
 [llm]
 provider = "deepseek"
@@ -23,11 +22,45 @@ endpoint = "https://a754cffcd8dfec7a51c66164863f16b8.r2.cloudflarestorage.com"
 public_url = "https://pub-253c4c23dbe0465aac15cb4fc2402c13.r2.dev"
 enabled = true
 
-[translation]
-enabled = false
-target_locales = ["zh-cn", "zh-tw"]
-translate_dirs = ["decision", "thesis", "research", "assessment"]
-max_files_per_run = 5
-concurrency = 3
+# === 信号源 ===
+[[sources]]
+name = "Hacker News - Front Page"
+type = "rss"
+url = "https://hnrss.org/frontpage"
+category = "AI Competition"
+layer = 3
+enabled = true
 
-# CI 暂不启用翻译（首跑验证通过后打开）
+[[sources]]
+name = "OpenAI Blog"
+type = "rss"
+url = "https://openai.com/news/rss.xml"
+category = "AI"
+layer = 2
+score = 10
+enabled = true
+
+[[sources]]
+name = "Anthropic Blog"
+type = "rss"
+url = "https://www.anthropic.com/rss.xml"
+category = "AI"
+layer = 2
+score = 10
+enabled = true
+
+[[sources]]
+name = "Google DeepMind Blog"
+type = "rss"
+url = "https://deepmind.google/blog/rss.xml"
+category = "AI"
+layer = 2
+enabled = true
+
+[[sources]]
+name = "US Federal Register - Technology Controls"
+type = "rss"
+url = "https://www.federalregister.gov/api/v1/documents.rss?conditions[agencies][]=commerce-department&conditions[term]=semiconductor"
+category = "Regulatory Compliance"
+layer = 2
+enabled = true
