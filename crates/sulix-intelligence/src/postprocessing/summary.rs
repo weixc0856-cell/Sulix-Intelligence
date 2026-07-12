@@ -1,4 +1,4 @@
-﻿//! Summary — 跨信号/判断的综合摘要
+//! Summary — 跨信号/判断的综合摘要
 //!
 //! 从 IntelligenceOutput 生成人类可读的今日摘要。
 //! 规则驱动（非 LLM），确保快速、可预测、零成本。
@@ -58,9 +58,20 @@ fn build_headline(
         .collect();
 
     if !decisions.is_empty() {
-        let invest_count = decisions.iter().filter(|d| matches!(d.action, contract::DecisionType::Invest | contract::DecisionType::Build)).count();
+        let invest_count = decisions
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d.action,
+                    contract::DecisionType::Invest | contract::DecisionType::Build
+                )
+            })
+            .count();
         if invest_count > 0 {
-            return format!("{} 个高价值信号 → {} 个行动决策", high_importance, invest_count);
+            return format!(
+                "{} 个高价值信号 → {} 个行动决策",
+                high_importance, invest_count
+            );
         }
     }
 
@@ -70,7 +81,11 @@ fn build_headline(
     }
 
     if high_importance == 1 {
-        if let Some(top) = signals.iter().max_by(|a, b| a.importance.partial_cmp(&b.importance).unwrap_or(std::cmp::Ordering::Equal)) {
+        if let Some(top) = signals.iter().max_by(|a, b| {
+            a.importance
+                .partial_cmp(&b.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) {
             return format!("关注 {}（重要性 {:.2})", top.domain, top.importance);
         }
     }
@@ -86,11 +101,18 @@ fn build_narrative(
     let mut narrative = String::new();
 
     // 高重要性信号
-    let important: Vec<&contract::Signal> = signals.iter().filter(|s| s.importance >= 0.7).collect();
+    let important: Vec<&contract::Signal> =
+        signals.iter().filter(|s| s.importance >= 0.7).collect();
     if !important.is_empty() {
-        narrative.push_str(&format!("今日 {} 条信号达到高重要性（≥0.7）：\n", important.len()));
+        narrative.push_str(&format!(
+            "今日 {} 条信号达到高重要性（≥0.7）：\n",
+            important.len()
+        ));
         for s in &important {
-            narrative.push_str(&format!("  - [{}] {} (imp={:.2})\n", s.domain, s.why, s.importance));
+            narrative.push_str(&format!(
+                "  - [{}] {} (imp={:.2})\n",
+                s.domain, s.why, s.importance
+            ));
         }
     }
 
@@ -98,7 +120,10 @@ fn build_narrative(
     if !theses.is_empty() {
         narrative.push_str(&format!("\n活跃判断: {} 条\n", theses.len()));
         for t in theses.iter().take(3) {
-            narrative.push_str(&format!("  - [{}] conf={:.2}, status={:?}\n", t.claim, t.confidence, t.status));
+            narrative.push_str(&format!(
+                "  - [{}] conf={:.2}, status={:?}\n",
+                t.claim, t.confidence, t.status
+            ));
         }
     }
 
@@ -106,7 +131,10 @@ fn build_narrative(
     if !decisions.is_empty() {
         narrative.push_str(&format!("\n今日决策: {} 条\n", decisions.len()));
         for d in decisions {
-            narrative.push_str(&format!("  - {:?}: {} (conf={:.2})\n", d.action, d.thesis_id, d.confidence));
+            narrative.push_str(&format!(
+                "  - {:?}: {} (conf={:.2})\n",
+                d.action, d.thesis_id, d.confidence
+            ));
         }
     }
 
@@ -178,5 +206,3 @@ mod tests {
         assert!(result.narrative.contains("Invest"));
     }
 }
-
-

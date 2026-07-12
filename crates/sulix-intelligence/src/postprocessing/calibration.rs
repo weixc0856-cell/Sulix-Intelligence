@@ -1,4 +1,4 @@
-﻿//! Calibration — 认知校准（扎心问题）
+//! Calibration — 认知校准（扎心问题）
 //!
 //! 在日报底部留 1 个扎心问题，主动探测认知边界。
 //! 「不改也行，看到就有收获。」
@@ -72,13 +72,19 @@ Output json. 输出严格 JSON：
     // 构建输入上下文
     let mut context = String::from("今日信号:\n");
     for s in signals.iter().take(10) {
-        context.push_str(&format!("  [{:?}] {} (domain={}, imp={:.2})\n", s.category, s.why, s.domain, s.importance));
+        context.push_str(&format!(
+            "  [{:?}] {} (domain={}, imp={:.2})\n",
+            s.category, s.why, s.domain, s.importance
+        ));
     }
 
     if !theses.is_empty() {
         context.push_str("\n今日判断:\n");
         for t in theses.iter().take(5) {
-            context.push_str(&format!("  [{}] {} (conf={:.2}, status={:?})\n", t.id, t.claim, t.confidence, t.status));
+            context.push_str(&format!(
+                "  [{}] {} (conf={:.2}, status={:?})\n",
+                t.id, t.claim, t.confidence, t.status
+            ));
         }
     }
 
@@ -89,10 +95,7 @@ Output json. 输出严格 JSON：
         }
     }
 
-    let user_prompt = format!(
-        "今天的分析结果如下，请生成校准问题：\n{}",
-        context
-    );
+    let user_prompt = format!("今天的分析结果如下，请生成校准问题：\n{}", context);
 
     match llm::call_with_retry(&client, api_key, llm_config, system_prompt, &user_prompt).await {
         Ok(results) => {
@@ -101,7 +104,10 @@ Output json. 输出严格 JSON：
                 .map(|r| r.judgment.clone())
                 .unwrap_or_default();
             if !question.is_empty() {
-                log::info!("🤖 Calibration: {}", &question[..question.floor_char_boundary(80)]);
+                log::info!(
+                    "🤖 Calibration: {}",
+                    &question[..question.floor_char_boundary(80)]
+                );
             }
             question
         }
@@ -111,5 +117,3 @@ Output json. 输出严格 JSON：
         }
     }
 }
-
-

@@ -1,4 +1,4 @@
-﻿//! Loader — 从旧系统加载已有状态到新管线
+//! Loader — 从旧系统加载已有状态到新管线
 //!
 //! 在新管线与旧系统并行运行期间，需要从旧系统加载已存在的状态
 //! （如 MemoryEngine 中已有的 Thesis），以保证 ThesisGenerationStep
@@ -77,22 +77,25 @@ pub fn load_theses_from_memory_db(path: &Path) -> Vec<contract::Thesis> {
             };
 
             // Extract evidence count (used as signal ID placeholders)
-            let evidence_count = entry["evidences"]
-                .as_array()
-                .map(|e| e.len())
-                .unwrap_or(0);
+            let evidence_count = entry["evidences"].as_array().map(|e| e.len()).unwrap_or(0);
 
             // Read falsification_conditions (new pipeline field, may be absent in legacy data)
             let falsifications: Vec<String> = entry["falsification_conditions"]
                 .as_array()
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             Some(contract::Thesis {
                 id,
                 claim: title,
                 confidence,
-                evidence: (0..evidence_count).map(|i| format!("legacy_{}", i)).collect(),
+                evidence: (0..evidence_count)
+                    .map(|i| format!("legacy_{}", i))
+                    .collect(),
                 status,
                 falsification_conditions: falsifications,
                 time_horizon: "12_months".into(),
@@ -102,7 +105,10 @@ pub fn load_theses_from_memory_db(path: &Path) -> Vec<contract::Thesis> {
         })
         .collect();
 
-    log::info!("📂 load_theses: 从 memory_db 加载 {} 条已有 Thesis", theses.len());
+    log::info!(
+        "📂 load_theses: 从 memory_db 加载 {} 条已有 Thesis",
+        theses.len()
+    );
     theses
 }
 
@@ -158,7 +164,8 @@ pub fn save_theses_to_memory_db(path: &Path, new_theses: &[contract::Thesis]) {
                 entry["updated"] = serde_json::json!(today);
                 if !new_thesis.falsification_conditions.is_empty() {
                     entry["falsification_conditions"] =
-                        serde_json::to_value(&new_thesis.falsification_conditions).unwrap_or_default();
+                        serde_json::to_value(&new_thesis.falsification_conditions)
+                            .unwrap_or_default();
                 }
                 update_count += 1;
             }
@@ -220,7 +227,11 @@ pub fn save_theses_to_memory_db(path: &Path, new_theses: &[contract::Thesis]) {
                 log::warn!("⚠️ memory_db.json 创建失败: {}", e);
             }
         }
-        log::info!("📂 save_theses: {} 新增, {} 更新 → memory_db.json", new_count, update_count);
+        log::info!(
+            "📂 save_theses: {} 新增, {} 更新 → memory_db.json",
+            new_count,
+            update_count
+        );
     }
 }
 
@@ -233,29 +244,33 @@ pub fn load_last_decisions(path: &Path) -> Vec<contract::Decision> {
         Ok(history) => {
             let count = history.len();
             log::info!("  📜 DecisionHistory: {} 条历史", count);
-            history.all().iter().map(|r| {
-                let action = match r.action.as_str() {
-                    "Build" => contract::DecisionType::Build,
-                    "Invest" => contract::DecisionType::Invest,
-                    "Monitor" => contract::DecisionType::Monitor,
-                    "Learn" => contract::DecisionType::Learn,
-                    "Ignore" => contract::DecisionType::Ignore,
-                    "Exit" => contract::DecisionType::Exit,
-                    _ => contract::DecisionType::Monitor,
-                };
-                contract::Decision {
-                    id: r.decision_id.clone(),
-                    thesis_id: r.thesis_id.clone(),
-                    action,
-                    confidence: r.confidence,
-                    horizon: contract::DecisionHorizon::Days90,
-                    reasoning: String::new(),
-                    made_at: r.made_at.clone(),
-                    rule_passed: true,
-                    requires_review: false,
-                    review_reason: None,
-                }
-            }).collect()
+            history
+                .all()
+                .iter()
+                .map(|r| {
+                    let action = match r.action.as_str() {
+                        "Build" => contract::DecisionType::Build,
+                        "Invest" => contract::DecisionType::Invest,
+                        "Monitor" => contract::DecisionType::Monitor,
+                        "Learn" => contract::DecisionType::Learn,
+                        "Ignore" => contract::DecisionType::Ignore,
+                        "Exit" => contract::DecisionType::Exit,
+                        _ => contract::DecisionType::Monitor,
+                    };
+                    contract::Decision {
+                        id: r.decision_id.clone(),
+                        thesis_id: r.thesis_id.clone(),
+                        action,
+                        confidence: r.confidence,
+                        horizon: contract::DecisionHorizon::Days90,
+                        reasoning: String::new(),
+                        made_at: r.made_at.clone(),
+                        rule_passed: true,
+                        requires_review: false,
+                        review_reason: None,
+                    }
+                })
+                .collect()
         }
         Err(_) => {
             log::info!("  📜 DecisionHistory: 新实例");
@@ -343,49 +358,59 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         // 先存一条
-        save_theses_to_memory_db(&path, &[contract::Thesis {
-            id: "t1".into(),
-            claim: "Original".into(),
-            confidence: 0.5,
-            evidence: vec![],
-            status: contract::ThesisStatus::Active,
-            falsification_conditions: vec![],
-            time_horizon: "12_months".into(),
-            theme: None,
-            belief_statement: None,
-        }]);
-
-        // 更新同一条 + 新增一条
-        save_theses_to_memory_db(&path, &[
-            contract::Thesis {
+        save_theses_to_memory_db(
+            &path,
+            &[contract::Thesis {
                 id: "t1".into(),
                 claim: "Original".into(),
-                confidence: 0.7,
-                evidence: vec!["sig_new".into()],
-                status: contract::ThesisStatus::Strengthening,
-                falsification_conditions: vec!["New condition".into()],
+                confidence: 0.5,
+                evidence: vec![],
+                status: contract::ThesisStatus::Active,
+                falsification_conditions: vec![],
                 time_horizon: "12_months".into(),
                 theme: None,
                 belief_statement: None,
-            },
-            contract::Thesis {
-                id: "t2".into(),
-                claim: "New thesis".into(),
-                confidence: 0.6,
-                evidence: vec![],
-                status: contract::ThesisStatus::Proposed,
-                falsification_conditions: vec![],
-                time_horizon: "6_months".into(),
-                theme: None,
-                belief_statement: None,
-            },
-        ]);
+            }],
+        );
+
+        // 更新同一条 + 新增一条
+        save_theses_to_memory_db(
+            &path,
+            &[
+                contract::Thesis {
+                    id: "t1".into(),
+                    claim: "Original".into(),
+                    confidence: 0.7,
+                    evidence: vec!["sig_new".into()],
+                    status: contract::ThesisStatus::Strengthening,
+                    falsification_conditions: vec!["New condition".into()],
+                    time_horizon: "12_months".into(),
+                    theme: None,
+                    belief_statement: None,
+                },
+                contract::Thesis {
+                    id: "t2".into(),
+                    claim: "New thesis".into(),
+                    confidence: 0.6,
+                    evidence: vec![],
+                    status: contract::ThesisStatus::Proposed,
+                    falsification_conditions: vec![],
+                    time_horizon: "6_months".into(),
+                    theme: None,
+                    belief_statement: None,
+                },
+            ],
+        );
 
         // 读回验证：应有 2 条，t1 的 falsification_conditions 已更新
         let loaded = load_theses_from_memory_db(&path);
         assert_eq!(loaded.len(), 2, "应包含原有 + 新增");
         let t1 = loaded.iter().find(|t| t.id == "t1").unwrap();
-        assert_eq!(t1.falsification_conditions.len(), 1, "t1 的 falsification_conditions 应被更新");
+        assert_eq!(
+            t1.falsification_conditions.len(),
+            1,
+            "t1 的 falsification_conditions 应被更新"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -398,6 +423,3 @@ mod tests {
         assert!(!path.exists(), "空输入不应创建文件");
     }
 }
-
-
-

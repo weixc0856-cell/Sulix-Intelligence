@@ -16,7 +16,8 @@ pub async fn call_with_retry(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<Vec<AnalyzedArticleRaw>> {
-    retry::with_retry(|| call_completion(client, api_key, llm_config, system_prompt, user_prompt)).await
+    retry::with_retry(|| call_completion(client, api_key, llm_config, system_prompt, user_prompt))
+        .await
 }
 
 /// 调用 LLM API 返回原始文本，带指数退避重试
@@ -27,19 +28,8 @@ pub async fn call_with_retry_raw(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
-    retry::with_retry(|| call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt)).await
-}
-
-/// Simple text-in/text-out LLM call (creates its own client).
-#[allow(dead_code)]
-pub async fn call_and_parse(
-    api_key: &str,
-    llm_config: &LlmConfig,
-    system_prompt: &str,
-    user_prompt: &str,
-) -> Result<String> {
-    let client = reqwest::Client::new();
-    call_with_retry_raw(&client, api_key, llm_config, system_prompt, user_prompt).await
+    retry::with_retry(|| call_raw_inner(client, api_key, llm_config, system_prompt, user_prompt))
+        .await
 }
 
 /// Core LLM call: build request, send, extract content string.
@@ -104,7 +94,10 @@ async fn call_llm_inner(
         .ok_or_else(|| anyhow::anyhow!("API 响应中没有 choices"))?
         .clone();
 
-    LLM_OUTPUT_TOKENS.fetch_add(content.len() as u64 / 4, std::sync::atomic::Ordering::Relaxed);
+    LLM_OUTPUT_TOKENS.fetch_add(
+        content.len() as u64 / 4,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     Ok(content)
 }
@@ -118,10 +111,15 @@ async fn call_raw_inner(
     user_prompt: &str,
 ) -> Result<String> {
     call_llm_inner(
-        client, api_key, llm_config, system_prompt, user_prompt,
+        client,
+        api_key,
+        llm_config,
+        system_prompt,
+        user_prompt,
         llm_config.max_tokens.min(2048),
         llm_config.temperature.min(0.2),
-    ).await
+    )
+    .await
 }
 
 /// 实际调用 LLM API 并解析 JSON 响应
@@ -133,10 +131,15 @@ async fn call_completion(
     user_prompt: &str,
 ) -> Result<Vec<AnalyzedArticleRaw>> {
     let content = call_llm_inner(
-        client, api_key, llm_config, system_prompt, user_prompt,
+        client,
+        api_key,
+        llm_config,
+        system_prompt,
+        user_prompt,
         llm_config.max_tokens,
         llm_config.temperature,
-    ).await?;
+    )
+    .await?;
 
     parse_json_response(&content).map_err(|e| {
         let end = content.floor_char_boundary(content.len().min(100));

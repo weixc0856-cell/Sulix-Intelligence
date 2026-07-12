@@ -64,7 +64,9 @@ mod boundary_tests {
 mod tests {
     use super::*;
 
-    fn generate_schema<T: schemars::JsonSchema + ?Sized>(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_schema<T: schemars::JsonSchema + ?Sized>(
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let schema = schemars::schema_for!(T);
         let json = serde_json::to_string_pretty(&schema)?;
 

@@ -1,4 +1,4 @@
-﻿//! Post-Processing — 管线输出后的辅助生成步骤
+//! Post-Processing — 管线输出后的辅助生成步骤
 //!
 //! 这些步骤**不是** IntelligencePipeline 的一部分。
 //! 它们在 `pipeline.run()` 之后独立调用，输入 IntelligenceOutput，
@@ -16,4 +16,3 @@ pub mod summary;
 pub use calibration::calibrate;
 pub use editor_note::analyze_personal_impact;
 pub use summary::synthesize;
-

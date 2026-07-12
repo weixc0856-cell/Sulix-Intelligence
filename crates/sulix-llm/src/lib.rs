@@ -9,21 +9,22 @@
 //!   - audit:   调用审计计数器
 //!   - types:   LLM 输入/输出数据类型
 
-pub mod client;
-pub mod retry;
 pub mod api;
-pub mod parser;
-pub mod dispatch;
 pub mod audit;
+pub mod client;
+pub mod dispatch;
+pub mod parser;
+pub mod retry;
 pub mod types;
 
 // ===== 向后兼容的 re-exports =====
 
+pub use api::{call_with_retry, call_with_retry_raw};
+pub use audit::{llm_audit_summary, LLM_CALL_COUNT, LLM_INPUT_TOKENS, LLM_OUTPUT_TOKENS};
 pub use client::{create_client, create_llm_client, create_source_client};
+pub use dispatch::{LlmChoice, LlmProviderDispatch};
+pub use parser::{
+    extract_json_block, extract_json_block_flexible, parse_json_lenient, parse_json_response,
+};
 pub use retry::{with_retry, MAX_RETRIES};
-pub use api::{call_with_retry, call_with_retry_raw, call_and_parse};
-pub use parser::{parse_json_lenient, parse_json_response, parse_json_array,
-                 extract_json_block, extract_json_block_flexible};
-pub use dispatch::{LlmProviderDispatch, LlmChoice};
-pub use audit::{LLM_CALL_COUNT, LLM_INPUT_TOKENS, LLM_OUTPUT_TOKENS, llm_audit_summary};
-pub use types::{VerticalAnalysis, AnalyzedArticle, AnalyzedArticleRaw};
+pub use types::{AnalyzedArticle, AnalyzedArticleRaw, VerticalAnalysis};

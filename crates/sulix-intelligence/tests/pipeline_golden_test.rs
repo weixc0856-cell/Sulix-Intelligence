@@ -1,4 +1,4 @@
-﻿//! Golden Pipeline Test — 固定输入产生固定输出
+//! Golden Pipeline Test — 固定输入产生固定输出
 //!
 //! 目的：
 //!   确保管线输出不会因 LLM 模型更换或代码变更而"人格漂移"。
@@ -42,7 +42,9 @@ fn mock_pipeline() -> IntelligencePipeline {
 fn test_golden_observation_deserialization() {
     let json = include_str!("fixtures/observation.json");
     let artifact: Artifact = serde_json::from_str(json).expect("observation.json 应合法");
-    let observations = artifact.into_observations().expect("应为 Observations variant");
+    let observations = artifact
+        .into_observations()
+        .expect("应为 Observations variant");
 
     assert_eq!(observations.len(), 3, "应有 3 条 observations");
     assert_eq!(observations[0].id, "obs_001");
@@ -133,7 +135,8 @@ fn test_thesis_generation_matches_existing_theses() {
     }];
 
     let step = ThesisGenerationStepBuilder::new(mock_llm_config(), "test")
-        .with_existing_theses(existing).build();
+        .with_existing_theses(existing)
+        .build();
     let ctx = StepContext::new("2026-07-12");
 
     let result = tokio::runtime::Runtime::new()
@@ -176,7 +179,8 @@ fn test_thesis_generation_unmatched_signals_fall_through() {
     }];
 
     let step = ThesisGenerationStepBuilder::new(mock_llm_config(), "test")
-        .with_existing_theses(existing).build();
+        .with_existing_theses(existing)
+        .build();
     let ctx = StepContext::new("2026-07-12");
 
     let result = tokio::runtime::Runtime::new()
@@ -245,7 +249,10 @@ fn test_decision_mapping_full_flow() {
     assert!(matches!(decisions[1].action, contract::DecisionType::Learn));
     // Invalidated → Exit
     assert!(matches!(decisions[2].action, contract::DecisionType::Exit));
-    assert!(matches!(decisions[2].horizon, contract::DecisionHorizon::Immediate));
+    assert!(matches!(
+        decisions[2].horizon,
+        contract::DecisionHorizon::Immediate
+    ));
 }
 
 #[test]
@@ -265,7 +272,8 @@ fn test_decision_mapping_smoothing_from_history() {
     }];
 
     let step = DecisionMappingStepBuilder::new()
-        .with_last_decisions(last_decisions).build();
+        .with_last_decisions(last_decisions)
+        .build();
     let ctx = StepContext::new("2026-07-12");
 
     // Strengthening → 规则建议 Build，但平滑应抑制→Monitor
@@ -288,7 +296,10 @@ fn test_decision_mapping_smoothing_from_history() {
     let decisions = result.unwrap();
     assert_eq!(decisions.len(), 1);
     // 因为 smoothing 抑制: Build → 保持 Monitor
-    assert!(matches!(decisions[0].action, contract::DecisionType::Monitor));
+    assert!(matches!(
+        decisions[0].action,
+        contract::DecisionType::Monitor
+    ));
 }
 
 // ===== DecisionHistory: 持久化 + 去重 =====
@@ -318,7 +329,9 @@ fn test_decision_history_persistence_round_trip() {
             requires_review: false,
             review_reason: None,
         }];
-        history.append_from_decisions(&decisions, "2026-07-12").unwrap();
+        history
+            .append_from_decisions(&decisions, "2026-07-12")
+            .unwrap();
         assert_eq!(history.len(), 1);
     }
 
@@ -342,7 +355,9 @@ fn test_decision_history_persistence_round_trip() {
             requires_review: false,
             review_reason: None,
         }];
-        history.append_from_decisions(&duplicate, "2026-07-12").unwrap();
+        history
+            .append_from_decisions(&duplicate, "2026-07-12")
+            .unwrap();
         assert_eq!(history.len(), 1, "去重后应还是 1 条");
     }
 
@@ -361,7 +376,9 @@ fn test_decision_history_persistence_round_trip() {
             requires_review: false,
             review_reason: None,
         }];
-        history.append_from_decisions(&new_decisions, "2026-07-12").unwrap();
+        history
+            .append_from_decisions(&new_decisions, "2026-07-12")
+            .unwrap();
         assert_eq!(history.len(), 2, "追加后应有 2 条");
     }
 
@@ -484,7 +501,10 @@ fn test_rule_engine_empty_evidence_pending() {
         belief_statement: None,
     };
     let mapping = engine.map_thesis(&thesis);
-    assert!(matches!(mapping.decision_type, contract::DecisionType::Monitor));
+    assert!(matches!(
+        mapping.decision_type,
+        contract::DecisionType::Monitor
+    ));
     // Pending + low evidence → 30 day horizon
     assert!(matches!(mapping.horizon, contract::DecisionHorizon::Days30));
 }
@@ -496,7 +516,13 @@ fn test_rule_engine_active_with_many_evidence() {
         id: "t_active_many".into(),
         claim: "Active claim with evidence".into(),
         confidence: 0.6,
-        evidence: vec!["e1".into(), "e2".into(), "e3".into(), "e4".into(), "e5".into()],
+        evidence: vec![
+            "e1".into(),
+            "e2".into(),
+            "e3".into(),
+            "e4".into(),
+            "e5".into(),
+        ],
         status: contract::ThesisStatus::Active,
         falsification_conditions: vec![],
         time_horizon: "12_months".into(),
@@ -505,7 +531,9 @@ fn test_rule_engine_active_with_many_evidence() {
     };
     let mapping = engine.map_thesis(&thesis);
     // Active + >= 3 evidence → Monitor + 90d
-    assert!(matches!(mapping.decision_type, contract::DecisionType::Monitor));
+    assert!(matches!(
+        mapping.decision_type,
+        contract::DecisionType::Monitor
+    ));
     assert!(matches!(mapping.horizon, contract::DecisionHorizon::Days90));
 }
-

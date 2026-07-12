@@ -1,4 +1,4 @@
-﻿//! IntelligencePipeline — 固定认知链路编排器
+//! IntelligencePipeline — 固定认知链路编排器
 //!
 //! 将 Observation → Signal → Thesis → Decision 编排为固定顺序的认知链路。
 //! 不是 workflow engine，是固定 DAG。以后如果需要动态编排再改为 Vec<PipelineStep>。
@@ -16,8 +16,8 @@ use super::artifact::Artifact;
 use super::context::StepContext;
 use super::decision_mapping::DecisionMappingStep;
 use super::signal_classification::SignalClassificationStep;
-use super::thesis_generation::ThesisGenerationStep;
 use super::step::PipelineStats;
+use super::thesis_generation::ThesisGenerationStep;
 
 /// Intelligence Pipeline 输出
 #[derive(Debug, Clone)]
@@ -100,10 +100,7 @@ impl IntelligencePipeline {
 
         // Step 2: Signal → Thesis
         let theses = self.thesis.generate(signals.clone(), ctx).await?;
-        log::info!(
-            "  Step 2/3: ThesisGeneration → {} theses",
-            theses.len()
-        );
+        log::info!("  Step 2/3: ThesisGeneration → {} theses", theses.len());
 
         // Step 3: Thesis → Decision
         let decisions = self.decision.map(theses.clone(), ctx).await?;
@@ -155,9 +152,9 @@ impl IntelligencePipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decision_mapping::DecisionMappingStepBuilder;
     use crate::signal_classification::SignalClassificationStepBuilder;
     use crate::thesis_generation::ThesisGenerationStepBuilder;
-    use crate::decision_mapping::DecisionMappingStepBuilder;
     use sulix_config::LlmConfig;
 
     /// 测试 pipeline 能处理空输入
@@ -199,6 +196,3 @@ mod tests {
         assert_eq!(output.decision_count(), 0);
     }
 }
-
-
-

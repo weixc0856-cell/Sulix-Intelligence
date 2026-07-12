@@ -1,4 +1,4 @@
-﻿//! Reddit 数据源适配器
+//! Reddit 数据源适配器
 //!
 //! 通过 Reddit JSON API 抓取热门帖子。
 //! 使用 `https://www.reddit.com/r/{subreddit}/hot.json` 端点。
@@ -7,8 +7,8 @@
 use anyhow::Result;
 use chrono::{DateTime, FixedOffset, Utc};
 
-use sulix_config::SourceConfig;
 use crate::source::RawSignal;
+use sulix_config::SourceConfig;
 
 /// 从 Reddit JSON API 抓取热门帖子
 pub async fn fetch_reddit(config: &SourceConfig, _date_range: &str) -> Result<Vec<RawSignal>> {
@@ -120,4 +120,3 @@ mod tests {
         assert_eq!(config.category, "AI");
     }
 }
-

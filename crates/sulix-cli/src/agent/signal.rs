@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 
-use crate::{db, entity};
+use crate::db;
 use sulix_config as config;
 use sulix_observation::{fetcher, source};
 
@@ -51,10 +51,9 @@ pub async fn agent_signal(
     config: &config::Config,
     db: &db::Database,
     _today: &str,
-    entity_db: entity::EntitySanctionDb,
-) -> Result<Option<(Vec<fetcher::Article>, Vec<SourceStatus>, entity::EntitySanctionDb)>> {
+) -> Result<Option<Vec<fetcher::Article>>> {
     let date_range = &config.output.date_range;
-    let (all_signals, source_statuses) = fetch_all_sources(config, date_range).await;
+    let (all_signals, _source_statuses) = fetch_all_sources(config, date_range).await;
 
     // 转换为 Article
     let articles: Vec<fetcher::Article> = all_signals
@@ -88,12 +87,5 @@ pub async fn agent_signal(
         log::info!("  [{}/{}] {}", a.category, a.source, a.title);
     }
 
-    log::info!(
-        "🗃️ EntitySanctionDb: {} 实体 (sanctioned: {}, unsanctioned: {})",
-        entity_db.sanctioned.len() + entity_db.unsanctioned.len(),
-        entity_db.sanctioned.len(),
-        entity_db.unsanctioned.len()
-    );
-
-    Ok(Some((new_articles, source_statuses, entity_db)))
+    Ok(Some(new_articles))
 }

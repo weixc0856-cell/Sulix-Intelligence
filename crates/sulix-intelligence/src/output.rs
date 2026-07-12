@@ -1,4 +1,4 @@
-﻿//! Intelligence Output — 新管线的 MDX 知识资产产出
+//! Intelligence Output — 新管线的 MDX 知识资产产出
 //!
 //! 当新管线跑完 Observation→Signal→Thesis→Decision 后，
 //! 此模块将 PipelineOutput 渲染为 MDX 文件，直接写入 Astro Content Collections。
@@ -16,8 +16,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use sulix_contract as contract;
 use crate::IntelligenceOutput;
+use sulix_contract as contract;
 
 /// 新管线 MDX 输出配置
 pub struct IntelligenceOutputConfig {
@@ -189,7 +189,10 @@ type: "decision"
         decision.rule_passed,
         decision.reasoning,
         if decision.requires_review {
-            format!("⚠️ 需要人工审查: {}", decision.review_reason.as_deref().unwrap_or("未知"))
+            format!(
+                "⚠️ 需要人工审查: {}",
+                decision.review_reason.as_deref().unwrap_or("未知")
+            )
         } else {
             "✅ 自动通过".to_string()
         },
@@ -292,7 +295,10 @@ mod tests {
         assert_eq!(count, 2);
 
         // thesis file exists
-        assert!(dir.join("thesis").join("ai-agent-adoption-will-accelerate-in-enterprise.md").exists());
+        assert!(dir
+            .join("thesis")
+            .join("ai-agent-adoption-will-accelerate-in-enterprise.md")
+            .exists());
         // decision file exists
         assert!(dir.join("decision").join("dec_001.md").exists());
 
@@ -316,6 +322,3 @@ mod tests {
         assert!(escaped.contains("\\\""));
     }
 }
-
-
-

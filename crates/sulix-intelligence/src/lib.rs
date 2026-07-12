@@ -1,4 +1,4 @@
-﻿//! Intelligence Pipeline — 固定认知链路
+//! Intelligence Pipeline — 固定认知链路
 //!
 //! 将 Intelligence 层拆分为 3 个独立步骤，每步通过 contract::* 类型通信。
 //!
@@ -32,6 +32,5 @@ pub use decision_mapping::{DecisionMappingStep, DecisionMappingStepBuilder};
 pub use loader::{load_last_decisions, load_theses_from_memory_db, save_theses_to_memory_db};
 pub use pipeline::{IntelligenceOutput, IntelligencePipeline};
 pub use signal_classification::{SignalClassificationStep, SignalClassificationStepBuilder};
-pub use step::{PipelineStep, PipelineStats, StepStats};
+pub use step::{PipelineStats, PipelineStep, StepStats};
 pub use thesis_generation::{ThesisGenerationStep, ThesisGenerationStepBuilder};
-

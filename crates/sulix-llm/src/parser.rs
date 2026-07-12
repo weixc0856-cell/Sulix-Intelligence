@@ -84,36 +84,6 @@ pub fn extract_json_block_flexible(text: &str, marker: &str) -> Option<String> {
     Some(after[..end].trim().to_string())
 }
 
-/// 从 LLM 响应文本中解析 JSON 数组。
-#[allow(dead_code)]
-pub fn parse_json_array<T: serde::de::DeserializeOwned>(raw: &str) -> Result<Vec<T>> {
-    let val = parse_json_lenient(raw)?;
-    let arr = val
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("expected JSON array, got {}", categorize_value(&val)))?;
-    let mut result = Vec::with_capacity(arr.len());
-    for (i, item) in arr.iter().enumerate() {
-        result.push(
-            serde_json::from_value(item.clone())
-                .map_err(|e| anyhow::anyhow!("JSON array element {} parse error: {}", i, e))?,
-        );
-    }
-    Ok(result)
-}
-
-/// Categorize a JSON value for error messages
-#[allow(dead_code)]
-fn categorize_value(v: &Value) -> &'static str {
-    match v {
-        Value::Object(_) => "object",
-        Value::Array(_) => "array",
-        Value::String(_) => "string",
-        Value::Number(_) => "number",
-        Value::Bool(_) => "bool",
-        Value::Null => "null",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,4 @@
-﻿//! DecisionMappingStep — Thesis → Decision 映射
+//! DecisionMappingStep — Thesis → Decision 映射
 //!
 //! 规则约束 + LLM 推理的混合决策系统。
 //!
@@ -58,41 +58,70 @@ impl RuleEngine {
             ),
             ThesisStatus::Active | ThesisStatus::Pending => {
                 if evidence_count >= 3 {
-                    (contract::DecisionType::Monitor, contract::DecisionHorizon::Days90,
-                     format!("'{}' 有 {} 条证据支持 — 值得关注", claim, evidence_count), thesis.confidence)
+                    (
+                        contract::DecisionType::Monitor,
+                        contract::DecisionHorizon::Days90,
+                        format!("'{}' 有 {} 条证据支持 — 值得关注", claim, evidence_count),
+                        thesis.confidence,
+                    )
                 } else {
-                    (contract::DecisionType::Monitor, contract::DecisionHorizon::Days30,
-                     format!("'{}' 仅 {} 条证据 — 继续收集", claim, evidence_count), thesis.confidence.max(0.4))
+                    (
+                        contract::DecisionType::Monitor,
+                        contract::DecisionHorizon::Days30,
+                        format!("'{}' 仅 {} 条证据 — 继续收集", claim, evidence_count),
+                        thesis.confidence.max(0.4),
+                    )
                 }
             }
             ThesisStatus::Strengthening => (
-                contract::DecisionType::Build, contract::DecisionHorizon::Days90,
-                format!("'{}' 正在强化 — 建议投入资源", claim), thesis.confidence.max(0.6),
+                contract::DecisionType::Build,
+                contract::DecisionHorizon::Days90,
+                format!("'{}' 正在强化 — 建议投入资源", claim),
+                thesis.confidence.max(0.6),
             ),
             ThesisStatus::Weakening => (
-                contract::DecisionType::Learn, contract::DecisionHorizon::Days30,
-                format!("'{}' 正在弱化 — 需要重新评估", claim), thesis.confidence.min(0.5),
+                contract::DecisionType::Learn,
+                contract::DecisionHorizon::Days30,
+                format!("'{}' 正在弱化 — 需要重新评估", claim),
+                thesis.confidence.min(0.5),
             ),
             ThesisStatus::Confirmed => (
-                contract::DecisionType::Monitor, contract::DecisionHorizon::Days180,
-                format!("'{}' 已被验证 — 跟踪衍生影响", claim), thesis.confidence.max(0.7),
+                contract::DecisionType::Monitor,
+                contract::DecisionHorizon::Days180,
+                format!("'{}' 已被验证 — 跟踪衍生影响", claim),
+                thesis.confidence.max(0.7),
             ),
             ThesisStatus::Invalidated => (
-                contract::DecisionType::Exit, contract::DecisionHorizon::Immediate,
-                format!("'{}' 已被证伪 — 立即退出", claim), 0.0,
+                contract::DecisionType::Exit,
+                contract::DecisionHorizon::Immediate,
+                format!("'{}' 已被证伪 — 立即退出", claim),
+                0.0,
             ),
         };
-        StatusMapping { decision_type: raw_type, horizon, rationale, confidence }
+        StatusMapping {
+            decision_type: raw_type,
+            horizon,
+            rationale,
+            confidence,
+        }
     }
 
-    pub fn smooth(&self, new_action: &contract::DecisionType, last_action: Option<&contract::DecisionType>) -> contract::DecisionType {
+    pub fn smooth(
+        &self,
+        new_action: &contract::DecisionType,
+        last_action: Option<&contract::DecisionType>,
+    ) -> contract::DecisionType {
         match last_action {
             None => new_action.clone(),
             Some(last) => {
                 if matches!(new_action, contract::DecisionType::Exit) || new_action == last {
                     new_action.clone()
                 } else {
-                    log::info!("  🛑 Decision Smoothing: 抑制 {:?} → {:?}", last, new_action);
+                    log::info!(
+                        "  🛑 Decision Smoothing: 抑制 {:?} → {:?}",
+                        last,
+                        new_action
+                    );
                     last.clone()
                 }
             }
@@ -100,8 +129,14 @@ impl RuleEngine {
     }
 
     pub fn stability(&self, action: &contract::DecisionType, history_count: usize) -> String {
-        if matches!(action, contract::DecisionType::Exit) { return "Final".into(); }
-        if history_count >= 3 { "Stable".into() } else { "Volatile".into() }
+        if matches!(action, contract::DecisionType::Exit) {
+            return "Final".into();
+        }
+        if history_count >= 3 {
+            "Stable".into()
+        } else {
+            "Volatile".into()
+        }
     }
 }
 
@@ -133,9 +168,15 @@ impl ProcessingPath {
             contract::ThesisStatus::Confirmed | contract::ThesisStatus::Invalidated
         );
         let is_low_value = thesis.confidence < 0.5 || thesis.evidence.is_empty();
-        if is_terminal || is_low_value { Self::Fast } else { Self::Slow }
+        if is_terminal || is_low_value {
+            Self::Fast
+        } else {
+            Self::Slow
+        }
     }
-    pub fn needs_llm(&self) -> bool { matches!(self, Self::Slow) }
+    pub fn needs_llm(&self) -> bool {
+        matches!(self, Self::Slow)
+    }
 }
 
 /// LLM Judge — 推理层
@@ -154,11 +195,27 @@ impl LlmJudge {
 
 Output strict JSON:
 {"evidence_assessment": "<brief assessment>", "counter_args": "<key counter-argument>", "decision_fit": true/false}"#;
-        let user_prompt = format!("判断: {} | 置信度: {:.2} | 状态: {:?} | 证据: {}", thesis.claim, thesis.confidence, thesis.status, thesis.evidence.len());
-        let raw = sulix_llm::call_with_retry_raw(&client, &self.api_key, &self.llm_config, system_prompt, &user_prompt).await?;
+        let user_prompt = format!(
+            "判断: {} | 置信度: {:.2} | 状态: {:?} | 证据: {}",
+            thesis.claim,
+            thesis.confidence,
+            thesis.status,
+            thesis.evidence.len()
+        );
+        let raw = sulix_llm::call_with_retry_raw(
+            &client,
+            &self.api_key,
+            &self.llm_config,
+            system_prompt,
+            &user_prompt,
+        )
+        .await?;
         let parsed = sulix_llm::parse_json_lenient(&raw);
         match parsed {
-            Ok(json) => Ok(format!("LLM 评估: {}", json["evidence_assessment"].as_str().unwrap_or(&raw))),
+            Ok(json) => Ok(format!(
+                "LLM 评估: {}",
+                json["evidence_assessment"].as_str().unwrap_or(&raw)
+            )),
             Err(_) => Ok(raw.chars().take(200).collect()),
         }
     }
@@ -183,19 +240,28 @@ impl DecisionMappingStep {
     }
 
     fn find_last_decision(&self, thesis_id: &str) -> Option<&contract::Decision> {
-        self.last_decisions.iter().find(|d| d.thesis_id == thesis_id)
+        self.last_decisions
+            .iter()
+            .find(|d| d.thesis_id == thesis_id)
     }
 
-    pub async fn map(&self, theses: Vec<contract::Thesis>, ctx: &StepContext) -> Result<Vec<contract::Decision>> {
-        if theses.is_empty() { return Ok(vec![]); }
+    pub async fn map(
+        &self,
+        theses: Vec<contract::Thesis>,
+        ctx: &StepContext,
+    ) -> Result<Vec<contract::Decision>> {
+        if theses.is_empty() {
+            return Ok(vec![]);
+        }
         log::info!("⚖️ DecisionMapping: {} theses", theses.len());
         let mut decisions = Vec::new();
 
         for thesis in &theses {
             let mapping = self.rule_engine.map_thesis(thesis);
             let last = self.find_last_decision(&thesis.id);
-            let smoothed_action = self.rule_engine.smooth(&mapping.decision_type, last.map(|d| &d.action));
-            let _stability = self.rule_engine.stability(&smoothed_action, self.last_decisions.iter().filter(|d| d.thesis_id == thesis.id).count());
+            let smoothed_action = self
+                .rule_engine
+                .smooth(&mapping.decision_type, last.map(|d| &d.action));
 
             // Dual path: Fast (no LLM) / Slow (LLM Judge)
             let path = ProcessingPath::auto_select(thesis);
@@ -205,16 +271,36 @@ impl DecisionMappingStep {
                         Ok(llm_r) => format!("{}\n{}", mapping.rationale, llm_r),
                         Err(_) => mapping.rationale.clone(),
                     }
-                } else { mapping.rationale.clone() }
-            } else { mapping.rationale.clone() };
+                } else {
+                    mapping.rationale.clone()
+                }
+            } else {
+                mapping.rationale.clone()
+            };
 
-            let horizon = if let contract::DecisionType::Exit = smoothed_action { contract::DecisionHorizon::Immediate } else { mapping.horizon };
+            let horizon = if let contract::DecisionType::Exit = smoothed_action {
+                contract::DecisionHorizon::Immediate
+            } else {
+                mapping.horizon
+            };
+            let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
             let decision = contract::Decision {
-                id: format!("dec_{}", chrono::Utc::now().timestamp_subsec_millis()),
-                thesis_id: thesis.id.clone(), action: smoothed_action, confidence: mapping.confidence,
-                horizon, reasoning, made_at: ctx.today.clone(), rule_passed: true,
+                id: format!("dec_{}_{:04}", ts, decisions.len() + 1),
+                thesis_id: thesis.id.clone(),
+                action: smoothed_action,
+                confidence: mapping.confidence,
+                horizon,
+                reasoning,
+                made_at: ctx.today.clone(),
+                rule_passed: true,
                 requires_review: thesis.evidence.is_empty() || thesis.confidence < 0.3,
-                review_reason: if thesis.evidence.is_empty() { Some("无证据".into()) } else if thesis.confidence < 0.3 { Some(format!("低置信度 {:.2}", thesis.confidence)) } else { None },
+                review_reason: if thesis.evidence.is_empty() {
+                    Some("无证据".into())
+                } else if thesis.confidence < 0.3 {
+                    Some(format!("低置信度 {:.2}", thesis.confidence))
+                } else {
+                    None
+                },
             };
             decisions.push(decision);
         }
@@ -248,7 +334,10 @@ impl DecisionMappingStepBuilder {
     }
 
     pub fn with_llm_judge(mut self, llm_config: LlmConfig, api_key: &str) -> Self {
-        self.llm_judge = Some(LlmJudge { llm_config, api_key: api_key.to_string() });
+        self.llm_judge = Some(LlmJudge {
+            llm_config,
+            api_key: api_key.to_string(),
+        });
         self
     }
 
@@ -286,95 +375,146 @@ impl PipelineStep<contract::Thesis, contract::Decision> for DecisionMappingStep 
 mod tests {
     use super::*;
 
-    fn make_thesis(status: ThesisStatus, confidence: f64, evidence_count: usize) -> contract::Thesis {
+    fn make_thesis(
+        status: ThesisStatus,
+        confidence: f64,
+        evidence_count: usize,
+    ) -> contract::Thesis {
         contract::Thesis {
-            id: "thesis_test".into(), claim: "Test thesis".into(), confidence,
+            id: "thesis_test".into(),
+            claim: "Test thesis".into(),
+            confidence,
             evidence: (0..evidence_count).map(|i| format!("sig_{}", i)).collect(),
-            status, falsification_conditions: vec![], time_horizon: "12_months".into(),
-            theme: None, belief_statement: None,
+            status,
+            falsification_conditions: vec![],
+            time_horizon: "12_months".into(),
+            theme: None,
+            belief_statement: None,
         }
     }
 
-    #[test] fn test_proposed_maps_to_learn() {
+    #[test]
+    fn test_proposed_maps_to_learn() {
         let engine = RuleEngine;
         let m = engine.map_thesis(&make_thesis(ThesisStatus::Proposed, 0.5, 1));
         assert!(matches!(m.decision_type, contract::DecisionType::Learn));
         assert!(matches!(m.horizon, contract::DecisionHorizon::Days180));
     }
 
-    #[test] fn test_strengthening_maps_to_build() {
+    #[test]
+    fn test_strengthening_maps_to_build() {
         let engine = RuleEngine;
         let m = engine.map_thesis(&make_thesis(ThesisStatus::Strengthening, 0.7, 5));
         assert!(matches!(m.decision_type, contract::DecisionType::Build));
     }
 
-    #[test] fn test_weakening_maps_to_learn() {
+    #[test]
+    fn test_weakening_maps_to_learn() {
         let engine = RuleEngine;
         let m = engine.map_thesis(&make_thesis(ThesisStatus::Weakening, 0.4, 2));
         assert!(matches!(m.decision_type, contract::DecisionType::Learn));
     }
 
-    #[test] fn test_invalidated_maps_to_exit() {
+    #[test]
+    fn test_invalidated_maps_to_exit() {
         let engine = RuleEngine;
         let m = engine.map_thesis(&make_thesis(ThesisStatus::Invalidated, 0.0, 0));
         assert!(matches!(m.decision_type, contract::DecisionType::Exit));
         assert!(matches!(m.horizon, contract::DecisionHorizon::Immediate));
     }
 
-    #[test] fn test_confirmed_maps_to_monitor() {
+    #[test]
+    fn test_confirmed_maps_to_monitor() {
         let engine = RuleEngine;
         let m = engine.map_thesis(&make_thesis(ThesisStatus::Confirmed, 0.8, 5));
         assert!(matches!(m.decision_type, contract::DecisionType::Monitor));
     }
 
-    #[test] fn test_smooth_exit_always_immediate() {
-        assert!(matches!(RuleEngine.smooth(&contract::DecisionType::Exit, Some(&contract::DecisionType::Monitor)), contract::DecisionType::Exit));
+    #[test]
+    fn test_smooth_exit_always_immediate() {
+        assert!(matches!(
+            RuleEngine.smooth(
+                &contract::DecisionType::Exit,
+                Some(&contract::DecisionType::Monitor)
+            ),
+            contract::DecisionType::Exit
+        ));
     }
 
-    #[test] fn test_smooth_same_action_continues() {
+    #[test]
+    fn test_smooth_same_action_continues() {
         let a = contract::DecisionType::Build;
         assert_eq!(RuleEngine.smooth(&a, Some(&a)), a);
     }
 
-    #[test] fn test_smooth_different_action_suppressed() {
-        let r = RuleEngine.smooth(&contract::DecisionType::Build, Some(&contract::DecisionType::Monitor));
+    #[test]
+    fn test_smooth_different_action_suppressed() {
+        let r = RuleEngine.smooth(
+            &contract::DecisionType::Build,
+            Some(&contract::DecisionType::Monitor),
+        );
         assert!(matches!(r, contract::DecisionType::Monitor));
     }
 
-    #[test] fn test_stability_exit_is_final() { assert_eq!(RuleEngine.stability(&contract::DecisionType::Exit, 0), "Final"); }
-    #[test] fn test_stability_three_days_stable() { assert_eq!(RuleEngine.stability(&contract::DecisionType::Monitor, 3), "Stable"); }
-    #[test] fn test_stability_less_than_three_volatile() { assert_eq!(RuleEngine.stability(&contract::DecisionType::Monitor, 1), "Volatile"); }
+    #[test]
+    fn test_stability_exit_is_final() {
+        assert_eq!(
+            RuleEngine.stability(&contract::DecisionType::Exit, 0),
+            "Final"
+        );
+    }
+    #[test]
+    fn test_stability_three_days_stable() {
+        assert_eq!(
+            RuleEngine.stability(&contract::DecisionType::Monitor, 3),
+            "Stable"
+        );
+    }
+    #[test]
+    fn test_stability_less_than_three_volatile() {
+        assert_eq!(
+            RuleEngine.stability(&contract::DecisionType::Monitor, 1),
+            "Volatile"
+        );
+    }
 
     // ===== ProcessingPath tests =====
 
-    fn make_path_thesis(confidence: f64, evidence: usize, status: ThesisStatus) -> contract::Thesis {
+    fn make_path_thesis(
+        confidence: f64,
+        evidence: usize,
+        status: ThesisStatus,
+    ) -> contract::Thesis {
         make_thesis(status, confidence, evidence)
     }
 
-    #[test] fn test_processing_path_high_confidence_is_slow() {
+    #[test]
+    fn test_processing_path_high_confidence_is_slow() {
         let t = make_path_thesis(0.7, 3, ThesisStatus::Active);
         assert_eq!(ProcessingPath::auto_select(&t), ProcessingPath::Slow);
     }
 
-    #[test] fn test_processing_path_low_confidence_is_fast() {
+    #[test]
+    fn test_processing_path_low_confidence_is_fast() {
         let t = make_path_thesis(0.3, 2, ThesisStatus::Active);
         assert_eq!(ProcessingPath::auto_select(&t), ProcessingPath::Fast);
     }
 
-    #[test] fn test_processing_path_no_evidence_is_fast() {
+    #[test]
+    fn test_processing_path_no_evidence_is_fast() {
         let t = make_path_thesis(0.6, 0, ThesisStatus::Active);
         assert_eq!(ProcessingPath::auto_select(&t), ProcessingPath::Fast);
     }
 
-    #[test] fn test_processing_path_invalidated_is_fast() {
+    #[test]
+    fn test_processing_path_invalidated_is_fast() {
         let t = make_path_thesis(0.0, 0, ThesisStatus::Invalidated);
         assert_eq!(ProcessingPath::auto_select(&t), ProcessingPath::Fast);
     }
 
-    #[test] fn test_processing_path_confirmed_is_fast() {
+    #[test]
+    fn test_processing_path_confirmed_is_fast() {
         let t = make_path_thesis(0.9, 10, ThesisStatus::Confirmed);
         assert_eq!(ProcessingPath::auto_select(&t), ProcessingPath::Fast);
     }
 }
-
-

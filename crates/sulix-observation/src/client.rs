@@ -1,4 +1,4 @@
-﻿//! HTTP Client 层 — 全局单例 + 分层缓存
+//! HTTP Client 层 — 全局单例 + 分层缓存
 //!
 //! 对标 RSSHub cache.ts 模式:
 //!   - 全局 OnceLock Client（复用连接池，统一 User-Agent）
@@ -105,4 +105,3 @@ mod tests {
         assert_eq!(cache.get("test-key"), Some("test-data".into()));
     }
 }
-

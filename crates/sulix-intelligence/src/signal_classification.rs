@@ -1,4 +1,4 @@
-﻿//! SignalClassificationStep — 从纯事实到信号解释
+//! SignalClassificationStep — 从纯事实到信号解释
 //!
 //! 这是 Intelligence Pipeline 的第一层。
 //! 输入: contract::Observation（纯事实，不含解释）
@@ -144,7 +144,8 @@ impl SignalClassificationStep {
         // Phase 3: Slow Path — LLM 分类（分批）
         if !slow_obs.is_empty() {
             let slow_indices: Vec<usize> = slow_obs.iter().map(|(i, _)| *i).collect();
-            let slow_batch: Vec<&contract::Observation> = slow_obs.iter().map(|(_, o)| *o).collect();
+            let slow_batch: Vec<&contract::Observation> =
+                slow_obs.iter().map(|(_, o)| *o).collect();
 
             let llm_client = llm::create_client(120)?;
             for chunk in slow_batch.chunks(self.config.batch_size) {
@@ -197,7 +198,12 @@ impl SignalClassificationStep {
     /// 类比 ripgrep 的 `match_by_line_fast()`：
     ///   快速、确定性、零外部调用。
     fn fast_classify(&self, obs: &contract::Observation, idx: usize) -> contract::Signal {
-        let source_score = self.config.source_scores.get(&obs.source).copied().unwrap_or(5.0);
+        let source_score = self
+            .config
+            .source_scores
+            .get(&obs.source)
+            .copied()
+            .unwrap_or(5.0);
         let importance = (source_score / 10.0).clamp(0.1, 0.9);
 
         // 关键词匹配 → domain 检测
@@ -274,35 +280,86 @@ impl SignalClassificationStep {
             } else {
                 obs.raw_content.clone()
             };
-            user_prompt.push_str(&format!("[{}] 标题: {} | 来源: {} | 内容: {}\n", i, obs.title, obs.source, preview));
+            user_prompt.push_str(&format!(
+                "[{}] 标题: {} | 来源: {} | 内容: {}\n",
+                i, obs.title, obs.source, preview
+            ));
         }
 
-        let raw = llm::call_with_retry_raw(client, &self.api_key, &self.llm_config, system_prompt, &user_prompt).await?;
+        let raw = llm::call_with_retry_raw(
+            client,
+            &self.api_key,
+            &self.llm_config,
+            system_prompt,
+            &user_prompt,
+        )
+        .await?;
         let parsed: serde_json::Value = llm::parse_json_lenient(&raw)?;
-        let entries = parsed["signals"].as_array().or_else(|| parsed.as_array())
+        let entries = parsed["signals"]
+            .as_array()
+            .or_else(|| parsed.as_array())
             .ok_or_else(|| anyhow::anyhow!("LLM 响应缺少 'signals' 数组: {}", raw))?;
 
         let mut signals = Vec::new();
         for (i, entry) in entries.iter().enumerate() {
-            if i >= batch.len() { break; }
+            if i >= batch.len() {
+                break;
+            }
             let obs = batch[i];
-            let importance = entry["importance"].as_f64().unwrap_or(0.5).clamp(0.0, 1.0);
-            let domain = entry["domain"].as_str().unwrap_or("General").to_string();
-            let category_str = entry["category"].as_str().unwrap_or("context_update");
-            let why = entry["why"].as_str().unwrap_or("").to_string();
+            let importance = entry["importance"]
+                .as_f64()
+                .unwrap_or_else(|| {
+                    log::warn!(
+                        "⚠️ LLM 响应缺少 importance 字段 (idx {}), 使用默认值 0.5",
+                        i
+                    );
+                    0.5
+                })
+                .clamp(0.0, 1.0);
+            let domain = entry["domain"]
+                .as_str()
+                .unwrap_or_else(|| {
+                    log::warn!(
+                        "⚠️ LLM 响应缺少 domain 字段 (idx {}), 使用默认值 General",
+                        i
+                    );
+                    "General"
+                })
+                .to_string();
+            let category_str = entry["category"].as_str().unwrap_or_else(|| {
+                log::warn!(
+                    "⚠️ LLM 响应缺少 category 字段 (idx {}), 使用默认值 context_update",
+                    i
+                );
+                "context_update"
+            });
+            let why = entry["why"]
+                .as_str()
+                .unwrap_or_else(|| {
+                    log::warn!("⚠️ LLM 响应缺少 why 字段 (idx {}), 使用空字符串", i);
+                    ""
+                })
+                .to_string();
             let category = match category_str {
                 "structural_shift" => contract::SignalCategory::StructuralShift,
                 "competitive_signal" => contract::SignalCategory::CompetitiveSignal,
                 "noise" => contract::SignalCategory::Noise,
                 _ => contract::SignalCategory::ContextUpdate,
             };
-            let source_multiplier = self.config.source_scores.get(&obs.source).copied().unwrap_or(1.0);
+            let source_multiplier = self
+                .config
+                .source_scores
+                .get(&obs.source)
+                .copied()
+                .unwrap_or(1.0);
             let weighted_importance = (importance * source_multiplier).clamp(0.0, 1.0);
             signals.push(contract::Signal {
                 id: format!("sig_{:04}", i + 1),
                 observation_id: obs.id.clone(),
                 importance: weighted_importance,
-                domain, category, why,
+                domain,
+                category,
+                why,
             });
         }
         Ok(signals)
@@ -319,7 +376,6 @@ impl SignalClassificationStep {
             why: "LLM 分类失败，使用兜底评分".into(),
         }
     }
-
 }
 
 // ===== SignalClassificationStepBuilder — 参考 ripgrep SearcherBuilder 设计 =====
@@ -391,113 +447,182 @@ mod tests {
 
     fn test_obs(source: &str, title: &str, content: &str) -> contract::Observation {
         contract::Observation {
-            id: "obs_001".into(), title: title.into(), source: source.into(),
-            source_id: String::new(), url: "https://test.com".into(),
-            published_at: "2026-07-12".into(), captured_at: "2026-07-12T00:00:00Z".into(),
-            content_hash: "abc".into(), raw_content: content.into(), entities: vec![],
+            id: "obs_001".into(),
+            title: title.into(),
+            source: source.into(),
+            source_id: String::new(),
+            url: "https://test.com".into(),
+            published_at: "2026-07-12".into(),
+            captured_at: "2026-07-12T00:00:00Z".into(),
+            content_hash: "abc".into(),
+            raw_content: content.into(),
+            entities: vec![],
         }
     }
 
     fn test_step() -> SignalClassificationStep {
         SignalClassificationStepBuilder::new(
             LlmConfig {
-                api_key: Some("test".into()), provider: "test".into(), model: "test".into(),
-                base_url: "http://test".into(), max_tokens: 100, temperature: 0.0,
+                api_key: Some("test".into()),
+                provider: "test".into(),
+                model: "test".into(),
+                base_url: "http://test".into(),
+                max_tokens: 100,
+                temperature: 0.0,
                 perplexity_key: None,
-            }, "test",
-        ).build()
+            },
+            "test",
+        )
+        .build()
     }
 
-    #[test] fn test_config_default() {
+    #[test]
+    fn test_config_default() {
         let c = SignalClassificationConfig::default();
         assert_eq!(c.batch_size, 8);
     }
 
     // ===== SignalPath tests =====
 
-    #[test] fn test_signal_path_empty_content_is_fast() {
+    #[test]
+    fn test_signal_path_empty_content_is_fast() {
         let obs = test_obs("test", "", "");
         assert_eq!(SignalPath::auto_select(&obs, Some(5.0)), SignalPath::Fast);
     }
 
-    #[test] fn test_signal_path_low_source_score_is_fast() {
+    #[test]
+    fn test_signal_path_low_source_score_is_fast() {
         let obs = test_obs("reddit", "some post", "some content");
         assert_eq!(SignalPath::auto_select(&obs, Some(2.0)), SignalPath::Fast);
     }
 
-    #[test] fn test_signal_path_high_value_is_slow() {
+    #[test]
+    fn test_signal_path_high_value_is_slow() {
         let obs = test_obs("OpenAI Blog", "GPT-5 release", "long content here");
         assert_eq!(SignalPath::auto_select(&obs, Some(8.0)), SignalPath::Slow);
         assert!(SignalPath::auto_select(&obs, Some(8.0)).needs_llm());
     }
 
-    #[test] fn test_signal_path_no_score_slow_by_default() {
+    #[test]
+    fn test_signal_path_no_score_slow_by_default() {
         let obs = test_obs("test", "title", "content");
         assert_eq!(SignalPath::auto_select(&obs, None), SignalPath::Slow);
     }
 
     // ===== Fast classify tests =====
 
-    #[test] fn test_fast_classify_source_score_importance() {
+    #[test]
+    fn test_fast_classify_source_score_importance() {
         let mut cfg = SignalClassificationConfig::default();
         cfg.source_scores.insert("OpenAI Blog".into(), 9.0);
         let step = SignalClassificationStepBuilder::new(
-            LlmConfig { api_key: Some("test".into()), provider: "test".into(), model: "test".into(),
-                base_url: "http://test".into(), max_tokens: 100, temperature: 0.0, perplexity_key: None },
+            LlmConfig {
+                api_key: Some("test".into()),
+                provider: "test".into(),
+                model: "test".into(),
+                base_url: "http://test".into(),
+                max_tokens: 100,
+                temperature: 0.0,
+                perplexity_key: None,
+            },
             "test",
-        ).with_config(cfg).build();
+        )
+        .with_config(cfg)
+        .build();
         let obs = test_obs("OpenAI Blog", "GPT-5", "content");
         let signal = step.fast_classify(&obs, 0);
-        assert!((signal.importance - 0.9).abs() < 0.01, "importance should be 0.9, got {}", signal.importance);
+        assert!(
+            (signal.importance - 0.9).abs() < 0.01,
+            "importance should be 0.9, got {}",
+            signal.importance
+        );
     }
 
-    #[test] fn test_fast_classify_low_source_low_importance() {
+    #[test]
+    fn test_fast_classify_low_source_low_importance() {
         let mut cfg = SignalClassificationConfig::default();
         cfg.source_scores.insert("twitter".into(), 1.0);
         let step = SignalClassificationStepBuilder::new(
-            LlmConfig { api_key: Some("test".into()), provider: "test".into(), model: "test".into(),
-                base_url: "http://test".into(), max_tokens: 100, temperature: 0.0, perplexity_key: None },
+            LlmConfig {
+                api_key: Some("test".into()),
+                provider: "test".into(),
+                model: "test".into(),
+                base_url: "http://test".into(),
+                max_tokens: 100,
+                temperature: 0.0,
+                perplexity_key: None,
+            },
             "test",
-        ).with_config(cfg).build();
+        )
+        .with_config(cfg)
+        .build();
         let obs = test_obs("twitter", "some tweet", "short");
         let signal = step.fast_classify(&obs, 0);
-        assert!((signal.importance - 0.1).abs() < 0.01, "importance should be 0.1, got {}", signal.importance);
+        assert!(
+            (signal.importance - 0.1).abs() < 0.01,
+            "importance should be 0.1, got {}",
+            signal.importance
+        );
     }
 
-    #[test] fn test_fast_classify_no_source_score_default() {
+    #[test]
+    fn test_fast_classify_no_source_score_default() {
         let step = test_step();
         let obs = test_obs("unknown", "test", "content");
         let signal = step.fast_classify(&obs, 0);
         assert!((signal.importance - 0.5).abs() < 0.01);
     }
 
-    #[test] fn test_fast_classify_category_is_context_update() {
+    #[test]
+    fn test_fast_classify_category_is_context_update() {
         let step = test_step();
         let obs = test_obs("test", "title", "content");
         let signal = step.fast_classify(&obs, 0);
-        assert!(matches!(signal.category, contract::SignalCategory::ContextUpdate));
+        assert!(matches!(
+            signal.category,
+            contract::SignalCategory::ContextUpdate
+        ));
     }
 
-    #[test] fn test_keyword_matching_detects_domain() {
+    #[test]
+    fn test_keyword_matching_detects_domain() {
         let mut cfg = SignalClassificationConfig::default();
-        cfg.domain_keywords.insert("AI Infrastructure".into(), vec!["gpu".into(), "nvidia".into(), "ai model".into()]);
+        cfg.domain_keywords.insert(
+            "AI Infrastructure".into(),
+            vec!["gpu".into(), "nvidia".into(), "ai model".into()],
+        );
         let step = SignalClassificationStepBuilder::new(
-            LlmConfig { api_key: Some("test".into()), provider: "test".into(), model: "test".into(),
-                base_url: "http://test".into(), max_tokens: 100, temperature: 0.0, perplexity_key: None },
+            LlmConfig {
+                api_key: Some("test".into()),
+                provider: "test".into(),
+                model: "test".into(),
+                base_url: "http://test".into(),
+                max_tokens: 100,
+                temperature: 0.0,
+                perplexity_key: None,
+            },
             "test",
-        ).with_config(cfg).build();
-        let obs = test_obs("test", "NVIDIA releases new GPU", "content about ai model training");
+        )
+        .with_config(cfg)
+        .build();
+        let obs = test_obs(
+            "test",
+            "NVIDIA releases new GPU",
+            "content about ai model training",
+        );
         let signal = step.fast_classify(&obs, 0);
         assert_eq!(signal.domain, "AI Infrastructure");
     }
 
-    #[test] fn test_fallback_classify_produces_low_importance() {
+    #[test]
+    fn test_fallback_classify_produces_low_importance() {
         let step = test_step();
         let obs = test_obs("test", "title", "content");
         let signal = step.fallback_classify_one(&obs);
         assert!((signal.importance - 0.3).abs() < 0.01);
-        assert!(matches!(signal.category, contract::SignalCategory::ContextUpdate));
+        assert!(matches!(
+            signal.category,
+            contract::SignalCategory::ContextUpdate
+        ));
     }
 }
-
-

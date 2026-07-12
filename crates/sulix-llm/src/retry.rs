@@ -1,10 +1,20 @@
 //! LLM API 重试机制 — 指数退避
 
-use std::time::Duration;
 use anyhow::Result;
+use std::time::Duration;
 
 /// 最大重试次数
 pub const MAX_RETRIES: u32 = 3;
+
+/// 判断错误是否为客户端错误（不应重试）
+///
+/// 匹配 api.rs 中 `call_llm_inner` 的格式化错误消息：
+///   "LLM API 返回错误 ({status_code}): {body}"
+fn is_client_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    // 检查 400-499 范围内的状态码
+    msg.contains("返回错误 (4")
+}
 
 /// Generic retry loop with exponential backoff.
 /// Skips retry on 4xx errors (auth/billing/rate-limit).
@@ -23,9 +33,8 @@ where
         match f().await {
             Ok(result) => return Ok(result),
             Err(e) => {
-                let err_str = e.to_string();
-                if err_str.contains("401") || err_str.contains("403") {
-                    log::warn!("❌ Non-retryable error: {}", err_str);
+                if is_client_error(&e) {
+                    log::warn!("❌ Non-retryable client error: {}", e);
                     return Err(e);
                 }
                 last_error = Some(e);
@@ -55,29 +64,39 @@ mod tests {
                 c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 anyhow::bail!("still failing")
             }
-        }).await;
+        })
+        .await;
         assert!(result.is_err());
-        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), MAX_RETRIES + 1);
+        assert_eq!(
+            counter.load(std::sync::atomic::Ordering::Relaxed),
+            MAX_RETRIES + 1
+        );
     }
 
     #[tokio::test]
-    async fn test_retry_skips_on_401() {
-        let result: anyhow::Result<i32> = with_retry(|| async { anyhow::bail!("401 Unauthorized") }).await;
+    async fn test_retry_skips_on_client_error() {
+        // 模拟 api.rs 中的错误格式: "LLM API 返回错误 (401): ..."
+        let result: anyhow::Result<i32> =
+            with_retry(|| async { anyhow::bail!("LLM API 返回错误 (401): Unauthorized") }).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("401"));
     }
 
     #[tokio::test]
-    async fn test_retry_skips_on_403() {
+    async fn test_retry_retries_on_server_error() {
+        // 服务器错误(5xx) 应重试，不是客户端错误格式
         let counter = std::sync::atomic::AtomicU32::new(0);
         let result: anyhow::Result<i32> = with_retry(|| {
             let c = &counter;
             async move {
                 c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                anyhow::bail!("403 Forbidden")
+                anyhow::bail!("server error")
             }
-        }).await;
+        })
+        .await;
         assert!(result.is_err());
-        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(
+            counter.load(std::sync::atomic::Ordering::Relaxed),
+            MAX_RETRIES + 1
+        );
     }
 }

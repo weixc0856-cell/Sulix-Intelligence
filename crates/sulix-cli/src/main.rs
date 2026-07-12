@@ -1,4 +1,4 @@
-﻿//! Sulix Intelligence — 个人创业者的 AI 战略情报助手
+//! Sulix Intelligence — 个人创业者的 AI 战略情报助手
 //!
 //! 新管线架构：
 //!   init()            → 配置/DB/EntityDb
@@ -85,7 +85,9 @@ async fn main() -> Result<()> {
     }
 
     let api_key = cfg.get_api_key()?;
-    let data_dir = cfg.storage.as_ref()
+    let data_dir = cfg
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("data"));
@@ -103,11 +105,10 @@ async fn main() -> Result<()> {
         &cfg,
         &crate::db::Database::open(&crate::db::get_db_path(&cfg))?,
         &today,
-        crate::entity::EntitySanctionDb::new(),
     )
     .await;
 
-    let Some((new_articles, _source_statuses, _entity_db)) = signal_result? else {
+    let Some(new_articles) = signal_result? else {
         log::info!("✅ 今日无新文章，结束");
         return Ok(());
     };
@@ -122,13 +123,19 @@ async fn main() -> Result<()> {
     // ===== Intelligence Pipeline: Observation → Signal → Thesis → Decision =====
 
     // 1. Article → Observation, with entity extraction
-    let mut observations: Vec<contract::Observation> =
-        new_articles.iter().map(|a| contract::Observation::from(a.clone())).collect();
+    let mut observations: Vec<contract::Observation> = new_articles
+        .iter()
+        .map(|a| contract::Observation::from(a.clone()))
+        .collect();
     for obs in &mut observations {
         let text = format!("{} {}", obs.title, obs.raw_content);
         obs.entities = crate::entity::extract_entities_from_text(&text);
     }
-    log::info!("  ➡️ {} articles → {} observations", new_articles.len(), observations.len());
+    log::info!(
+        "  ➡️ {} articles → {} observations",
+        new_articles.len(),
+        observations.len()
+    );
 
     // 2. 从 MemoryEngine 加载已有 Thesis
     let memory_path = data_dir.join("memory_db.json");
@@ -142,10 +149,12 @@ async fn main() -> Result<()> {
     let pipeline = intelligence::IntelligencePipeline::new(
         intelligence::SignalClassificationStepBuilder::new(cfg.llm.clone(), &api_key).build(),
         intelligence::ThesisGenerationStepBuilder::new(cfg.llm.clone(), &api_key)
-            .with_existing_theses(existing_theses).build(),
+            .with_existing_theses(existing_theses)
+            .build(),
         intelligence::DecisionMappingStepBuilder::new()
             .with_llm_judge(cfg.llm.clone(), &api_key)
-            .with_last_decisions(last_decisions).build(),
+            .with_last_decisions(last_decisions)
+            .build(),
     );
 
     let ctx = if cli.debug {
@@ -168,25 +177,38 @@ async fn main() -> Result<()> {
 
             // 后处理: Calibration + Summary
             let calibration = intelligence::postprocessing::calibrate(
-                &output.signals, &output.theses, &output.decisions,
-                &cfg.llm, &api_key, "zh",
-            ).await;
+                &output.signals,
+                &output.theses,
+                &output.decisions,
+                &cfg.llm,
+                &api_key,
+                "zh",
+            )
+            .await;
             if !calibration.is_empty() {
                 log::info!("  🤖 Calibration: {}", calibration);
             }
 
             let _summary = intelligence::postprocessing::synthesize(
-                &output.signals, &output.theses, &output.decisions,
+                &output.signals,
+                &output.theses,
+                &output.decisions,
             );
 
             // 个人影响分析
             let editor_notes = intelligence::postprocessing::analyze_personal_impact(
-                &output.theses, &output.decisions,
+                &output.theses,
+                &output.decisions,
             );
             if !editor_notes.is_empty() {
                 log::info!("  📝 Editor Note: {} 条个人影响分析", editor_notes.len());
                 for note in &editor_notes {
-                    log::info!("    [{:?}] {} (magnitude: {})", note.impact_type, note.description, note.magnitude);
+                    log::info!(
+                        "    [{:?}] {} (magnitude: {})",
+                        note.impact_type,
+                        note.description,
+                        note.magnitude
+                    );
                 }
             }
 
@@ -196,8 +218,11 @@ async fn main() -> Result<()> {
             }
 
             // 写入 DecisionHistory
-            let _ = intelligence::DecisionHistory::open(&history_path)
-                .and_then(|mut h| h.append_from_decisions(&output.decisions, &today));
+            if let Err(e) = intelligence::DecisionHistory::open(&history_path)
+                .and_then(|mut h| h.append_from_decisions(&output.decisions, &today))
+            {
+                log::warn!("⚠️ DecisionHistory 写入失败: {}", e);
+            }
 
             // MDX 输出
             let intel_mdx_dir = data_dir.join("intelligence_mdx");
@@ -212,9 +237,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    log::info!("✅ Sulix Intelligence 执行完成 ({:.1}s)", start.elapsed().as_secs_f64());
+    log::info!(
+        "✅ Sulix Intelligence 执行完成 ({:.1}s)",
+        start.elapsed().as_secs_f64()
+    );
     log::info!("  📊 {}", sulix_llm::audit::llm_audit_summary());
     Ok(())
 }
-
-

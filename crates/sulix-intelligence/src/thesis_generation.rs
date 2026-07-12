@@ -1,4 +1,4 @@
-﻿//! ThesisGenerationStep — 从信号到可追踪判断
+//! ThesisGenerationStep — 从信号到可追踪判断
 //!
 //! 这是 Intelligence Pipeline 的核心价值步骤。
 //! 输入: contract::Signal（带解释的信号）
@@ -72,9 +72,9 @@ impl ThesisGenerationStep {
         let mut unmatched_signals: Vec<&contract::Signal> = Vec::new();
 
         for signal in &signals {
-            let matched = updated_theses.iter_mut().find(|thesis| {
-                title_overlap(&thesis.claim, &signal.why) > 0.3
-            });
+            let matched = updated_theses
+                .iter_mut()
+                .find(|thesis| title_overlap(&thesis.claim, &signal.why) > 0.3);
 
             match matched {
                 Some(thesis) => {
@@ -93,7 +93,10 @@ impl ThesisGenerationStep {
         // Phase 2: 未匹配信号 → LLM 生成新 Thesis
         if !unmatched_signals.is_empty() {
             let llm_client = llm::create_client(120)?;
-            match self.generate_theses_llm(&unmatched_signals, &llm_client).await {
+            match self
+                .generate_theses_llm(&unmatched_signals, &llm_client)
+                .await
+            {
                 Ok(new_theses) => {
                     log::info!("  ✨ LLM 生成 {} 个新 Thesis", new_theses.len());
                     updated_theses.extend(new_theses);
@@ -176,8 +179,12 @@ impl ThesisGenerationStep {
 
         let theses: Vec<contract::Thesis> = entries
             .iter()
-            .map(|entry| {
-                let claim = entry["claim"].as_str().unwrap_or("Untitled thesis").to_string();
+            .enumerate()
+            .map(|(i, entry)| {
+                let claim = entry["claim"]
+                    .as_str()
+                    .unwrap_or("Untitled thesis")
+                    .to_string();
                 let falsifications: Vec<String> = entry["falsification_conditions"]
                     .as_array()
                     .map(|arr| {
@@ -194,8 +201,9 @@ impl ThesisGenerationStep {
                 let belief = entry["belief_statement"].as_str().map(String::from);
                 let confidence = entry["confidence"].as_f64().unwrap_or(0.5).clamp(0.0, 1.0);
 
+                let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
                 contract::Thesis {
-                    id: format!("thesis_{:04}", chrono::Utc::now().timestamp_subsec_millis()),
+                    id: format!("thesis_{}_{:04}", ts, i + 1),
                     claim,
                     confidence,
                     evidence: vec![],
@@ -222,10 +230,7 @@ fn title_overlap(a: &str, b: &str) -> f64 {
         return 0.0;
     }
 
-    let common = words_a
-        .iter()
-        .filter(|w| words_b.contains(w))
-        .count();
+    let common = words_a.iter().filter(|w| words_b.contains(w)).count();
 
     common as f64 / words_a.len().max(words_b.len()) as f64
 }
@@ -303,5 +308,3 @@ mod tests {
         assert!((title_overlap("", "test")).abs() < 0.01);
     }
 }
-
-

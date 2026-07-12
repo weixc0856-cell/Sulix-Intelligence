@@ -1,4 +1,4 @@
-﻿//! 数据库模块 — SQLite 去重与存储
+//! 数据库模块 — SQLite 去重与存储
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
@@ -78,7 +78,9 @@ impl Database {
 
 /// 获取数据库路径（从配置计算）
 pub fn get_db_path(config: &sulix_config::Config) -> std::path::PathBuf {
-    let data_dir = config.storage.as_ref()
+    let data_dir = config
+        .storage
+        .as_ref()
         .and_then(|s| s.data_dir.as_deref())
         .unwrap_or("data");
     std::path::PathBuf::from(data_dir).join("intel.db")
@@ -97,8 +99,9 @@ mod tests {
                 url TEXT NOT NULL, content TEXT, summary TEXT, published_at TEXT,
                 fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
                 category TEXT DEFAULT 'uncategorized', is_read INTEGER DEFAULT 0
-            );"
-        ).unwrap();
+            );",
+        )
+        .unwrap();
         Database { conn }
     }
 
@@ -158,4 +161,3 @@ mod tests {
         assert_eq!(result[0].title, "Three");
     }
 }
-

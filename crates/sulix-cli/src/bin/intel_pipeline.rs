@@ -1,4 +1,4 @@
-﻿//! Intelligence Pipeline 独立运行 CLI
+//! Intelligence Pipeline 独立运行 CLI
 //!
 //! 用于独立运行和测试新管线（不依赖旧系统）。
 //! 支持分步执行和 debug 输出。
@@ -64,7 +64,9 @@ impl CliArgs {
                         "thesis" => StepKind::Thesis,
                         "decision" => StepKind::Decision,
                         "full" => StepKind::Full,
-                        other => anyhow::bail!("未知步骤: {} (可选: signal|thesis|decision|full)", other),
+                        other => {
+                            anyhow::bail!("未知步骤: {} (可选: signal|thesis|decision|full)", other)
+                        }
                     };
                 }
                 "--debug-dir" => {
@@ -150,8 +152,20 @@ async fn main() -> Result<()> {
     match args.step {
         StepKind::Signal => run_signal(artifact, &cfg.llm, &api_key, &ctx).await?,
         StepKind::Thesis => run_thesis(artifact, &cfg.llm, &api_key, &ctx).await?,
-        StepKind::Decision => run_decision(artifact, &cfg.llm, &api_key, &ctx, last_decisions).await?,
-        StepKind::Full => run_full(artifact, &cfg.llm, &api_key, &ctx, &args.history, last_decisions).await?,
+        StepKind::Decision => {
+            run_decision(artifact, &cfg.llm, &api_key, &ctx, last_decisions).await?
+        }
+        StepKind::Full => {
+            run_full(
+                artifact,
+                &cfg.llm,
+                &api_key,
+                &ctx,
+                &args.history,
+                last_decisions,
+            )
+            .await?
+        }
     }
 
     Ok(())
@@ -196,7 +210,8 @@ async fn run_decision(
     let theses = artifact.into_theses()?;
     let step = DecisionMappingStepBuilder::new()
         .with_llm_judge(llm_config.clone(), api_key)
-        .with_last_decisions(last_decisions).build();
+        .with_last_decisions(last_decisions)
+        .build();
     let decisions = step.map(theses, ctx).await?;
     print_artifact(&Artifact::Decisions(decisions))
 }
@@ -215,7 +230,8 @@ async fn run_full(
         ThesisGenerationStepBuilder::new(llm_config.clone(), api_key).build(),
         DecisionMappingStepBuilder::new()
             .with_llm_judge(llm_config.clone(), api_key)
-            .with_last_decisions(last_decisions).build(),
+            .with_last_decisions(last_decisions)
+            .build(),
     );
 
     let output = pipeline.run(observations, ctx).await?;
@@ -229,7 +245,10 @@ async fn run_full(
     if !output.signals.is_empty() {
         println!("\n--- Signals ---");
         for s in &output.signals {
-            println!("  {} | imp={:.2} | domain={} | {:?}", s.id, s.importance, s.domain, s.category);
+            println!(
+                "  {} | imp={:.2} | domain={} | {:?}",
+                s.id, s.importance, s.domain, s.category
+            );
         }
     }
 
@@ -238,7 +257,11 @@ async fn run_full(
         for t in &output.theses {
             println!(
                 "  {} | conf={:.2} | status={:?} | evidence={} | conditions={:?}",
-                t.id, t.confidence, t.status, t.evidence.len(), t.falsification_conditions
+                t.id,
+                t.confidence,
+                t.status,
+                t.evidence.len(),
+                t.falsification_conditions
             );
             if let Some(theme) = &t.theme {
                 println!("       theme={}", theme);
@@ -262,8 +285,11 @@ async fn run_full(
     // 写入 DecisionHistory
     let mut history = DecisionHistory::open(history_path)?;
     let count = history.append_from_decisions(&output.decisions, &ctx.today)?;
-    println!("\n📜 DecisionHistory: {} 条已追加到 {}", count, history_path.display());
+    println!(
+        "\n📜 DecisionHistory: {} 条已追加到 {}",
+        count,
+        history_path.display()
+    );
 
     Ok(())
 }
-

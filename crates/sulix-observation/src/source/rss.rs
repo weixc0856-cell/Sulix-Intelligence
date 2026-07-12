@@ -1,4 +1,4 @@
-﻿//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
+//! RSS 源适配器（抄 RSSHub handler 模式：抓取 → 标准化 → 输出 RawSignal）
 //!
 //! 支持：
 //! - 正向关键词过滤（keywords）
@@ -10,8 +10,8 @@ use std::io::Cursor;
 use anyhow::Result;
 use chrono::{Duration, Utc};
 
-use sulix_config::SourceConfig;
 use crate::source::RawSignal;
+use sulix_config::SourceConfig;
 
 /// 解析日期范围配置 ("d3" → 3天, "w1" → 7天, "m1" → 30天)
 pub fn parse_date_range(s: &str) -> Duration {
@@ -295,4 +295,3 @@ mod tests {
         assert_ne!(h1, h2, "different URLs should produce different hashes");
     }
 }
-

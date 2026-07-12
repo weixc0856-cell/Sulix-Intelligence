@@ -1,4 +1,4 @@
-﻿//! Artifact — 管线步骤间的类型安全中间表示
+//! Artifact — 管线步骤间的类型安全中间表示
 //!
 //! Artifact 是 Intelligence Pipeline 中步骤间传递的唯一数据类型。
 //! 每个步骤消费一种 Artifact variant，生产另一种。
@@ -126,16 +126,20 @@ mod tests {
         let artifact = Artifact::Signals(vec![]);
         let result = artifact.into_observations();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("expected Observations"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected Observations"));
     }
 
     #[test]
     fn test_artifact_variant_name() {
-        assert_eq!(Artifact::Observations(vec![]).variant_name(), "Observations");
+        assert_eq!(
+            Artifact::Observations(vec![]).variant_name(),
+            "Observations"
+        );
         assert_eq!(Artifact::Signals(vec![]).variant_name(), "Signals");
         assert_eq!(Artifact::Theses(vec![]).variant_name(), "Theses");
         assert_eq!(Artifact::Decisions(vec![]).variant_name(), "Decisions");
     }
 }
-
-

@@ -1,4 +1,4 @@
-﻿//! USPTO 专利 API 适配器 — JSON REST API → RawSignal
+//! USPTO 专利 API 适配器 — JSON REST API → RawSignal
 //!
 //! 美国专利商标局（USPTO）官方公开 API，无需 Token。
 //! 过滤先进制程/半导体/AI 相关专利，输出统一 RawSignal。
@@ -7,8 +7,8 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-use sulix_config::SourceConfig;
 use crate::source::RawSignal;
+use sulix_config::SourceConfig;
 
 /// USPTO API 返回结构
 #[derive(Debug, Deserialize)]
@@ -107,4 +107,3 @@ pub async fn fetch_patents(config: &SourceConfig, date_range: &str) -> Result<Ve
     log::info!("✅ [USPTO/{}] → {} 条专利信号", config.name, signals.len());
     Ok(signals)
 }
-

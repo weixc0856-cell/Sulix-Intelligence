@@ -1,4 +1,4 @@
-﻿//! StepContext — Inteligence Pipeline 步骤间的共享上下文
+//! StepContext — Inteligence Pipeline 步骤间的共享上下文
 //!
 //! 每个 Step 通过 StepContext 获取共享配置（LLM 客户端、日期、调试模式等）。
 //! 不传递所有权，所有字段为只读引用。
@@ -82,4 +82,3 @@ mod tests {
         assert_eq!(config.output_dir, "debug/pipeline");
     }
 }
-

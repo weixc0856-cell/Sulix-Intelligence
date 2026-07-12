@@ -491,18 +491,22 @@ mod tests {
 
     #[test]
     fn test_config_from_example() {
-        let config = Config::from_file(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../config.example.toml")
-        ).unwrap();
+        let config = Config::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config.example.toml"
+        ))
+        .unwrap();
         assert_eq!(config.llm.model, "deepseek-v4-flash");
         assert!(config.sources.len() >= 2);
     }
 
     #[test]
     fn test_get_api_key_from_config() {
-        let mut config = Config::from_file(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../config.example.toml")
-        ).unwrap();
+        let mut config = Config::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config.example.toml"
+        ))
+        .unwrap();
         config.llm.api_key = Some("test-key".into());
         let key = config.get_api_key().unwrap();
         assert_eq!(key, "test-key");
@@ -510,9 +514,11 @@ mod tests {
 
     #[test]
     fn test_get_api_key_empty_fails() {
-        let config = Config::from_file(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../config.example.toml")
-        ).unwrap();
+        let config = Config::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config.example.toml"
+        ))
+        .unwrap();
         assert!(config.llm.api_key.as_deref() == Some("") || config.llm.api_key.is_none());
         // config 中 key 为空，且测试环境下 DEEPSEEK_API_KEY 大概率未设置
         assert!(config.get_api_key().is_err());

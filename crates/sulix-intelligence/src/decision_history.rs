@@ -1,4 +1,4 @@
-﻿//! DecisionHistory — 最小 Memory 存储
+//! DecisionHistory — 最小 Memory 存储
 //!
 //! 这是 Memory 的第一阶段：只存储"我过去做了什么决策"。
 //! 格式为 JSONL (JSON Lines)，append-only，每天追加。
@@ -58,7 +58,10 @@ impl DecisionHistory {
         // 如果文件存在，加载已有记录
         if path.exists() {
             history.reload()?;
-            log::info!("📜 DecisionHistory: 已加载 {} 条历史记录", history.records.len());
+            log::info!(
+                "📜 DecisionHistory: 已加载 {} 条历史记录",
+                history.records.len()
+            );
         } else {
             log::info!("📜 DecisionHistory: 新实例");
         }
@@ -105,7 +108,11 @@ impl DecisionHistory {
     /// 追加一条决策记录
     pub fn append(&mut self, record: DecisionRecord) -> Result<()> {
         // 检查是否已存在（内存中去重）
-        if self.records.iter().any(|r| r.decision_id == record.decision_id) {
+        if self
+            .records
+            .iter()
+            .any(|r| r.decision_id == record.decision_id)
+        {
             return Ok(()); // 已存在，跳过
         }
 
@@ -175,7 +182,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn unique_test_path(name: &str) -> PathBuf {
-        let tmp = std::env::temp_dir().join(format!("test_decision_history_{}_{}", name, std::process::id()));
+        let tmp = std::env::temp_dir().join(format!(
+            "test_decision_history_{}_{}",
+            name,
+            std::process::id()
+        ));
         let _ = std::fs::remove_file(&tmp);
         tmp
     }
@@ -265,12 +276,12 @@ mod tests {
             review_reason: None,
         }];
 
-        let count = history.append_from_decisions(&decisions, "2026-07-12").unwrap();
+        let count = history
+            .append_from_decisions(&decisions, "2026-07-12")
+            .unwrap();
         assert_eq!(count, 1);
         assert_eq!(history.len(), 1);
 
         let _ = std::fs::remove_file(&path);
     }
 }
-
-

@@ -1,4 +1,4 @@
-﻿//! Editor Note — 个人影响分析（幕僚长）
+//! Editor Note — 个人影响分析（幕僚长）
 //!
 //! 分析今日管线输出对用户个人决策的影响。
 //! 规则驱动（非 LLM），确保快速、可预测。
@@ -38,7 +38,8 @@ pub fn analyze_personal_impact(
                 impact_type: "challenges".into(),
                 description: format!(
                     "判断 '{:.60}' 置信度极高({:.0}%)，请审视是否有反证被忽略",
-                    thesis.claim, thesis.confidence * 100.0
+                    thesis.claim,
+                    thesis.confidence * 100.0
                 ),
                 magnitude: -2,
             });
@@ -49,7 +50,8 @@ pub fn analyze_personal_impact(
                 impact_type: "challenges".into(),
                 description: format!(
                     "判断 '{:.60}' 置信度极低({:.0}%)，考虑是否应丢弃或补充证据",
-                    thesis.claim, thesis.confidence * 100.0
+                    thesis.claim,
+                    thesis.confidence * 100.0
                 ),
                 magnitude: -1,
             });
@@ -72,10 +74,7 @@ pub fn analyze_personal_impact(
             notes.push(EditorNote {
                 thesis_id: decision.thesis_id.clone(),
                 impact_type: "reinforces".into(),
-                description: format!(
-                    "退出决策: {:?} — 资源配置需重新评估",
-                    decision.action
-                ),
+                description: format!("退出决策: {:?} — 资源配置需重新评估", decision.action),
                 magnitude: 4,
             });
         }
@@ -97,10 +96,15 @@ mod tests {
     #[test]
     fn test_high_confidence_triggers_challenge() {
         let thesis = contract::Thesis {
-            id: "t1".into(), claim: "AI will transform everything".into(), confidence: 0.85,
-            evidence: vec![], status: contract::ThesisStatus::Active,
-            falsification_conditions: vec![], time_horizon: "12_months".into(),
-            theme: None, belief_statement: None,
+            id: "t1".into(),
+            claim: "AI will transform everything".into(),
+            confidence: 0.85,
+            evidence: vec![],
+            status: contract::ThesisStatus::Active,
+            falsification_conditions: vec![],
+            time_horizon: "12_months".into(),
+            theme: None,
+            belief_statement: None,
         };
         let notes = analyze_personal_impact(&[thesis], &[]);
         assert!(!notes.is_empty());
@@ -110,10 +114,15 @@ mod tests {
     #[test]
     fn test_invalidated_triggers_negative_impact() {
         let thesis = contract::Thesis {
-            id: "t2".into(), claim: "Old prediction".into(), confidence: 0.1,
-            evidence: vec![], status: contract::ThesisStatus::Invalidated,
-            falsification_conditions: vec![], time_horizon: "30_days".into(),
-            theme: None, belief_statement: None,
+            id: "t2".into(),
+            claim: "Old prediction".into(),
+            confidence: 0.1,
+            evidence: vec![],
+            status: contract::ThesisStatus::Invalidated,
+            falsification_conditions: vec![],
+            time_horizon: "30_days".into(),
+            theme: None,
+            belief_statement: None,
         };
         let notes = analyze_personal_impact(&[thesis], &[]);
         assert!(!notes.is_empty());
@@ -123,16 +132,19 @@ mod tests {
     #[test]
     fn test_exit_decision_triggers_reinforce() {
         let decision = contract::Decision {
-            id: "d1".into(), thesis_id: "t1".into(),
-            action: contract::DecisionType::Exit, confidence: 0.9,
-            horizon: contract::DecisionHorizon::Immediate, reasoning: "".into(),
-            made_at: "2026-07-12".into(), rule_passed: true,
-            requires_review: false, review_reason: None,
+            id: "d1".into(),
+            thesis_id: "t1".into(),
+            action: contract::DecisionType::Exit,
+            confidence: 0.9,
+            horizon: contract::DecisionHorizon::Immediate,
+            reasoning: "".into(),
+            made_at: "2026-07-12".into(),
+            rule_passed: true,
+            requires_review: false,
+            review_reason: None,
         };
         let notes = analyze_personal_impact(&[], &[decision]);
         assert!(!notes.is_empty());
         assert_eq!(notes[0].impact_type, "reinforces");
     }
 }
-
-

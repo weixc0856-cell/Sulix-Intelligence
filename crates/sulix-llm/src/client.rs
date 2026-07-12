@@ -1,7 +1,7 @@
 //! LLM HTTP 客户端工厂
 
-use std::time::Duration;
 use anyhow::Result;
+use std::time::Duration;
 
 /// Create a reqwest Client with the given timeout in seconds.
 pub fn create_client(timeout_secs: u64) -> Result<reqwest::Client> {
