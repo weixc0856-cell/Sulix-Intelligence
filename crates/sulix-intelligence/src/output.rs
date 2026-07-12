@@ -90,6 +90,7 @@ primary_domain: "{}"
 confidence: {}
 evidences: {}
 challenges: 0
+summary: "{}"
 falsification_conditions:
 {}
 ---
@@ -112,6 +113,7 @@ falsification_conditions:
         yaml_escape(thesis.theme.as_deref().unwrap_or("Other")),
         thesis.confidence,
         thesis.evidence.len(),
+        yaml_escape(&thesis.claim),
         falsifications_yaml,
         thesis.claim,
         thesis.confidence * 100.0,
