@@ -162,7 +162,7 @@ fn parse_feed_bytes(
             } else {
                 content
             };
-            let filter_text = format!("{} {}", &title, content.as_deref().unwrap_or(""));
+            let filter_text = format!("{} {}", title, content.as_deref().unwrap_or(""));
 
             // 反向黑名单（exclude_keywords）：匹配任一即熔断
             if let Some(ref exclude) = config.exclude_keywords {
