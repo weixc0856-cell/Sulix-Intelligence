@@ -13,20 +13,14 @@
 //! 所有 struct 使用 #[derive(JsonSchema)] 确保可以自动生成 JSON Schema 文件。
 //! 生成的 JSON Schema 位于 /schemas/ 目录，供前端消费。
 
-pub mod belief;
 pub mod decision;
 pub mod observation;
-pub mod reflection;
 pub mod signal;
-pub mod theme;
 pub mod thesis;
 
-pub use belief::Belief;
 pub use decision::{Decision, DecisionHorizon, DecisionType};
 pub use observation::Observation;
-pub use reflection::{OutcomeVerdict, Reflection};
 pub use signal::{Signal, SignalCategory};
-pub use theme::{Theme, ThemeStatus};
 pub use thesis::{Thesis, ThesisStatus};
 
 // ===== 边界合规测试 =====
@@ -85,13 +79,10 @@ mod tests {
 
         generate_schema::<Observation>("observation")?;
         generate_schema::<Signal>("signal")?;
-        generate_schema::<Theme>("theme")?;
-        generate_schema::<Belief>("belief")?;
         generate_schema::<Thesis>("thesis")?;
         generate_schema::<Decision>("decision")?;
-        generate_schema::<Reflection>("reflection")?;
 
-        println!("\n✓ 7 个 JSON Schema 已生成到 schemas/");
+        println!("\n✓ 4 个 JSON Schema 已生成到 schemas/");
         Ok(())
     }
 }

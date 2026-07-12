@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
     // 1. Article → Observation, with entity extraction
     let mut observations: Vec<contract::Observation> = new_articles
         .iter()
-        .map(|a| contract::Observation::from(a.clone()))
+        .map(|a| a.clone().into())
         .collect();
     for obs in &mut observations {
         let text = format!("{} {}", obs.title, obs.raw_content);
