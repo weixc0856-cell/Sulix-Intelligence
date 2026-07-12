@@ -153,7 +153,7 @@ fn render_decision_mdx(
     // stability: Exit→final, >=3 evidence→stable, else volatile
     let stability = if matches!(decision.action, contract::DecisionType::Exit) {
         "final"
-    } else if thesis.map_or(false, |t| t.evidence.len() >= 3) {
+    } else if thesis.is_some_and(|t| t.evidence.len() >= 3) {
         "stable"
     } else {
         "volatile"
