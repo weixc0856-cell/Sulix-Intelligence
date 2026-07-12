@@ -11,35 +11,25 @@ Sulix Intelligence 将原始信号转化为结构化**战略记忆**—— Signa
 ```
 原始信号 (RSS/USPTO/Reddit)
     ↓
-管线 → Scan Agent → 主题聚类
+SignalClassificationStep — Fast Path (规则) | Slow Path (LLM)
     ↓
-认知引擎 (Memory + Hermes + Decision)
+ThesisGenerationStep — 匹配已有 | LLM 生成新判断
     ↓
-ArtifactSet (Signals / Assessments / Decisions / Outcomes)
+DecisionMappingStep — RuleEngine + 可选 LlmJudge
     ↓
-Schema 验证门 (拒绝不完整对象)
-    ↓
-本地存储 + R2 (不可变资产) + 前端同步
-    ↓
-MDX 视图 (从 JSON artifact 派生)
+PipelineStats + MDX 输出
 ```
 
 ## 架构
 
 ```
-                    sulix-engine (Rust)
-                           |
-                    ArtifactSet JSON
-                  ┌─────────┼─────────┐
-                  ↓         ↓         ↓
-                 R2        D1       Frontend
-              (资产)     (索引)     (Astro UI)
-                           |
-                    Cloudflare Worker
-                     JSON API Layer
-                           |
-                    Astro UI Shell
-                  (Bloomberg Terminal)
+crates/                    cargo run -p sulix-cli
+├── sulix-contract/       ← 层间契约类型 (Observation/Signal/Thesis/Decision)
+├── sulix-config/         ← TOML 配置加载
+├── sulix-llm/            ← LLM Provider (client/retry/api/parser/dispatch/audit)
+├── sulix-intelligence/   ← 认知管线 (PipelineStep trait + 3 步骤)
+├── sulix-observation/    ← 数据源适配器 (RSS/Reddit/USPTO)
+└── sulix-cli/            ← 命令行入口 (sulix-cli + intel-pipeline)
 ```
 
 ## 三仓储架构
@@ -65,104 +55,70 @@ MDX 视图 (从 JSON artifact 派生)
 git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
 cd Sulix-Intelligence
 cp config.example.toml config.toml
-cargo build --release
+cargo build --release -p sulix-cli
 
 # 2. 运行（需要 DEEPSEEK_API_KEY）
 export DEEPSEEK_API_KEY="sk-..."
-cargo run --release
+cargo run -p sulix-cli --release
 
-# 3. 前端预览
-cd ../sulix-web
-cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run dev
+# 3. 管线独立调试（使用 mock 输入）
+cargo run --bin intel-pipeline -- --input tests/fixtures/observation.json
 ```
 
 ## 管线
 
 ```
-数据源采集 (RSS / USPTO / Reddit)
-    ↓ 管线：清洗 → 合规 → 去重
-    ↓ 证据快照 (不可变 JSONL, SVI ≥ 5)
-    ↓ Scan Agent v1.1 (三层分流: Insight / Watchlist / Signal Memory)
-    ↓ LLM 预去重 → 主题聚类 (≤5 主题)
-    ↓ 主题分析 + ASI/Confidence 评分
-    ↓ 蓝军验证 (承重假设挑战)
-    ↓ Editor Agent (个人影响分析)
-    ↓ MemoryEngine (Thesis / Evidence / Outcome / Reflection)
-    ↓ Hermes (变更检测 / 趋势 / 冲突)
-    ↓ Decision Intelligence (Thesis → Decision 映射)
-    ↓ Meta Layer (自动 Outcome 检测 + Reflection 生成)
-    ↓ 验证门 (schema::validator)
-    ↓ Artifact Publisher → 本地 + R2 + 前端同步
-    ↓ Event Log flush (data/events/{date}.jsonl)
+crates/sulix-observation/     — 数据源采集 (RSS / USPTO / Reddit)
+    ↓  RawSignal → Article → Observation
+    ↓
+crates/sulix-cli/src/agent/  — Signal Agent: 抓取 → SQLite 去重 → 丰富
+    ↓  Vec<Observation>
+    ↓
+crates/sulix-intelligence/
+    │
+    ├── SignalClassificationStep  — Fast Path (规则) | Slow Path (LLM 批处理)
+    │   observation → Signal { importance, domain, category, why }
+    │
+    ├── ThesisGenerationStep     — 匹配已有 | LLM 生成新 Thesis
+    │   signal → Thesis { claim, confidence, evidence, status }
+    │
+    └── DecisionMappingStep      — RuleEngine + 可选 LlmJudge
+        thesis → Decision { action, horizon, confidence, reasoning }
+    ↓
+    后处理: calibration (LLM 扎心问题) + summary (规则摘要)
+    ↓
+    MDX 输出: thesis/{slug}.md + decision/{slug}.md
 ```
 
 ## 代码结构
 
 ```
-src/
-├── domain/           — 9 领域模型 (+ Localized, + Day 3 Belief proposal)
-├── engine/           — 认知引擎 (analysis/memory/premium/belief/decision)
-├── publishing/       — 5 阶段发布协调器 → 返回 ArtifactSet
-├── artifact/         — Manifest/Report/Builder (纯函数)
-├── delivery/         — 验证门 → 本地 → R2 → 前端同步 + Event flush
-├── translation/      — LLM 文件级翻译 (Phase 1 过渡桥梁)
-├── schema/           — Schema 验证 (schemars derive + Validate trait)
-├── storage/          — R2 上传客户端 (S3 兼容), 损坏恢复辅助
-├── renderer/         — MDX/Markdown/HTML 渲染 (MDX 从 JSON 派生)
-├── hermes/           — 变更检测 + 趋势 + 冲突
-├── clusterer/        — 主题聚类 + LLM 预去重 + 合成
-├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
-├── source/           — 数据源适配器 (RSS/USPTO/Reddit)
-├── event_log/        — ObjectEvent 审计追踪 (追加式 JSONL)
-├── bin/outcome.rs    — Outcome 追踪 CLI (record/list/audit)
-├── main.rs           — 管线编排 (~500 行)
-└── lib.rs            — 模块声明
+crates/
+├── sulix-contract/     — 层间契约类型 (7 模型: Observation/Signal/Thesis/Decision/Theme/Belief/Reflection)
+├── sulix-config/       — TOML 配置加载 (LlmConfig, SourceConfig, OutputConfig)
+├── sulix-llm/          — LLM Provider (client/retry/api/parser/dispatch/audit — 7 子模块)
+├── sulix-intelligence/ — 认知管线 (PipelineStep<Observation, Signal, Thesis, Decision>)
+│   ├── step.rs          — PipelineStep trait + PipelineStats
+│   ├── signal_classification.rs — 双路径分类
+│   ├── thesis_generation.rs    — 标题重叠 + LLM 生成
+│   ├── decision_mapping.rs     — RuleEngine + 平滑 + 稳定性
+│   ├── loader.rs        — Memory DB 桥接 + load_last_decisions()
+│   └── output.rs        — MDX 渲染
+├── sulix-observation/  — 数据源适配器 (RSS/Reddit/USPTO) + fetcher + 客户端缓存
+└── sulix-cli/          — 入口点: `cargo run -p sulix-cli` | `cargo run --bin intel-pipeline`
+    ├── src/main.rs              — 生产管线入口
+    ├── src/bin/intel_pipeline.rs — 独立管线调试器
+    ├── src/agent/signal.rs       — Signal Agent (抓取 → 去重)
+    ├── src/db.rs                — SQLite 去重数据库
+    └── src/entity.rs            — EntitySanctionDb (OpenCTI 风格)
 ```
 
-## Schema 验证门
+## 关键架构模式
 
-每个 artifact 在存储前通过验证。被拒对象写入 `data/rejected/{date}/`，触发非零退出码。
-
-| 检查项 | Phase 0 | Phase 1 |
-|--------|---------|---------|
-| 必填字段非空 | ✅ | ✅ |
-| Confidence 在 [0,1] | ✅ | ✅ |
-| Evidence 数组非空 | ⚠️ 警告 | ❌ 拒绝 |
-| Decision 类型合法 | ✅ | ✅ |
-
-## 事件审计
-
-所有对象生命周期事件记录在 `data/events/{date}.jsonl`：
-
-```json
-{"schema_version":1,"event_type":"decision_created","object_id":"DEC-0001","summary":{"confidence":0.72}}
-{"schema_version":1,"event_type":"outcome_recorded","object_id":"OUT-001","summary":{"verdict":"PartiallyConfirmed"}}
-{"schema_version":1,"event_type":"publish_completed","summary":{"passed":3,"rejected":0,"r2_status":"not_configured"}}
-```
-
-事件只含摘要字段（不含全量快照），完整对象历史在 R2 中。
-
-## 翻译（本地化资产）
-
-Phase 1 过渡层：LLM 驱动的文件级翻译，将 MDX 输出翻译为 `zh-cn` 和 `zh-tw` 变体。
-
-```
-Engine 输出 (en) → Translation Agent → zh-cn/*.md + zh-tw/*.md
-```
-
-`src/translation/` 模块处理完整性检查、模型覆盖和追踪元数据。每个语言版本的 frontmatter 嵌入 `is_translated`、`machine_translated` 等跟踪字段以实现下游审计。
-
-## Outcome 追踪 CLI
-
-```
-cargo run --bin outcome
-```
-
-独立 CLI 工具，用于记录和审查决策结果：
-- `outcome record <id> <verdict>` — 记录新结果
-- `outcome list` — 列出最近结果
-- `outcome audit <id>` — 完整审计线索及置信度历史
+- **PipelineStep trait**: 统一步骤抽象接口（参考 ripgrep Matcher trait）
+- **Builder 模式**: 每步有 XxxStepBuilder 和 build()（参考 ripgrep SearcherBuilder）
+- **Fast/Slow 双路径**: 规则分类（零 LLM）或 LLM 语义分类（参考 ripgrep is_line_by_line_fast）
+- **PipelineStats**: 运行时间 + 每步数量 + LLM 审计计数器
 
 ## 配置
 
@@ -181,7 +137,7 @@ cargo run --bin outcome
 
 ```yaml
 # .github/workflows/cron_brief.yml
-# 每日：cargo run --release → R2 → sulix-web 构建 → CF Pages
+# 每日：cargo run -p sulix-cli --release → R2 → sulix-web 构建 → CF Pages
 ```
 
 所需 Secrets：

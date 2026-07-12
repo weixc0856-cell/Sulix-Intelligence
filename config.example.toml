@@ -186,3 +186,13 @@ base = """
 # 信号分级 L1-L5：杂音→异动→共振→主线→系统窗口
 # ⚠️ 禁令：禁用"惊人、炸裂、不可否认、双刃剑、值得注意的是、总而言之、时代的浪潮"
 # """
+
+[intelligence]
+# Phase 2: Intelligence Pipeline 新管线配置
+# 启用后，与旧管线并行运行 Observation → Signal → Thesis → Decision 最小闭环
+# 输出写入 decision_history.jsonl 并回流到 memory_db.json
+enabled = true
+# Debug JSON 输出目录（debug 模式下每步写 Artifact JSON 文件）
+debug_dir = "debug/pipeline"
+# DecisionHistory 存储路径（append-only JSONL）
+decision_history_path = "data/decision_history.jsonl"

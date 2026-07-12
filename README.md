@@ -9,36 +9,27 @@
 Sulix Intelligence transforms raw signals into structured **strategic memory** — Signal → Assessment → Decision → Outcome. Not "what happened", but "does this change my decision for the next 6 months."
 
 ```
-Raw Signals (RSS/USPTO/Reddit)
+Observation (RSS/USPTO/Reddit)
     ↓
-Pipeline → classify_and_route (Scan Agent 前移分诊)
-    ├──→ Archive (全量原文, 不可见, 零 LLM)
-    ├──→ Intel (score ≥ 3 → Layer 2 Daily Intel, JSON)
-    └──→ Research (score ≥ 7 → 全管线)
-              ↓
-    Cognitive Engines (Memory + Hermes + Decision)
-              ↓
-    ArtifactSet → PublishBundle (Research + Intel + Raw)
-              ↓
-    Schema Validation Gate → Local + R2 + Frontend Sync
+SignalClassificationStep — Fast Path (rule) | Slow Path (LLM)
+    ↓
+ThesisGenerationStep — match existing | LLM generate new
+    ↓
+DecisionMappingStep — RuleEngine + optional LlmJudge
+    ↓
+PipelineStats + MDX Output
 ```
 
 ## Architecture
 
 ```
-                    sulix-engine (Rust)
-                           |
-                    ArtifactSet JSON
-                  ┌─────────┼─────────┐
-                  ↓         ↓         ↓
-                 R2        D1       Frontend
-              (assets)  (index)    (Astro UI)
-                           |
-                    Cloudflare Worker
-                     JSON API Layer
-                           |
-                    Astro UI Shell
-                  (Bloomberg Terminal)
+crates/                    cargo run -p sulix-cli
+├── sulix-contract/       ← Layer-boundary types (Observation/Signal/Thesis/Decision)
+├── sulix-config/         ← TOML config loading
+├── sulix-llm/            ← LLM provider (client/retry/api/parser/dispatch/audit)
+├── sulix-intelligence/   ← Cognitive pipeline (PipelineStep trait + 3 steps)
+├── sulix-observation/    ← Source adapters (RSS/Reddit/USPTO)
+└── sulix-cli/            ← CLI entry points (sulix-cli + intel-pipeline)
 ```
 
 ## Three-Repository Architecture
@@ -64,104 +55,70 @@ Pipeline → classify_and_route (Scan Agent 前移分诊)
 git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
 cd Sulix-Intelligence
 cp config.example.toml config.toml
-cargo build --release
+cargo build --release -p sulix-cli
 
 # 2. Run (requires DEEPSEEK_API_KEY)
 export DEEPSEEK_API_KEY="sk-..."
-cargo run --release
+cargo run -p sulix-cli --release
 
-# 3. Preview
-cd ../sulix-web
-cp -r ../Sulix-Intelligence/output/* src/content/
-npm install && npm run dev
+# 3. Pipeline debug (standalone, with mock input)
+cargo run --bin intel-pipeline -- --input tests/fixtures/observation.json
 ```
 
 ## Pipeline
 
 ```
-Source Acquisition (RSS / USPTO / Reddit)
-    ↓ Pipeline: sanitize → compliance → dedup
-    ↓ Evidence Snapshot (immutable JSONL, SVI ≥ 5)
-    ↓ Scan Agent v1.1 (3-tier: Insight / Watchlist / Signal Memory)
-    ↓ LLM Pre-dedup → Theme Clustering (≤5 themes)
-    ↓ Theme Analysis + ASI/Confidence Scoring
-    ↓ Blue Team Verification (load-bearing assumption challenges)
-    ↓ Editor Agent (personal impact analysis)
-    ↓ MemoryEngine (Thesis / Evidence / Outcome / Reflection)
-    ↓ Hermes (Change Detection / Trends / Conflicts)
-    ↓ Decision Intelligence (Thesis → Decision mapping)
-    ↓ Meta Layer (auto Outcome detection + Reflection generation)
-    ↓ validation gate (schema::validator)
-    ↓ Artifact Publisher → Local + R2 + Frontend Sync
-    ↓ Event Log flush (data/events/{date}.jsonl)
+crates/sulix-observation/     — Source Acquisition (RSS / USPTO / Reddit)
+    ↓  RawSignal → Article → Observation
+    ↓
+crates/sulix-cli/src/agent/  — Signal Agent: fetch → SQLite dedup → enrich
+    ↓  Vec<Observation>
+    ↓
+crates/sulix-intelligence/
+    │
+    ├── SignalClassificationStep  — Fast Path (rule) | Slow Path (LLM batch)
+    │   observation → Signal { importance, domain, category, why }
+    │
+    ├── ThesisGenerationStep     — match existing | LLM generate new
+    │   signal → Thesis { claim, confidence, evidence, status }
+    │
+    └── DecisionMappingStep      — RuleEngine + optional LlmJudge
+        thesis → Decision { action, horizon, confidence, reasoning }
+    ↓
+    Post-processing: calibration (LLM question) + summary (rule-based)
+    ↓
+    MDX Output: thesis/{slug}.md + decision/{slug}.md
 ```
 
 ## Code Structure
 
 ```
-src/
-├── domain/           — 9 domain models (+ Localized, + Day 3 Belief proposal)
-├── engine/           — Cognitive engines (analysis/memory/premium/belief/decision)
-├── publishing/       — 5-stage publish coordinator → returns ArtifactSet
-├── artifact/         — Manifest, Report, Builder (pure functions)
-├── delivery/         — Validation gate → Local → R2 → Frontend sync + Event flush
-├── translation/      — LLM file-level translation (Phase 1 transitional bridge)
-├── schema/           — Schema validation (schemars derive + Validate trait)
-├── storage/          — R2 upload client (S3-compatible), corrupt-recovery helpers
-├── renderer/         — MDX/Markdown/HTML rendering (MDX derived from JSON)
-├── hermes/           — Change detection + trends + conflicts
-├── clusterer/        — Theme clustering + LLM pre-dedup + synthesis
-├── agent/            — Scan Agent + Editor Agent + Calibration + Decay
-├── source/           — Source adapters (RSS/USPTO/Reddit)
-├── event_log/        — ObjectEvent audit trail (append-only JSONL)
-├── bin/outcome.rs    — Outcome Tracking CLI (record/list/audit)
-├── main.rs           — Pipeline orchestration (~500 lines)
-└── lib.rs            — Module declarations
+crates/
+├── sulix-contract/     — Layer-boundary types (7 models: Observation/Signal/Thesis/Decision/Theme/Belief/Reflection)
+├── sulix-config/       — TOML config loading (LlmConfig, SourceConfig, OutputConfig, IntelligenceConfig)
+├── sulix-llm/          — LLM provider (client/retry/api/parser/dispatch/audit — 7 sub-modules)
+├── sulix-intelligence/ — Cognitive pipeline (PipelineStep<Observation, Signal, Thesis, Decision>)
+│   ├── step.rs          — PipelineStep trait + PipelineStats
+│   ├── signal_classification.rs — Fast/Slow dual path
+│   ├── thesis_generation.rs    — Title overlap + LLM generation
+│   ├── decision_mapping.rs     — RuleEngine + smoothing + stability
+│   ├── loader.rs        — Memory DB bridge + load_last_decisions()
+│   └── output.rs        — MDX rendering
+├── sulix-observation/  — Source adapters (RSS/Reddit/USPTO) + fetcher + client cache
+└── sulix-cli/          — Entry points: `cargo run -p sulix-cli` | `cargo run --bin intel-pipeline`
+    ├── src/main.rs              — Production pipeline entry
+    ├── src/bin/intel_pipeline.rs — Standalone pipeline debugger
+    ├── src/agent/signal.rs       — Signal Agent (fetch → dedup)
+    ├── src/db.rs                — SQLite dedup database
+    └── src/entity.rs            — EntitySanctionDb (OpenCTI-like)
 ```
 
-## Translation (Localized Assets)
+## Key Architecture Patterns
 
-Phase 1 transitional layer: LLM-driven file-level translation of MDX output into `zh-cn` and `zh-tw` variants.
-
-```
-Engine Output (en) → Translation Agent → zh-cn/*.md + zh-tw/*.md
-```
-
-The `src/translation/` module handles integrity checks, model overrides, and tracking metadata. Tracking fields (`is_translated`, `machine_translated`) embedded in each locale's frontmatter enable downstream audit.
-
-## Outcome Tracking CLI
-
-```
-cargo run --bin outcome
-```
-
-Standalone CLI for recording and reviewing decision outcomes:
-- `outcome record <id> <verdict>` — record new outcome
-- `outcome list` — list recent outcomes
-- `outcome audit <id>` — full audit trail with confidence history
-
-## Schema Validation Gate
-
-Every artifact passes validation before storage. Rejected objects go to `data/rejected/{date}/` and trigger non-zero exit.
-
-| Check | Phase 0 | Phase 1 |
-|-------|---------|---------|
-| Required fields non-empty | ✅ | ✅ |
-| Confidence in [0,1] | ✅ | ✅ |
-| Evidence array non-empty | ⚠️ warning | ❌ reject |
-| Decision type in enum | ✅ | ✅ |
-
-## Events
-
-All object lifecycle events are recorded in `data/events/{date}.jsonl`:
-
-```json
-{"schema_version":1,"event_type":"decision_created","object_id":"DEC-0001","summary":{"confidence":0.72}}
-{"schema_version":1,"event_type":"outcome_recorded","object_id":"OUT-001","summary":{"verdict":"PartiallyConfirmed"}}
-{"schema_version":1,"event_type":"publish_completed","summary":{"passed":3,"rejected":0,"r2_status":"not_configured"}}
-```
-
-Events contain summaries only (not full snapshots). Full object history in R2.
+- **PipelineStep trait**: Unified abstract interface for all 3 steps (analogous to ripgrep's `Matcher` trait)
+- **Builder pattern**: Each step has `XxxStepBuilder` with `build()` (analogous to ripgrep's `SearcherBuilder`)
+- **Fast/Slow dual path**: Rule-based (zero LLM) or LLM-based classification (analogous to ripgrep's `is_line_by_line_fast`)
+- **PipelineStats**: Run timing + item counts per step + LLM audit counters
 
 ## Configuration
 
@@ -180,7 +137,7 @@ Events contain summaries only (not full snapshots). Full object history in R2.
 
 ```yaml
 # .github/workflows/cron_brief.yml
-# Daily: cargo run --release → R2 → sulix-web build → CF Pages
+# Daily: cargo run -p sulix-cli --release → R2 → sulix-web build → CF Pages
 ```
 
 Secrets required:

@@ -1,48 +1,10 @@
-[package]
-name = "sulix-intel"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.91"
-default-run = "sulix-intel"
-description = "Sulix Intelligence — 个人创业者的 AI 战略情报助手"
-
-[dependencies]
-# RSS 解析
-feed-rs = { version = "2.2", features = ["sanitize"] }
-
-# 异步 HTTP
-reqwest = { version = "0.12", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
-
-# 数据库
-rusqlite = { version = "0.32", features = ["bundled"] }
-
-# 序列化
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "0.8"
-
-# 日期处理
-chrono = { version = "0.4", features = ["serde"] }
-
-# 日志
-log = "0.4"
-env_logger = "0.11"
-
-# 错误处理
-anyhow = "1"
-
-# 正文提取（P0）
-scraper = "0.27"
-
-# A股关键词预过滤（高频源降噪）
-regex = "1.11"
-sha2 = "0.10"
-
-# JSON Schema 生成（从 Rust struct → JSON Schema → TS types）
-schemars = { version = "1", features = ["chrono04"] }
-
-# Cloudflare R2 (S3 兼容 API)
-aws-sdk-s3 = { version = "1", features = ["rt-tokio"] }
-aws-config = { version = "1" }
-aws-credential-types = "1"
+[workspace]
+resolver = "2"
+members = [
+    "crates/sulix-contract",
+    "crates/sulix-config",
+    "crates/sulix-llm",
+    "crates/sulix-intelligence",
+    "crates/sulix-observation",
+    "crates/sulix-cli",
+]

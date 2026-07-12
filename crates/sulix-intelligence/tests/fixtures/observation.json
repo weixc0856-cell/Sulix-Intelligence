@@ -1,0 +1,40 @@
+{
+  "Observations": [
+    {
+      "id": "obs_001",
+      "title": "NVIDIA Announces Blackwell Ultra GPU with 2x AI Performance",
+      "source": "NVIDIA Blog",
+      "source_id": "nvidia_blog_20260711",
+      "url": "https://blogs.nvidia.com/blackwell-ultra",
+      "published_at": "2026-07-11T14:00:00Z",
+      "captured_at": "2026-07-11T14:05:00Z",
+      "content_hash": "abc123def456",
+      "raw_content": "NVIDIA today announced Blackwell Ultra, its next-generation GPU platform delivering 2x AI training performance and 1.5x inference throughput compared to the previous generation. The platform introduces new NVLink interconnects and expanded memory bandwidth. Major cloud providers including AWS, Azure, and GCP have committed to deploying Blackwell Ultra in their data centers starting Q1 2027. NVIDIA CEO Jensen Huang called it 'the most significant platform release in our company's history.'",
+      "entities": ["NVIDIA", "AWS", "Azure", "GCP"]
+    },
+    {
+      "id": "obs_002",
+      "title": "OpenAI Launches GPT-5 with 1M Token Context Window",
+      "source": "OpenAI Blog",
+      "source_id": "openai_blog_20260711",
+      "url": "https://openai.com/blog/gpt-5",
+      "published_at": "2026-07-11T16:00:00Z",
+      "captured_at": "2026-07-11T16:03:00Z",
+      "content_hash": "ghi789jkl012",
+      "raw_content": "OpenAI has released GPT-5, featuring a 1 million token context window and significant improvements in reasoning and tool use. The model achieves state-of-the-art results on multiple benchmarks including MATH, GPQA, and HumanEval. Pricing remains at parity with GPT-4o. Early access partners report dramatic improvements in code generation accuracy and document analysis capabilities. Safety evaluations show reduced hallucination rates compared to previous versions.",
+      "entities": ["OpenAI"]
+    },
+    {
+      "id": "obs_003",
+      "title": "TSMC Breaks Ground on 2nm Fab in Arizona",
+      "source": "Reuters",
+      "source_id": "reuters_20260710",
+      "url": "https://reuters.com/tsmc-arizona-2nm",
+      "published_at": "2026-07-10T10:00:00Z",
+      "captured_at": "2026-07-10T10:30:00Z",
+      "content_hash": "mno345pqr678",
+      "raw_content": "Taiwan Semiconductor Manufacturing Co. has begun construction on its third fabrication facility in Arizona, which will produce 2nm chips starting in 2028. The facility represents a $40 billion investment and is expected to create 4,500 jobs. TSMC's expansion comes amid ongoing US government incentives under the CHIPS Act. The company said the Arizona facility will serve major customers including Apple, NVIDIA, and AMD.",
+      "entities": ["TSMC", "Apple", "NVIDIA", "AMD"]
+    }
+  ]
+}
