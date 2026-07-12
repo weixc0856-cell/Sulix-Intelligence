@@ -1,4 +1,4 @@
-//! Intelligence Output — 新管线的 MDX 知识资产产出
+﻿//! Intelligence Output — 新管线的 MDX 知识资产产出
 //!
 //! 当新管线跑完 Observation→Signal→Thesis→Decision 后，
 //! 此模块将 PipelineOutput 渲染为 MDX 文件，直接写入 Astro Content Collections。
@@ -133,6 +133,11 @@ type: "thesis"
 }
 
 /// 渲染单个 Decision 的 MDX 文件
+/// 渲染单个 Decision 的 MDX 文件
+///
+/// 输出格式对齐 Astro Content Collections schema:
+///   title, dec_id, asm_id, decision, horizon, confidence,
+///   stability (volatile/stable/final), state, created, updated
 fn render_decision_mdx(
     decision: &contract::Decision,
     theses: &[contract::Thesis],
@@ -141,61 +146,57 @@ fn render_decision_mdx(
 ) -> String {
     let thesis = theses.iter().find(|t| t.id == decision.thesis_id);
     let thesis_title = thesis.map(|t| t.claim.as_str()).unwrap_or("unknown");
-    let action_str = format!("{:?}", decision.action);
+    let action_lower = format!("{:?}", decision.action).to_lowercase();
     let horizon_str = format!("{:?}", decision.horizon);
-    let confidence_pct = (decision.confidence * 100.0) as u8;
+    let domain = thesis.and_then(|t| t.theme.as_deref()).unwrap_or("Other");
+
+    // stability: Exit→final, >=3 evidence→stable, else volatile
+    let stability = if matches!(decision.action, contract::DecisionType::Exit) {
+        "final"
+    } else if thesis.map_or(false, |t| t.evidence.len() >= 3) {
+        "stable"
+    } else {
+        "volatile"
+    };
 
     format!(
         r#"---
-id: "{}"
-thesis_id: "{}"
-thesis_title: "{}"
-date: "{}"
+title: "{}"
 locale: "{}"
-decision_type: "{}"
+dec_id: "{}"
+asm_id: "{}"
+decision: "{}"
+primary_domain: "{}"
 horizon: "{}"
-confidence: {}
-rule_passed: {}
-requires_review: {}
-type: "decision"
+confidence: {:.2}
+stability: "{}"
+state: "{}"
+created: "{}"
+updated: "{}"
+rationale: "{}"
 ---
-
 # 决策: {}
 
-**决策**: {} | **置信度**: {}% | **时间范围**: {} | **规则通过**: {}
-
-## 推理链
-
-{}
-
-## 审查状态
-
-{}
+**决策**: {} | **置信度**: {:.0}% | **时间范围**: {} | **稳定性**: {}
 "#,
+        yaml_escape(thesis_title),
+        locale,
         decision.id,
         decision.thesis_id,
-        yaml_escape(thesis_title),
+        yaml_escape(&action_lower),
+        yaml_escape(domain),
+        yaml_escape(&horizon_str.to_lowercase()),
+        decision.confidence,
+        stability,
+        if decision.rule_passed { "active" } else { "pending" },
         today,
-        locale,
-        yaml_escape(&action_str.to_lowercase()),
-        yaml_escape(&horizon_str),
-        confidence_pct,
-        decision.rule_passed,
-        decision.requires_review,
-        action_str,
-        action_str,
-        confidence_pct,
+        today,
+        yaml_escape(&decision.reasoning),
+        action_lower.to_uppercase(),
+        action_lower.to_uppercase(),
+        decision.confidence * 100.0,
         horizon_str,
-        decision.rule_passed,
-        decision.reasoning,
-        if decision.requires_review {
-            format!(
-                "⚠️ 需要人工审查: {}",
-                decision.review_reason.as_deref().unwrap_or("未知")
-            )
-        } else {
-            "✅ 自动通过".to_string()
-        },
+        stability,
     )
 }
 
@@ -269,9 +270,9 @@ mod tests {
         let thesis = sample_thesis();
         let decision = sample_decision();
         let mdx = render_decision_mdx(&decision, &[thesis], "2026-07-12", "en");
-        assert!(mdx.contains("decision_type: \"invest\""));
-        assert!(mdx.contains("rule_passed: true"));
-        assert!(mdx.contains("Invest"));
+        assert!(mdx.contains("decision: \"invest\""));
+        assert!(mdx.contains("stability: \"volatile\""));
+        assert!(mdx.contains("INVEST"));
     }
 
     #[test]
