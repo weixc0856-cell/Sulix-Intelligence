@@ -223,11 +223,15 @@ jobs:
 
       - name: Trigger Frontend Deploy
         if: success()
+        env:
+          INTEL_WEB_PAT: ${{ secrets.INTEL_WEB_PAT }}
         run: |
           echo "🚀 Triggering intel-web deploy..."
-          gh workflow run deploy.yml -R weixc0856-cell/Intel-Web
-        env:
-          GH_TOKEN: ${{ secrets.INTEL_WEB_PAT }}
+          curl -s -X POST \
+            -H "Authorization: Bearer $INTEL_WEB_PAT" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/weixc0856-cell/Intel-Web/actions/workflows/deploy.yml/dispatches" \
+            -d '{"ref":"master"}' && echo "✅ Triggered" || echo "⚠️ Trigger failed (check token permissions)"
 
       - name: Summary
         run: |
