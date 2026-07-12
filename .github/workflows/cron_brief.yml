@@ -132,6 +132,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
           npm install @aws-sdk/client-s3 --silent --no-audit --no-fund 2>/dev/null
           node -e "
@@ -201,13 +202,32 @@ jobs:
                 total += await uploadFile(local, remote);
               }
 
-              // Generate and upload manifest
+              // Generate and upload manifest with file listing
+              const publicUrl = process.env.R2_PUBLIC_URL || '';
               const manifest = {
                 pipeline_run_id: process.env.GITHUB_RUN_ID || 'local',
                 pipeline_trigger: process.env.GITHUB_RUN_TRIGGER || 'manual',
                 completed_at: new Date().toISOString(),
-                file_count: total
+                file_count: total,
+                files: [
+                  'content/thesis/',
+                  'content/decision/',
+                  'state/memory_db.json',
+                  'state/decision_history.jsonl',
+                  'state/intel.db',
+                  'manifest.json'
+                ].filter(f => f.endsWith('/') || fs.existsSync(
+                  f.startsWith('content/') ? 'data/intelligence_mdx/' + f.replace('content/','') :
+                  f.startsWith('state/') ? f : f
+                ))
               };
+              // Add individual content files
+              const thesisFiles = fs.existsSync('data/intelligence_mdx/thesis')
+                ? fs.readdirSync('data/intelligence_mdx/thesis').map(f => 'content/thesis/' + f) : [];
+              const decisionFiles = fs.existsSync('data/intelligence_mdx/decision')
+                ? fs.readdirSync('data/intelligence_mdx/decision').map(f => 'content/decision/' + f) : [];
+              manifest.files = [...thesisFiles, ...decisionFiles, 'state/memory_db.json', 'state/decision_history.jsonl', 'state/intel.db', 'manifest.json'];
+
               fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2));
               await uploadFile('manifest.json', 'manifest.json');
               total += 1;
