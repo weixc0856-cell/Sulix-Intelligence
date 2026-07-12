@@ -14,9 +14,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
-        run: cargo test
+        run: cargo test --workspace --all-features
 
   pipeline:
     runs-on: ubuntu-latest
@@ -123,8 +123,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          cargo build --release
-          cargo run --release --bin sulix-intel
+          cargo build --release -p sulix-cli
+          cargo run -p sulix-cli --release
 
       - name: Check R2 Manifest
         id: check_manifest
