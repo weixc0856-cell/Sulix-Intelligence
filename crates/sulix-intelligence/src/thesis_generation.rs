@@ -321,7 +321,8 @@ impl ThesisGenerationStep {
 - 一组信号最多产生 1 个 Thesis（如果信号间有关联）
 - 无关信号不强行合并
 - falsification_conditions 必须至少 1 条
-- time_horizon 从 30_days / 6_months / 12_months 中选择"#;
+- time_horizon 从 30_days / 6_months / 12_months 中选择
+- 使用 JSON 格式输出"#;
 
         let mut user_prompt = format!("请基于以下 {} 条信号生成 Thesis：\n\n", signals.len());
         for (i, s) in signals.iter().enumerate() {

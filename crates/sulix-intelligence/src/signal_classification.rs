@@ -270,7 +270,8 @@ impl SignalClassificationStep {
 - importance 只给 0.0~1.0 连续值，不要离散
 - domain 从预定义领域中选择，不要创造新领域
 - noise 类别保留给明显无价值的信息
-- why 必须包含具体的推理链"#;
+- why 必须包含具体的推理链
+- 严格按照 JSON 格式输出"#;
 
         let mut user_prompt = format!("请分析以下 {} 条观测：\n\n", batch.len());
         for (i, obs) in batch.iter().enumerate() {
