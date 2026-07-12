@@ -5,7 +5,7 @@
       "observation_id": "obs_001",
       "importance": 0.85,
       "domain": "Semiconductor",
-      "category": "StructuralShift",
+      "category": "structural_shift",
       "why": "2x AI performance jump from a single generation is historically unprecedented and will accelerate AI infrastructure buildout timelines."
     },
     {
@@ -13,7 +13,7 @@
       "observation_id": "obs_002",
       "importance": 0.75,
       "domain": "AI Infrastructure",
-      "category": "CompetitiveSignal",
+      "category": "competitive_signal",
       "why": "1M token context window fundamentally changes enterprise AI application capabilities, potentially accelerating enterprise adoption."
     },
     {
@@ -21,7 +21,7 @@
       "observation_id": "obs_003",
       "importance": 0.70,
       "domain": "Semiconductor",
-      "category": "ContextUpdate",
+      "category": "context_update",
       "why": "TSMC 2nm timeline confirms semiconductor supply chain diversification trend, with implications for geopolitics and hardware availability."
     }
   ]

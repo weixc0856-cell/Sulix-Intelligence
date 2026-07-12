@@ -81,3 +81,35 @@ pub enum ThesisStatus {
     /// 已证伪（Outcome 验证为假）
     Invalidated,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_thesis_serde_roundtrip() {
+        let thesis = Thesis {
+            id: "thesis_001".into(),
+            claim: "AI Agent adoption will accelerate".into(),
+            confidence: 0.72,
+            evidence: vec!["sig_001".into()],
+            status: ThesisStatus::Active,
+            falsification_conditions: vec!["Adoption flat for 12mo".into()],
+            time_horizon: "12_months".into(),
+            theme: Some("AI Enterprise".into()),
+            belief_statement: None,
+        };
+        let json = serde_json::to_string(&thesis).unwrap();
+        let restored: Thesis = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.id, thesis.id);
+        assert!(matches!(restored.status, ThesisStatus::Active));
+        assert_eq!(restored.falsification_conditions.len(), 1);
+    }
+
+    #[test]
+    fn test_thesis_default_evidence_empty() {
+        let json = r#"{"id":"t1","claim":"test","confidence":0.5,"status":"Proposed","time_horizon":"12_months"}"#;
+        let thesis: Thesis = serde_json::from_str(json).unwrap();
+        assert!(thesis.evidence.is_empty());
+    }
+}

@@ -44,6 +44,7 @@ pub struct Signal {
 
 /// 信号类别
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum SignalCategory {
     /// 结构性转变（范式级）
     StructuralShift,
@@ -53,4 +54,33 @@ pub enum SignalCategory {
     ContextUpdate,
     /// 噪声（低信息密度）
     Noise,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_signal_serde_roundtrip() {
+        let signal = Signal {
+            id: "sig_001".into(),
+            observation_id: "obs_001".into(),
+            importance: 0.75,
+            domain: "AI Infrastructure".into(),
+            category: SignalCategory::StructuralShift,
+            why: "Major shift in AI capabilities".into(),
+        };
+        let json = serde_json::to_string(&signal).unwrap();
+        let restored: Signal = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.id, "sig_001");
+        assert!((restored.importance - 0.75).abs() < 0.01);
+        assert!(matches!(restored.category, SignalCategory::StructuralShift));
+    }
+
+    #[test]
+    fn test_signal_category_deserialize() {
+        let json = r#"{"id":"s1","observation_id":"o1","importance":0.5,"domain":"test","category":"context_update","why":"test"}"#;
+        let signal: Signal = serde_json::from_str(json).unwrap();
+        assert!(matches!(signal.category, SignalCategory::ContextUpdate));
+    }
 }

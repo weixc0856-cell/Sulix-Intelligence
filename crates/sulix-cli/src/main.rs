@@ -19,13 +19,65 @@ use sulix_config as config;
 use sulix_contract as contract;
 use sulix_intelligence as intelligence;
 
+// ===== CLI 参数 =====
+
+struct CliArgs {
+    config_path: PathBuf,
+    debug: bool,
+}
+
+fn parse_args() -> CliArgs {
+    let args: Vec<String> = std::env::args().collect();
+    let mut config_path = PathBuf::from("config.toml");
+    let mut debug = false;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--config" | "-c" if i + 1 < args.len() => {
+                config_path = PathBuf::from(&args[i + 1]);
+                i += 2;
+            }
+            "--debug" | "-d" => {
+                debug = true;
+                i += 1;
+            }
+            "--help" | "-h" => {
+                print_help();
+                std::process::exit(0);
+            }
+            _ => {
+                eprintln!("未知参数: {}", args[i]);
+                eprintln!("使用 --help 查看用法");
+                std::process::exit(2);
+            }
+        }
+    }
+    CliArgs { config_path, debug }
+}
+
+fn print_help() {
+    eprintln!("Sulix Intelligence — 个人创业者的 AI 战略情报助手");
+    eprintln!();
+    eprintln!("用法: cargo run -p sulix-cli [选项]");
+    eprintln!();
+    eprintln!("选项:");
+    eprintln!("  --config, -c <path>  配置文件路径 (默认 config.toml)");
+    eprintln!("  --debug, -d          调试模式 (每步写 JSON 输出到 data/debug/pipeline/)");
+    eprintln!("  --help, -h           显示此帮助");
+    eprintln!();
+    eprintln!("环境变量:");
+    eprintln!("  DEEPSEEK_API_KEY     LLM API 密钥");
+    eprintln!("  VAULT_PATH           覆盖输出路径 (CI 使用)");
+}
+
 // ===== 入口 =====
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = parse_args();
     env_logger::init();
     let start = std::time::Instant::now();
-    let cfg = config::Config::from_file("config.toml")?;
+    let cfg = config::Config::from_file(&cli.config_path.to_string_lossy())?;
 
     if let Ok(vault_path) = std::env::var("VAULT_PATH") {
         log::info!("⚙️ CI 覆盖 vault_path: {}", vault_path);
@@ -69,9 +121,13 @@ async fn main() -> Result<()> {
 
     // ===== Intelligence Pipeline: Observation → Signal → Thesis → Decision =====
 
-    // 1. Article → Observation
-    let observations: Vec<contract::Observation> =
+    // 1. Article → Observation, with entity extraction
+    let mut observations: Vec<contract::Observation> =
         new_articles.iter().map(|a| contract::Observation::from(a.clone())).collect();
+    for obs in &mut observations {
+        let text = format!("{} {}", obs.title, obs.raw_content);
+        obs.entities = crate::entity::extract_entities_from_text(&text);
+    }
     log::info!("  ➡️ {} articles → {} observations", new_articles.len(), observations.len());
 
     // 2. 从 MemoryEngine 加载已有 Thesis
@@ -92,7 +148,11 @@ async fn main() -> Result<()> {
             .with_last_decisions(last_decisions).build(),
     );
 
-    let ctx = intelligence::StepContext::new_debug(&today, data_dir.join("debug/pipeline"));
+    let ctx = if cli.debug {
+        intelligence::StepContext::new_debug(&today, data_dir.join("debug/pipeline"))
+    } else {
+        intelligence::StepContext::new(&today)
+    };
 
     // 5. 运行管线
     match pipeline.run(observations, &ctx).await {
@@ -118,6 +178,17 @@ async fn main() -> Result<()> {
             let _summary = intelligence::postprocessing::synthesize(
                 &output.signals, &output.theses, &output.decisions,
             );
+
+            // 个人影响分析
+            let editor_notes = intelligence::postprocessing::analyze_personal_impact(
+                &output.theses, &output.decisions,
+            );
+            if !editor_notes.is_empty() {
+                log::info!("  📝 Editor Note: {} 条个人影响分析", editor_notes.len());
+                for note in &editor_notes {
+                    log::info!("    [{:?}] {} (magnitude: {})", note.impact_type, note.description, note.magnitude);
+                }
+            }
 
             // 回流: Thesis → MemoryEngine
             if !output.theses.is_empty() {

@@ -121,6 +121,72 @@ impl EntitySanctionDb {
             name_index: HashMap::new(),
         }
     }
+    /// 加载/保存到 JSON 文件
+    #[allow(dead_code)]
+    pub fn save_to_file(&self, path: &str) -> anyhow::Result<()> {
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn load_from_file(path: &str) -> anyhow::Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&content)?)
+    }
+
+    /// 添加实体
+    #[allow(dead_code)]
+    pub fn add_entity(&mut self, entity: Entity) {
+        let id = entity.id.clone();
+        if entity.sanctioned {
+            self.sanctioned.insert(id, entity);
+        } else {
+            self.unsanctioned.insert(id, entity);
+        }
+    }
+
+    /// O(1) 名称存在性检查
+    #[allow(dead_code)]
+    pub fn name_exists(&self, name: &str) -> bool {
+        let lower = name.to_lowercase();
+        self.sanctioned.values().any(|e| e.name.to_lowercase() == lower)
+            || self.unsanctioned.values().any(|e| e.name.to_lowercase() == lower)
+    }
+}
+
+/// 实体归一化映射表 — 将原始文本中的技术术语映射到标准化实体名称
+pub fn extract_entities_from_text(text: &str) -> Vec<String> {
+    let mut entities = Vec::new();
+    let lower = text.to_lowercase();
+
+    let patterns: Vec<(&str, &[&str])> = vec![
+        ("TSMC", &["tsmc", "taiwan semiconductor", "台积电"]),
+        ("ASML", &["asml", "advanced semiconductor materials lithography"]),
+        ("NVIDIA", &["nvidia", "nvidia corporation", "英伟达"]),
+        ("Intel", &["intel", "intel corporation", "英特尔"]),
+        ("AMD", &["amd", "advanced micro devices"]),
+        ("Samsung", &["samsung", "samsung electronics", "三星"]),
+        ("Microsoft", &["microsoft", "msft", "微软"]),
+        ("Google", &["google", "alphabet", "谷歌"]),
+        ("Meta", &["meta", "facebook", "meta platforms"]),
+        ("Amazon", &["amazon", "amzn", "aws", "亚马逊"]),
+        ("HBM", &["hbm", "high-bandwidth memory", "hbm3", "hbm4"]),
+        ("RISC-V", &["risc-v", "riscv", "open source isa"]),
+        ("CUDA", &["cuda", "nvidia cuda", "cuda ecosystem"]),
+        ("ARM", &["arm", "arm architecture", "arm holdings"]),
+        ("OpenAI", &["openai", "open ai", "chatgpt", "gpt"]),
+        ("Anthropic", &["anthropic", "claude"]),
+        ("DeepSeek", &["deepseek", "深度求索"]),
+    ];
+
+    for (name, aliases) in patterns {
+        if aliases.iter().any(|a| lower.contains(a)) && !entities.contains(&name.to_string()) {
+            entities.push(name.to_string());
+        }
+    }
+
+    entities
 }
 
 #[cfg(test)]
@@ -158,5 +224,38 @@ mod tests {
         let loaded: EntitySanctionDb = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.sanctioned.len(), 1);
         assert_eq!(loaded.sanctioned.get("e1").unwrap().name, "TSMC");
+    }
+
+    #[test]
+    fn test_extract_entities_basic() {
+        let text = "TSMC announced 3nm mass production, NVIDIA's CUDA ecosystem grows";
+        let entities = extract_entities_from_text(text);
+        assert!(entities.contains(&"TSMC".to_string()));
+        assert!(entities.contains(&"NVIDIA".to_string()));
+        assert!(entities.contains(&"CUDA".to_string()));
+        assert_eq!(entities.len(), 3);
+    }
+
+    #[test]
+    fn test_extract_entities_empty() {
+        let entities = extract_entities_from_text("nothing to see here");
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn test_name_exists() {
+        let mut db = EntitySanctionDb::new();
+        db.add_entity(Entity {
+            id: "e1".into(),
+            entity_type: EntityType::Organization,
+            name: "TSMC".into(),
+            aliases: vec![],
+            sanctioned: true,
+            external_refs: vec![],
+            relationships: vec![],
+        });
+        assert!(db.name_exists("TSMC"));
+        assert!(db.name_exists("tsmc"));
+        assert!(!db.name_exists("Intel"));
     }
 }

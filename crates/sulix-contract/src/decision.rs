@@ -85,3 +85,46 @@ pub enum DecisionHorizon {
     /// 180 天内
     Days180,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decision_serde_roundtrip() {
+        let decision = Decision {
+            id: "dec_001".into(),
+            thesis_id: "thesis_001".into(),
+            action: DecisionType::Invest,
+            confidence: 0.7,
+            horizon: DecisionHorizon::Days90,
+            reasoning: "Strong adoption signals".into(),
+            made_at: "2026-07-12".into(),
+            rule_passed: true,
+            requires_review: false,
+            review_reason: None,
+        };
+        let json = serde_json::to_string(&decision).unwrap();
+        let restored: Decision = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.id, "dec_001");
+        assert!(matches!(restored.action, DecisionType::Invest));
+        assert!(matches!(restored.horizon, DecisionHorizon::Days90));
+        assert!(restored.rule_passed);
+    }
+
+    #[test]
+    fn test_decision_type_variants() {
+        let variants = vec![
+            (r#""Build""#, DecisionType::Build),
+            (r#""Invest""#, DecisionType::Invest),
+            (r#""Monitor""#, DecisionType::Monitor),
+            (r#""Learn""#, DecisionType::Learn),
+            (r#""Ignore""#, DecisionType::Ignore),
+            (r#""Exit""#, DecisionType::Exit),
+        ];
+        for (json, expected) in variants {
+            let dt: DecisionType = serde_json::from_str(json).unwrap();
+            assert!(matches!(dt, _), "variant {:?} should deserialize", expected);
+        }
+    }
+}
