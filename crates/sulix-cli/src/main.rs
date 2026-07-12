@@ -100,6 +100,12 @@ async fn main() -> Result<()> {
         cfg.llm.model
     );
 
+    // ===== 预加载已有 Thesis/Decision（无论是否有新文章都输出 MDX） =====
+    let memory_path = data_dir.join("memory_db.json");
+    let history_path = data_dir.join("decision_history.jsonl");
+    let existing_theses = intelligence::load_theses_from_memory_db(&memory_path);
+    let last_decisions = intelligence::loader::load_last_decisions(&history_path);
+
     // ===== Signal Agent: 抓取 → 去重 → 丰富 → 实体提取 =====
     let signal_result = agent::signal::agent_signal(
         &cfg,
@@ -108,133 +114,140 @@ async fn main() -> Result<()> {
     )
     .await;
 
-    let Some(new_articles) = signal_result? else {
-        log::info!("✅ 今日无新文章，结束");
-        return Ok(());
-    };
+    let new_articles = signal_result?.unwrap_or_default();
 
-    if new_articles.is_empty() {
-        log::info!("✅ 今日无新文章，结束");
-        return Ok(());
-    }
+    let output = if new_articles.is_empty() {
+        log::info!("✅ 今日无新文章，输出已有 Thesis/Decision 的 MDX");
 
-    log::info!("📥 新文章: {} 篇", new_articles.len());
+        // 无新文章时，用已有数据构造 IntelligenceOutput
+        let decisions: Vec<contract::Decision> = last_decisions.clone();
 
-    // ===== Intelligence Pipeline: Observation → Signal → Thesis → Decision =====
-
-    // 1. Article → Observation, with entity extraction
-    let mut observations: Vec<contract::Observation> = new_articles
-        .iter()
-        .map(|a| a.clone().into())
-        .collect();
-    for obs in &mut observations {
-        let text = format!("{} {}", obs.title, obs.raw_content);
-        obs.entities = crate::entity::extract_entities_from_text(&text);
-    }
-    log::info!(
-        "  ➡️ {} articles → {} observations",
-        new_articles.len(),
-        observations.len()
-    );
-
-    // 2. 从 MemoryEngine 加载已有 Thesis
-    let memory_path = data_dir.join("memory_db.json");
-    let existing_theses = intelligence::load_theses_from_memory_db(&memory_path);
-
-    // 3. 从 DecisionHistory 加载上次决策
-    let history_path = data_dir.join("decision_history.jsonl");
-    let last_decisions = intelligence::loader::load_last_decisions(&history_path);
-
-    // 4. 构建管线
-    let pipeline = intelligence::IntelligencePipeline::new(
-        intelligence::SignalClassificationStepBuilder::new(cfg.llm.clone(), &api_key).build(),
-        intelligence::ThesisGenerationStepBuilder::new(cfg.llm.clone(), &api_key)
-            .with_existing_theses(existing_theses)
-            .build(),
-        intelligence::DecisionMappingStepBuilder::new()
-            .with_llm_judge(cfg.llm.clone(), &api_key)
-            .with_last_decisions(last_decisions)
-            .build(),
-    );
-
-    let ctx = if cli.debug {
-        intelligence::StepContext::new_debug(&today, data_dir.join("debug/pipeline"))
+        intelligence::IntelligenceOutput {
+            signals: vec![],
+            theses: existing_theses,
+            decisions,
+            stats: intelligence::PipelineStats::new(),
+        }
     } else {
-        intelligence::StepContext::new(&today)
-    };
+        log::info!("📥 新文章: {} 篇", new_articles.len());
 
-    // 5. 运行管线
-    match pipeline.run(observations, &ctx).await {
-        Ok(output) => {
-            log::info!(
-                "  ✅ 管线: {} signals → {} theses → {} decisions ({}ms)",
-                output.signals.len(),
-                output.theses.len(),
-                output.decisions.len(),
-                output.stats.elapsed_ms()
-            );
-            log::info!("  📊 {}", sulix_llm::audit::llm_audit_summary());
+        // 1. Article → Observation, with entity extraction
+        let mut observations: Vec<contract::Observation> =
+            new_articles.iter().map(|a| a.clone().into()).collect();
+        for obs in &mut observations {
+            let text = format!("{} {}", obs.title, obs.raw_content);
+            obs.entities = crate::entity::extract_entities_from_text(&text);
+        }
+        log::info!(
+            "  ➡️ {} articles → {} observations",
+            new_articles.len(),
+            observations.len()
+        );
 
-            // 后处理: Calibration + Summary
-            let calibration = intelligence::postprocessing::calibrate(
-                &output.signals,
-                &output.theses,
-                &output.decisions,
-                &cfg.llm,
-                &api_key,
-                "zh",
-            )
-            .await;
-            if !calibration.is_empty() {
-                log::info!("  🤖 Calibration: {}", calibration);
+        // 2. 构建管线
+        let pipeline = intelligence::IntelligencePipeline::new(
+            intelligence::SignalClassificationStepBuilder::new(cfg.llm.clone(), &api_key).build(),
+            intelligence::ThesisGenerationStepBuilder::new(cfg.llm.clone(), &api_key)
+                .with_existing_theses(existing_theses.clone())
+                .build(),
+            intelligence::DecisionMappingStepBuilder::new()
+                .with_llm_judge(cfg.llm.clone(), &api_key)
+                .with_last_decisions(last_decisions.clone())
+                .build(),
+        );
+
+        let ctx = if cli.debug {
+            intelligence::StepContext::new_debug(&today, data_dir.join("debug/pipeline"))
+        } else {
+            intelligence::StepContext::new(&today)
+        };
+
+        // 3. 运行管线
+        match pipeline.run(observations, &ctx).await {
+            Ok(output) => {
+                log::info!(
+                    "  ✅ 管线: {} signals → {} theses → {} decisions ({}ms)",
+                    output.signals.len(),
+                    output.theses.len(),
+                    output.decisions.len(),
+                    output.stats.elapsed_ms()
+                );
+                log::info!("  📊 {}", sulix_llm::audit::llm_audit_summary());
+
+                // 后处理: Calibration + Summary
+                let calibration = intelligence::postprocessing::calibrate(
+                    &output.signals,
+                    &output.theses,
+                    &output.decisions,
+                    &cfg.llm,
+                    &api_key,
+                    "zh",
+                )
+                .await;
+                if !calibration.is_empty() {
+                    log::info!("  🤖 Calibration: {}", calibration);
+                }
+
+                let _summary = intelligence::postprocessing::synthesize(
+                    &output.signals,
+                    &output.theses,
+                    &output.decisions,
+                );
+
+                // 个人影响分析
+                let editor_notes = intelligence::postprocessing::analyze_personal_impact(
+                    &output.theses,
+                    &output.decisions,
+                );
+                if !editor_notes.is_empty() {
+                    log::info!("  📝 Editor Note: {} 条个人影响分析", editor_notes.len());
+                    for note in &editor_notes {
+                        log::info!(
+                            "    [{:?}] {} (magnitude: {})",
+                            note.impact_type,
+                            note.description,
+                            note.magnitude
+                        );
+                    }
+                }
+
+                // 回流: Thesis → MemoryEngine
+                if !output.theses.is_empty() {
+                    intelligence::save_theses_to_memory_db(&memory_path, &output.theses);
+                }
+
+                // 写入 DecisionHistory
+                if let Err(e) = intelligence::DecisionHistory::open(&history_path)
+                    .and_then(|mut h| h.append_from_decisions(&output.decisions, &today))
+                {
+                    log::warn!("⚠️ DecisionHistory 写入失败: {}", e);
+                }
+
+                output
             }
-
-            let _summary = intelligence::postprocessing::synthesize(
-                &output.signals,
-                &output.theses,
-                &output.decisions,
-            );
-
-            // 个人影响分析
-            let editor_notes = intelligence::postprocessing::analyze_personal_impact(
-                &output.theses,
-                &output.decisions,
-            );
-            if !editor_notes.is_empty() {
-                log::info!("  📝 Editor Note: {} 条个人影响分析", editor_notes.len());
-                for note in &editor_notes {
-                    log::info!(
-                        "    [{:?}] {} (magnitude: {})",
-                        note.impact_type,
-                        note.description,
-                        note.magnitude
-                    );
+            Err(e) => {
+                log::error!("⚠️ 管线运行失败: {}", e);
+                // 管线失败时，仍用已有数据输出 MDX
+                intelligence::IntelligenceOutput {
+                    signals: vec![],
+                    theses: existing_theses,
+                    decisions: last_decisions,
+                    stats: intelligence::PipelineStats::new(),
                 }
             }
-
-            // 回流: Thesis → MemoryEngine
-            if !output.theses.is_empty() {
-                intelligence::save_theses_to_memory_db(&memory_path, &output.theses);
-            }
-
-            // 写入 DecisionHistory
-            if let Err(e) = intelligence::DecisionHistory::open(&history_path)
-                .and_then(|mut h| h.append_from_decisions(&output.decisions, &today))
-            {
-                log::warn!("⚠️ DecisionHistory 写入失败: {}", e);
-            }
-
-            // MDX 输出
-            let intel_mdx_dir = data_dir.join("intelligence_mdx");
-            let mdx_cfg = intelligence::output::IntelligenceOutputConfig {
-                mdx_dir: intel_mdx_dir,
-                locale: "en".into(),
-            };
-            let _ = intelligence::output::render_to_mdx(&output, &mdx_cfg, &today);
         }
-        Err(e) => {
-            log::error!("⚠️ 管线运行失败: {}", e);
-        }
+    };
+
+    // ===== MDX 输出（无论有无新文章，都输出已有数据） =====
+    if output.theses.is_empty() && output.decisions.is_empty() {
+        log::info!("⚠️ 没有 Thesis 或 Decision 数据，跳过 MDX 输出");
+    } else {
+        let intel_mdx_dir = data_dir.join("intelligence_mdx");
+        let mdx_cfg = intelligence::output::IntelligenceOutputConfig {
+            mdx_dir: intel_mdx_dir,
+            locale: "en".into(),
+        };
+        let _ = intelligence::output::render_to_mdx(&output, &mdx_cfg, &today);
     }
 
     log::info!(
