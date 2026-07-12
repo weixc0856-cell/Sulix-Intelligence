@@ -14,6 +14,65 @@
 
 use sulix_contract as contract;
 
+// ===== Event Store =====
+
+/// Event Store — append-only event log
+///
+/// 系统中所有状态变化的不可变记录。
+/// State projections (theses, decisions, signals) 从事件流派生。
+pub trait EventStore {
+    /// 追加单个事件
+    fn append(&self, event: &contract::IntelligenceEvent) -> anyhow::Result<()>;
+
+    /// 批量追加（同一事务内）
+    fn append_many(&self, events: &[contract::IntelligenceEvent]) -> anyhow::Result<()>;
+
+    /// 按聚合 ID 查询事件流（时间正序）
+    fn event_stream(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: &str,
+    ) -> anyhow::Result<Vec<contract::IntelligenceEvent>>;
+
+    /// 按事件类型查询（时间倒序）
+    fn events_by_type(
+        &self,
+        event_type: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<contract::IntelligenceEvent>>;
+
+    /// 查询所有事件（时间倒序，分页）
+    fn find_all_events(&self, limit: usize) -> anyhow::Result<Vec<contract::IntelligenceEvent>>;
+}
+
+// ===== Unit of Work =====
+
+/// 工作单元 — 保证事件 + 状态投影的原子写入
+///
+/// 使用方式:
+///   let mut uow = store.transaction()?;
+///   uow.events().append_many(&events)?;
+///   uow.theses().save_many(&theses)?;
+///   uow.commit()?;
+///
+/// 如果任何一步失败，调用 rollback() 回滚所有变更。
+pub trait UnitOfWork {
+    /// Event Store（当前事务内）
+    fn events(&mut self) -> &dyn EventStore;
+
+    /// Thesis 仓储（当前事务内）
+    fn theses(&mut self) -> &dyn ThesisRepository;
+
+    /// Decision 仓储（当前事务内）
+    fn decisions(&mut self) -> &dyn DecisionRepository;
+
+    /// 提交事务
+    fn commit(&mut self) -> anyhow::Result<()>;
+
+    /// 回滚事务
+    fn rollback(&mut self) -> anyhow::Result<()>;
+}
+
 // ===== Thesis Repository =====
 
 /// Thesis 持久化契约

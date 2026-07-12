@@ -14,7 +14,7 @@ use rusqlite::{params, Connection};
 
 use sulix_contract as contract;
 
-use crate::repository::{DecisionRepository, SignalRepository, ThesisRepository};
+use crate::repository::{DecisionRepository, EventStore, SignalRepository, ThesisRepository, UnitOfWork};
 
 // ===== Schema =====
 
@@ -72,7 +72,24 @@ fn init_schema(conn: &Connection) -> Result<()> {
             created_at      TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
-        CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at);",
+        CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at);
+
+        CREATE TABLE IF NOT EXISTS intelligence_events (
+            id              TEXT PRIMARY KEY,
+            aggregate_type  TEXT NOT NULL,
+            aggregate_id    TEXT NOT NULL,
+            event_type      TEXT NOT NULL,
+            payload         TEXT NOT NULL,
+            source          TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_events_aggregate
+            ON intelligence_events(aggregate_type, aggregate_id);
+        CREATE INDEX IF NOT EXISTS idx_events_type
+            ON intelligence_events(event_type);
+        CREATE INDEX IF NOT EXISTS idx_events_created
+            ON intelligence_events(created_at);",
     )?;
 
     Ok(())
@@ -112,6 +129,210 @@ impl SqliteStore {
     /// 获取 Signal 仓储
     pub fn signals(&self) -> SqliteSignalRepository<'_> {
         SqliteSignalRepository { conn: &self.conn }
+    }
+
+    /// 获取 Event Store
+    pub fn event_store(&self) -> SqliteEventStore<'_> {
+        SqliteEventStore { conn: &self.conn }
+    }
+
+    /// 创建工作单元（事务）
+    ///
+    /// 使用方式:
+    ///   let mut uow = store.transaction()?;
+    ///   uow.event_store().append(&event)?;
+    ///   uow.thesis_repo().save(&thesis)?;
+    ///   uow.commit()?;
+    pub fn transaction(&self) -> Result<SqliteUnitOfWork<'_>> {
+        SqliteUnitOfWork::begin(&self.conn)
+    }
+}
+
+// ===== SqliteEventStore =====
+
+/// SQLite 实现的 Event Store（append-only）
+pub struct SqliteEventStore<'a> {
+    conn: &'a Connection,
+}
+
+impl EventStore for SqliteEventStore<'_> {
+    fn append(&self, event: &contract::IntelligenceEvent) -> Result<()> {
+        let payload_json = serde_json::to_string(&event.payload)?;
+        self.conn.execute(
+            "INSERT INTO intelligence_events (id, aggregate_type, aggregate_id, event_type, payload, source, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO NOTHING",
+            params![
+                event.id,
+                event.aggregate_type,
+                event.aggregate_id,
+                event.event_type,
+                payload_json,
+                event.source,
+                event.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn append_many(&self, events: &[contract::IntelligenceEvent]) -> Result<()> {
+        for event in events {
+            self.append(event)?;
+        }
+        Ok(())
+    }
+
+    fn event_stream(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: &str,
+    ) -> Result<Vec<contract::IntelligenceEvent>> {
+        self.conn
+            .prepare(
+                "SELECT id, aggregate_type, aggregate_id, event_type, payload, source, created_at
+                 FROM intelligence_events
+                 WHERE aggregate_type = ?1 AND aggregate_id = ?2
+                 ORDER BY created_at ASC",
+            )?
+            .query_map(params![aggregate_type, aggregate_id], row_to_event)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn events_by_type(&self, event_type: &str, limit: usize) -> Result<Vec<contract::IntelligenceEvent>> {
+        self.conn
+            .prepare(
+                "SELECT id, aggregate_type, aggregate_id, event_type, payload, source, created_at
+                 FROM intelligence_events
+                 WHERE event_type = ?1
+                 ORDER BY created_at DESC
+                 LIMIT ?2",
+            )?
+            .query_map(params![event_type, limit as i64], row_to_event)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    fn find_all_events(&self, limit: usize) -> Result<Vec<contract::IntelligenceEvent>> {
+        self.conn
+            .prepare(
+                "SELECT id, aggregate_type, aggregate_id, event_type, payload, source, created_at
+                 FROM intelligence_events
+                 ORDER BY created_at DESC
+                 LIMIT ?1",
+            )?
+            .query_map(params![limit as i64], row_to_event)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+}
+
+fn row_to_event(row: &rusqlite::Row) -> rusqlite::Result<contract::IntelligenceEvent> {
+    let payload_str: String = row.get(4)?;
+    let payload: serde_json::Value = serde_json::from_str(&payload_str).unwrap_or_default();
+    Ok(contract::IntelligenceEvent {
+        id: row.get(0)?,
+        aggregate_type: row.get(1)?,
+        aggregate_id: row.get(2)?,
+        event_type: row.get(3)?,
+        payload,
+        source: row.get(5)?,
+        created_at: row.get(6)?,
+    })
+}
+
+// ===== SqliteUnitOfWork =====
+
+/// SQLite 工作单元 — 基于 Connection 的事务包装
+///
+/// 使用方式:
+///   let mut uow = SqliteUnitOfWork::begin(&conn)?;
+///   uow.event_store().append(&event)?;
+///   uow.thesis_repo().save(&thesis)?;
+///   uow.commit()?;
+///
+/// 实现: 使用 Connection::execute_batch("BEGIN TRANSACTION") 管理事务边界，
+/// 避免 rusqlite Transaction 类型的自引用生命周期问题。
+/// Drop 时自动回滚未提交的事务（RAII 模式）。
+pub struct SqliteUnitOfWork<'a> {
+    conn: &'a Connection,
+    events: SqliteEventStore<'a>,
+    theses: SqliteThesisRepository<'a>,
+    decisions: SqliteDecisionRepository<'a>,
+    in_transaction: bool,
+}
+
+impl<'a> SqliteUnitOfWork<'a> {
+    pub fn begin(conn: &'a Connection) -> Result<Self> {
+        conn.execute_batch("BEGIN TRANSACTION")?;
+        let events = SqliteEventStore { conn };
+        let theses = SqliteThesisRepository { conn };
+        let decisions = SqliteDecisionRepository { conn };
+        Ok(Self {
+            conn,
+            events,
+            theses,
+            decisions,
+            in_transaction: true,
+        })
+    }
+
+    pub fn event_store(&mut self) -> &mut SqliteEventStore<'a> {
+        &mut self.events
+    }
+
+    pub fn thesis_repo(&mut self) -> &mut SqliteThesisRepository<'a> {
+        &mut self.theses
+    }
+
+    pub fn decision_repo(&mut self) -> &mut SqliteDecisionRepository<'a> {
+        &mut self.decisions
+    }
+
+    pub fn commit(&mut self) -> Result<()> {
+        if self.in_transaction {
+            self.conn.execute_batch("COMMIT")?;
+            self.in_transaction = false;
+        }
+        Ok(())
+    }
+
+    pub fn rollback(&mut self) -> Result<()> {
+        if self.in_transaction {
+            self.conn.execute_batch("ROLLBACK")?;
+            self.in_transaction = false;
+        }
+        Ok(())
+    }
+}
+
+impl UnitOfWork for SqliteUnitOfWork<'_> {
+    fn events(&mut self) -> &dyn EventStore {
+        &self.events as &dyn EventStore
+    }
+
+    fn theses(&mut self) -> &dyn ThesisRepository {
+        &self.theses as &dyn ThesisRepository
+    }
+
+    fn decisions(&mut self) -> &dyn DecisionRepository {
+        &self.decisions as &dyn DecisionRepository
+    }
+
+    fn commit(&mut self) -> Result<()> {
+        SqliteUnitOfWork::commit(self)
+    }
+
+    fn rollback(&mut self) -> Result<()> {
+        SqliteUnitOfWork::rollback(self)
+    }
+}
+
+impl Drop for SqliteUnitOfWork<'_> {
+    fn drop(&mut self) {
+        if self.in_transaction {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
     }
 }
 

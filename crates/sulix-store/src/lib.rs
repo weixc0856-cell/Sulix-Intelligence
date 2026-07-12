@@ -15,5 +15,5 @@
 pub mod repository;
 pub mod sqlite;
 
-pub use repository::{DecisionRepository, SignalRepository, ThesisRepository};
+pub use repository::{DecisionRepository, EventStore, SignalRepository, ThesisRepository, UnitOfWork};
 pub use sqlite::SqliteStore;

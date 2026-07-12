@@ -19,7 +19,7 @@ use sulix_config as config;
 use sulix_contract as contract;
 use sulix_intelligence as intelligence;
 use sulix_store as store;
-use sulix_store::{DecisionRepository, SignalRepository, ThesisRepository};
+use sulix_store::{DecisionRepository, EventStore, SignalRepository, ThesisRepository, UnitOfWork};
 
 // ===== CLI 参数 =====
 
@@ -241,28 +241,118 @@ async fn main() -> Result<()> {
         }
     };
 
-    // ===== 双写: Repository (SQLite) + 现有持久化 =====
+    // ===== 双写: Event Store + Repository (SQLite) + 现有持久化 =====
     if !output.theses.is_empty() || !output.decisions.is_empty() || !output.signals.is_empty() {
-        match store::SqliteStore::open(&store_path) {
-            Ok(s) => {
-                if let Err(e) = s.theses().save_many(&output.theses) {
-                    log::warn!("⚠️ Thesis 仓储写入失败: {}", e);
-                } else if !output.theses.is_empty() {
-                    log::info!("  💾 Thesis 仓储: {} 条已保存", output.theses.len());
-                }
-                if let Err(e) = s.decisions().save_many(&output.decisions) {
-                    log::warn!("⚠️ Decision 仓储写入失败: {}", e);
-                } else if !output.decisions.is_empty() {
-                    log::info!("  💾 Decision 仓储: {} 条已保存", output.decisions.len());
-                }
-                if let Err(e) = s.signals().save_many(&output.signals) {
-                    log::warn!("⚠️ Signal 仓储写入失败: {}", e);
-                } else if !output.signals.is_empty() {
-                    log::info!("  💾 Signal 仓储: {} 条已保存", output.signals.len());
-                }
+        // 1. 构造事件链（供 Event Store 和 Timeline API 使用）
+        let mut events: Vec<contract::IntelligenceEvent> = Vec::new();
+
+        for signal in &output.signals {
+            events.push(contract::IntelligenceEvent::new(
+                "signal",
+                &signal.id,
+                "SignalClassified",
+                serde_json::json!({
+                    "observation_id": signal.observation_id,
+                    "importance": signal.importance,
+                    "domain": signal.domain,
+                }),
+                "signal_classification",
+            ));
+        }
+
+        for thesis in &output.theses {
+            let has_new_evidence = !thesis.evidence.is_empty();
+            if has_new_evidence {
+                events.push(contract::IntelligenceEvent::new(
+                    "thesis",
+                    &thesis.id,
+                    "EvidenceAttached",
+                    serde_json::json!({
+                        "evidence_count": thesis.evidence.len(),
+                        "confidence": thesis.confidence,
+                    }),
+                    "thesis_generation",
+                ));
+            } else {
+                events.push(contract::IntelligenceEvent::new(
+                    "thesis",
+                    &thesis.id,
+                    "ThesisProposed",
+                    serde_json::json!({
+                        "claim": thesis.claim,
+                        "confidence": thesis.confidence,
+                        "theme": thesis.theme,
+                    }),
+                    "thesis_generation",
+                ));
             }
-            Err(e) => {
-                log::warn!("⚠️ 无法打开 SQLite 存储 ({}), 跳过仓储写入", e);
+        }
+
+        for decision in &output.decisions {
+            events.push(contract::IntelligenceEvent::new(
+                "decision",
+                &decision.id,
+                "DecisionGenerated",
+                serde_json::json!({
+                    "action": format!("{:?}", decision.action),
+                    "confidence": decision.confidence,
+                    "horizon": format!("{:?}", decision.horizon),
+                    "thesis_id": decision.thesis_id,
+                }),
+                "decision_mapping",
+            ));
+        }
+
+        // 2. 写 SQLite（通过 UnitOfWork 保证原子性）
+        if let Ok(s) = store::SqliteStore::open(&store_path) {
+            match s.transaction() {
+                Ok(mut uow) => {
+                    let mut ok = true;
+
+                    if let Err(e) = uow.event_store().append_many(&events) {
+                        log::warn!("⚠️ EventStore 写入失败: {}", e);
+                        ok = false;
+                    } else if !events.is_empty() {
+                        log::info!("  💾 Event Store: {} 条事件已记录", events.len());
+                    }
+
+                    if let Err(e) = uow.theses().save_many(&output.theses) {
+                        log::warn!("⚠️ Thesis 仓储写入失败: {}", e);
+                        ok = false;
+                    } else if !output.theses.is_empty() {
+                        log::info!("  💾 Thesis: {} 条已保存", output.theses.len());
+                    }
+
+                    if let Err(e) = uow.decisions().save_many(&output.decisions) {
+                        log::warn!("⚠️ Decision 仓储写入失败: {}", e);
+                        ok = false;
+                    } else if !output.decisions.is_empty() {
+                        log::info!("  💾 Decision: {} 条已保存", output.decisions.len());
+                    }
+
+                    if ok {
+                        if let Err(e) = uow.commit() {
+                            log::warn!("⚠️ 事务提交失败: {}", e);
+                        } else {
+                            log::info!("  ✅ 事务已提交 ({} events, {} theses, {} decisions)",
+                                events.len(), output.theses.len(), output.decisions.len());
+                        }
+                    }
+
+                    // Signals: 量大无需事务保护
+                    if let Err(e) = s.signals().save_many(&output.signals) {
+                        log::warn!("⚠️ Signal 仓储写入失败: {}", e);
+                    } else if !output.signals.is_empty() {
+                        log::info!("  💾 Signal: {} 条已保存", output.signals.len());
+                    }
+                }
+                Err(e) => {
+                    log::warn!("⚠️ 无法开始事务 ({}), 使用非事务降级写入", e);
+                    let _ = s.event_store().append_many(&events);
+                    let _ = s.theses().save_many(&output.theses);
+                    let _ = s.decisions().save_many(&output.decisions);
+                    let _ = s.signals().save_many(&output.signals);
+                }
             }
         }
     }

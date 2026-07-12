@@ -1898,6 +1898,7 @@ dependencies = [
 name = "sulix-contract"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "schemars",
  "serde",
  "serde_json",

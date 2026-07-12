@@ -14,11 +14,13 @@
 //! 生成的 JSON Schema 位于 /schemas/ 目录，供前端消费。
 
 pub mod decision;
+pub mod event;
 pub mod observation;
 pub mod signal;
 pub mod thesis;
 
 pub use decision::{Decision, DecisionHorizon, DecisionType};
+pub use event::IntelligenceEvent;
 pub use observation::Observation;
 pub use signal::{Signal, SignalCategory};
 pub use thesis::{Thesis, ThesisStatus};
@@ -81,6 +83,7 @@ mod tests {
         generate_schema::<Signal>("signal")?;
         generate_schema::<Thesis>("thesis")?;
         generate_schema::<Decision>("decision")?;
+        generate_schema::<IntelligenceEvent>("intelligence_event")?;
 
         println!("\n✓ 4 个 JSON Schema 已生成到 schemas/");
         Ok(())
