@@ -197,7 +197,8 @@ jobs:
               const stateFiles = [
                 ['data/memory_db.json', 'state/memory_db.json'],
                 ['data/decision_history.jsonl', 'state/decision_history.jsonl'],
-                ['data/intel.db', 'state/intel.db']
+                ['data/intel.db', 'state/intel.db'],
+                ['data/export.json', 'state/export.json'],
               ];
               for (const [local, remote] of stateFiles) {
                 total += await uploadFile(local, remote);

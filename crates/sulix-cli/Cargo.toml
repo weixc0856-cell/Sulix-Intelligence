@@ -19,6 +19,7 @@ sulix-config = { path = "../sulix-config" }
 sulix-llm = { path = "../sulix-llm" }
 sulix-intelligence = { path = "../sulix-intelligence" }
 sulix-observation = { path = "../sulix-observation" }
+sulix-store = { path = "../sulix-store" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }

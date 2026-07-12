@@ -167,6 +167,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         }
     }
 

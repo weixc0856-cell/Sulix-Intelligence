@@ -72,7 +72,7 @@ pub fn render_to_mdx(
 ///   title, date, locale, status, confidence [0,1], evidences, challenges, primary_domain
 fn render_thesis_mdx(thesis: &contract::Thesis, today: &str, locale: &str) -> String {
     let _slug = slugify(&thesis.claim);
-    let status_lower = format!("{:?}", thesis.status).to_lowercase();
+    let status_frontend = thesis.status.to_frontend_string();
     let falsifications_yaml: String = thesis
         .falsification_conditions
         .iter()
@@ -109,15 +109,15 @@ falsification_conditions:
         yaml_escape(&thesis.claim),
         today,
         locale,
-        yaml_escape(&status_lower),
+        yaml_escape(status_frontend),
         yaml_escape(thesis.theme.as_deref().unwrap_or("Other")),
         thesis.confidence,
         thesis.evidence.len(),
-        yaml_escape(&thesis.claim),
+        yaml_escape(thesis.summary.as_deref().unwrap_or(&thesis.claim)),
         falsifications_yaml,
         thesis.claim,
         thesis.confidence * 100.0,
-        status_lower,
+        status_frontend,
         thesis.evidence.len(),
         thesis.claim,
         if thesis.falsification_conditions.is_empty() {
@@ -223,6 +223,45 @@ fn yaml_escape(s: &str) -> String {
     }
 }
 
+/// 将管线输出导出为 JSON 格式（供 Worker API 消费）
+///
+/// 产出文件:
+///   {data_dir}/export.json — 包含 theses、decisions、signals 的完整 JSON
+///
+/// 架构定位（ADR-012）:
+///   JSON 是中间传输格式，不是永久存储。
+///   最终状态存储在 Repository（SQLite/D1）中。
+pub fn export_to_json(
+    output: &IntelligenceOutput,
+    data_dir: &std::path::Path,
+) -> Result<std::path::PathBuf> {
+    use std::io::Write;
+
+    let path = data_dir.join("export.json");
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    // 构建可序列化的 JSON 结构
+    let json = serde_json::json!({
+        "contract_version": "2",
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "date": today,
+        "theses": output.theses,
+        "decisions": output.decisions,
+        "signals": output.signals,
+        "stats": {
+            "decision_count": output.decisions.len(),
+            "thesis_count": output.theses.len(),
+            "signal_count": output.signals.len(),
+            "elapsed_ms": output.stats.elapsed_ms(),
+        }
+    });
+
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(serde_json::to_string_pretty(&json)?.as_bytes())?;
+    log::info!("📦 JSON export: {} ({} bytes)", path.display(), json.to_string().len());
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +277,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: Some("AI Enterprise".into()),
             belief_statement: None,
+            summary: None,
         }
     }
 

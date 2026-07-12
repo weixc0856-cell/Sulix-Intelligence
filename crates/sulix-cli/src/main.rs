@@ -18,6 +18,8 @@ mod entity;
 use sulix_config as config;
 use sulix_contract as contract;
 use sulix_intelligence as intelligence;
+use sulix_store as store;
+use sulix_store::{DecisionRepository, SignalRepository, ThesisRepository};
 
 // ===== CLI 参数 =====
 
@@ -91,6 +93,7 @@ async fn main() -> Result<()> {
         .and_then(|s| s.data_dir.as_deref())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("data"));
+    let store_path = data_dir.join("store.db");
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     log::info!(
@@ -238,6 +241,32 @@ async fn main() -> Result<()> {
         }
     };
 
+    // ===== 双写: Repository (SQLite) + 现有持久化 =====
+    if !output.theses.is_empty() || !output.decisions.is_empty() || !output.signals.is_empty() {
+        match store::SqliteStore::open(&store_path) {
+            Ok(s) => {
+                if let Err(e) = s.theses().save_many(&output.theses) {
+                    log::warn!("⚠️ Thesis 仓储写入失败: {}", e);
+                } else if !output.theses.is_empty() {
+                    log::info!("  💾 Thesis 仓储: {} 条已保存", output.theses.len());
+                }
+                if let Err(e) = s.decisions().save_many(&output.decisions) {
+                    log::warn!("⚠️ Decision 仓储写入失败: {}", e);
+                } else if !output.decisions.is_empty() {
+                    log::info!("  💾 Decision 仓储: {} 条已保存", output.decisions.len());
+                }
+                if let Err(e) = s.signals().save_many(&output.signals) {
+                    log::warn!("⚠️ Signal 仓储写入失败: {}", e);
+                } else if !output.signals.is_empty() {
+                    log::info!("  💾 Signal 仓储: {} 条已保存", output.signals.len());
+                }
+            }
+            Err(e) => {
+                log::warn!("⚠️ 无法打开 SQLite 存储 ({}), 跳过仓储写入", e);
+            }
+        }
+    }
+
     // ===== MDX 输出（无论有无新文章，都输出已有数据） =====
     if output.theses.is_empty() && output.decisions.is_empty() {
         log::info!("⚠️ 没有 Thesis 或 Decision 数据，跳过 MDX 输出");
@@ -248,6 +277,14 @@ async fn main() -> Result<()> {
             locale: "en".into(),
         };
         let _ = intelligence::output::render_to_mdx(&output, &mdx_cfg, &today);
+    }
+
+    // ===== JSON 导出（供 Worker API 消费） =====
+    if !output.theses.is_empty() || !output.decisions.is_empty() || !output.signals.is_empty() {
+        match intelligence::output::export_to_json(&output, &data_dir) {
+            Ok(path) => log::info!("  📦 JSON export: {}", path.display()),
+            Err(e) => log::warn!("⚠️ JSON 导出失败: {}", e),
+        }
     }
 
     log::info!(

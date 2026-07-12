@@ -1879,6 +1879,7 @@ dependencies = [
  "sulix-intelligence",
  "sulix-llm",
  "sulix-observation",
+ "sulix-store",
  "tokio",
 ]
 
@@ -1950,6 +1951,18 @@ dependencies = [
  "sulix-config",
  "sulix-contract",
  "tokio",
+]
+
+[[package]]
+name = "sulix-store"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "log",
+ "rusqlite",
+ "serde_json",
+ "sulix-contract",
 ]
 
 [[package]]

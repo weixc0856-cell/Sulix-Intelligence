@@ -364,6 +364,7 @@ impl ThesisGenerationStep {
                     time_horizon,
                     theme,
                     belief_statement: belief,
+                    summary: None,
                 }
             })
             .collect();
@@ -493,6 +494,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         }];
         assert!(matches!(match_signal(&signal, &theses), MatchVerdict::Attach(_)));
     }
@@ -517,6 +519,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         }];
         assert!(matches!(match_signal(&signal, &theses), MatchVerdict::NoMatch));
     }
@@ -541,6 +544,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         }];
         assert!(matches!(match_signal(&signal, &theses), MatchVerdict::Uncertain(_)));
     }
@@ -574,6 +578,7 @@ mod tests {
                 time_horizon: "12_months".into(),
                 theme: None,
                 belief_statement: None,
+            summary: None,
             };
 
             let verdict = match_signal(&signal, &[thesis]);

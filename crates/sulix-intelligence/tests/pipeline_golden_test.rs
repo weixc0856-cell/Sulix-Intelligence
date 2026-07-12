@@ -122,6 +122,7 @@ fn test_thesis_generation_matches_existing_theses() {
         time_horizon: "12_months".into(),
         theme: Some("AI Infrastructure".into()),
         belief_statement: None,
+            summary: None,
     }];
 
     // 新信号：NVIDIA announcement → 应匹配到已有 thesis
@@ -166,6 +167,7 @@ fn test_thesis_generation_unmatched_signals_fall_through() {
         time_horizon: "12_months".into(),
         theme: None,
         belief_statement: None,
+            summary: None,
     }];
 
     // 新信号：AI 相关 — 不应匹配到 SpaceX
@@ -211,6 +213,7 @@ fn test_decision_mapping_full_flow() {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         },
         contract::Thesis {
             id: "t_weaken".into(),
@@ -222,6 +225,7 @@ fn test_decision_mapping_full_flow() {
             time_horizon: "6_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         },
         contract::Thesis {
             id: "t_invalid".into(),
@@ -233,6 +237,7 @@ fn test_decision_mapping_full_flow() {
             time_horizon: "30_days".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         },
     ];
 
@@ -287,6 +292,7 @@ fn test_decision_mapping_smoothing_from_history() {
         time_horizon: "12_months".into(),
         theme: None,
         belief_statement: None,
+            summary: None,
     }];
 
     let result = tokio::runtime::Runtime::new()
@@ -499,6 +505,7 @@ fn test_rule_engine_empty_evidence_pending() {
         time_horizon: "12_months".into(),
         theme: None,
         belief_statement: None,
+            summary: None,
     };
     let mapping = engine.map_thesis(&thesis);
     assert!(matches!(
@@ -528,6 +535,7 @@ fn test_rule_engine_active_with_many_evidence() {
         time_horizon: "12_months".into(),
         theme: None,
         belief_statement: None,
+            summary: None,
     };
     let mapping = engine.map_thesis(&thesis);
     // Active + >= 3 evidence → Monitor + 90d

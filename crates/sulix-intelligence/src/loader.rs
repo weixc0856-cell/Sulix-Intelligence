@@ -101,6 +101,7 @@ pub fn load_theses_from_memory_db(path: &Path) -> Vec<contract::Thesis> {
                 time_horizon: "12_months".into(),
                 theme: entry["primary_domain"].as_str().map(String::from),
                 belief_statement: None,
+                summary: None,
             })
         })
         .collect();
@@ -179,6 +180,8 @@ pub fn save_theses_to_memory_db(path: &Path, new_theses: &[contract::Thesis]) {
                     contract::ThesisStatus::Pending => "Active",
                     contract::ThesisStatus::Confirmed => "Active",
                     contract::ThesisStatus::Invalidated => "Retired",
+                    contract::ThesisStatus::Dormant => "Dormant",
+                    contract::ThesisStatus::Retired => "Retired",
                 };
 
                 let new_entry = serde_json::json!({
@@ -338,6 +341,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: Some("AI Infrastructure".into()),
             belief_statement: None,
+                summary: None,
         }];
 
         save_theses_to_memory_db(&path, &theses);
@@ -370,6 +374,7 @@ mod tests {
                 time_horizon: "12_months".into(),
                 theme: None,
                 belief_statement: None,
+                summary: None,
             }],
         );
 
@@ -387,6 +392,7 @@ mod tests {
                     time_horizon: "12_months".into(),
                     theme: None,
                     belief_statement: None,
+                summary: None,
                 },
                 contract::Thesis {
                     id: "t2".into(),
@@ -398,6 +404,7 @@ mod tests {
                     time_horizon: "6_months".into(),
                     theme: None,
                     belief_statement: None,
+                summary: None,
                 },
             ],
         );

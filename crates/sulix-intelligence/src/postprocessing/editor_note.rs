@@ -105,6 +105,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         };
         let notes = analyze_personal_impact(&[thesis], &[]);
         assert!(!notes.is_empty());
@@ -123,6 +124,7 @@ mod tests {
             time_horizon: "30_days".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         };
         let notes = analyze_personal_impact(&[thesis], &[]);
         assert!(!notes.is_empty());

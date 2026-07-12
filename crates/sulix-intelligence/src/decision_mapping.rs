@@ -97,6 +97,18 @@ impl RuleEngine {
                 format!("'{}' 已被证伪 — 立即退出", claim),
                 0.0,
             ),
+            ThesisStatus::Dormant => (
+                contract::DecisionType::Ignore,
+                contract::DecisionHorizon::Days180,
+                format!("'{}' 无近期活动信号 — 暂缓关注", claim),
+                0.0,
+            ),
+            ThesisStatus::Retired => (
+                contract::DecisionType::Exit,
+                contract::DecisionHorizon::Immediate,
+                format!("'{}' 已归档退役 — 不再追踪", claim),
+                0.0,
+            ),
         };
         StatusMapping {
             decision_type: raw_type,
@@ -165,7 +177,10 @@ impl ProcessingPath {
     pub fn auto_select(thesis: &contract::Thesis) -> Self {
         let is_terminal = matches!(
             thesis.status,
-            contract::ThesisStatus::Confirmed | contract::ThesisStatus::Invalidated
+            contract::ThesisStatus::Confirmed
+            | contract::ThesisStatus::Invalidated
+            | contract::ThesisStatus::Dormant
+            | contract::ThesisStatus::Retired
         );
         let is_low_value = thesis.confidence < 0.5 || thesis.evidence.is_empty();
         if is_terminal || is_low_value {
@@ -390,6 +405,7 @@ mod tests {
             time_horizon: "12_months".into(),
             theme: None,
             belief_statement: None,
+            summary: None,
         }
     }
 

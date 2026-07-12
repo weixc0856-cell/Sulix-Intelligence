@@ -6,5 +6,6 @@ members = [
     "crates/sulix-llm",
     "crates/sulix-intelligence",
     "crates/sulix-observation",
+    "crates/sulix-store",
     "crates/sulix-cli",
 ]
