@@ -67,11 +67,12 @@ pub fn render_to_mdx(
 }
 
 /// 渲染单个 Thesis 的 MDX 文件
+///
+/// 输出格式对齐 Astro Content Collections schema (baseAssessmentFields + thesisSpecificFields):
+///   title, date, locale, status, confidence [0,1], evidences, challenges, primary_domain
 fn render_thesis_mdx(thesis: &contract::Thesis, today: &str, locale: &str) -> String {
-    let slug = slugify(&thesis.claim);
-    let confidence_pct = (thesis.confidence * 100.0) as u8;
-    let status_str = format!("{:?}", thesis.status);
-
+    let _slug = slugify(&thesis.claim);
+    let status_lower = format!("{:?}", thesis.status).to_lowercase();
     let falsifications_yaml: String = thesis
         .falsification_conditions
         .iter()
@@ -81,21 +82,20 @@ fn render_thesis_mdx(thesis: &contract::Thesis, today: &str, locale: &str) -> St
 
     format!(
         r#"---
-slug: "{}"
 title: "{}"
 date: "{}"
 locale: "{}"
-confidence: {}
 status: "{}"
-evidence_count: {}
+primary_domain: "{}"
+confidence: {}
+evidences: {}
+challenges: 0
 falsification_conditions:
 {}
-type: "thesis"
 ---
-
 # {}
 
-**置信度**: {}% | **状态**: {} | **证据**: {} 条
+**置信度**: {:.0}% | **状态**: {} | **证据**: {} 条
 
 ## 判断陈述
 
@@ -105,17 +105,17 @@ type: "thesis"
 
 {}
 "#,
-        yaml_escape(&slug),
         yaml_escape(&thesis.claim),
         today,
         locale,
-        confidence_pct,
-        yaml_escape(&status_str),
+        yaml_escape(&status_lower),
+        yaml_escape(thesis.theme.as_deref().unwrap_or("Other")),
+        thesis.confidence,
         thesis.evidence.len(),
         falsifications_yaml,
         thesis.claim,
-        confidence_pct,
-        status_str,
+        thesis.confidence * 100.0,
+        status_lower,
         thesis.evidence.len(),
         thesis.claim,
         if thesis.falsification_conditions.is_empty() {
@@ -258,9 +258,9 @@ mod tests {
     fn test_render_thesis_mdx_basic() {
         let thesis = sample_thesis();
         let mdx = render_thesis_mdx(&thesis, "2026-07-12", "en");
-        assert!(mdx.contains("slug:"));
         assert!(mdx.contains("title:"));
-        assert!(mdx.contains("confidence: 72"));
+        assert!(mdx.contains("confidence: 0.72"));
+        assert!(mdx.contains("evidences: 2"));
         assert!(mdx.contains("falsification_conditions:"));
         assert!(mdx.contains("Enterprise adoption flat"));
     }
