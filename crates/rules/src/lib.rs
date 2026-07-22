@@ -220,4 +220,82 @@ mod tests {
         };
         assert_eq!(score(&article, &rules, "default"), 5.0);
     }
+
+    #[test]
+    fn empty_rules_return_zero() {
+        let article = ArticleInput { title: "AI breaks records", summary: "", feed_url: "https://example.com" };
+        assert_eq!(score(&article, &[], "default"), 0.0);
+    }
+
+    #[test]
+    fn wrong_audience_tag_returns_zero() {
+        let rule = Rule {
+            name: "only for dev".into(),
+            audience_tag: "developer".into(),
+            condition: Condition::KeywordIncludes { field: Field::Title, keyword: "AI".into() },
+            score_delta: 5.0,
+        };
+        let article = ArticleInput { title: "AI revolution", summary: "", feed_url: "https://example.com" };
+        assert_eq!(score(&article, &[rule], "investor"), 0.0);
+    }
+
+    #[test]
+    fn negative_score_delta_downranks() {
+        let rule = Rule {
+            name: "penalize crypto".into(),
+            audience_tag: "default".into(),
+            condition: Condition::KeywordIncludes { field: Field::Title, keyword: "crypto".into() },
+            score_delta: -2.0,
+        };
+        let article = ArticleInput { title: "Crypto crash", summary: "", feed_url: "https://example.com" };
+        assert_eq!(score(&article, &[rule], "default"), -2.0);
+    }
+
+    #[test]
+    fn empty_title_still_matches_summary() {
+        let rule = Rule {
+            name: "boost safety".into(),
+            audience_tag: "default".into(),
+            condition: Condition::KeywordIncludes { field: Field::Summary, keyword: "safety".into() },
+            score_delta: 3.0,
+        };
+        let article = ArticleInput { title: "", summary: "AI safety is important", feed_url: "https://example.com" };
+        assert_eq!(score(&article, &[rule], "default"), 3.0);
+    }
+
+    #[test]
+    fn summary_not_used_when_field_is_title() {
+        let rule = Rule {
+            name: "boost title only".into(),
+            audience_tag: "default".into(),
+            condition: Condition::KeywordIncludes { field: Field::Title, keyword: "safety".into() },
+            score_delta: 3.0,
+        };
+        let article = ArticleInput { title: "Other news", summary: "AI safety is important", feed_url: "https://example.com" };
+        assert_eq!(score(&article, &[rule], "default"), 0.0);
+    }
+
+    #[test]
+    fn deep_nested_all_conditions() {
+        let rule = Rule {
+            name: "boost AI safety research".into(),
+            audience_tag: "default".into(),
+            condition: Condition::All {
+                conditions: vec![
+                    Condition::Any {
+                        conditions: vec![
+                            Condition::KeywordIncludes { field: Field::Title, keyword: "AI".into() },
+                            Condition::KeywordIncludes { field: Field::Title, keyword: "machine learning".into() },
+                        ],
+                    },
+                    Condition::KeywordIncludes { field: Field::Title, keyword: "safety".into() },
+                ],
+            },
+            score_delta: 5.0,
+        };
+        let match_both = ArticleInput { title: "AI safety breakthrough", summary: "", feed_url: "https://example.com" };
+        let match_only_ai = ArticleInput { title: "AI performance gains", summary: "", feed_url: "https://example.com" };
+        assert_eq!(score(&match_both, std::slice::from_ref(&rule), "default"), 5.0);
+        assert_eq!(score(&match_only_ai, std::slice::from_ref(&rule), "default"), 0.0);
+    }
 }

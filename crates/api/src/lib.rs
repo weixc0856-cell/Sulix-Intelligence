@@ -13,7 +13,7 @@ fn parse_limit(url: &Url) -> u32 {
 }
 
 fn json_ok(v: Value) -> Result<Response> {
-    let mut resp = Response::from_json(&v)?;
+    let resp = Response::from_json(&v)?;
     let _ = resp.headers().set("Cache-Control", "public, max-age=60");
     let _ = resp.headers().set("X-Content-Type-Options", "nosniff");
     Ok(resp)
