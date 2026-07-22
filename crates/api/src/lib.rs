@@ -42,6 +42,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/articles/trending", trending)
         .get_async("/api/articles/search", search_articles)
         .get_async("/api/articles/:id/related", article_related)
+        .get_async("/api/articles/:id/adjacent", article_adjacent)
         .get_async("/api/articles/:id", article_detail)
 }
 
@@ -150,6 +151,15 @@ async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response
     let store = Store::new(ctx.env.d1("DB")?);
     let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "missing id") };
     match store.article_detail(id).await { Ok(Some(a)) => json_ok(json!({"article": a})), Ok(None) => json_err(404, "not found"), Err(e) => json_err(500, &e.to_string()) }
+}
+
+async fn article_adjacent(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "missing id") };
+    match store.adjacent_articles(id).await {
+        Ok((prev, next)) => json_ok(json!({"prev": prev, "next": next})),
+        Err(e) => json_err(500, &e.to_string()),
+    }
 }
 
 async fn article_related(_req: Request, ctx: RouteContext<()>) -> Result<Response> {

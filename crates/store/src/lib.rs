@@ -182,6 +182,18 @@ impl Store {
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<ArticleDetail>(None).await?)
     }
 
+    /// Get previous and next article relative to a given article id,
+    /// ordered by published_at DESC.  Returns (prev, next) �� both may be None.
+    pub async fn adjacent_articles(&self, id: i64) -> Result<(Option<Article>, Option<Article>), StoreError> {
+        let prev = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at < (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at DESC LIMIT 1"
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<Article>(None).await?;
+        let next = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at > (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at ASC LIMIT 1"
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<Article>(None).await?;
+        Ok((prev, next))
+    }
+
     pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
         let pattern = format!("%\"{}\"%", tag);
         Ok(self.db.prepare(
