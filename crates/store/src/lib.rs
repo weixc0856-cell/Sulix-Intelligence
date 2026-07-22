@@ -34,6 +34,9 @@ pub struct Feed {
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub status: String,
+    /// 'summary_only' (default) — only use RSS entry summary/content.
+    /// 'full_text' — opt-in, fetches the article URL for full-text extraction.
+    pub extraction_level: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -89,10 +92,25 @@ impl Store {
         Self { db }
     }
 
-    pub async fn active_feeds(&self) -> Result<Vec<Feed>, StoreError> {
-        let stmt = self
-            .db
-            .prepare("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status FROM feeds WHERE status = 'active'");
+    /// Feeds whose status is 'active' AND whose last_fetched_at is either
+    /// NULL (never fetched) or more than fetch_interval_sec seconds ago.
+    /// Optional category filter: pass Some("tech") to only return feeds in
+    /// that category; pass None to skip filtering.
+    pub async fn feeds_due_for_fetch(&self, now: i64, category: Option<&str>) -> Result<Vec<Feed>, StoreError> {
+        let sql = match category {
+            Some(_) => "SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level
+                        FROM feeds WHERE status = 'active' AND category = ?1
+                        AND (last_fetched_at IS NULL OR ?2 - last_fetched_at >= fetch_interval_sec)",
+            None => "SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level
+                     FROM feeds WHERE status = 'active'
+                     AND (last_fetched_at IS NULL OR ?1 - last_fetched_at >= fetch_interval_sec)",
+        };
+        let stmt = self.db.prepare(sql);
+        let stmt = if let Some(cat) = category {
+            stmt.bind(&[cat.into(), JsValue::from_f64(now as f64)])?
+        } else {
+            stmt.bind(&[JsValue::from_f64(now as f64)])?
+        };
         let result = stmt.all().await?;
         Ok(result.results::<Feed>()?)
     }
@@ -255,6 +273,21 @@ impl Store {
         let stmt = stmt.bind(&[pattern.into(), JsValue::from_f64(limit as f64)])?;
         let result = stmt.all().await?;
         Ok(result.results::<Article>()?)
+    }
+
+    /// After full-text extraction, persist the R2 object key back to the
+    /// article row so it's referenceable without re-fetching.  No-op when
+    /// r2_key is None (cleanup / extraction_level not set to full_text).
+    pub async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
+        let stmt = self.db.prepare(
+            "UPDATE articles SET raw_content_r2_key = ?1 WHERE id = ?2",
+        );
+        let stmt = stmt.bind(&[
+            r2_key.into(),
+            JsValue::from_f64(article_id as f64),
+        ])?;
+        stmt.run().await?;
+        Ok(())
     }
 
     pub async fn article_by_id(&self, id: i64) -> Result<Option<Article>, StoreError> {

@@ -1,13 +1,13 @@
-//! Pulls a feed URL through the Workers runtime's `fetch()` binding and
-//! parses it with `feed-rs`.
+//! Feed fetching and optional full-text article extraction.
 //!
-//! Deliberately does NOT use `reqwest`: the Workers wasm32-unknown-unknown
-//! target has no TCP sockets, so `reqwest` either fails to build or fails
-//! at runtime. `worker::Fetch` shells out to the JS `fetch()` global that
-//! the Workers runtime actually provides.
+//! `fetch_feed` pulls and parses an RSS/Atom feed URL. `extract_full_text`
+//! fetches a single article URL (the canonical link from a feed entry) and
+//! extracts readable body text via CSS selectors -- only called for feeds
+//! with `extraction_level = 'full_text'`, which is opt-in per source.
 
 use feed_rs::model::Feed;
 use feed_rs::parser;
+use scraper::{Html, Selector};
 use std::net::IpAddr;
 use worker::{Fetch, Method, Request, RequestInit};
 
@@ -21,6 +21,27 @@ pub enum FetchError {
     Parse(#[from] feed_rs::parser::ParseFeedError),
     #[error("blocked by SSRF guard: {0}")]
     Ssrf(String),
+    #[error("full-text extraction failed: {0}")]
+    Extraction(String),
+}
+
+impl FetchError {
+    /// Returns true for errors where retrying makes sense (network blips,
+    /// rate limiting, server errors).  Returns false for permanent errors
+    /// (4xx client errors, SSRF blocks, parse failures) where retrying
+    /// would waste the queue's retry quota.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            FetchError::Http(_) => true,       // network / connection level
+            FetchError::Status(code) => {
+                *code >= 500
+                    || *code == 429             // rate limit, may lift
+            }
+            FetchError::Parse(_) => false,      // bad XML won't get better
+            FetchError::Ssrf(_) => false,       // policy block, won't change
+            FetchError::Extraction(_) => false, // parse fail, won't change
+        }
+    }
 }
 
 pub struct FetchedFeed {
@@ -38,19 +59,9 @@ pub enum FetchOutcome {
     NotModified,
 }
 
-/// Basic SSRF guard, in the spirit of NewsBlur's `validate_public_url`:
-/// reject IP-literal hosts pointing at loopback/private/link-local ranges
-/// (including the 169.254.169.254 cloud metadata address) and obvious
-/// localhost aliases before we ever hand the URL to `fetch()`.
-///
-/// Caveat, stated plainly: this only catches IP-literal and localhost-alias
-/// URLs. It does NOT prevent DNS rebinding (a hostname that resolves to a
-/// private IP at fetch time) -- Workers' `fetch()` doesn't expose a way to
-/// resolve DNS yourself and check the IP before the request goes out, so
-/// full protection against rebinding isn't achievable purely at this layer
-/// on the edge runtime. This guard only matters once feed URLs can come
-/// from something other than a list you curate yourself; while the source
-/// list stays self-maintained, the actual exposure is low.
+/// Basic SSRF guard.  Used both for feed URLs (trusted, self-maintained
+/// list) and for article URLs in `extract_full_text` (untrusted, comes
+/// from third-party feed data) -- both paths go through the same check.
 fn guard_public_url(url: &str) -> Result<(), FetchError> {
     let parsed = url::Url::parse(url).map_err(|e| FetchError::Ssrf(e.to_string()))?;
 
@@ -75,9 +86,9 @@ fn guard_public_url(url: &str) -> Result<(), FetchError> {
                 v4.is_loopback()
                     || v4.is_private()
                     || v4.is_link_local()
-                    || v4 == std::net::Ipv4Addr::new(169, 254, 169, 254) // cloud metadata
+                    || v4 == std::net::Ipv4Addr::new(169, 254, 169, 254)
             }
-            IpAddr::V6(v6) => v6.is_loopback() || (v6.segments()[0] & 0xfe00) == 0xfc00, // ULA
+            IpAddr::V6(v6) => v6.is_loopback() || (v6.segments()[0] & 0xfe00) == 0xfc00,
         };
         if blocked {
             return Err(FetchError::Ssrf(format!("IP-literal host in blocked range: {ip}")));
@@ -87,29 +98,21 @@ fn guard_public_url(url: &str) -> Result<(), FetchError> {
     Ok(())
 }
 
-/// Fetch and parse a single RSS/Atom feed URL. Pass in the ETag and/or
-/// Last-Modified value stored from the previous successful fetch (if any)
-/// so the server can reply 304 Not Modified when nothing changed -- saves
-/// bandwidth and, more importantly, skips re-running the AI pipeline on
-/// content that hasn't actually changed. Callers persist the returned
-/// etag/last_modified via `store` for the next cycle.
-pub async fn fetch_feed(
-    url: &str,
-    prior_etag: Option<&str>,
-    prior_last_modified: Option<&str>,
-) -> Result<FetchOutcome, FetchError> {
+/// Low-level HTTP GET used by both `fetch_feed` and `extract_full_text`.
+/// Returns the full response so callers can choose between text/json/status.
+async fn http_get(url: &str, etag: Option<&str>, last_modified: Option<&str>) -> Result<(u16, String, Option<String>, Option<String>), FetchError> {
     guard_public_url(url)?;
 
     let mut init = RequestInit::new();
     init.with_method(Method::Get);
 
-    let mut headers = worker::Headers::new();
-    if let Some(etag) = prior_etag {
+    let headers = worker::Headers::new();
+    if let Some(etag) = etag {
         headers
             .set("If-None-Match", etag)
             .map_err(|e| FetchError::Http(e.to_string()))?;
     }
-    if let Some(lm) = prior_last_modified {
+    if let Some(lm) = last_modified {
         headers
             .set("If-Modified-Since", lm)
             .map_err(|e| FetchError::Http(e.to_string()))?;
@@ -123,22 +126,34 @@ pub async fn fetch_feed(
         .await
         .map_err(|e| FetchError::Http(e.to_string()))?;
 
-    if resp.status_code() == 304 {
-        return Ok(FetchOutcome::NotModified);
-    }
+    let status = resp.status_code();
 
-    if resp.status_code() >= 400 {
-        return Err(FetchError::Status(resp.status_code()));
-    }
-
-    let resp_headers = resp.headers();
-    let etag = resp_headers.get("etag").ok().flatten();
-    let last_modified = resp_headers.get("last-modified").ok().flatten();
+    let etag = resp.headers().get("etag").ok().flatten();
+    let last_modified = resp.headers().get("last-modified").ok().flatten();
 
     let body = resp
         .text()
         .await
         .map_err(|e| FetchError::Http(e.to_string()))?;
+
+    Ok((status, body, etag, last_modified))
+}
+
+/// Fetch and parse a single RSS/Atom feed URL.  Callers persist the returned
+/// etag/last_modified via `store` for the next cycle.
+pub async fn fetch_feed(
+    url: &str,
+    prior_etag: Option<&str>,
+    prior_last_modified: Option<&str>,
+) -> Result<FetchOutcome, FetchError> {
+    let (status, body, etag, last_modified) = http_get(url, prior_etag, prior_last_modified).await?;
+
+    if status == 304 {
+        return Ok(FetchOutcome::NotModified);
+    }
+    if status >= 400 {
+        return Err(FetchError::Status(status));
+    }
 
     let feed = parser::parse(body.as_bytes())?;
 
@@ -148,4 +163,56 @@ pub async fn fetch_feed(
         etag,
         last_modified,
     }))
+}
+
+/// Fetch the full text of a single article URL using CSS selectors.
+/// Only called for feeds with `extraction_level = 'full_text'`.
+/// The `article.url` originates from third-party feed data, so
+/// `guard_public_url` is applied here too.
+pub async fn extract_full_text(url: &str) -> Result<String, FetchError> {
+    let (status, body, _etag, _lm) = http_get(url, None, None).await?;
+
+    if status >= 400 {
+        return Err(FetchError::Status(status));
+    }
+
+    let document = Html::parse_document(&body);
+
+    // Ordered list of content selectors, from most specific to fallback.
+    let selectors = [
+        "article",
+        "main",
+        ".post-content",
+        ".entry-content",
+        "#content",
+        ".content",
+        ".article-body",
+    ];
+
+    for raw in &selectors {
+        if let Ok(sel) = Selector::parse(raw) {
+            if let Some(el) = document.select(&sel).next() {
+                let text = el.text().collect::<Vec<_>>().join(" ");
+                let trimmed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                if !trimmed.is_empty() {
+                    return Ok(trimmed);
+                }
+            }
+        }
+    }
+
+    // Fallback: concatenate all <p> text.
+    if let Ok(sel) = Selector::parse("p") {
+        let text: String = document
+            .select(&sel)
+            .map(|el| el.text().collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let trimmed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+
+    Err(FetchError::Extraction("no readable content found".into()))
 }

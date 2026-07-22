@@ -11,3 +11,4 @@ chrono.workspace = true
 thiserror.workspace = true
 url = "2"
 uuid.workspace = true
+scraper = "0.22"
