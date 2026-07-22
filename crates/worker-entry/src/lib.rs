@@ -18,6 +18,7 @@ struct FetchJob {
 /// HTTP entry point. D1 is bound in wrangler.toml as `DB`.
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    console_error_panic_hook::set_once();
     router().run(req, env).await
 }
 
@@ -26,6 +27,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 /// one small message per feed onto the `FETCH_QUEUE`.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    console_error_panic_hook::set_once();
     if let Err(e) = enqueue_fetch_jobs(&env).await {
         console_log!("enqueue_fetch_jobs failed: {e}");
     }
@@ -59,6 +61,7 @@ async fn enqueue_fetch_jobs(env: &Env) -> Result<()> {
 /// invokes this per batch of messages, retrying failed ones automatically.
 #[event(queue)]
 async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result<()> {
+    console_error_panic_hook::set_once();
     let store = Store::new(env.d1("DB")?);
 
     let messages = batch.messages()?;
