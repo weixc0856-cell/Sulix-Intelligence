@@ -152,8 +152,8 @@ mod tests {
             summary: "",
             feed_url: "https://example.com/feed",
         };
-        assert_eq!(score(&match_both, &[rule.clone()], "default"), 5.0);
-        assert_eq!(score(&match_one, &[rule], "default"), 0.0);
+        assert_eq!(score(&match_both, std::slice::from_ref(&rule), "default"), 5.0);
+        assert_eq!(score(&match_one, std::slice::from_ref(&rule), "default"), 0.0);
     }
 
     #[test]
@@ -193,8 +193,8 @@ mod tests {
             summary: "",
             feed_url: "https://example.com/feed",
         };
-        assert_eq!(score(&article, &[rule.clone()], "default"), 0.0);
-        assert_eq!(score(&article, &[rule], "developer"), 1.0);
+        assert_eq!(score(&article, std::slice::from_ref(&rule), "default"), 0.0);
+        assert_eq!(score(&article, std::slice::from_ref(&rule), "developer"), 1.0);
     }
 
     #[test]

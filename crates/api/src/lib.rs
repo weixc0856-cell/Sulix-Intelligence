@@ -17,6 +17,7 @@ fn parse_limit(url: &Url) -> u32 {
 pub fn router() -> Router<'static, ()> {
     Router::new()
         .get_async("/api/health", health)
+        .get_async("/api/debug/feeds-due", debug_feeds_due)
         .get_async("/api/dashboard", dashboard)
         .get_async("/api/stats", stats)
         .get_async("/api/categories", categories)
@@ -48,6 +49,22 @@ fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> {
 }
 
 // ---- Health ----
+
+async fn debug_feeds_due(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+    match store.feeds_due_for_fetch(now, None).await {
+        Ok(feeds) => json_ok(json!({
+            "now": now,
+            "feeds_due": feeds.len(),
+            "feeds": feeds.iter().map(|f| json!({
+                "id": f.id, "title": f.title, "last_fetched_at": f.last_fetched_at,
+                "fetch_interval_sec": f.fetch_interval_sec, "extraction_level": f.extraction_level
+            })).collect::<Vec<_>>()
+        })),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
 
 async fn health(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);

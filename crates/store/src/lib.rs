@@ -75,7 +75,8 @@ impl Store {
         ).bind(&[url.into(), title.into(), category.into(), JsValue::from_f64(interval as f64)])?;
         stmt.run().await?;
         let q = self.db.prepare("SELECT id FROM feeds WHERE url = ?1").bind(&[url.into()])?;
-        Ok(q.first::<i64>(None).await?)
+        let row = q.first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
     }
 
     /// Dynamic update: only non-None fields are applied.
@@ -88,7 +89,7 @@ impl Store {
         if let Some(v) = extraction_level { parts.push("extraction_level = ?".into()); vals.push(v.into()); }
         if parts.is_empty() { return Ok(()); }
         vals.push(JsValue::from_f64(id as f64));
-        self.db.prepare(&format!("UPDATE feeds SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
+        self.db.prepare(format!("UPDATE feeds SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
         Ok(())
     }
 
@@ -102,7 +103,7 @@ impl Store {
         self.db.prepare(
             "UPDATE feeds SET last_fetched_at = ?1, etag = COALESCE(?2, etag), last_modified = COALESCE(?3, last_modified) WHERE id = ?4",
         ).bind(&[
-            JsValue::from_f64(fetched_at as f64), etag.into(), last_modified.into(), JsValue::from_f64(feed_id as f64),
+            JsValue::from_f64(fetched_at as f64), etag.map_or(JsValue::null(), |v| v.into()), last_modified.map_or(JsValue::null(), |v| v.into()), JsValue::from_f64(feed_id as f64),
         ])?.run().await?;
         Ok(())
     }
@@ -115,14 +116,17 @@ impl Store {
         self.db.prepare(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, url, published_at, raw_content_r2_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         ).bind(&[
-            JsValue::from_f64(article.feed_id as f64), article.guid.clone().into(), article.title.clone().into(),
-            article.url.clone().into(),
-            article.published_at.map(|v| JsValue::from_f64(v as f64)).unwrap_or(JsValue::null()),
-            article.raw_content_r2_key.clone().into(),
+            JsValue::from_f64(article.feed_id as f64),
+            article.guid.clone().into(),
+            article.title.clone().into(),
+            article.url.clone().map_or(JsValue::null(), |v| v.into()),
+            article.published_at.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+            article.raw_content_r2_key.clone().map_or(JsValue::null(), |v| v.into()),
         ])?.run().await?;
         let q = self.db.prepare("SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2")
             .bind(&[JsValue::from_f64(article.feed_id as f64), article.guid.clone().into()])?;
-        Ok(q.first::<i64>(None).await?)
+        let row = q.first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
     }
 
     pub async fn set_ai_summary(&self, article_id: i64, summary: &str, tags_json: &str, vector_id: &str, score: f64) -> Result<(), StoreError> {

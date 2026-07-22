@@ -55,7 +55,7 @@ pub struct FetchedFeed {
 /// it, or the server confirmed nothing changed since last time (304) and
 /// there is nothing to re-parse or re-run through the AI pipeline for.
 pub enum FetchOutcome {
-    Updated(FetchedFeed),
+    Updated(Box<FetchedFeed>),
     NotModified,
 }
 
@@ -157,12 +157,12 @@ pub async fn fetch_feed(
 
     let feed = parser::parse(body.as_bytes())?;
 
-    Ok(FetchOutcome::Updated(FetchedFeed {
+    Ok(FetchOutcome::Updated(Box::new(FetchedFeed {
         feed,
         raw_body: body,
         etag,
         last_modified,
-    }))
+    })))
 }
 
 /// Fetch the full text of a single article URL using CSS selectors.
