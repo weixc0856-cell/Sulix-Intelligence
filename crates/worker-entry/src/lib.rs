@@ -109,7 +109,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
     // Workers CPU limit is ~30s per cron, AI calls ~200-300ms each,
     // so 30 per batch = ~9s, leaving headroom for feed fetching.
     // Remaining articles finish over successive cron cycles.
-    const AI_BATCH: u32 = 8;
+    const AI_BATCH: u32 = 20;
     if let Some(ref s) = summarizer {
         if let Ok(pending) = store.pending_ai_articles(AI_BATCH).await {
             console_log!("  processing {} pending AI articles...", pending.len());

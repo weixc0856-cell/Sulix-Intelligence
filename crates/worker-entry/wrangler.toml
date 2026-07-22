@@ -11,19 +11,6 @@ AI_EMBEDDING_MODEL = ""
 [triggers]
 crons = ["*/30 * * * *"]
 
-# Producer: `scheduled()` sends one small FetchJob message per active feed.
-[[queues.producers]]
-binding = "FETCH_QUEUE"
-queue = "sulix-feed-fetch-queue"
-
-# Consumer: `queue()` handles batches, ack/retry per message. Tune
-# max_batch_size/max_retries once real feed volume is known.
-[[queues.consumers]]
-queue = "sulix-feed-fetch-queue"
-max_batch_size = 10
-max_retries = 3
-dead_letter_queue = "sulix-feed-fetch-dlq"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "sulix-feed-db"
@@ -33,8 +20,6 @@ database_id = "42e589bc-036e-4e1f-8763-bbff092354e0"
 binding = "RAW_CONTENT"
 bucket_name = "sulix-feed-raw"
 
-# KV reserved for lightweight cache/config (e.g. per-audience filter
-# rule snapshots) if/when that's cheaper than a D1 round trip.
 [[kv_namespaces]]
 binding = "CACHE"
 id = "38bcc1c3380c4bd99f9e763b6755701f"

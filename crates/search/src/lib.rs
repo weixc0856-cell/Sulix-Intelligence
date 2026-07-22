@@ -44,12 +44,12 @@ impl<'a> D1FtsSearch<'a> {
         Self { db }
     }
 
-    /// FTS5 search with optional tag/category/sort.
-    /// Builds bind params dynamically — D1 uses ?N positional params.
+    /// FTS5 search with optional tag/category/sort/offset.
     pub async fn search_filtered(
         &self,
         query: &str,
         limit: u32,
+        offset: u32,
         tag: Option<&str>,
         category: Option<&str>,
         sort: Option<&str>,
@@ -76,7 +76,9 @@ impl<'a> D1FtsSearch<'a> {
             Some("score") => "a.score DESC, articles_fts.rank",
             _ => "articles_fts.rank",
         };
-
+        let ofs = idx + 1;
+        let limit_idx = idx;
+        idx = ofs; // update for offset bind
         let sql = format!(
             "SELECT a.id, a.feed_id, a.title, a.url, a.published_at,
                     a.ai_summary, a.ai_tags, a.score,
@@ -86,9 +88,10 @@ impl<'a> D1FtsSearch<'a> {
              LEFT JOIN feeds f ON f.id = a.feed_id
              WHERE {where_clause}
              ORDER BY {order}
-             LIMIT ?{idx}"
+             LIMIT ?{limit_idx} OFFSET ?{ofs}"
         );
         bind_vals.push(JsValue::from_f64(limit as f64));
+        bind_vals.push(JsValue::from_f64(offset as f64));
 
         let stmt = self.db.prepare(&sql).bind(&bind_vals)?;
         let result = stmt.all().await?;
