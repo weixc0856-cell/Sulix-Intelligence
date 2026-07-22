@@ -58,6 +58,20 @@ pub struct Article {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PendingArticle {
+    pub id: i64,
+    pub feed_id: i64,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
+    pub raw_content_r2_key: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ArticleDetail {
     pub id: i64,
     pub feed_id: i64,

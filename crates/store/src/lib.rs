@@ -142,7 +142,7 @@ impl Store {
         Ok(())
     }
 
-    pub async fn latest_articles(&self, limit: u32, offset: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn latest_articles(&self, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1 OFFSET ?2",
         ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -155,7 +155,7 @@ impl Store {
         Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
     }
 
-    pub async fn trending_articles(&self, limit: u32, offset: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn trending_articles(&self, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1 OFFSET ?2",
         ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -182,14 +182,14 @@ impl Store {
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<ArticleDetail>(None).await?)
     }
 
-    pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
         let pattern = format!("%\"{}\"%", tag);
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2",
         ).bind(&[pattern.into(), JsValue::from_f64(limit as f64)])?.all().await?.results()?)
     }
 
-    pub async fn articles_by_category(&self, category: &str, limit: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn articles_by_category(&self, category: &str, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
             "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2",
         ).bind(&[category.into(), JsValue::from_f64(limit as f64)])?.all().await?.results()?)
@@ -206,7 +206,7 @@ impl Store {
 
     /// Find articles sharing tags with a given article, ordered by match
     /// count desc then recency.  Returns empty when source has no tags.
-    pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
         let src = self.db.prepare("SELECT ai_tags FROM articles WHERE id = ?1")
             .bind(&[JsValue::from_f64(article_id as f64)])?;
         let tags_json = match src.first::<String>(None).await? {
@@ -270,9 +270,9 @@ impl Store {
 
     /// Get articles that still need AI summarization, oldest first.
     /// Batch size limits per call to stay within Workers CPU time budget.
-    pub async fn pending_ai_articles(&self, batch_size: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn pending_ai_articles(&self, batch_size: u32) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score, raw_content_r2_key
              FROM articles WHERE (ai_summary IS NULL OR ai_summary = '')
              ORDER BY published_at ASC LIMIT ?1",
         ).bind(&[JsValue::from_f64(batch_size as f64)])?.all().await?.results()?)

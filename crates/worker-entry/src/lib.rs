@@ -82,8 +82,9 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
 
                             if do_ai {
                                 if let Some(ref s) = summarizer {
-                                    if let Err(e) = process_article(&store, s, article_id, &article.title, &body, article_score).await {
-                                        console_log!("    AI pipeline failed for {}: {e}", article_id);
+                                    if process_article(&store, s, article_id, &article.title, &body, article_score).await.is_err() {
+                                        let excerpt = if body.len() > 500 { &body[..500] } else { &body };
+                                        let _ = store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
                                     }
                                 }
                             } else if article_score != 0.0 {
@@ -114,7 +115,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
         if let Ok(pending) = store.pending_ai_articles(AI_BATCH).await {
             console_log!("  processing {} pending AI articles...", pending.len());
             for a in &pending {
-                match process_article(&store, s, a.id, &a.title, "", 0.0).await {
+                match process_article(&store, s, a.id, &a.title, a.raw_content_r2_key.as_deref().unwrap_or(""), 0.0).await {
                     Ok(()) => {},
                     Err(e) => console_log!("    AI failed for article {}: {e}", a.id),
                 }
