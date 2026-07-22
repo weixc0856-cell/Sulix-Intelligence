@@ -18,11 +18,9 @@ edition = "2021"
 # what they need via `workspace = true` so bumping a version happens once.
 [workspace.dependencies]
 worker = { version = "0.8", features = ["http", "d1", "queue"] }
-axum = { version = "0.7", default-features = false, features = ["json", "query"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 feed-rs = "2"
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
 thiserror = "1"
 async-trait = "0.1"
 uuid = { version = "1", features = ["js"] }
