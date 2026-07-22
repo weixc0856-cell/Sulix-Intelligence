@@ -12,6 +12,10 @@ fn parse_limit(url: &Url) -> u32 {
     url.query_pairs().find(|(k, _)| k == "limit").and_then(|(_, v)| v.parse().ok()).unwrap_or(30)
 }
 
+fn parse_offset(url: &Url) -> u32 {
+    url.query_pairs().find(|(k, _)| k == "offset").and_then(|(_, v)| v.parse().ok()).unwrap_or(0)
+}
+
 fn json_ok(v: Value) -> Result<Response> {
     let resp = Response::from_json(&v)?;
     let _ = resp.headers().set("Cache-Control", "public, max-age=60");
@@ -130,9 +134,16 @@ async fn feeds_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
     match store.set_feed_status(id, "inactive").await { Ok(()) => json_ok(json!({"status": "deleted", "id": id})), Err(e) => json_err(500, &e.to_string()) }
 }
 
-async fn trending(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+async fn trending(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
-    match store.trending_articles(50).await { Ok(articles) => json_ok(json!({"articles": articles})), Err(e) => json_err(500, &e.to_string()) }
+    let url = req.url()?;
+    let limit = parse_limit(&url);
+    let offset = parse_offset(&url);
+    let total = store.trending_count().await.unwrap_or(0);
+    match store.trending_articles(limit, offset).await {
+        Ok(articles) => json_ok(json!({"articles": articles, "total": total, "limit": limit, "offset": offset})),
+        Err(e) => json_err(500, &e.to_string()),
+    }
 }
 
 async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -153,9 +164,14 @@ async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
     let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
     let limit = parse_limit(&url);
+    let offset = parse_offset(&url);
     if let Some(ref tag) = tag { return match store.articles_by_tag(tag, limit).await { Ok(a) => json_ok(json!({"articles": a})), Err(e) => json_err(500, &e.to_string()) }; }
     if let Some(ref cat) = category { return match store.articles_by_category(cat, limit).await { Ok(a) => json_ok(json!({"articles": a})), Err(e) => json_err(500, &e.to_string()) }; }
-    match store.latest_articles(limit).await { Ok(a) => json_ok(json!({"articles": a})), Err(e) => json_err(500, &e.to_string()) }
+    let total = store.article_count().await.unwrap_or(0);
+    match store.latest_articles(limit, offset).await {
+        Ok(a) => json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
+        Err(e) => json_err(500, &e.to_string()),
+    }
 }
 
 async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {

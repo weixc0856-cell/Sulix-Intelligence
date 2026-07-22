@@ -142,16 +142,30 @@ impl Store {
         Ok(())
     }
 
-    pub async fn latest_articles(&self, limit: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn latest_articles(&self, limit: u32, offset: u32) -> Result<Vec<Article>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1",
-        ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1 OFFSET ?2",
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
     }
 
-    pub async fn trending_articles(&self, limit: u32) -> Result<Vec<Article>, StoreError> {
+    pub async fn article_count(&self) -> Result<i64, StoreError> {
+        let row = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM articles",
+        ).first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
+    }
+
+    pub async fn trending_articles(&self, limit: u32, offset: u32) -> Result<Vec<Article>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1",
-        ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1 OFFSET ?2",
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
+    }
+
+    pub async fn trending_count(&self) -> Result<i64, StoreError> {
+        let row = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM articles WHERE score != 0",
+        ).first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
     }
 
     pub async fn article_by_id(&self, id: i64) -> Result<Option<Article>, StoreError> {
