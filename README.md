@@ -1,150 +1,62 @@
-<p align="center">
-  <a href="README.md">🇬🇧 English</a>
-</p>
-
 # Sulix Intelligence
 
-> **Fully Automated Cognitive Engine — Personal Strategy OS for solo entrepreneurs.**
+> RSS Feed + AI Digest — deployed on Cloudflare Workers.
 
-Sulix Intelligence transforms raw signals into structured **strategic memory** — Signal → Assessment → Decision → Outcome. Not "what happened", but "does this change my decision for the next 6 months."
-
-```
-Observation (RSS/USPTO/Reddit)
-    ↓
-SignalClassificationStep — Fast Path (rule) | Slow Path (LLM)
-    ↓
-ThesisGenerationStep — match existing | LLM generate new
-    ↓
-DecisionMappingStep — RuleEngine + optional LlmJudge
-    ↓
-PipelineStats + MDX Output
-```
+Fetches RSS/Atom feeds, scores articles with filter rules, summarizes and tags them via DeepSeek V4 Flash, and serves the result as a curated feed.
 
 ## Architecture
 
 ```
-crates/                    cargo run -p sulix-cli
-├── sulix-contract/       ← Layer-boundary types (Observation/Signal/Thesis/Decision)
-├── sulix-config/         ← TOML config loading
-├── sulix-llm/            ← LLM provider (client/retry/api/parser/dispatch/audit)
-├── sulix-intelligence/   ← Cognitive pipeline (PipelineStep trait + 3 steps)
-├── sulix-observation/    ← Source adapters (RSS/Reddit/USPTO)
-└── sulix-cli/            ← CLI entry points (sulix-cli + intel-pipeline)
+Cron Trigger → queue → fetch_feed() → D1 (feeds, articles, filter_rules)
+  → rules engine (score) → HttpSummarizer (DeepSeek V4) → updated article
+  → API (worker::Router) ← service binding ← Astro frontend (Cloudflare Worker)
 ```
 
-## Three-Repository Architecture
+## Crates
 
-| Repo | Responsibility | Tech Stack |
-|------|--------------|------------|
-| **sulix-engine** ← this repo | Data Acquisition, Analysis, Strategic Memory | Rust + DeepSeek API |
-| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | UI Shell, Navigation, UX | Astro + Tailwind |
-| **sulix-docs** | Product Decisions, Architecture, ADR | Obsidian Markdown |
-
-## Products
-
-| Product | Purpose | Price |
-|---------|---------|-------|
-| **News Layer** | User acquisition | $0 |
-| **Research Layer** | Revenue | $99-$4999 |
-| **Memory Layer** | Moat | Private |
+| Crate | Purpose |
+|---|---|
+| `store` | D1 access layer (feeds, articles, CRUD, health) |
+| `fetcher` | RSS/Atom fetch + SSRF guard + full-text extraction (per-feed opt-in) |
+| `rules` | Scoring engine (keyword matches, source filter, AND/OR) |
+| `ai-pipeline` | `Summarizer` trait + `HttpSummarizer` (OpenAI-compatible) |
+| `search` | D1 FTS5 keyword search |
+| `api` | HTTP routes — health, dashboard, tags, feeds CRUD, articles |
+| `worker-entry` | `#[event(fetch/scheduled/queue)]` — Workers entry point |
 
 ## Quick Start
 
 ```bash
-# 1. Build
-git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
-cd Sulix-Intelligence
-cp config.example.toml config.toml
-cargo build --release -p sulix-cli
+cargo check -p store -p fetcher -p rules -p ai-pipeline -p search -p api
+cargo test -p rules
 
-# 2. Run (requires DEEPSEEK_API_KEY)
-export DEEPSEEK_API_KEY="sk-..."
-cargo run -p sulix-cli --release
-
-# 3. Pipeline debug (standalone, with mock input)
-cargo run --bin intel-pipeline -- --input tests/fixtures/observation.json
+cd crates/worker-entry
+worker-build --release
+npx wrangler deploy
 ```
 
-## Pipeline
+## API
 
-```
-crates/sulix-observation/     — Source Acquisition (RSS / USPTO / Reddit)
-    ↓  RawSignal → Article → Observation
-    ↓
-crates/sulix-cli/src/agent/  — Signal Agent: fetch → SQLite dedup → enrich
-    ↓  Vec<Observation>
-    ↓
-crates/sulix-intelligence/
-    │
-    ├── SignalClassificationStep  — Fast Path (rule) | Slow Path (LLM batch)
-    │   observation → Signal { importance, domain, category, why }
-    │
-    ├── ThesisGenerationStep     — match existing | LLM generate new
-    │   signal → Thesis { claim, confidence, evidence, status }
-    │
-    └── DecisionMappingStep      — RuleEngine + optional LlmJudge
-        thesis → Decision { action, horizon, confidence, reasoning }
-    ↓
-    Post-processing: calibration (LLM question) + summary (rule-based)
-    ↓
-    MDX Output: thesis/{slug}.md + decision/{slug}.md
-```
+| Endpoint | Description |
+|---|---|
+| `GET /api/health` | Feed/article/cron stats |
+| `GET /api/dashboard` | Health + per-feed stats |
+| `GET /api/tags` | Aggregated tag cloud with counts |
+| `GET/POST /api/feeds` | List / create feed subscriptions |
+| `GET/PUT/DELETE /api/feeds/:id` | Read / update / soft-delete |
+| `GET /api/articles/latest` | Latest articles (?tag=, ?limit=) |
+| `GET /api/articles/trending` | Top-scored (score > 0) |
+| `GET /api/articles/search?q=` | FTS5 keyword search |
+| `GET /api/articles/:id` | Article detail |
 
-## Code Structure
+## CI/CD
 
-```
-crates/
-├── sulix-contract/     — Layer-boundary types (7 models: Observation/Signal/Thesis/Decision/Theme/Belief/Reflection)
-├── sulix-config/       — TOML config loading (LlmConfig, SourceConfig, OutputConfig, IntelligenceConfig)
-├── sulix-llm/          — LLM provider (client/retry/api/parser/dispatch/audit — 7 sub-modules)
-├── sulix-intelligence/ — Cognitive pipeline (PipelineStep<Observation, Signal, Thesis, Decision>)
-│   ├── step.rs          — PipelineStep trait + PipelineStats
-│   ├── signal_classification.rs — Fast/Slow dual path
-│   ├── thesis_generation.rs    — Title overlap + LLM generation
-│   ├── decision_mapping.rs     — RuleEngine + smoothing + stability
-│   ├── loader.rs        — Memory DB bridge + load_last_decisions()
-│   └── output.rs        — MDX rendering
-├── sulix-observation/  — Source adapters (RSS/Reddit/USPTO) + fetcher + client cache
-└── sulix-cli/          — Entry points: `cargo run -p sulix-cli` | `cargo run --bin intel-pipeline`
-    ├── src/main.rs              — Production pipeline entry
-    ├── src/bin/intel_pipeline.rs — Standalone pipeline debugger
-    ├── src/agent/signal.rs       — Signal Agent (fetch → dedup)
-    ├── src/db.rs                — SQLite dedup database
-    └── src/entity.rs            — EntitySanctionDb (OpenCTI-like)
-```
+Push to `master` → GitHub Actions → `worker-build --release` → `wrangler deploy`
 
-## Key Architecture Patterns
+Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
-- **PipelineStep trait**: Unified abstract interface for all 3 steps (analogous to ripgrep's `Matcher` trait)
-- **Builder pattern**: Each step has `XxxStepBuilder` with `build()` (analogous to ripgrep's `SearcherBuilder`)
-- **Fast/Slow dual path**: Rule-based (zero LLM) or LLM-based classification (analogous to ripgrep's `is_line_by_line_fast`)
-- **PipelineStats**: Run timing + item counts per step + LLM audit counters
+## Frontend
 
-## Configuration
+[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 frontend deployed as a Cloudflare Worker with service binding.
 
-| Section | Purpose |
-|---------|---------|
-| `[llm]` | API key, model, endpoint |
-| `[[sources]]` | Data sources (name, URL, category, layer, score) |
-| `[prompts]` | System prompts for each analysis stage |
-| `[output]` | Output paths (vault_path, mdx_dir, frontend_public_dir) |
-| `[storage]` | data_dir for persistent state |
-| `[r2]` | Cloudflare R2 config (bucket, endpoint, public_url) |
-
-## Deployment
-
-### CI Pipeline (GitHub Actions)
-
-```yaml
-# .github/workflows/cron_brief.yml
-# Daily: cargo run -p sulix-cli --release → R2 → sulix-web build → CF Pages
-```
-
-Secrets required:
-- `DEEPSEEK_API_KEY` — LLM provider
-- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT` — R2 storage
-- `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` — Pages deploy
-
-## License
-
-MIT
+Repo: [weixc0856-cell/Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
