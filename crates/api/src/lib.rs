@@ -18,6 +18,7 @@ pub fn router() -> Router<'static, ()> {
     Router::new()
         .get_async("/api/health", health)
         .get_async("/api/dashboard", dashboard)
+        .get_async("/api/categories", categories)
         .get_async("/api/tags", tags)
         .get_async("/api/feeds", feeds_list)
         .post_async("/api/feeds", feeds_create)
@@ -69,6 +70,20 @@ async fn dashboard(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 // ---- Tags ----
+
+async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match store.categories_summary().await {
+        Ok(list) => {
+            let cats: Vec<serde_json::Value> = list
+                .into_iter()
+                .map(|(cat, count)| json!({ "category": cat, "article_count": count }))
+                .collect();
+            json_ok(json!({ "categories": cats }))
+        }
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
 
 async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -234,22 +249,34 @@ async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response
 
 async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
-    let url = req.url()?;
+    let request_url = req.url()?;
 
-    let tag: Option<String> = url
+    let tag: Option<String> = request_url
         .query_pairs()
         .find(|(k, _)| k == "tag")
         .map(|(_, v)| v.to_string());
+    let category: Option<String> = request_url
+        .query_pairs()
+        .find(|(k, _)| k == "category")
+        .map(|(_, v)| v.to_string());
 
     if let Some(ref tag) = tag {
-        let limit = parse_limit(&url);
+        let limit = parse_limit(&request_url);
         return match store.articles_by_tag(tag, limit).await {
             Ok(articles) => json_ok(json!({ "articles": articles })),
             Err(e) => json_err(500, &e.to_string()),
         };
     }
 
-    let limit = parse_limit(&url);
+    if let Some(ref cat) = category {
+        let limit = parse_limit(&request_url);
+        return match store.articles_by_category(cat, limit).await {
+            Ok(articles) => json_ok(json!({ "articles": articles })),
+            Err(e) => json_err(500, &e.to_string()),
+        };
+    }
+
+    let limit = parse_limit(&request_url);
     match store.latest_articles(limit).await {
         Ok(articles) => json_ok(json!({ "articles": articles })),
         Err(e) => json_err(500, &e.to_string()),

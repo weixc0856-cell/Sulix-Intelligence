@@ -401,6 +401,38 @@ impl Store {
         Ok(())
     }
 
+    /// Aggregate unique categories from feeds with their article counts.
+    pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT f.category, COUNT(a.id) AS article_count
+             FROM feeds f
+             LEFT JOIN articles a ON a.feed_id = f.id
+             WHERE f.category IS NOT NULL AND f.category != ''
+             GROUP BY f.category
+             ORDER BY article_count DESC",
+        );
+        let result = stmt.all().await?;
+        #[derive(Deserialize)]
+        struct Row { category: String, article_count: i64 }
+        let rows: Vec<Row> = result.results()?;
+        Ok(rows.into_iter().map(|r| (r.category, r.article_count)).collect())
+    }
+
+    /// Fetch articles belonging to a specific feed category (e.g. 'ai', 'security').
+    pub async fn articles_by_category(&self, category: &str, limit: u32) -> Result<Vec<Article>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score
+             FROM articles a
+             JOIN feeds f ON f.id = a.feed_id
+             WHERE f.category = ?1
+             ORDER BY a.published_at DESC
+             LIMIT ?2",
+        );
+        let stmt = stmt.bind(&[category.into(), JsValue::from_f64(limit as f64)])?;
+        let result = stmt.all().await?;
+        Ok(result.results::<Article>()?)
+    }
+
     pub async fn article_by_id(&self, id: i64) -> Result<Option<Article>, StoreError> {
         let stmt = self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
