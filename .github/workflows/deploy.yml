@@ -16,9 +16,14 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Cache worker-build binary
+        uses: actions/cache@v4
         with:
-          # Cache worker-build binary so subsequent runs skip cargo install
-          cache-directories: ["~/.cargo/bin/worker-build", "~/.cargo/bin/wasm-bindgen-cli"]
+          path: |
+            ~/.cargo/bin/worker-build
+            ~/.cargo/bin/wasm-bindgen-cli
+          key: worker-build-${{ runner.os }}
 
       - name: Install worker-build
         run: which worker-build || cargo install worker-build
