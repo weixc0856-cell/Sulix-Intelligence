@@ -21,10 +21,20 @@ impl From<worker::Error> for SearchError {
     }
 }
 
+/// Full article data returned from search, matching the `store::Article`
+/// shape so the frontend can render `ArticleCard` directly without a
+/// second fetch per result. The `rank` field carries the FTS5 relevance
+/// score (negative = more relevant in SQLite FTS5).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchHit {
-    pub article_id: i64,
+    pub id: i64,
+    pub feed_id: i64,
     pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
     pub rank: f64,
 }
 
@@ -46,10 +56,10 @@ impl<'a> D1FtsSearch<'a> {
 #[async_trait(?Send)]
 impl<'a> ArticleSearch for D1FtsSearch<'a> {
     async fn search(&self, query: &str, limit: u32) -> Result<Vec<SearchHit>, SearchError> {
-        // articles_fts.rowid lines up with articles.id via the
-        // content_rowid='id' declaration in the migration.
         let stmt = self.db.prepare(
-            "SELECT a.id AS article_id, a.title AS title, articles_fts.rank AS rank
+            "SELECT a.id, a.feed_id, a.title, a.url, a.published_at,
+                    a.ai_summary, a.ai_tags, a.score,
+                    articles_fts.rank
              FROM articles_fts
              JOIN articles a ON a.id = articles_fts.rowid
              WHERE articles_fts MATCH ?1
