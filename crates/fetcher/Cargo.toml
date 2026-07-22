@@ -1,0 +1,13 @@
+[package]
+name = "fetcher"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+worker.workspace = true
+feed-rs.workspace = true
+serde.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+url = "2"
+uuid.workspace = true
