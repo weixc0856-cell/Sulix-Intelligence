@@ -3,6 +3,10 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+AI_BASE_URL = "https://api.deepseek.com/v1"
+AI_CHAT_MODEL = "deepseek-v4-flash"
+AI_EMBEDDING_MODEL = ""
 
 [triggers]
 crons = ["*/30 * * * *"]

@@ -12,9 +12,11 @@ api.workspace = true
 store.workspace = true
 fetcher.workspace = true
 rules.workspace = true
+ai-pipeline.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 js-sys = "0.3"
+feed-rs.workspace = true
 console_error_panic_hook = "0.1"
 
 [package.metadata.release]

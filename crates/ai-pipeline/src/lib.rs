@@ -163,22 +163,26 @@ impl Summarizer for HttpSummarizer {
         let extracted: ExtractionResult =
             serde_json::from_str(content).map_err(|e| PipelineError::Summarizer(format!("bad JSON from model: {e}")))?;
 
-        let embed_response = self
-            .post_json(
-                "/embeddings",
-                &serde_json::json!({
-                    "model": self.embedding_model,
-                    "input": format!("{title}\n{}", extracted.summary)
-                }),
-            )
-            .await?;
-
-        let embedding: Vec<f32> = embed_response["data"][0]["embedding"]
-            .as_array()
-            .ok_or_else(|| PipelineError::Summarizer("missing embedding in response".into()))?
-            .iter()
-            .filter_map(|v| v.as_f64().map(|f| f as f32))
-            .collect();
+        // Embedding is optional (DeepSeek doesn't provide it). When no
+        // model is configured, return an empty vector so the rest of the
+        // pipeline still works -- Vectorize upsert will be a no-op.
+        let embedding = if self.embedding_model.is_empty() {
+            Vec::new()
+        } else {
+            match self.post_json("/embeddings", &serde_json::json!({
+                "model": self.embedding_model,
+                "input": format!("{title}\n{}", extracted.summary)
+            })).await {
+                Ok(resp) => resp["data"][0]["embedding"]
+                    .as_array()
+                    .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
+                    .unwrap_or_default(),
+                Err(e) => {
+                    worker::console_log!("embedding call failed (non-fatal): {e}");
+                    Vec::new()
+                }
+            }
+        };
 
         Ok(SummaryResult {
             summary: extracted.summary,

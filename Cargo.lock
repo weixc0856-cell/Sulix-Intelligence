@@ -1020,8 +1020,10 @@ dependencies = [
 name = "worker-entry"
 version = "0.1.0"
 dependencies = [
+ "ai-pipeline",
  "api",
  "console_error_panic_hook",
+ "feed-rs",
  "fetcher",
  "js-sys",
  "rules",

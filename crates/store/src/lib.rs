@@ -6,7 +6,8 @@
 //! converts i64 → BigInt, which D1's JS API does not accept. All numeric
 //! D1 parameters are cast to f64 before binding.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use worker::D1Database;
 use worker::wasm_bindgen::JsValue;
 
@@ -102,7 +103,11 @@ impl Store {
     /// Insert an article; relies on the UNIQUE(feed_id, guid) constraint to
     /// silently no-op on duplicates (INSERT OR IGNORE), which is what makes
     /// re-fetching the same feed idempotent.
-    pub async fn insert_article(&self, article: &NewArticle) -> Result<(), StoreError> {
+    ///
+    /// Returns `Some(article_id)` if the article exists in the database
+    /// after the call (whether newly inserted or a pre-existing duplicate).
+    /// Returns `None` only on database errors.
+    pub async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
         let stmt = self.db.prepare(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, url, published_at, raw_content_r2_key)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -116,7 +121,31 @@ impl Store {
             article.raw_content_r2_key.clone().into(),
         ])?;
         stmt.run().await?;
-        Ok(())
+
+        // Query back the article id regardless of insert vs ignore
+        let q = self.db.prepare("SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2");
+        let q = q.bind(&[
+            JsValue::from_f64(article.feed_id as f64),
+            article.guid.clone().into(),
+        ])?;
+        let row = q.first::<i64>(None).await?;
+        Ok(row)
+    }
+
+    /// Load active filter rules as raw JSON strings for a given audience.
+    /// Callers parse into `rules::Rule` via serde_json. Returns empty vec
+    /// when no rules are configured (the pipeline still works, just with
+    /// a default score of 0).
+    pub async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT rule_json FROM filter_rules WHERE audience_tag = ?1 AND enabled = 1",
+        );
+        let stmt = stmt.bind(&[audience_tag.into()])?;
+        let result = stmt.all().await?;
+        #[derive(Deserialize)]
+        struct Row { rule_json: String }
+        let rows: Vec<Row> = result.results()?;
+        Ok(rows.into_iter().map(|r| r.rule_json).collect())
     }
 
     pub async fn set_ai_summary(

@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use worker::*;
 
+use ai_pipeline::{process_article, HttpSummarizer};
 use api::router;
 use fetcher::fetch_feed;
+use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, Store};
 
 /// One message per feed to fetch. Carries the prior etag/last_modified so
@@ -57,12 +59,85 @@ async fn enqueue_fetch_jobs(env: &Env) -> Result<()> {
     Ok(())
 }
 
+/// Try to build an HttpSummarizer from Worker env vars. Returns None when
+/// AI_API_KEY is not set, so the pipeline degrades gracefully to
+/// fetch-and-store without AI processing.
+fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
+    let api_key = match env.secret("AI_API_KEY") {
+        Ok(v) => v.to_string(),
+        Err(_) => {
+            console_log!("AI_API_KEY not set -- skipping AI summarization");
+            return None;
+        }
+    };
+    let base_url = env
+        .var("AI_BASE_URL")
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "https://api.openai.com/v1".into());
+    let chat_model = env
+        .var("AI_CHAT_MODEL")
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "gpt-4o-mini".into());
+    let embedding_model = env
+        .var("AI_EMBEDDING_MODEL")
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "text-embedding-3-small".into());
+
+    Some(HttpSummarizer::new(base_url, api_key, chat_model, embedding_model))
+}
+
+/// Extract readable body text from a feed entry. Prefers summary over
+/// full content, falls back to empty string.
+fn extract_body(entry: &feed_rs::model::Entry) -> String {
+    entry
+        .summary
+        .as_ref()
+        .map(|s| s.content.clone())
+        .or_else(|| {
+            entry
+                .content
+                .as_ref()
+                .and_then(|c| c.body.clone())
+        })
+        .or_else(|| {
+            // Last resort: concat all media description texts
+            let texts: Vec<&str> = entry
+                .media
+                .iter()
+                .filter_map(|m| m.description.as_ref().map(|d| d.content.as_str()))
+                .collect();
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join("\n"))
+            }
+        })
+        .unwrap_or_default()
+}
+
 /// Consumer side. Bound to `FETCH_QUEUE` in wrangler.toml; Cloudflare
 /// invokes this per batch of messages, retrying failed ones automatically.
+/// After fetching, scores each new article with the rules engine and
+/// enriches it with AI-generated summary, tags, and embedding.
 #[event(queue)]
 async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result<()> {
     console_error_panic_hook::set_once();
     let store = Store::new(env.d1("DB")?);
+    let summarizer = try_build_summarizer(&env);
+
+    // Load rules once per batch (they change infrequently)
+    let rule_jsons = store
+        .active_rule_jsons("default")
+        .await
+        .unwrap_or_default();
+    let rules: Vec<Rule> = rule_jsons
+        .iter()
+        .filter_map(|j| serde_json::from_str(j).ok())
+        .collect();
+    let has_rules = !rules.is_empty();
 
     let messages = batch.messages()?;
     for msg in messages.iter() {
@@ -84,6 +159,7 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
             }
             Ok(fetcher::FetchOutcome::Updated(fetched)) => {
                 for entry in fetched.feed.entries {
+                    let body = extract_body(&entry);
                     let article = NewArticle {
                         feed_id: job.feed_id,
                         guid: entry.id,
@@ -92,8 +168,61 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
                         published_at: entry.published.map(|d| d.timestamp()),
                         raw_content_r2_key: None,
                     };
-                    if let Err(e) = store.insert_article(&article).await {
-                        console_log!("insert_article failed for feed {}: {e}", job.feed_id);
+
+                    match store.insert_article(&article).await {
+                        Ok(Some(article_id)) => {
+                            // Compute score from rules
+                            let article_score = if has_rules {
+                                let input = ArticleInput {
+                                    title: &article.title,
+                                    summary: &body,
+                                    feed_url: &job.feed_url,
+                                };
+                                score(&input, &rules, "default")
+                            } else {
+                                0.0
+                            };
+
+                            // Run AI summarization when available
+                            if let Some(ref s) = summarizer {
+                                if let Err(e) = process_article(
+                                    &store,
+                                    s,
+                                    article_id,
+                                    &article.title,
+                                    &body,
+                                    article_score,
+                                )
+                                .await
+                                {
+                                    console_log!(
+                                        "AI pipeline failed for article {}: {e}",
+                                        article_id
+                                    );
+                                }
+                            } else if article_score != 0.0 {
+                                // No AI but we have a score -- persist it
+                                if let Err(e) = store
+                                    .set_ai_summary(
+                                        article_id,
+                                        "",
+                                        "[]",
+                                        &format!("article-{article_id}"),
+                                        article_score,
+                                    )
+                                    .await
+                                {
+                                    console_log!(
+                                        "set_ai_summary failed for {}: {e}",
+                                        article_id
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => { /* duplicate row, skip */ }
+                        Err(e) => {
+                            console_log!("insert_article failed for feed {}: {e}", job.feed_id);
+                        }
                     }
                 }
                 if let Err(e) = store
