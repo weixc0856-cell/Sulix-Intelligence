@@ -270,7 +270,7 @@ async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response
         Some(v) => v,
         None => return json_err(400, "missing id"),
     };
-    match store.article_by_id(id).await {
+    match store.article_detail(id).await {
         Ok(Some(article)) => json_ok(json!({ "article": article })),
         Ok(None) => json_err(404, "not found"),
         Err(e) => json_err(500, &e.to_string()),

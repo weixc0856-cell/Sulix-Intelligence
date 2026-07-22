@@ -57,6 +57,20 @@ pub struct Article {
     pub score: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArticleDetail {
+    pub id: i64,
+    pub feed_id: i64,
+    pub feed_name: Option<String>,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
+}
+
 // ---- View models / query results ----
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

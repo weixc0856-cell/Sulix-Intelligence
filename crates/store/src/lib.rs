@@ -160,6 +160,14 @@ impl Store {
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<Article>(None).await?)
     }
 
+    /// Article with feed metadata joined in for the detail page.
+    pub async fn article_detail(&self, id: i64) -> Result<Option<ArticleDetail>, StoreError> {
+        Ok(self.db.prepare(
+            "SELECT a.id, a.feed_id, f.title AS feed_name, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score
+             FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<ArticleDetail>(None).await?)
+    }
+
     pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<Article>, StoreError> {
         let pattern = format!("%\"{}\"%", tag);
         Ok(self.db.prepare(
