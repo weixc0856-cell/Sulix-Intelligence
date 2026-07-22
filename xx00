@@ -1,0 +1,23 @@
+//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
+//! talks to storage only through this crate, so backend swaps never leak
+//! into business logic.
+//!
+//! Type definitions live in [`models`] and are re-exported from the crate
+//! root so callers write `store::Feed` / `store::StoreError` etc.
+
+mod models;
+pub use models::*;
+
+use serde::Deserialize;
+use worker::wasm_bindgen::JsValue;
+use worker::D1Database;
+
+pub struct Store {
+    db: D1Database,
+}
+
+impl Store {
+    pub fn new(db: D1Database) -> Self {
+        Self { db }
+    }
+

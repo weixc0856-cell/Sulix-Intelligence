@@ -123,6 +123,13 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
         }
     }
 
+    // Archive articles older than 30 days
+    if let Err(e) = store.expire_old_articles(now, 30).await {
+        console_log!("expire_old_articles failed: {e}");
+    } else {
+        console_log!("article cleanup complete");
+    }
+
     Ok(())
 }
 

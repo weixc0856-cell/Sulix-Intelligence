@@ -1,26 +1,3 @@
-//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
-//! talks to storage only through this crate, so backend swaps never leak
-//! into business logic.
-//!
-//! Type definitions live in [`models`] and are re-exported from the crate
-//! root so callers write `store::Feed` / `store::StoreError` etc.
-
-mod models;
-pub use models::*;
-
-use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
-use worker::D1Database;
-
-pub struct Store {
-    db: D1Database,
-}
-
-impl Store {
-    pub fn new(db: D1Database) -> Self {
-        Self { db }
-    }
-
     // ------------------------------------------------------------------
     // Feeds
     // ------------------------------------------------------------------
@@ -284,19 +261,6 @@ impl Store {
             "UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5",
         ).bind(&[summary.into(), tags_json.into(), vector_id.into(), JsValue::from_f64(score), JsValue::from_f64(id as f64)])?.run().await?;
         Ok(())
-    }
-
-    /// Delete articles older than `days` whose AI processing is complete.
-    /// `now` should be the current unix timestamp (seconds), typically
-    /// passed from the caller's js_sys::Date::now().
-    /// Protects D1 from unbounded growth as feed volume increases.
-    pub async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError> {
-        let cutoff = now - days * 86400;
-        let stmt = self.db.prepare(
-            "DELETE FROM articles WHERE published_at < ?1 AND ai_summary != '' AND ai_summary IS NOT NULL",
-        ).bind(&[JsValue::from_f64(cutoff as f64)])?;
-        stmt.run().await?;
-        Ok(0)
     }
 
     // ------------------------------------------------------------------
