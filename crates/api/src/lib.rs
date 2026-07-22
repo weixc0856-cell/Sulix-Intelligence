@@ -16,6 +16,7 @@ fn parse_limit(url: &Url) -> u32 {
 pub fn router() -> Router<'static, ()> {
     Router::new()
         .get_async("/api/health", health)
+        .get_async("/api/dashboard", dashboard)
         .get_async("/api/tags", tags)
         .get_async("/api/articles/latest", latest_articles)
         .get_async("/api/articles/trending", trending)
@@ -28,6 +29,20 @@ async fn health(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     match store.health_stats().await {
         Ok(stats) => Response::from_json(&json!({ "status": "ok", "stats": stats })),
         Err(e) => Response::error(e.to_string(), 500),
+    }
+}
+
+async fn dashboard(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let health = store.health_stats().await;
+    let feeds = store.feed_stats().await;
+    match (health, feeds) {
+        (Ok(stats), Ok(feed_list)) => Response::from_json(&json!({
+            "status": "ok",
+            "stats": stats,
+            "feeds": feed_list,
+        })),
+        _ => Response::error("dashboard query failed", 500),
     }
 }
 

@@ -60,6 +60,17 @@ pub struct Article {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FeedStats {
+    pub id: i64,
+    pub title: Option<String>,
+    pub url: String,
+    pub category: Option<String>,
+    pub status: String,
+    pub last_fetched_at: Option<i64>,
+    pub article_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HealthStats {
     pub feed_count: i64,
     pub active_feed_count: i64,
@@ -254,6 +265,21 @@ impl Store {
         let stmt = stmt.bind(&[JsValue::from_f64(id as f64)])?;
         let result = stmt.first::<Article>(None).await?;
         Ok(result)
+    }
+
+    /// Feed-level stats for the dashboard: article count and last fetch time
+    /// per feed, joined from feeds + articles so inactive feeds show 0.
+    pub async fn feed_stats(&self) -> Result<Vec<FeedStats>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT f.id, f.title, f.url, f.category, f.status, f.last_fetched_at,
+                    COUNT(a.id) AS article_count
+             FROM feeds f
+             LEFT JOIN articles a ON a.feed_id = f.id
+             GROUP BY f.id
+             ORDER BY f.last_fetched_at DESC",
+        );
+        let result = stmt.all().await?;
+        Ok(result.results::<FeedStats>()?)
     }
 
     /// Backs the /api/health endpoint.  Uses max(last_fetched_at) as a
