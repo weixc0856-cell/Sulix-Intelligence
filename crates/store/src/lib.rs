@@ -233,6 +233,16 @@ impl Store {
         Ok(result.results::<Article>()?)
     }
 
+    pub async fn article_by_id(&self, id: i64) -> Result<Option<Article>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+             FROM articles WHERE id = ?1",
+        );
+        let stmt = stmt.bind(&[JsValue::from_f64(id as f64)])?;
+        let result = stmt.first::<Article>(None).await?;
+        Ok(result)
+    }
+
     /// Backs the /api/health endpoint.  Uses max(last_fetched_at) as a
     /// proxy for "last cron run" -- every scheduled cycle calls
     /// record_fetch_result, so a recent last_fetched_at means the cron

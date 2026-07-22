@@ -19,6 +19,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/tags", tags)
         .get_async("/api/articles/latest", latest_articles)
         .get_async("/api/articles/search", search_articles)
+        .get_async("/api/articles/:id", article_detail)
 }
 
 async fn health(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -43,11 +44,27 @@ async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     }
 }
 
+async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id_str = match ctx.param("id") {
+        Some(v) => v,
+        None => return Response::error("missing id", 400),
+    };
+    let id: i64 = match id_str.parse() {
+        Ok(v) => v,
+        Err(_) => return Response::error("invalid id", 400),
+    };
+    match store.article_by_id(id).await {
+        Ok(Some(article)) => Response::from_json(&json!({ "article": article })),
+        Ok(None) => Response::error("not found", 404),
+        Err(e) => Response::error(e.to_string(), 500),
+    }
+}
+
 async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     let url = req.url()?;
 
-    // If ?tag= is present, filter by tag instead of returning latest
     let tag: Option<String> = url
         .query_pairs()
         .find(|(k, _)| k == "tag")
