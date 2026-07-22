@@ -37,3 +37,20 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@latest deploy
+
+      - name: Health check
+        run: |
+          echo "Checking /api/health..."
+          for i in $(seq 1 5); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://sulix-feed-worker.weixc0856.workers.dev/api/health" --connect-timeout 10)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check passed (HTTP $STATUS)"
+              curl -s "https://sulix-feed-worker.weixc0856.workers.dev/api/health"
+              echo ""
+              exit 0
+            fi
+            echo "  Attempt $i/5: HTTP $STATUS, waiting..."
+            sleep 5
+          done
+          echo "❌ Health check failed after 5 attempts"
+          exit 1

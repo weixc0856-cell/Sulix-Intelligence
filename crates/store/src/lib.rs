@@ -59,6 +59,16 @@ pub struct Article {
     pub score: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HealthStats {
+    pub feed_count: i64,
+    pub active_feed_count: i64,
+    pub article_count: i64,
+    /// Max last_fetched_at across all feeds -- a proxy for "last cron run",
+    /// since every scheduled run touches this via record_fetch_result.
+    pub last_cron_run_at: Option<i64>,
+}
+
 pub struct Store {
     db: D1Database,
 }
@@ -178,5 +188,64 @@ impl Store {
         let stmt = stmt.bind(&[JsValue::from_f64(limit as f64)])?;
         let result = stmt.all().await?;
         Ok(result.results::<Article>()?)
+    }
+
+    /// Aggregate all unique AI tags across articles with their counts.
+    /// Tags are stored as JSON arrays in ai_tags — this pulls them all,
+    /// parses server-side, and aggregates.  Returns empty vec when no
+    /// articles have been processed yet.
+    pub async fn tags_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT ai_tags FROM articles WHERE ai_tags IS NOT NULL AND ai_tags != '[]'",
+        );
+        let result = stmt.all().await?;
+        #[derive(Deserialize)]
+        struct Row { ai_tags: String }
+        let rows: Vec<Row> = result.results()?;
+
+        // Aggregate in a BTreeMap for deterministic order
+        let mut map: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+        for row in &rows {
+            if let Ok(tags) = serde_json::from_str::<Vec<String>>(&row.ai_tags) {
+                for tag in tags {
+                    *map.entry(tag).or_default() += 1;
+                }
+            }
+        }
+        Ok(map.into_iter().collect())
+    }
+
+    /// Fetch articles that contain a specific tag in their ai_tags JSON.
+    /// Uses simple LIKE '%"tag"%' which is correct for JSON arrays because
+    /// each tag value appears as "tag" (with surrounding quotes) in the
+    /// serialized JSON string.
+    pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<Article>, StoreError> {
+        let pattern = format!("%\"{}\"%", tag);
+        let stmt = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+             FROM articles
+             WHERE ai_tags LIKE ?1
+             ORDER BY published_at DESC
+             LIMIT ?2",
+        );
+        let stmt = stmt.bind(&[pattern.into(), JsValue::from_f64(limit as f64)])?;
+        let result = stmt.all().await?;
+        Ok(result.results::<Article>()?)
+    }
+
+    /// Backs the /api/health endpoint.  Uses max(last_fetched_at) as a
+    /// proxy for "last cron run" -- every scheduled cycle calls
+    /// record_fetch_result, so a recent last_fetched_at means the cron
+    /// pipeline is alive.
+    pub async fn health_stats(&self) -> Result<HealthStats, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT
+               (SELECT COUNT(*) FROM feeds) AS feed_count,
+               (SELECT COUNT(*) FROM feeds WHERE status = 'active') AS active_feed_count,
+               (SELECT COUNT(*) FROM articles) AS article_count,
+               (SELECT MAX(last_fetched_at) FROM feeds) AS last_cron_run_at",
+        );
+        let result = stmt.first::<HealthStats>(None).await?;
+        result.ok_or_else(|| StoreError::D1("health_stats query returned no row".into()))
     }
 }
