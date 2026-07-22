@@ -78,7 +78,6 @@ impl<'a> D1FtsSearch<'a> {
         };
         let ofs = idx + 1;
         let limit_idx = idx;
-        idx = ofs; // update for offset bind
         let sql = format!(
             "SELECT a.id, a.feed_id, a.title, a.url, a.published_at,
                     a.ai_summary, a.ai_tags, a.score,
