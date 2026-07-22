@@ -401,6 +401,57 @@ impl Store {
         Ok(())
     }
 
+    /// Find articles related to a given article by shared tags.  Parses
+    /// the source article's ai_tags JSON, then searches for other articles
+    /// that contain any of those tags via LIKE.  Results ordered by how
+    /// many tags match (desc), then recency.  Returns empty vec when the
+    /// source article has no tags or no matches.
+    pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<Article>, StoreError> {
+        // First get the source article's tags
+        let src = self.db.prepare("SELECT ai_tags FROM articles WHERE id = ?1");
+        let src = src.bind(&[JsValue::from_f64(article_id as f64)])?;
+        let row = src.first::<String>(None).await?;
+        let tags_json = match row {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+        let tags: Vec<String> = match serde_json::from_str(&tags_json) {
+            Ok(t) => t,
+            Err(_) => return Ok(Vec::new()),
+        };
+        if tags.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build LIKE conditions for each tag
+        let conditions: Vec<String> = tags
+            .iter()
+            .map(|t| format!("ai_tags LIKE '%\"{}%'", t.replace('\'', "''")))
+            .collect();
+        let sql = format!(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+             FROM articles
+             WHERE id != ?1 AND ({})
+             ORDER BY ({} DESC), published_at DESC
+             LIMIT ?2",
+            conditions.join(" OR "),
+            conditions
+                .iter()
+                .map(|c| format!("CASE WHEN {} THEN 1 ELSE 0 END", c))
+                .collect::<Vec<_>>()
+                .join(" + "),
+        );
+
+        // Bind: ?1 = article_id, ?2 = limit
+        let stmt = self.db.prepare(&sql);
+        let stmt = stmt.bind(&[
+            JsValue::from_f64(article_id as f64),
+            JsValue::from_f64(limit as f64),
+        ])?;
+        let result = stmt.all().await?;
+        Ok(result.results::<Article>()?)
+    }
+
     /// Aggregate unique categories from feeds with their article counts.
     pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
         let stmt = self.db.prepare(

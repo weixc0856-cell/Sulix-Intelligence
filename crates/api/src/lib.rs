@@ -28,6 +28,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/articles/latest", latest_articles)
         .get_async("/api/articles/trending", trending)
         .get_async("/api/articles/search", search_articles)
+        .get_async("/api/articles/:id/related", article_related)
         .get_async("/api/articles/:id", article_detail)
 }
 
@@ -243,6 +244,20 @@ async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response
     match store.article_by_id(id).await {
         Ok(Some(article)) => json_ok(json!({ "article": article })),
         Ok(None) => json_err(404, "not found"),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
+async fn article_related(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") {
+        Some(v) => v,
+        None => return json_err(400, "missing id"),
+    };
+    // Default to 6 related articles (2 rows of 3 on desktop)
+    let limit = 6;
+    match store.related_articles(id, limit).await {
+        Ok(articles) => json_ok(json!({ "articles": articles })),
         Err(e) => json_err(500, &e.to_string()),
     }
 }
