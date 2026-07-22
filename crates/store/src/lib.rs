@@ -74,6 +74,20 @@ pub struct FeedStats {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScoreDist {
+    pub top: i64,
+    pub medium: i64,
+    pub low: i64,
+    pub unscored: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DayCount {
+    pub day: String,
+    pub cnt: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HealthStats {
     pub feed_count: i64,
     pub active_feed_count: i64,
@@ -523,5 +537,27 @@ impl Store {
         );
         let result = stmt.first::<HealthStats>(None).await?;
         result.ok_or_else(|| StoreError::D1("health_stats query returned no row".into()))
+    }
+
+    pub async fn score_distribution(&self) -> Result<ScoreDist, StoreError> {
+        let s = self.db.prepare(
+            "SELECT
+               CAST(SUM(CASE WHEN score >= 8 THEN 1 ELSE 0 END) AS INTEGER) AS top,
+               CAST(SUM(CASE WHEN score >= 5 AND score < 8 THEN 1 ELSE 0 END) AS INTEGER) AS medium,
+               CAST(SUM(CASE WHEN score > 0 AND score < 5 THEN 1 ELSE 0 END) AS INTEGER) AS low,
+               CAST(SUM(CASE WHEN score = 0 THEN 1 ELSE 0 END) AS INTEGER) AS unscored
+             FROM articles",
+        );
+        Ok(s.first::<ScoreDist>(None).await?.unwrap_or(ScoreDist { top: 0, medium: 0, low: 0, unscored: 0 }))
+    }
+
+    pub async fn article_trend(&self, days: i64) -> Result<Vec<DayCount>, StoreError> {
+        let s = self.db.prepare(
+            "SELECT DATE(published_at, 'unixepoch') AS day, COUNT(*) AS cnt
+             FROM articles WHERE published_at IS NOT NULL
+             GROUP BY day ORDER BY day DESC LIMIT ?1",
+        );
+        let s = s.bind(&[JsValue::from_f64(days as f64)])?;
+        Ok(s.all().await?.results()?)
     }
 }

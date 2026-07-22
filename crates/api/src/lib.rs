@@ -18,6 +18,7 @@ pub fn router() -> Router<'static, ()> {
     Router::new()
         .get_async("/api/health", health)
         .get_async("/api/dashboard", dashboard)
+        .get_async("/api/stats", stats)
         .get_async("/api/categories", categories)
         .get_async("/api/tags", tags)
         .get_async("/api/feeds", feeds_list)
@@ -71,6 +72,17 @@ async fn dashboard(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 // ---- Tags ----
+
+async fn stats(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match (store.score_distribution().await, store.article_trend(14).await) {
+        (Ok(scores), Ok(trend)) => json_ok(json!({
+            "score_distribution": scores,
+            "articles_per_day": trend,
+        })),
+        _ => json_err(500, "stats query failed"),
+    }
+}
 
 async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
