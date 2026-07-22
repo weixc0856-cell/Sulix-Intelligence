@@ -246,6 +246,24 @@ impl Store {
         ).bind(&[JsValue::from_f64(days as f64)])?.all().await?.results()?)
     }
 
+    /// Get articles that still need AI summarization, oldest first.
+    /// Batch size limits per call to stay within Workers CPU time budget.
+    pub async fn pending_ai_articles(&self, batch_size: u32) -> Result<Vec<Article>, StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+             FROM articles WHERE (ai_summary IS NULL OR ai_summary = '')
+             ORDER BY published_at ASC LIMIT ?1",
+        ).bind(&[JsValue::from_f64(batch_size as f64)])?.all().await?.results()?)
+    }
+
+    /// Mark an article as having been processed by AI (set summary + tags + score).
+    pub async fn mark_ai_processed(&self, id: i64, summary: &str, tags_json: &str, vector_id: &str, score: f64) -> Result<(), StoreError> {
+        self.db.prepare(
+            "UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5",
+        ).bind(&[summary.into(), tags_json.into(), vector_id.into(), JsValue::from_f64(score), JsValue::from_f64(id as f64)])?.run().await?;
+        Ok(())
+    }
+
     // ------------------------------------------------------------------
     // Rules
     // ------------------------------------------------------------------

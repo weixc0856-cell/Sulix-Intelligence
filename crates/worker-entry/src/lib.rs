@@ -3,7 +3,7 @@ use worker::*;
 
 use ai_pipeline::{process_article, HttpSummarizer};
 use api::router;
-use fetcher::{extract_full_text, fetch_feed, FetchError, FetchOutcome};
+use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, Store};
 
@@ -38,7 +38,7 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 async fn process_all_feeds(env: &Env) -> Result<()> {
     let store = Store::new(env.d1("DB")?);
     let summarizer = try_build_summarizer(env);
-    let r2_bucket = env.bucket("RAW_CONTENT").ok();
+    let _r2_bucket = env.bucket("RAW_CONTENT").ok();
     let now = (js_sys::Date::now() / 1000.0) as i64;
 
     // Load rules once
@@ -104,6 +104,24 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
             }
         }
     }
+
+    // Batch-process pending articles needing AI summarization.
+    // Workers CPU limit is ~30s per cron, AI calls ~200-300ms each,
+    // so 30 per batch = ~9s, leaving headroom for feed fetching.
+    // Remaining articles finish over successive cron cycles.
+    const AI_BATCH: u32 = 8;
+    if let Some(ref s) = summarizer {
+        if let Ok(pending) = store.pending_ai_articles(AI_BATCH).await {
+            console_log!("  processing {} pending AI articles...", pending.len());
+            for a in &pending {
+                match process_article(&store, s, a.id, &a.title, "", 0.0).await {
+                    Ok(()) => {},
+                    Err(e) => console_log!("    AI failed for article {}: {e}", a.id),
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -130,7 +148,7 @@ fn extract_body(entry: &feed_rs::model::Entry) -> String {
 
 /// Queue consumer (kept for future async fan-out, currently not used).
 #[event(queue)]
-async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result<()> {
+async fn queue(batch: MessageBatch<FetchJob>, _env: Env, _ctx: Context) -> Result<()> {
     console_error_panic_hook::set_once();
     console_log!("queue consumer invoked with {} messages", batch.messages()?.len());
     for msg in batch.messages()?.iter() {
