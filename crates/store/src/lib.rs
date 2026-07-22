@@ -190,6 +190,19 @@ impl Store {
         Ok(result.results::<Article>()?)
     }
 
+    /// Top-scored articles for the Trending page.  Filters to articles with
+    /// non-zero score so random noise (score=0) doesn't clutter the list.
+    pub async fn trending_articles(&self, limit: u32) -> Result<Vec<Article>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score
+             FROM articles WHERE score != 0
+             ORDER BY score DESC, published_at DESC LIMIT ?1",
+        );
+        let stmt = stmt.bind(&[JsValue::from_f64(limit as f64)])?;
+        let result = stmt.all().await?;
+        Ok(result.results::<Article>()?)
+    }
+
     /// Aggregate all unique AI tags across articles with their counts.
     /// Tags are stored as JSON arrays in ai_tags — this pulls them all,
     /// parses server-side, and aggregates.  Returns empty vec when no

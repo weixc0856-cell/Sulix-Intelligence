@@ -18,6 +18,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/health", health)
         .get_async("/api/tags", tags)
         .get_async("/api/articles/latest", latest_articles)
+        .get_async("/api/articles/trending", trending)
         .get_async("/api/articles/search", search_articles)
         .get_async("/api/articles/:id", article_detail)
 }
@@ -40,6 +41,16 @@ async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
                 .collect();
             Response::from_json(&json!({ "tags": tags }))
         }
+        Err(e) => Response::error(e.to_string(), 500),
+    }
+}
+
+async fn trending(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    // Default to 50 for trending to show more scored content
+    let limit = 50;
+    match store.trending_articles(limit).await {
+        Ok(articles) => Response::from_json(&json!({ "articles": articles })),
         Err(e) => Response::error(e.to_string(), 500),
     }
 }
