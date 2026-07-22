@@ -139,6 +139,117 @@ impl Store {
         Ok(())
     }
 
+    // ------------------------------------------------------------------
+    // Feed CRUD (management API)
+    // ------------------------------------------------------------------
+
+    /// List all feeds regardless of status, newest first.  Supports an
+    /// optional status filter ("active", "inactive", etc.).
+    pub async fn all_feeds(&self, status_filter: Option<&str>) -> Result<Vec<Feed>, StoreError> {
+        let (sql, bind) = if status_filter.is_some() {
+            ("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE status = ?1 ORDER BY last_fetched_at DESC", true)
+        } else {
+            ("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds ORDER BY last_fetched_at DESC", false)
+        };
+        let stmt = self.db.prepare(sql);
+        let stmt = if bind {
+            stmt.bind(&[status_filter.unwrap().into()])?
+        } else {
+            stmt
+        };
+        let result = stmt.all().await?;
+        Ok(result.results::<Feed>()?)
+    }
+
+    /// Get a single feed by id.  Returns None when not found.
+    pub async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
+        let stmt = self.db.prepare(
+            "SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE id = ?1",
+        );
+        let stmt = stmt.bind(&[JsValue::from_f64(id as f64)])?;
+        Ok(stmt.first::<Feed>(None).await?)
+    }
+
+    /// Insert a new feed.  Returns the new row id on success, or None
+    /// if a feed with this url already exists (due to UNIQUE(url)).
+    pub async fn insert_feed(
+        &self,
+        url: &str,
+        title: &str,
+        category: &str,
+        fetch_interval_sec: i64,
+    ) -> Result<Option<i64>, StoreError> {
+        let stmt = self.db.prepare(
+            "INSERT OR IGNORE INTO feeds (url, title, category, fetch_interval_sec) VALUES (?1, ?2, ?3, ?4)",
+        );
+        let stmt = stmt.bind(&[
+            url.into(),
+            title.into(),
+            category.into(),
+            JsValue::from_f64(fetch_interval_sec as f64),
+        ])?;
+        stmt.run().await?;
+
+        // Query back the id (new or existing).
+        let q = self.db.prepare("SELECT id FROM feeds WHERE url = ?1");
+        let q = q.bind(&[url.into()])?;
+        Ok(q.first::<i64>(None).await?)
+    }
+
+    /// Update feed fields.  Only non-None fields are applied.
+    pub async fn update_feed(
+        &self,
+        id: i64,
+        title: Option<&str>,
+        category: Option<&str>,
+        fetch_interval_sec: Option<i64>,
+        extraction_level: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let mut parts: Vec<String> = Vec::new();
+        let mut bind_vals: Vec<JsValue> = Vec::new();
+
+        if let Some(v) = title {
+            parts.push("title = ?".to_string());
+            bind_vals.push(v.into());
+        }
+        if let Some(v) = category {
+            parts.push("category = ?".to_string());
+            bind_vals.push(v.into());
+        }
+        if let Some(v) = fetch_interval_sec {
+            parts.push("fetch_interval_sec = ?".to_string());
+            bind_vals.push(JsValue::from_f64(v as f64));
+        }
+        if let Some(v) = extraction_level {
+            parts.push("extraction_level = ?".to_string());
+            bind_vals.push(v.into());
+        }
+
+        if parts.is_empty() {
+            return Ok(()); // nothing to update
+        }
+
+        let sql = format!(
+            "UPDATE feeds SET {} WHERE id = ?",
+            parts.join(", ")
+        );
+        bind_vals.push(JsValue::from_f64(id as f64));
+
+        let stmt = self.db.prepare(&sql);
+        let stmt = stmt.bind(&bind_vals)?;
+        stmt.run().await?;
+        Ok(())
+    }
+
+    /// Soft-delete: set status to 'inactive' rather than removing the row.
+    /// Re-enable by calling set_feed_status with 'active'.
+    pub async fn set_feed_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
+        let stmt = self.db.prepare("UPDATE feeds SET status = ?1 WHERE id = ?2");
+        let stmt = stmt.bind(&[status.into(), JsValue::from_f64(id as f64)])?;
+        stmt.run().await?;
+        Ok(())
+    }
+
     /// Insert an article; relies on the UNIQUE(feed_id, guid) constraint to
     /// silently no-op on duplicates (INSERT OR IGNORE), which is what makes
     /// re-fetching the same feed idempotent.
