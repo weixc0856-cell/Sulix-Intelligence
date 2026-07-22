@@ -337,14 +337,16 @@ async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
         .find(|(k, _)| k == "q")
         .map(|(_, v)| v.to_string())
         .unwrap_or_default();
-
+    let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
+    let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
+    let sort: Option<String> = url.query_pairs().find(|(k, _)| k == "sort").map(|(_, v)| v.to_string());
     let limit = parse_limit(&url);
 
     if query.is_empty() {
         return json_err(400, "missing query parameter 'q'");
     }
 
-    match search.search(&query, limit).await {
+    match search.search_filtered(&query, limit, tag.as_deref(), category.as_deref(), sort.as_deref()).await {
         Ok(hits) => json_ok(json!({ "results": hits })),
         Err(e) => json_err(500, &e.to_string()),
     }

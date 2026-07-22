@@ -1,8 +1,4 @@
-//! Search abstraction. `D1FtsSearch` is the only implementation for now
-//! (basic keyword search over articles_fts). If keyword+BM25 ever stops
-//! being enough, add an `ExternalSearch` implementation of the same trait
-//! and swap it in at the `api` crate's composition root -- nothing else
-//! in the codebase needs to change.
+//! Search abstraction. `D1FtsSearch` is the only implementation for now.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,10 +17,6 @@ impl From<worker::Error> for SearchError {
     }
 }
 
-/// Full article data returned from search, matching the `store::Article`
-/// shape so the frontend can render `ArticleCard` directly without a
-/// second fetch per result. The `rank` field carries the FTS5 relevance
-/// score (negative = more relevant in SQLite FTS5).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchHit {
     pub id: i64,
@@ -50,6 +42,57 @@ pub struct D1FtsSearch<'a> {
 impl<'a> D1FtsSearch<'a> {
     pub fn new(db: &'a D1Database) -> Self {
         Self { db }
+    }
+
+    /// FTS5 search with optional tag/category/sort.
+    /// Builds bind params dynamically — D1 uses ?N positional params.
+    pub async fn search_filtered(
+        &self,
+        query: &str,
+        limit: u32,
+        tag: Option<&str>,
+        category: Option<&str>,
+        sort: Option<&str>,
+    ) -> Result<Vec<SearchHit>, SearchError> {
+        let mut where_parts = vec!["articles_fts MATCH ?1".to_string()];
+        let mut bind_vals: Vec<JsValue> = vec![query.into()];
+        let mut idx = 2u32;
+
+        let tag_pattern = tag.map(|t| format!("%\"{}\"%", t));
+        if let Some(ref p) = tag_pattern {
+            where_parts.push(format!("a.ai_tags LIKE ?{idx}"));
+            bind_vals.push(p.clone().into());
+            idx += 1;
+        }
+
+        if let Some(cat) = category {
+            where_parts.push(format!("f.category = ?{idx}"));
+            bind_vals.push(cat.into());
+            idx += 1;
+        }
+
+        let where_clause = where_parts.join(" AND ");
+        let order = match sort {
+            Some("score") => "a.score DESC, articles_fts.rank",
+            _ => "articles_fts.rank",
+        };
+
+        let sql = format!(
+            "SELECT a.id, a.feed_id, a.title, a.url, a.published_at,
+                    a.ai_summary, a.ai_tags, a.score,
+                    articles_fts.rank
+             FROM articles_fts
+             JOIN articles a ON a.id = articles_fts.rowid
+             LEFT JOIN feeds f ON f.id = a.feed_id
+             WHERE {where_clause}
+             ORDER BY {order}
+             LIMIT ?{idx}"
+        );
+        bind_vals.push(JsValue::from_f64(limit as f64));
+
+        let stmt = self.db.prepare(&sql).bind(&bind_vals)?;
+        let result = stmt.all().await?;
+        Ok(result.results::<SearchHit>()?)
     }
 }
 
