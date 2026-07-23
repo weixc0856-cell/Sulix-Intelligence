@@ -22,7 +22,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
 }
 
-/// Cron handler: process all due feeds directly (no queue).
+/// Cron handler: iterate due feeds, distribute to queue for async processing.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
@@ -34,91 +34,79 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_log!("scheduled handler completed");
 }
 
-/// Core pipeline: iterate due feeds, fetch each, insert articles, score, AI-summarize.
-async fn process_all_feeds(env: &Env) -> Result<()> {
+/// Queue consumer: process one fetch job per message.
+#[event(queue)]
+async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result<()> {
+    console_error_panic_hook::set_once();
     let store = Store::new(env.d1("DB")?);
-    let summarizer = try_build_summarizer(env);
-    let _r2_bucket = env.bucket("RAW_CONTENT").ok();
+    let summarizer = try_build_summarizer(&env);
+    let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let now = (js_sys::Date::now() / 1000.0) as i64;
 
-    // Load rules once
+    // Load rules once per batch
     let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
     let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
     let has_rules = !rules.is_empty();
 
-    let feeds = store.feeds_due_for_fetch(now, None)
+    for msg in batch.messages()?.iter() {
+        let job = msg.body();
+        console_log!("  queue processing feed {}: {}", job.feed_id, job.feed_url);
+        if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &rules, has_rules, job, now).await {
+            console_log!("  feed {} failed: {e}", job.feed_id);
+            msg.retry();
+        } else {
+            msg.ack();
+        }
+    }
+    Ok(())
+}
+
+/// Cron coordinator: send due feeds to the queue, then run cleanup tasks.
+async fn process_all_feeds(env: &Env) -> Result<()> {
+    let store = Store::new(env.d1("DB")?);
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+
+    // Enqueue due feeds
+    let feeds = store
+        .feeds_due_for_fetch(now, None)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
-    console_log!("process_all_feeds: {} feeds due", feeds.len());
+    console_log!("process_all_feeds: {} feeds due, sending to queue", feeds.len());
 
-    for feed in feeds {
-        console_log!("  processing feed {}: {}", feed.id, feed.title.as_deref().unwrap_or("?"));
-        let do_ai = summarizer.is_some();
-
-        match fetch_feed(&feed.url, feed.etag.as_deref(), feed.last_modified.as_deref()).await {
-            Ok(FetchOutcome::NotModified) => {
-                if let Err(e) = store.record_fetch_result(feed.id, now, None, None).await {
-                    console_log!("    record_fetch_result failed: {e}");
-                }
-            }
-            Ok(FetchOutcome::Updated(fetched)) => {
-                for entry in fetched.feed.entries {
-                    let body = extract_body(&entry);
-                    let article = NewArticle {
-                        feed_id: feed.id,
-                        guid: entry.id.clone(),
-                        title: entry.title.map(|t| t.content).unwrap_or_default(),
-                        url: entry.links.first().map(|l| l.href.clone()),
-                        published_at: entry.published.map(|d| d.timestamp()).filter(|&ts| ts <= now),
-                        raw_content_r2_key: None,
-                    };
-
-                    match store.insert_article(&article).await {
-                        Ok(Some(article_id)) => {
-                            let article_score = if has_rules {
-                                score(&ArticleInput { title: &article.title, summary: &body, feed_url: &feed.url }, &rules, "default")
-                            } else { 0.0 };
-
-                            if do_ai {
-                                if let Some(ref s) = summarizer {
-                                    if process_article(&store, s, article_id, &article.title, &body, article_score).await.is_err() {
-                                        let excerpt = if body.len() > 500 { &body[..500] } else { &body };
-                                        let _ = store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
-                                    }
-                                }
-                            } else if article_score != 0.0 {
-                                let _ = store.set_ai_summary(article_id, "", "[]", &format!("article-{article_id}"), article_score).await;
-                            }
-                        }
-                        Ok(None) => {} // duplicate
-                        Err(e) => console_log!("    insert_article failed: {e}"),
-                    }
-                }
-                let _ = store.record_fetch_result(feed.id, now, fetched.etag.as_deref(), fetched.last_modified.as_deref()).await;
-            }
-            Err(e) => {
-                console_log!("    fetch_feed failed: {e}");
-                if !e.is_transient() {
-                    let _ = store.record_fetch_result(feed.id, now, None, None).await;
-                }
+    // Try to send via queue; fall back to sync processing if queue isn't configured.
+    let queue = env.queue("FETCH_QUEUE").ok();
+    if let Some(ref q) = queue {
+        for feed in &feeds {
+            let job = FetchJob {
+                feed_id: feed.id,
+                feed_url: feed.url.clone(),
+                prior_etag: feed.etag.clone(),
+                prior_last_modified: feed.last_modified.clone(),
+                extraction_level: feed.extraction_level.clone(),
+            };
+            if let Err(e) = q.send(job).await {
+                console_log!("  failed to enqueue feed {}: {e}", feed.id);
             }
         }
-    }
-
-    // Batch-process pending articles needing AI summarization.
-    // Workers CPU limit is ~30s per cron, AI calls ~200-300ms each,
-    // so 30 per batch = ~9s, leaving headroom for feed fetching.
-    // Remaining articles finish over successive cron cycles.
-    const AI_BATCH: u32 = 20;
-    if let Some(ref s) = summarizer {
-        if let Ok(pending) = store.pending_ai_articles(AI_BATCH).await {
-            console_log!("  processing {} pending AI articles...", pending.len());
-            for a in &pending {
-                match process_article(&store, s, a.id, &a.title, a.raw_content_r2_key.as_deref().unwrap_or(""), 0.0).await {
-                    Ok(()) => {},
-                    Err(e) => console_log!("    AI failed for article {}: {e}", a.id),
-                }
+    } else {
+        // Queue not available — process synchronously (dev/fallback path).
+        console_log!("  FETCH_QUEUE not bound, processing synchronously");
+        let summarizer = try_build_summarizer(env);
+        let r2_bucket = env.bucket("RAW_CONTENT").ok();
+        let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
+        let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
+        let has_rules = !rules.is_empty();
+        for feed in &feeds {
+            let job = FetchJob {
+                feed_id: feed.id,
+                feed_url: feed.url.clone(),
+                prior_etag: feed.etag.clone(),
+                prior_last_modified: feed.last_modified.clone(),
+                extraction_level: feed.extraction_level.clone(),
+            };
+            if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &rules, has_rules, &job, now).await {
+                console_log!("  sync feed {} failed: {e}", feed.id);
             }
         }
     }
@@ -128,6 +116,96 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
         console_log!("expire_old_articles failed: {e}");
     } else {
         console_log!("article cleanup complete");
+    }
+
+    Ok(())
+}
+
+/// Process a single feed: fetch → insert → score → AI summarise →
+/// optional full-text extraction → optional R2 storage.
+async fn process_one_feed(
+    store: &Store,
+    summarizer: &Option<HttpSummarizer>,
+    r2_bucket: &Option<Bucket>,
+    rules: &[Rule],
+    has_rules: bool,
+    job: &FetchJob,
+    now: i64,
+) -> Result<(), Error> {
+    let do_ai = summarizer.is_some();
+
+    match fetch_feed(&job.feed_url, job.prior_etag.as_deref(), job.prior_last_modified.as_deref()).await {
+        Ok(FetchOutcome::NotModified) => {
+            if let Err(e) = store.record_fetch_result(job.feed_id, now, None, None).await {
+                console_log!("    record_fetch_result failed: {e}");
+            }
+        }
+        Ok(FetchOutcome::Updated(fetched)) => {
+            for entry in fetched.feed.entries {
+                let feed_summary = extract_body(&entry);
+                let mut body = feed_summary.clone();
+
+                let article = NewArticle {
+                    feed_id: job.feed_id,
+                    guid: entry.id.clone(),
+                    title: entry.title.map(|t| t.content).unwrap_or_default(),
+                    url: entry.links.first().map(|l| l.href.clone()),
+                    published_at: entry.published.map(|d| d.timestamp()).filter(|&ts| ts <= now),
+                    raw_content_r2_key: None,
+                };
+
+                match store.insert_article(&article).await {
+                    Ok(Some(article_id)) => {
+                        let article_score = if has_rules {
+                            score(&ArticleInput { title: &article.title, summary: &body, feed_url: &job.feed_url }, rules, "default")
+                        } else {
+                            0.0
+                        };
+
+                        // Full-text extraction (opt-in per feed)
+                        if job.extraction_level == "full_text" {
+                            if let Some(ref url) = article.url {
+                                match fetcher::extract_full_text(url).await {
+                                    Ok(full_text) => {
+                                        // Store raw content in R2
+                                        let r2_key = format!("articles/{article_id}");
+                                        if let Some(ref bucket) = r2_bucket {
+                                            let _ = bucket.put(&r2_key, full_text.as_bytes().to_vec()).execute().await;
+                                            let _ = store.set_raw_content_r2_key(article_id, Some(&r2_key)).await;
+                                        }
+                                        // Use full text for AI pipeline
+                                        body = full_text;
+                                    }
+                                    Err(e) => {
+                                        console_log!("    full-text extraction failed for article {article_id}: {e}");
+                                    }
+                                }
+                            }
+                        }
+
+                        if do_ai {
+                            if let Some(ref s) = summarizer {
+                                if process_article(store, s, article_id, &article.title, &body, article_score).await.is_err() {
+                                    let excerpt = if body.len() > 500 { &body[..500] } else { &body };
+                                    let _ = store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
+                                }
+                            }
+                        } else if article_score != 0.0 {
+                            let _ = store.set_ai_summary(article_id, "", "[]", &format!("article-{article_id}"), article_score).await;
+                        }
+                    }
+                    Ok(None) => {} // duplicate
+                    Err(e) => console_log!("    insert_article failed: {e}"),
+                }
+            }
+            let _ = store.record_fetch_result(job.feed_id, now, fetched.etag.as_deref(), fetched.last_modified.as_deref()).await;
+        }
+        Err(e) => {
+            console_log!("    fetch_feed failed: {e}");
+            if !e.is_transient() {
+                let _ = store.record_fetch_result(job.feed_id, now, None, None).await;
+            }
+        }
     }
 
     Ok(())
@@ -152,17 +230,6 @@ fn extract_body(entry: &feed_rs::model::Entry) -> String {
             if texts.is_empty() { None } else { Some(texts.join("\n")) }
         })
         .unwrap_or_default()
-}
-
-/// Queue consumer (kept for future async fan-out, currently not used).
-#[event(queue)]
-async fn queue(batch: MessageBatch<FetchJob>, _env: Env, _ctx: Context) -> Result<()> {
-    console_error_panic_hook::set_once();
-    console_log!("queue consumer invoked with {} messages", batch.messages()?.len());
-    for msg in batch.messages()?.iter() {
-        msg.ack();
-    }
-    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
