@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+﻿use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use worker::*;
 
@@ -10,9 +10,10 @@ use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, Store};
+use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 
 // ---------------------------------------------------------------------------
-// WorkerHttpClient — bridges ai_pipeline::HttpClient over worker::Fetch
+// WorkerHttpClient 鈥?bridges ai_pipeline::HttpClient over worker::Fetch
 // ---------------------------------------------------------------------------
 
 struct WorkerHttpClient;
@@ -116,7 +117,7 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     for msg in batch.messages()?.iter() {
         let job = msg.body();
         console_log!("  queue processing feed {}: {}", job.feed_id, job.feed_url);
-        if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, job, now).await {
+        if let Err(e) = process_one_feed(&store, &env, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, job, now).await {
             console_log!("  feed {} failed: {e}", job.feed_id);
             msg.retry();
         } else {
@@ -155,7 +156,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
             }
         }
     } else {
-        // Queue not available — process synchronously (dev/fallback path).
+        // Queue not available 鈥?process synchronously (dev/fallback path).
         console_log!("  FETCH_QUEUE not bound, processing synchronously");
         let summarizer = try_build_summarizer(env);
         let r2_bucket = env.bucket("RAW_CONTENT").ok();
@@ -171,7 +172,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
                 prior_last_modified: feed.last_modified.clone(),
                 extraction_level: feed.extraction_level.clone(),
             };
-            if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, &job, now).await {
+            if let Err(e) = process_one_feed(&store, &env, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, &job, now).await {
                 console_log!("  sync feed {} failed: {e}", feed.id);
             }
         }
@@ -187,10 +188,11 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
     Ok(())
 }
 
-/// Process a single feed: fetch → insert → score → AI summarise →
-/// optional full-text extraction → optional R2 storage → optional Vectorize upsert.
+/// Process a single feed: fetch 鈫?insert 鈫?score 鈫?AI summarise 鈫?
+/// optional full-text extraction 鈫?optional R2 storage 鈫?optional Vectorize upsert.
 async fn process_one_feed(
     store: &Store,
+    env: &Env,
     summarizer: &Option<HttpSummarizer>,
     r2_bucket: &Option<Bucket>,
     vectorize: &Option<VectorizeIndex>,
@@ -322,3 +324,5 @@ struct FetchJob {
     prior_last_modified: Option<String>,
     extraction_level: String,
 }
+
+

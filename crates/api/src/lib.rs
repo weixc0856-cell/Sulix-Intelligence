@@ -1,4 +1,4 @@
-//! HTTP routes with CORS support for the Sulix Intelligence backend.
+﻿//! HTTP routes with CORS support for the Sulix Intelligence backend.
 //! All responses include `Access-Control-Allow-Origin: *` so the API can
 //! be consumed from the Astro frontend (even on a different domain) and
 //! from browser-based dev tools without a proxy.
@@ -11,6 +11,8 @@ use search::D1FtsSearch;
 use store::Store;
 
 mod strategies;
+mod semantic;
+mod rebuild;
 
 fn parse_limit(url: &Url) -> u32 {
     url.query_pairs().find(|(k, _)| k == "limit").and_then(|(_, v)| v.parse().ok()).unwrap_or(30)
@@ -52,6 +54,8 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/debug/feeds-due", debug_feeds_due)
         // Signal Strategies preview
         .post_async("/api/strategies/preview", strategies::preview)
+        .post_async("/api/articles/search", semantic::semantic_search)
+        .post_async("/api/admin/rebuild-embeddings", rebuild::rebuild_embeddings)
         // Aggregations
         .get_async("/api/dashboard", dashboard)
         .get_async("/api/stats", stats)
@@ -191,7 +195,7 @@ async fn articles_batch(req: Request, ctx: RouteContext<()>) -> Result<Response>
     let ids_param = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "ids").map(|(_, v)| v.to_string())).unwrap_or_default();
     let ids: Vec<i64> = ids_param.split(',').filter_map(|s| s.trim().parse().ok()).collect();
     if ids.is_empty() {
-        return json_err(400, "missing or empty 'ids' query parameter — expected comma-separated integers");
+        return json_err(400, "missing or empty 'ids' query parameter 鈥?expected comma-separated integers");
     }
     match store.articles_by_ids(&ids).await {
         Ok(articles) => json_ok(json!({"articles": articles})),
@@ -304,7 +308,7 @@ async fn rules_create(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         return json_err(400, &format!("invalid condition JSON: {e}"));
     }
 
-    // Reconstruct full Rule JSON for the scoring pipeline (active_rule_jsons → rules::score
+    // Reconstruct full Rule JSON for the scoring pipeline (active_rule_jsons 鈫?rules::score
     // expects {name, audience_tag, condition, score_delta}).
     let full_rule = serde_json::json!({
         "name": body.name,
@@ -376,3 +380,4 @@ async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+

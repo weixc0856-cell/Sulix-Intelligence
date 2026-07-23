@@ -1,4 +1,4 @@
-[workspace]
+﻿[workspace]
 resolver = "2"
 members = [
     "crates/fetcher",
@@ -6,6 +6,7 @@ members = [
     "crates/rules",
     "crates/ai-pipeline",
     "crates/search",
+    "crates/embedding",
     "crates/api",
     "crates/worker-entry",
 ]
@@ -33,6 +34,7 @@ fetcher = { path = "crates/fetcher" }
 store = { path = "crates/store" }
 rules = { path = "crates/rules" }
 ai-pipeline = { path = "crates/ai-pipeline" }
+embedding = { path = "crates/embedding" }
 search = { path = "crates/search" }
 api = { path = "crates/api" }
 
@@ -40,3 +42,4 @@ api = { path = "crates/api" }
 panic = "unwind"
 lto = true
 codegen-units = 1
+

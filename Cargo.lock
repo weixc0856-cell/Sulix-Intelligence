@@ -35,6 +35,7 @@ dependencies = [
 name = "api"
 version = "0.1.0"
 dependencies = [
+ "embedding",
  "js-sys",
  "rules",
  "search",
@@ -196,6 +197,17 @@ name = "ego-tree"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2972feb8dffe7bc8c5463b1dacda1b0dfbed3710e50f977d965429692d74cd8"
+
+[[package]]
+name = "embedding"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "worker",
+]
 
 [[package]]
 name = "encoding_rs"
@@ -1381,6 +1393,7 @@ dependencies = [
  "api",
  "async-trait",
  "console_error_panic_hook",
+ "embedding",
  "feed-rs",
  "fetcher",
  "js-sys",

@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "worker-entry"
 version.workspace = true
 edition.workspace = true
@@ -19,6 +19,10 @@ js-sys.workspace = true
 feed-rs.workspace = true
 console_error_panic_hook.workspace = true
 async-trait.workspace = true
+embedding.workspace = true
+
 
 [package.metadata.release]
 release = false
+
+

@@ -38,3 +38,6 @@ dead_letter_queue = "sulix-feed-fetch-dlq"
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "sulix-article-embeddings"
+
+[[ai]]
+binding = "AI"

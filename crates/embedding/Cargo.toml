@@ -1,14 +1,11 @@
 [package]
-name = "api"
+name = "embedding"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 worker.workspace = true
-store.workspace = true
-search.workspace = true
-rules.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-js-sys.workspace = true
-embedding.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
