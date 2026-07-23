@@ -1,4 +1,4 @@
-//! Admin endpoint to trigger bulk embedding rebuild.
+﻿//! Admin endpoint to trigger bulk embedding rebuild.
 //!
 //! POST /api/admin/rebuild-embeddings
 //!
@@ -13,7 +13,7 @@ use worker::*;
 use worker::wasm_bindgen::prelude::*;
 use worker::EnvBinding;
 
-use js_sys::{Array, Float32Array, Object, Reflect};
+use js_sys::{Array, Object, Reflect};
 
 #[wasm_bindgen]
 extern "C" {
@@ -24,7 +24,7 @@ extern "C" {
 }
 
 impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "VectorizeIndex";
+    const TYPE_NAME: &'static str = "VectorizeIndexImpl";
 }
 
 pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -59,11 +59,9 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
                 // Build Vectorize upsert JS object
                 let vec_obj = Object::new();
                 let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{}", article.id).into());
-                let data = Float32Array::new_with_length(embedding.len() as u32);
-                for (i, v) in embedding.iter().enumerate() {
-                    data.set_index(i as u32, *v);
-                }
-                let _ = Reflect::set(&vec_obj, &"values".into(), &data.into());
+                let vals_str = serde_json::to_string(&embedding).unwrap_or_else(|_| "[]".to_string());
+                let vals_js = js_sys::JSON::parse(&vals_str).unwrap_or(JsValue::NULL);
+                let _ = Reflect::set(&vec_obj, &"values".into(), &vals_js);
 
                 let meta_obj = Object::new();
                 let _ = Reflect::set(&meta_obj, &"article_id".into(), &JsValue::from_f64(article.id as f64));

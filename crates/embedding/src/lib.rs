@@ -1,4 +1,4 @@
-﻿//! Embedding generation abstraction.
+//! Embedding generation abstraction.
 //!
 //! Provides a trait-based interface for generating text embeddings,
 //! independent of the specific model or provider.  The current
@@ -6,6 +6,7 @@
 //! which produces 1024-dimensional vectors.
 
 use async_trait::async_trait;
+use serde::Serialize;
 use worker::*;
 
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +35,11 @@ impl WorkersAiEmbedder {
     }
 }
 
+#[derive(Serialize)]
+struct BgeInput {
+    text: Vec<String>,
+}
+
 #[async_trait(?Send)]
 impl EmbeddingProvider for WorkersAiEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
@@ -41,22 +47,19 @@ impl EmbeddingProvider for WorkersAiEmbedder {
             .ai("AI")
             .map_err(|e| EmbeddingError::Request(e.to_string()))?;
 
+        // Workers AI returns { data: [[f32; 1024]], shape: [1, 1024] }
+        // data[0] is the embedding vector directly (not wrapped in an object)
         let result: serde_json::Value = ai
             .run(
                 "@cf/baai/bge-large-en-v1.5",
-                serde_json::json!({ "text": [text] }),
+                BgeInput { text: vec![text.to_string()] },
             )
             .await
             .map_err(|e| EmbeddingError::Request(e.to_string()))?;
 
-        let data = result["data"]
+        let embedding = result["data"][0]
             .as_array()
-            .and_then(|arr| arr.first())
-            .ok_or_else(|| EmbeddingError::Response("missing data array".into()))?;
-
-        let embedding = data["embedding"]
-            .as_array()
-            .ok_or_else(|| EmbeddingError::Response("missing embedding field".into()))?;
+            .ok_or_else(|| EmbeddingError::Response("missing data[0]".into()))?;
 
         let vec: Vec<f32> = embedding
             .iter()

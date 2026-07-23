@@ -1,4 +1,4 @@
-name = "sulix-feed-worker"
+﻿name = "sulix-feed-worker"
 main = "build/index.js"
 compatibility_date = "2026-07-22"
 compatibility_flags = ["nodejs_compat"]
@@ -39,5 +39,5 @@ dead_letter_queue = "sulix-feed-fetch-dlq"
 binding = "VECTORIZE"
 index_name = "sulix-article-embeddings"
 
-[[ai]]
+[ai]
 binding = "AI"

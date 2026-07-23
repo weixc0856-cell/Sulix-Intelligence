@@ -1,4 +1,4 @@
-//! Typed wrapper around Cloudflare Vectorize.
+﻿//! Typed wrapper around Cloudflare Vectorize.
 //!
 //! The underlying binding is accessed via raw `#[wasm_bindgen]` because
 //! `worker-0.8` doesn't ship a native Vectorize type.  Once it does, swap
@@ -33,7 +33,7 @@ extern "C" {
 }
 
 impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "VectorizeIndex";
+    const TYPE_NAME: &'static str = "VectorizeIndexImpl";
 }
 
 // ---- Typed wrapper ----
@@ -141,7 +141,7 @@ pub async fn delete_vectors(index: &VectorizeIndex, ids: &[String]) -> Result<()
         .map_err(|e| format!("{e:?}"))
 }
 
-// ---- (deprecated) Fire-and-forget upsert — replaced by awaited upsert_vectors ----
+// ---- (deprecated) Fire-and-forget upsert 鈥?replaced by awaited upsert_vectors ----
 
 pub fn upsert_vector_faf(index: &VectorizeIndex, article_id: i64, embedding: &[f32]) {
     let vec_obj = Object::new();
