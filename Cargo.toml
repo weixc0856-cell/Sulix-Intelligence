@@ -35,3 +35,8 @@ rules = { path = "crates/rules" }
 ai-pipeline = { path = "crates/ai-pipeline" }
 search = { path = "crates/search" }
 api = { path = "crates/api" }
+
+[profile.release]
+panic = "unwind"
+lto = true
+codegen-units = 1

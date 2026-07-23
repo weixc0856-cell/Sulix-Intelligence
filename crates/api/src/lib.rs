@@ -45,7 +45,7 @@ fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> { ctx.param(name
 pub fn router() -> Router<'static, ()> {
     Router::new()
         // CORS preflight
-        .options_async("/api/:path*", |_req, _ctx| async move { json_ok(json!({})) })
+        .options_async("/api/*path", |_req, _ctx| async move { json_ok(json!({})) })
         // Health / debug
         .get_async("/api/ping", |_req, _ctx| async move { Response::ok("pong") })
         .get_async("/api/health", health)

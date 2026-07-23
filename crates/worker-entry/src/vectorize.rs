@@ -27,7 +27,7 @@ extern "C" {
 }
 
 impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "Object";
+    const TYPE_NAME: &'static str = "VectorizeIndex";
 }
 
 // ---- Typed wrapper ----
