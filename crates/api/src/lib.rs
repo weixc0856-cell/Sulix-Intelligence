@@ -5,6 +5,7 @@
 
 use serde::Deserialize;
 use serde_json::{json, Value};
+use worker::wasm_bindgen::JsValue;
 use worker::*;
 
 use search::D1FtsSearch;
@@ -43,6 +44,26 @@ fn json_err(status: u16, msg: &str) -> Result<Response> {
     Ok(resp)
 }
 fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> { ctx.param(name)?.parse().ok() }
+
+/// Format a unix timestamp (seconds) as YYYY-MM-DD using js_sys::Date.
+fn fmt_date_ymd(ts_secs: i64) -> String {
+    let d = js_sys::Date::new(&JsValue::from_f64((ts_secs as f64) * 1000.0));
+    format!("{:04}-{:02}-{:02}", d.get_full_year(), d.get_month() + 1, d.get_date())
+}
+
+/// Format a unix timestamp (seconds) as ISO 8601 UTC.
+fn fmt_datetime_iso(ts_secs: i64) -> String {
+    let d = js_sys::Date::new(&JsValue::from_f64((ts_secs as f64) * 1000.0));
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        d.get_full_year(),
+        d.get_month() + 1,
+        d.get_date(),
+        d.get_hours(),
+        d.get_minutes(),
+        d.get_seconds(),
+    )
+}
 
 pub fn router() -> Router<'static, ()> {
     Router::new()
@@ -127,8 +148,13 @@ async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 
 async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
-    match store.signal_summary().await {
-        Ok(signals) => json_ok(json!({"signals": signals})),
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+    match store.signals_today(now).await {
+        Ok(signals) => json_ok(json!({
+            "date": fmt_date_ymd(now),
+            "generated_at": fmt_datetime_iso(now),
+            "signals": signals,
+        })),
         Err(e) => json_err(500, &e.to_string()),
     }
 }

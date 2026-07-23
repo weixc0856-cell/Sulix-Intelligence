@@ -179,3 +179,24 @@ pub struct SignalSummary {
     pub avg_score_delta: f64,
     pub enabled_count: i64,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalEvidence {
+    pub id: i64,
+    pub title: String,
+    pub url: Option<String>,
+    pub feed_name: Option<String>,
+    pub published_at: Option<i64>,
+    pub score: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TodaySignal {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub confidence: f64,
+    pub evidence_count: i64,
+    pub trend: String,
+    pub articles: Vec<SignalEvidence>,
+}

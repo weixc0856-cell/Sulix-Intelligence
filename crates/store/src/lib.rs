@@ -347,6 +347,131 @@ impl Store {
         ).all().await?.results()?)
     }
 
+    /// Build today's intelligence briefing signals from recent high-scoring
+    /// articles.  Groups by score threshold, computes confidence metrics and
+    /// trend direction.
+    pub async fn signals_today(&self, now: i64) -> Result<Vec<TodaySignal>, StoreError> {
+        let cutoff = now - 7 * 86400;
+
+        #[derive(Deserialize)]
+        struct Row {
+            id: i64,
+            title: String,
+            url: Option<String>,
+            feed_name: Option<String>,
+            published_at: Option<i64>,
+            score: f64,
+        }
+
+        let articles: Vec<Row> = self.db.prepare(
+            "SELECT a.id, a.title, a.url, f.title AS feed_name, a.published_at, a.score \
+             FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id \
+             WHERE a.score >= 0.6 AND a.published_at >= ?1 \
+             ORDER BY a.published_at DESC LIMIT 500",
+        ).bind(&[JsValue::from_f64(cutoff as f64)])?.all().await?.results()?;
+
+        let total = articles.len() as f64;
+        if total == 0.0 {
+            return Ok(Vec::new());
+        }
+
+        // Categorize into groups by score threshold
+        let mut tech: Vec<&Row> = Vec::new();
+        let mut industry: Vec<&Row> = Vec::new();
+        let mut other: Vec<&Row> = Vec::new();
+
+        for a in &articles {
+            if a.score >= 8.0 {
+                tech.push(a);
+            } else if a.score >= 5.0 {
+                industry.push(a);
+            } else {
+                other.push(a);
+            }
+        }
+
+        let group_defs = [
+            ("technology", "Technology & AI Infrastructure", "High-scoring articles covering technology, AI platforms, and infrastructure developments", tech),
+            ("industry", "Industry & Market Trends", "Notable industry shifts, market movements, and sector analysis", industry),
+            ("other", "Other Signals", "Additional noteworthy developments from the monitoring window", other),
+        ];
+
+        let mut signals: Vec<TodaySignal> = Vec::new();
+
+        for (sig_id, sig_title, sig_summary, group_articles) in &group_defs {
+            if group_articles.is_empty() {
+                continue;
+            }
+
+            let group_count = group_articles.len() as f64;
+
+            // Frequency: proportion of total articles in this group
+            let frequency = group_count / total;
+
+            // Diversity: unique feed names relative to total articles
+            let unique_feed_count = group_articles.iter()
+                .filter_map(|a| a.feed_name.as_deref())
+                .collect::<std::collections::HashSet<&str>>()
+                .len() as f64;
+            let diversity = unique_feed_count / total;
+
+            // Recency: average freshness (1.0 = now, 0.0 = 7+ days old)
+            let recency_sum: f64 = group_articles.iter()
+                .filter_map(|a| a.published_at)
+                .map(|ts| 1.0 - ((now - ts) as f64 / 604800.0).clamp(0.0, 1.0))
+                .sum();
+            let recency = if group_count > 0.0 { recency_sum / group_count } else { 0.0 };
+
+            let confidence = 0.4 * frequency + 0.3 * diversity + 0.3 * recency;
+
+            // Trend direction: compare article count in last 3 days vs 3 days before that
+            let recent_cutoff = now - 3 * 86400;
+            let earlier_cutoff = now - 6 * 86400;
+            let recent_count = group_articles.iter()
+                .filter(|a| a.published_at.map_or(false, |ts| ts >= recent_cutoff))
+                .count() as f64;
+            let earlier_count = group_articles.iter()
+                .filter(|a| a.published_at.map_or(false, |ts| ts >= earlier_cutoff && ts < recent_cutoff))
+                .count() as f64;
+
+            let trend = if earlier_count == 0.0 {
+                "rising"
+            } else if recent_count > earlier_count * 1.2 {
+                "rising"
+            } else if recent_count < earlier_count * 0.8 {
+                "declining"
+            } else {
+                "stable"
+            };
+
+            let evidence: Vec<SignalEvidence> = group_articles.iter().map(|a| SignalEvidence {
+                id: a.id,
+                title: a.title.clone(),
+                url: a.url.clone(),
+                feed_name: a.feed_name.clone(),
+                published_at: a.published_at,
+                score: a.score,
+            }).collect();
+
+            let evidence_count = evidence.len() as i64;
+
+            signals.push(TodaySignal {
+                id: sig_id.to_string(),
+                title: sig_title.to_string(),
+                summary: sig_summary.to_string(),
+                confidence,
+                evidence_count,
+                trend: trend.to_string(),
+                articles: evidence,
+            });
+        }
+
+        // Sort by confidence descending
+        signals.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(signals)
+    }
+
     pub async fn list_rules(&self) -> Result<Vec<SignalStrategy>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC",
