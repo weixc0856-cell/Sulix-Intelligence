@@ -396,8 +396,8 @@ impl Store {
     /// Aggregate strategies by signal_type for the Intelligence dashboard.
     pub async fn signal_summary(&self) -> Result<Vec<SignalSummary>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT signal_type, COUNT(*) AS strategy_count, SUM(score_delta) AS total_score_delta,
-                    AVG(score_delta) AS avg_score_delta, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_count
+            "SELECT signal_type, COUNT(*) AS strategy_count, COALESCE(SUM(score_delta), 0) AS total_score_delta,
+                    COALESCE(AVG(score_delta), 0) AS avg_score_delta, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_count
              FROM filter_rules GROUP BY signal_type ORDER BY total_score_delta DESC",
         ).all().await?.results()?)
     }

@@ -15,7 +15,9 @@ async fn cache_get(env: &Env, key: &str) -> Option<String> {
 
 async fn cache_put(env: &Env, key: &str, value: &str, ttl: u64) {
     if let Ok(kv) = env.kv("CACHE") {
-        let _ = kv.put(key, value).unwrap().expiration_ttl(ttl).execute().await;
+        if let Ok(builder) = kv.put(key, value) {
+            let _ = builder.expiration_ttl(ttl).execute().await;
+        }
     }
 }
 
@@ -311,7 +313,7 @@ async fn articles_batch(req: Request, ctx: RouteContext<()>) -> Result<Response>
     let ids_param = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "ids").map(|(_, v)| v.to_string())).unwrap_or_default();
     let ids: Vec<i64> = ids_param.split(',').filter_map(|s| s.trim().parse().ok()).collect();
     if ids.is_empty() {
-        return json_err(400, "missing or empty 'ids' query parameter 鈥?expected comma-separated integers");
+        return json_err(400, "missing or empty ids query parameter - expected comma-separated integers");
     }
     match store.articles_by_ids(&ids).await {
         Ok(articles) => json_ok(json!({"articles": articles})),
