@@ -70,7 +70,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
                         guid: entry.id.clone(),
                         title: entry.title.map(|t| t.content).unwrap_or_default(),
                         url: entry.links.first().map(|l| l.href.clone()),
-                        published_at: entry.published.map(|d| d.timestamp()),
+                        published_at: entry.published.map(|d| d.timestamp()).filter(|&ts| ts <= now),
                         raw_content_r2_key: None,
                     };
 
