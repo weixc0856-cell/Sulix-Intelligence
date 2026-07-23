@@ -47,6 +47,7 @@ pub fn router() -> Router<'static, ()> {
         // CORS preflight
         .options_async("/api/:path*", |_req, _ctx| async move { json_ok(json!({})) })
         // Health / debug
+        .get_async("/api/ping", |_req, _ctx| async move { Response::ok("pong") })
         .get_async("/api/health", health)
         .get_async("/api/debug/feeds-due", debug_feeds_due)
         // Signal Strategies preview

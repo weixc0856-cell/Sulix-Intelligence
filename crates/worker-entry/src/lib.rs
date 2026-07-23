@@ -70,6 +70,7 @@ impl HttpClient for WorkerHttpClient {
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     console_error_panic_hook::set_once();
+    console_log!("[INFO] HTTP request: {} {}", req.method(), req.path());
     if req.path().to_lowercase().contains("__cron") {
         console_log!("manual cron trigger via HTTP");
         match process_all_feeds(&env).await {
@@ -77,7 +78,11 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             Err(e) => Response::error(format!("cron failed: {e}"), 500),
         }
     } else {
-        router().run(req, env).await
+        let result = router().run(req, env).await;
+        if let Err(ref e) = result {
+            console_log!("[ERROR] router.run failed: {e}");
+        }
+        result
     }
 }
 
