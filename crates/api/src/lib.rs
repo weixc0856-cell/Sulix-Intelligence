@@ -60,7 +60,8 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/dashboard", dashboard)
         .get_async("/api/stats", stats)
         .get_async("/api/categories", categories)
-        .get_async("/api/tags", tags)
+.get_async("/api/tags", tags)
+        .get_async("/api/intelligence/signals", intelligence_signals)
         // Feed CRUD
         .get_async("/api/feeds", feeds_list)
         .post_async("/api/feeds", feeds_create)
@@ -124,6 +125,13 @@ async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     }
 }
 
+async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match store.signal_summary().await {
+        Ok(signals) => json_ok(json!({"signals": signals})),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
 async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     match store.tags_summary().await {

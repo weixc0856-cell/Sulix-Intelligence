@@ -170,3 +170,12 @@ pub struct PreviewResult {
     pub signal_type: Option<String>,
     pub items: Vec<PreviewMatch>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalSummary {
+    pub signal_type: Option<String>,
+    pub strategy_count: i64,
+    pub total_score_delta: f64,
+    pub avg_score_delta: f64,
+    pub enabled_count: i64,
+}

@@ -337,6 +337,16 @@ impl Store {
         Ok(rows.into_iter().map(|r| r.rule_json).collect())
     }
 
+    
+    /// Aggregate strategies by signal_type for the Intelligence dashboard.
+    pub async fn signal_summary(&self) -> Result<Vec<SignalSummary>, StoreError> {
+        Ok(self.db.prepare(
+            "SELECT signal_type, COUNT(*) AS strategy_count, SUM(score_delta) AS total_score_delta,
+                    AVG(score_delta) AS avg_score_delta, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_count
+             FROM filter_rules GROUP BY signal_type ORDER BY total_score_delta DESC",
+        ).all().await?.results()?)
+    }
+
     pub async fn list_rules(&self) -> Result<Vec<SignalStrategy>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC",
@@ -402,4 +412,5 @@ impl Store {
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
     }
 }
+
 
