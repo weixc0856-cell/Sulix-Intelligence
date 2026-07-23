@@ -194,17 +194,17 @@ impl Store {
         Ok((prev, next))
     }
 
-    pub async fn articles_by_tag(&self, tag: &str, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
+    pub async fn articles_by_tag(&self, tag: &str, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
         let pattern = format!("%\"{}\"%", tag);
         Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2",
-        ).bind(&[pattern.into(), JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
+        ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
     }
 
-    pub async fn articles_by_category(&self, category: &str, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
+    pub async fn articles_by_category(&self, category: &str, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2",
-        ).bind(&[category.into(), JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+            "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2 OFFSET ?3",
+        ).bind(&[category.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
     }
 
     pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
@@ -290,14 +290,6 @@ impl Store {
         ).bind(&[JsValue::from_f64(batch_size as f64)])?.all().await?.results()?)
     }
 
-    /// Mark an article as having been processed by AI (set summary + tags + score).
-    pub async fn mark_ai_processed(&self, id: i64, summary: &str, tags_json: &str, vector_id: &str, score: f64) -> Result<(), StoreError> {
-        self.db.prepare(
-            "UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5",
-        ).bind(&[summary.into(), tags_json.into(), vector_id.into(), JsValue::from_f64(score), JsValue::from_f64(id as f64)])?.run().await?;
-        Ok(())
-    }
-
     /// Delete articles older than `days` whose AI processing is complete.
     /// `now` should be the current unix timestamp (seconds), typically
     /// passed from the caller's js_sys::Date::now().
@@ -307,8 +299,8 @@ impl Store {
         let stmt = self.db.prepare(
             "DELETE FROM articles WHERE published_at < ?1 AND ai_summary != '' AND ai_summary IS NOT NULL",
         ).bind(&[JsValue::from_f64(cutoff as f64)])?;
-        stmt.run().await?;
-        Ok(0)
+        let result = stmt.run().await?;
+        Ok(result.meta().ok().flatten().and_then(|m| m.changes).unwrap_or(0) as u64)
     }
 
     // ------------------------------------------------------------------
@@ -322,5 +314,44 @@ impl Store {
             "SELECT rule_json FROM filter_rules WHERE audience_tag = ?1 AND enabled = 1",
         ).bind(&[audience_tag.into()])?.all().await?.results()?;
         Ok(rows.into_iter().map(|r| r.rule_json).collect())
+    }
+
+    pub async fn list_rules(&self) -> Result<Vec<RuleEntry>, StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, name, rule_json, audience_tag, enabled, created_at FROM filter_rules ORDER BY created_at DESC",
+        ).all().await?.results()?)
+    }
+
+    pub async fn get_rule(&self, id: i64) -> Result<Option<RuleEntry>, StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, name, rule_json, audience_tag, enabled, created_at FROM filter_rules WHERE id = ?1",
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<RuleEntry>(None).await?)
+    }
+
+    pub async fn insert_rule(&self, name: &str, rule_json: &str, audience_tag: &str) -> Result<Option<i64>, StoreError> {
+        self.db.prepare(
+            "INSERT INTO filter_rules (name, rule_json, audience_tag) VALUES (?1, ?2, ?3)",
+        ).bind(&[name.into(), rule_json.into(), audience_tag.into()])?.run().await?;
+        let q = self.db.prepare("SELECT id FROM filter_rules WHERE name = ?1 ORDER BY created_at DESC LIMIT 1").bind(&[name.into()])?;
+        let row = q.first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
+    }
+
+    pub async fn update_rule(&self, id: i64, name: Option<&str>, rule_json: Option<&str>, enabled: Option<bool>) -> Result<(), StoreError> {
+        let mut parts: Vec<String> = Vec::new();
+        let mut vals: Vec<JsValue> = Vec::new();
+        if let Some(v) = name       { parts.push("name = ?".into()); vals.push(v.into()); }
+        if let Some(v) = rule_json  { parts.push("rule_json = ?".into()); vals.push(v.into()); }
+        if let Some(v) = enabled    { parts.push("enabled = ?".into()); vals.push(JsValue::from_f64(if v { 1.0 } else { 0.0 })); }
+        if parts.is_empty() { return Ok(()); }
+        vals.push(JsValue::from_f64(id as f64));
+        self.db.prepare(format!("UPDATE filter_rules SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
+        Ok(())
+    }
+
+    pub async fn delete_rule(&self, id: i64) -> Result<(), StoreError> {
+        self.db.prepare("DELETE FROM filter_rules WHERE id = ?1")
+            .bind(&[JsValue::from_f64(id as f64)])?.run().await?;
+        Ok(())
     }
 }

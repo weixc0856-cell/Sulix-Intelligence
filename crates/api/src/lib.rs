@@ -1,5 +1,7 @@
-//! HTTP routes with KV-backed caching for slow aggregation endpoints.
-//! Cache keys: api:{name}. TTL: 120s for aggregations, 60s for articles.
+//! HTTP routes with CORS support for the Sulix Intelligence backend.
+//! All responses include `Access-Control-Allow-Origin: *` so the API can
+//! be consumed from the Astro frontend (even on a different domain) and
+//! from browser-based dev tools without a proxy.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -16,34 +18,59 @@ fn parse_offset(url: &Url) -> u32 {
     url.query_pairs().find(|(k, _)| k == "offset").and_then(|(_, v)| v.parse().ok()).unwrap_or(0)
 }
 
+fn cors_headers(resp: &mut Response) {
+    let h = resp.headers_mut();
+    let _ = h.set("Access-Control-Allow-Origin", "*");
+    let _ = h.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    let _ = h.set("Access-Control-Allow-Headers", "Content-Type");
+    let _ = h.set("X-Content-Type-Options", "nosniff");
+    // Aggregations get a longer cache than raw article data
+    let _ = h.set("Cache-Control", "public, max-age=60");
+}
+
 fn json_ok(v: Value) -> Result<Response> {
-    let resp = Response::from_json(&v)?;
-    let _ = resp.headers().set("Cache-Control", "public, max-age=60");
-    let _ = resp.headers().set("X-Content-Type-Options", "nosniff");
+    let mut resp = Response::from_json(&v)?;
+    cors_headers(&mut resp);
     Ok(resp)
 }
-fn json_err(status: u16, msg: &str) -> Result<Response> { Response::error(msg, status) }
+fn json_err(status: u16, msg: &str) -> Result<Response> {
+    let mut resp = Response::error(msg, status)?;
+    cors_headers(&mut resp);
+    Ok(resp)
+}
 fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> { ctx.param(name)?.parse().ok() }
 
 pub fn router() -> Router<'static, ()> {
     Router::new()
+        // CORS preflight
+        .options_async("/api/:path*", |_req, _ctx| async move { json_ok(json!({})) })
+        // Health / debug
         .get_async("/api/health", health)
         .get_async("/api/debug/feeds-due", debug_feeds_due)
+        // Aggregations
         .get_async("/api/dashboard", dashboard)
         .get_async("/api/stats", stats)
         .get_async("/api/categories", categories)
         .get_async("/api/tags", tags)
+        // Feed CRUD
         .get_async("/api/feeds", feeds_list)
         .post_async("/api/feeds", feeds_create)
         .get_async("/api/feeds/:id", feeds_get)
         .put_async("/api/feeds/:id", feeds_update)
         .delete_async("/api/feeds/:id", feeds_delete)
+        // Article endpoints
         .get_async("/api/articles/latest", latest_articles)
         .get_async("/api/articles/trending", trending)
         .get_async("/api/articles/search", search_articles)
         .get_async("/api/articles/:id/related", article_related)
         .get_async("/api/articles/:id/adjacent", article_adjacent)
         .get_async("/api/articles/:id", article_detail)
+        // Rules CRUD
+        .get_async("/api/rules", rules_list)
+        .post_async("/api/rules", rules_create)
+        .get_async("/api/rules/:id", rules_get)
+        .put_async("/api/rules/:id", rules_update)
+        .delete_async("/api/rules/:id", rules_delete)
 }
 
 // ---- Handlers ----
@@ -175,8 +202,19 @@ async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
-    if let Some(ref tag) = tag { return match store.articles_by_tag(tag, limit).await { Ok(a) => json_ok(json!({"articles": a})), Err(e) => json_err(500, &e.to_string()) }; }
-    if let Some(ref cat) = category { return match store.articles_by_category(cat, limit).await { Ok(a) => json_ok(json!({"articles": a})), Err(e) => json_err(500, &e.to_string()) }; }
+
+    if let Some(ref tag) = tag {
+        return match store.articles_by_tag(tag, limit, offset).await {
+            Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+            Err(e) => json_err(500, &e.to_string()),
+        };
+    }
+    if let Some(ref cat) = category {
+        return match store.articles_by_category(cat, limit, offset).await {
+            Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+            Err(e) => json_err(500, &e.to_string()),
+        };
+    }
     let total = store.article_count().await.unwrap_or(0);
     match store.latest_articles(limit, offset).await {
         Ok(a) => json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
@@ -195,8 +233,71 @@ async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
     let sort: Option<String> = url.query_pairs().find(|(k, _)| k == "sort").map(|(_, v)| v.to_string());
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
+
+    let total = search
+        .search_count(&query, tag.as_deref(), category.as_deref())
+        .await
+        .unwrap_or(0);
+
     match search.search_filtered(&query, limit, offset, tag.as_deref(), category.as_deref(), sort.as_deref()).await {
-        Ok(hits) => json_ok(json!({"results": hits, "limit": limit, "offset": offset})),
+        Ok(hits) => json_ok(json!({"results": hits, "total": total, "limit": limit, "offset": offset})),
         Err(e) => json_err(500, &e.to_string())
+    }
+}
+
+// ---- Rules CRUD handlers ----
+
+async fn rules_list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match store.list_rules().await {
+        Ok(list) => json_ok(json!({"rules": list})),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
+async fn rules_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "invalid id") };
+    match store.get_rule(id).await {
+        Ok(Some(rule)) => json_ok(json!({"rule": rule})),
+        Ok(None) => json_err(404, "rule not found"),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateRuleBody { name: String, rule_json: String, audience_tag: Option<String> }
+
+async fn rules_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let body: CreateRuleBody = match req.json().await { Ok(b) => b, Err(_) => return json_err(400, "invalid JSON body") };
+    if body.name.is_empty() { return json_err(400, "name is required"); }
+    if body.rule_json.is_empty() { return json_err(400, "rule_json is required"); }
+    match store.insert_rule(&body.name, &body.rule_json, &body.audience_tag.unwrap_or_else(|| "default".into())).await {
+        Ok(Some(id)) => match store.get_rule(id).await { Ok(Some(rule)) => json_ok(json!({"rule": rule})), _ => json_ok(json!({"id": id})) },
+        Ok(None) => json_err(500, "rule creation returned no id"),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateRuleBody { name: Option<String>, rule_json: Option<String>, enabled: Option<bool> }
+
+async fn rules_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "invalid id") };
+    let body: UpdateRuleBody = match req.json().await { Ok(b) => b, Err(_) => return json_err(400, "invalid JSON body") };
+    if let Err(e) = store.update_rule(id, body.name.as_deref(), body.rule_json.as_deref(), body.enabled).await {
+        return json_err(500, &e.to_string());
+    }
+    match store.get_rule(id).await { Ok(Some(rule)) => json_ok(json!({"rule": rule})), Ok(None) => json_err(404, "rule not found"), Err(e) => json_err(500, &e.to_string()) }
+}
+
+async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "invalid id") };
+    match store.delete_rule(id).await {
+        Ok(()) => json_ok(json!({"status": "deleted", "id": id})),
+        Err(e) => json_err(500, &e.to_string()),
     }
 }

@@ -119,3 +119,13 @@ pub struct HealthStats {
     pub article_count: i64,
     pub last_cron_run_at: Option<i64>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuleEntry {
+    pub id: i64,
+    pub name: String,
+    pub rule_json: String,
+    pub audience_tag: String,
+    pub enabled: bool,
+    pub created_at: i64,
+}

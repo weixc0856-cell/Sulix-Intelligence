@@ -96,6 +96,43 @@ impl<'a> D1FtsSearch<'a> {
         let result = stmt.all().await?;
         Ok(result.results::<SearchHit>()?)
     }
+
+    /// Count total matching results for a query (same filters as search_filtered,
+    /// without pagination). Used to return `total` in API responses.
+    pub async fn search_count(
+        &self,
+        query: &str,
+        tag: Option<&str>,
+        category: Option<&str>,
+    ) -> Result<i64, SearchError> {
+        let mut where_parts = vec!["articles_fts MATCH ?1".to_string()];
+        let mut bind_vals: Vec<JsValue> = vec![query.into()];
+        let mut idx = 2u32;
+
+        let tag_pattern = tag.map(|t| format!("%\"{}\"%", t));
+        if let Some(ref p) = tag_pattern {
+            where_parts.push(format!("a.ai_tags LIKE ?{idx}"));
+            bind_vals.push(p.clone().into());
+            idx += 1;
+        }
+
+        if let Some(cat) = category {
+            where_parts.push(format!("f.category = ?{idx}"));
+            bind_vals.push(cat.into());
+        }
+
+        let where_clause = where_parts.join(" AND ");
+        let sql = format!(
+            "SELECT COUNT(*) AS cnt
+             FROM articles_fts
+             JOIN articles a ON a.id = articles_fts.rowid
+             LEFT JOIN feeds f ON f.id = a.feed_id
+             WHERE {where_clause}"
+        );
+        let stmt = self.db.prepare(&sql).bind(&bind_vals)?;
+        let row = stmt.first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
+    }
 }
 
 #[async_trait(?Send)]
