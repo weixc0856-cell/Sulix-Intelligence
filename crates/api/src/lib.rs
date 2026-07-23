@@ -75,6 +75,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/articles/:id/related", article_related)
         .get_async("/api/articles/:id/adjacent", article_adjacent)
         .get_async("/api/articles/:id", article_detail)
+        .get_async("/api/articles/:id/content", article_content)
         // Rules CRUD
         .get_async("/api/rules", rules_list)
         .post_async("/api/rules", rules_create)
@@ -183,6 +184,36 @@ async fn trending(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+
+
+async fn article_content(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") { Some(v) => v, None => return json_err(400, "missing id") };
+    match store.get_raw_content_key(id).await {
+        Ok(Some(k)) => {
+            let bucket = match ctx.env.bucket("RAW_CONTENT") {
+                Ok(b) => b,
+                Err(e) => return json_err(500, &format!("RAW_CONTENT bucket: {e}")),
+            };
+            match bucket.get(&k).execute().await {
+                Ok(Some(obj)) => match obj.body() {
+                    Some(body) => match body.text().await {
+                        Ok(t) => json_ok(json!({"id": id, "content": t, "format": "html", "source": "r2"})),
+                        Err(e) => json_err(500, &format!("body read: {e}")),
+                    },
+                    None => json_err(500, "R2 object has no body"),
+                },
+                Ok(None) => json_err(404, "content not found in storage"),
+                Err(e) => json_err(500, &format!("R2 read: {e}")),
+            }
+        }
+        Ok(None) => json_err(404, "no raw content for this article"),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
+
+
+
 
 async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -380,4 +411,6 @@ async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+
+
 

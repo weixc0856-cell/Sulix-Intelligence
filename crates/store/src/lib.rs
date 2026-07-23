@@ -1,4 +1,4 @@
-//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
+﻿//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
 //! talks to storage only through this crate, so backend swaps never leak
 //! into business logic.
 //!
@@ -136,6 +136,15 @@ impl Store {
         Ok(())
     }
 
+    
+    pub async fn get_raw_content_key(&self, article_id: i64) -> Result<Option<String>, StoreError> {
+        #[derive(Deserialize)]
+        struct Row { raw_content_r2_key: Option<String> }
+        Ok(self.db.prepare(
+            "SELECT raw_content_r2_key FROM articles WHERE id = ?1",
+        ).bind(&[JsValue::from_f64(article_id as f64)])?.first::<Row>(None).await?.and_then(|r| r.raw_content_r2_key))
+    }
+
     pub async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
         self.db.prepare("UPDATE articles SET raw_content_r2_key = ?1 WHERE id = ?2")
             .bind(&[r2_key.into(), JsValue::from_f64(article_id as f64)])?.run().await?;
@@ -195,7 +204,7 @@ impl Store {
     }
 
     /// Get previous and next article relative to a given article id,
-    /// ordered by published_at DESC.  Returns (prev, next) �� both may be None.
+    /// ordered by published_at DESC.  Returns (prev, next) 锟斤拷 both may be None.
     pub async fn adjacent_articles(&self, id: i64) -> Result<(Option<Article>, Option<Article>), StoreError> {
         let prev = self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at < (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at DESC LIMIT 1"
@@ -393,3 +402,4 @@ impl Store {
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
     }
 }
+
