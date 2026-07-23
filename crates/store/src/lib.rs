@@ -1,4 +1,4 @@
-﻿//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
+//! D1 access layer.  Every other crate (rules, ai-pipeline, search, api)
 //! talks to storage only through this crate, so backend swaps never leak
 //! into business logic.
 //!
@@ -204,7 +204,7 @@ impl Store {
     }
 
     /// Get previous and next article relative to a given article id,
-    /// ordered by published_at DESC.  Returns (prev, next) 锟斤拷 both may be None.
+    /// ordered by published_at DESC.  Returns (prev, next) �� both may be None.
     pub async fn adjacent_articles(&self, id: i64) -> Result<(Option<Article>, Option<Article>), StoreError> {
         let prev = self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at < (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at DESC LIMIT 1"
@@ -328,7 +328,7 @@ impl Store {
         Ok(serde_json::json!({
             "cron": {
                 "last_run_at": health.last_cron_run_at,
-                "healthy": health.last_cron_run_at.map_or(false, |ts| now - ts < 3600),
+                "healthy": health.last_cron_run_at.is_some_and(|ts| now - ts < 3600),
             },
             "feeds": {
                 "total": health.feed_count,
@@ -483,17 +483,13 @@ impl Store {
             let recent_cutoff = now - 3 * 86400;
             let earlier_cutoff = now - 6 * 86400;
             let recent_count = group_articles.iter()
-                .filter(|a| a.published_at.map_or(false, |ts| ts >= recent_cutoff))
+                .filter(|a| a.published_at.is_some_and(|ts| ts >= recent_cutoff))
                 .count() as f64;
             let earlier_count = group_articles.iter()
-                .filter(|a| a.published_at.map_or(false, |ts| ts >= earlier_cutoff && ts < recent_cutoff))
+                .filter(|a| a.published_at.is_some_and(|ts| ts >= earlier_cutoff && ts < recent_cutoff))
                 .count() as f64;
 
-            let trend = if earlier_count == 0.0 {
-                "rising"
-            } else if recent_count > earlier_count * 1.2 {
-                "rising"
-            } else if recent_count < earlier_count * 0.8 {
+            let trend = if earlier_count == 0.0 || recent_count > earlier_count * 1.2 { "rising" } else if recent_count < earlier_count * 0.8 {
                 "declining"
             } else {
                 "stable"
