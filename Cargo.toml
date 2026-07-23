@@ -25,6 +25,9 @@ thiserror = "1"
 async-trait = "0.1"
 uuid = { version = "1", features = ["js"] }
 scraper = "0.22"
+js-sys = "0.3"
+url = "2"
+console_error_panic_hook = "0.1"
 
 fetcher = { path = "crates/fetcher" }
 store = { path = "crates/store" }

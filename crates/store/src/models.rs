@@ -129,3 +129,44 @@ pub struct RuleEntry {
     pub enabled: bool,
     pub created_at: i64,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalStrategy {
+    pub id: i64,
+    pub name: String,
+    pub signal_type: Option<String>,
+    pub rule_json: String,
+    pub audience_tag: String,
+    pub score_delta: f64,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+// ---- Preview types ----
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PreviewRequest {
+    pub condition: serde_json::Value,
+    pub score_delta: f64,
+    pub signal_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PreviewMatch {
+    pub id: i64,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub feed_name: Option<String>,
+    pub score_change: f64,
+    pub matched_reason: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PreviewResult {
+    pub total: i64,
+    pub matched: i64,
+    pub signal_type: Option<String>,
+    pub items: Vec<PreviewMatch>,
+}

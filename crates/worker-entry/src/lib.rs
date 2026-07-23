@@ -1,28 +1,70 @@
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use worker::wasm_bindgen::prelude::*;
 use worker::*;
 
-// --- Vectorize binding ---
+mod vectorize;
+use vectorize::VectorizeIndex;
 
-/// Cloudflare Vectorize index — accessed via wasm_bindgen since
-/// worker-0.8 doesn't ship a native Vectorize type.
-#[wasm_bindgen]
-extern "C" {
-    pub type VectorizeIndex;
-
-    #[wasm_bindgen(method, catch)]
-    async fn upsert(this: &VectorizeIndex, vectors: JsValue) -> Result<JsValue, JsValue>;
-}
-
-impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "Object";
-}
-
-use ai_pipeline::{process_article, HttpSummarizer};
+use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, Store};
+
+// ---------------------------------------------------------------------------
+// WorkerHttpClient — bridges ai_pipeline::HttpClient over worker::Fetch
+// ---------------------------------------------------------------------------
+
+struct WorkerHttpClient;
+
+#[async_trait(?Send)]
+impl HttpClient for WorkerHttpClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, PipelineError> {
+        use worker::{Fetch, Headers, Method, Request, RequestInit};
+
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+
+        let worker_headers = Headers::new();
+        for (k, v) in headers {
+            worker_headers
+                .set(k, v)
+                .map_err(|e| PipelineError::Summarizer(e.to_string()))?;
+        }
+        init.with_headers(worker_headers);
+        init.with_body(Some(
+            serde_json::to_string(body)
+                .map_err(|e| PipelineError::Summarizer(e.to_string()))?
+                .into(),
+        ));
+
+        let req =
+            Request::new_with_init(url, &init).map_err(|e| PipelineError::Summarizer(e.to_string()))?;
+
+        let mut resp = Fetch::Request(req)
+            .send()
+            .await
+            .map_err(|e| PipelineError::Summarizer(e.to_string()))?;
+
+        if resp.status_code() >= 400 {
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(PipelineError::Summarizer(format!(
+                "API returned {}: {}",
+                resp.status_code(),
+                err_body
+            )));
+        }
+
+        resp.json::<serde_json::Value>()
+            .await
+            .map_err(|e| PipelineError::Summarizer(e.to_string()))
+    }
+}
 
 /// HTTP entry point.  `/__cron` triggers the fetch pipeline for debugging.
 #[event(fetch)]
@@ -243,34 +285,7 @@ async fn process_one_feed(
 
 /// Build a Vectorize upsert vector from an article embedding, fire-and-forget.
 fn upsert_vector(idx: &VectorizeIndex, article_id: i64, embedding: &[f32]) {
-    use js_sys::{Array, Float32Array, Object, Reflect};
-
-    let vec_obj = Object::new();
-    let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{article_id}").into());
-
-    let values = Float32Array::new_with_length(embedding.len() as u32);
-    for (i, v) in embedding.iter().enumerate() {
-        values.set_index(i as u32, *v);
-    }
-    let _ = Reflect::set(&vec_obj, &"values".into(), &values.into());
-
-    let metadata = Object::new();
-    let _ = Reflect::set(&metadata, &"article_id".into(), &JsValue::from_f64(article_id as f64));
-    let _ = Reflect::set(&vec_obj, &"metadata".into(), &metadata.into());
-
-    let vectors = Array::new();
-    vectors.push(&vec_obj);
-    let vectors_js: JsValue = vectors.into();
-
-    // Clone the underlying JsValue for the fire-and-forget task
-    let js_val: &JsValue = idx.as_ref();
-    let idx_owned: VectorizeIndex = wasm_bindgen::JsCast::unchecked_into(js_val.clone());
-    wasm_bindgen_futures::spawn_local(async move {
-        match idx_owned.upsert(vectors_js).await {
-            Ok(_) => {}
-            Err(e) => console_log!("  vectorize upsert failed for article {article_id}: {e:?}"),
-        }
-    });
+    vectorize::upsert_vector_faf(idx, article_id, embedding);
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
@@ -281,7 +296,7 @@ fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
     let base_url = env.var("AI_BASE_URL").ok().map(|v| v.to_string()).unwrap_or_else(|| "https://api.deepseek.com/v1".into());
     let chat_model = env.var("AI_CHAT_MODEL").ok().map(|v| v.to_string()).unwrap_or_else(|| "deepseek-v4-flash".into());
     let embedding_model = env.var("AI_EMBEDDING_MODEL").ok().map(|v| v.to_string()).unwrap_or_default();
-    Some(HttpSummarizer::new(base_url, api_key, chat_model, embedding_model))
+    Some(HttpSummarizer::new(base_url, api_key, chat_model, embedding_model, Box::new(WorkerHttpClient)))
 }
 
 fn extract_body(entry: &feed_rs::model::Entry) -> String {

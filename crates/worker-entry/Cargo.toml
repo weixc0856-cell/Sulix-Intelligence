@@ -15,9 +15,10 @@ rules.workspace = true
 ai-pipeline.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-js-sys = "0.3"
+js-sys.workspace = true
 feed-rs.workspace = true
-console_error_panic_hook = "0.1"
+console_error_panic_hook.workspace = true
+async-trait.workspace = true
 
 [package.metadata.release]
 release = false
