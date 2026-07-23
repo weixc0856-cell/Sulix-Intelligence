@@ -53,7 +53,7 @@ pub async fn preview(mut req: Request, ctx: RouteContext<()>) -> Result<Response
             summary: &article.ai_summary,
             feed_url: "", // preview doesn't need feed_url matching
         };
-        let result = score(&input, &[rule.clone()], "default");
+        let result = score(&input, std::slice::from_ref(&rule), "default");
         if result != 0.0 {
             matched_count += 1;
             matched_items.push(PreviewMatch {

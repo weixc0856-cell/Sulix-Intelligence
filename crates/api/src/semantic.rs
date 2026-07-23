@@ -25,6 +25,7 @@ impl EnvBinding for VectorizeIndex {
 #[derive(Deserialize)]
 struct SemanticSearchRequest {
     q: String,
+    #[allow(dead_code)]
     mode: Option<String>,
     limit: Option<u32>,
 }
@@ -68,7 +69,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<
     let matches = Reflect::get(&result, &"matches".into())
         .ok()
         .and_then(|v| v.dyn_into::<js_sys::Array>().ok())
-        .unwrap_or_else(js_sys::Array::new);
+        .unwrap_or_default();
     if matches.length() == 0 {
         return json_ok(serde_json::json!({"mode":"semantic","query":body.q,"results":[]}));
     }
@@ -100,3 +101,4 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<
 
     json_ok(serde_json::json!({"mode":"semantic","query":body.q,"results":enriched}))
 }
+

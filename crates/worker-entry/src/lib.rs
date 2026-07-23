@@ -10,7 +10,7 @@ use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, Store};
-use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
+// embedding crate imported via worker-entry deps; used in process_one_feed
 
 // ---------------------------------------------------------------------------
 // WorkerHttpClient 鈥?bridges ai_pipeline::HttpClient over worker::Fetch
@@ -172,7 +172,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
                 prior_last_modified: feed.last_modified.clone(),
                 extraction_level: feed.extraction_level.clone(),
             };
-            if let Err(e) = process_one_feed(&store, &env, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, &job, now).await {
+            if let Err(e) = process_one_feed(&store, env, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, &job, now).await {
                 console_log!("  sync feed {} failed: {e}", feed.id);
             }
         }
@@ -190,9 +190,10 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
 
 /// Process a single feed: fetch 鈫?insert 鈫?score 鈫?AI summarise 鈫?
 /// optional full-text extraction 鈫?optional R2 storage 鈫?optional Vectorize upsert.
+#[allow(clippy::too_many_arguments)]
 async fn process_one_feed(
     store: &Store,
-    env: &Env,
+    _env: &Env,
     summarizer: &Option<HttpSummarizer>,
     r2_bucket: &Option<Bucket>,
     vectorize: &Option<VectorizeIndex>,
@@ -324,5 +325,6 @@ struct FetchJob {
     prior_last_modified: Option<String>,
     extraction_level: String,
 }
+
 
 

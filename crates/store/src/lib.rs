@@ -370,7 +370,7 @@ impl Store {
         if parts.is_empty() { return Ok(()); }
         // Always update updated_at when any field changes
         parts.push("updated_at = ?".into());
-        vals.push(JsValue::from_f64((js_sys::Date::now() / 1000.0) as f64));
+        vals.push(JsValue::from_f64(js_sys::Date::now() / 1000.0));
         vals.push(JsValue::from_f64(id as f64));
         self.db.prepare(format!("UPDATE filter_rules SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
         Ok(())
@@ -378,7 +378,7 @@ impl Store {
 
     pub async fn delete_rule(&self, id: i64) -> Result<(), StoreError> {
         self.db.prepare("UPDATE filter_rules SET enabled = 0, updated_at = ?1 WHERE id = ?2")
-            .bind(&[JsValue::from_f64((js_sys::Date::now() / 1000.0) as f64), JsValue::from_f64(id as f64)])?.run().await?;
+            .bind(&[JsValue::from_f64(js_sys::Date::now() / 1000.0), JsValue::from_f64(id as f64)])?.run().await?;
         Ok(())
     }
 

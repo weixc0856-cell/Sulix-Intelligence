@@ -39,6 +39,7 @@ impl EnvBinding for VectorizeIndex {
 // ---- Typed wrapper ----
 
 /// A single vector to upsert into the index.
+#[allow(dead_code)]
 pub struct VectorEntry {
     pub id: String,
     pub values: Vec<f32>,
@@ -47,12 +48,14 @@ pub struct VectorEntry {
 
 /// A match returned from Vectorize query.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct VectorMatch {
     pub id: String,
     pub score: f32,
 }
 
 /// Upsert a batch of vectors into the Vectorize index.
+#[allow(dead_code)]
 pub async fn upsert_vectors(
     index: &VectorizeIndex,
     entries: &[VectorEntry],
@@ -85,6 +88,7 @@ pub async fn upsert_vectors(
 }
 
 /// Query the Vectorize index for nearest neighbors.
+#[allow(dead_code)]
 pub async fn query_vectors(
     index: &VectorizeIndex,
     embedding: &[f32],
@@ -169,6 +173,7 @@ pub fn upsert_vector_faf(index: &VectorizeIndex, article_id: i64, embedding: &[f
 
 // ---- Helpers ----
 
+#[allow(dead_code)]
 fn meta_value_to_js(v: &serde_json::Value) -> JsValue {
     match v {
         serde_json::Value::Null => JsValue::null(),

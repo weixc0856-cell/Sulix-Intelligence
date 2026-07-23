@@ -1,4 +1,4 @@
-//! Embedding generation abstraction.
+﻿//! Embedding generation abstraction.
 //!
 //! Provides a trait-based interface for generating text embeddings,
 //! independent of the specific model or provider.  The current
@@ -100,7 +100,7 @@ mod tests {
         let text = build_embedding_text(
             "AI News",
             "Latest AI developments",
-            &vec!["AI".into(), "tech".into()],
+            &["AI".into(), "tech".into()],
             Some("TechCrunch"),
         );
         assert!(text.contains("Title:\nAI News"));
