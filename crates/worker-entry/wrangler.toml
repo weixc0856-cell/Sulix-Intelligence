@@ -34,3 +34,7 @@ max_batch_size = 10
 max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "sulix-feed-fetch-dlq"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "sulix-article-embeddings"

@@ -42,7 +42,7 @@ pub async fn process_article(
     title: &str,
     body: &str,
     score: f64,
-) -> Result<(), PipelineError> {
+) -> Result<SummaryResult, PipelineError> {
     let result = summarizer.summarize(title, body).await?;
     let tags_json = serde_json::to_string(&result.tags).unwrap_or_else(|_| "[]".to_string());
 
@@ -53,11 +53,10 @@ pub async fn process_article(
         .set_ai_summary(article_id, &result.summary, &tags_json, &vector_id, score)
         .await?;
 
-    // Upserting `result.embedding` into Vectorize under `vector_id` happens
-    // at the worker-entry composition root, where the Vectorize binding is
-    // actually available -- kept out of this crate to avoid coupling
-    // ai-pipeline directly to a specific Cloudflare binding type.
-    Ok(())
+    // Return SummaryResult so the caller (worker-entry) can upsert
+    // `result.embedding` into Vectorize — kept out of this crate to
+    // avoid coupling ai-pipeline to a specific Cloudflare binding type.
+    Ok(result)
 }
 
 /// Calls any OpenAI-compatible chat-completions + embeddings API directly

@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
+use worker::wasm_bindgen::prelude::*;
 use worker::*;
+
+// --- Vectorize binding ---
+
+/// Cloudflare Vectorize index — accessed via wasm_bindgen since
+/// worker-0.8 doesn't ship a native Vectorize type.
+#[wasm_bindgen]
+extern "C" {
+    pub type VectorizeIndex;
+
+    #[wasm_bindgen(method, catch)]
+    async fn upsert(this: &VectorizeIndex, vectors: JsValue) -> Result<JsValue, JsValue>;
+}
+
+impl EnvBinding for VectorizeIndex {
+    const TYPE_NAME: &'static str = "Object";
+}
 
 use ai_pipeline::{process_article, HttpSummarizer};
 use api::router;
@@ -41,6 +58,7 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     let store = Store::new(env.d1("DB")?);
     let summarizer = try_build_summarizer(&env);
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
+    let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
     let now = (js_sys::Date::now() / 1000.0) as i64;
 
     // Load rules once per batch
@@ -51,7 +69,7 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     for msg in batch.messages()?.iter() {
         let job = msg.body();
         console_log!("  queue processing feed {}: {}", job.feed_id, job.feed_url);
-        if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &rules, has_rules, job, now).await {
+        if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, job, now).await {
             console_log!("  feed {} failed: {e}", job.feed_id);
             msg.retry();
         } else {
@@ -94,6 +112,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
         console_log!("  FETCH_QUEUE not bound, processing synchronously");
         let summarizer = try_build_summarizer(env);
         let r2_bucket = env.bucket("RAW_CONTENT").ok();
+        let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
         let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
         let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
         let has_rules = !rules.is_empty();
@@ -105,7 +124,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
                 prior_last_modified: feed.last_modified.clone(),
                 extraction_level: feed.extraction_level.clone(),
             };
-            if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &rules, has_rules, &job, now).await {
+            if let Err(e) = process_one_feed(&store, &summarizer, &r2_bucket, &vectorize, &rules, has_rules, &job, now).await {
                 console_log!("  sync feed {} failed: {e}", feed.id);
             }
         }
@@ -122,11 +141,12 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
 }
 
 /// Process a single feed: fetch → insert → score → AI summarise →
-/// optional full-text extraction → optional R2 storage.
+/// optional full-text extraction → optional R2 storage → optional Vectorize upsert.
 async fn process_one_feed(
     store: &Store,
     summarizer: &Option<HttpSummarizer>,
     r2_bucket: &Option<Bucket>,
+    vectorize: &Option<VectorizeIndex>,
     rules: &[Rule],
     has_rules: bool,
     job: &FetchJob,
@@ -185,9 +205,19 @@ async fn process_one_feed(
 
                         if do_ai {
                             if let Some(ref s) = summarizer {
-                                if process_article(store, s, article_id, &article.title, &body, article_score).await.is_err() {
-                                    let excerpt = if body.len() > 500 { &body[..500] } else { &body };
-                                    let _ = store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
+                                match process_article(store, s, article_id, &article.title, &body, article_score).await {
+                                    Ok(result) => {
+                                        // Upsert embedding to Vectorize (non-fatal)
+                                        if !result.embedding.is_empty() {
+                                            if let Some(ref idx) = vectorize {
+                                                upsert_vector(idx, article_id, &result.embedding);
+                                            }
+                                        }
+                                    }
+                                    Err(_) => {
+                                        let excerpt = if body.len() > 500 { &body[..500] } else { &body };
+                                        let _ = store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
+                                    }
                                 }
                             }
                         } else if article_score != 0.0 {
@@ -209,6 +239,38 @@ async fn process_one_feed(
     }
 
     Ok(())
+}
+
+/// Build a Vectorize upsert vector from an article embedding, fire-and-forget.
+fn upsert_vector(idx: &VectorizeIndex, article_id: i64, embedding: &[f32]) {
+    use js_sys::{Array, Float32Array, Object, Reflect};
+
+    let vec_obj = Object::new();
+    let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{article_id}").into());
+
+    let values = Float32Array::new_with_length(embedding.len() as u32);
+    for (i, v) in embedding.iter().enumerate() {
+        values.set_index(i as u32, *v);
+    }
+    let _ = Reflect::set(&vec_obj, &"values".into(), &values.into());
+
+    let metadata = Object::new();
+    let _ = Reflect::set(&metadata, &"article_id".into(), &JsValue::from_f64(article_id as f64));
+    let _ = Reflect::set(&vec_obj, &"metadata".into(), &metadata.into());
+
+    let vectors = Array::new();
+    vectors.push(&vec_obj);
+    let vectors_js: JsValue = vectors.into();
+
+    // Clone the underlying JsValue for the fire-and-forget task
+    let js_val: &JsValue = idx.as_ref();
+    let idx_owned: VectorizeIndex = wasm_bindgen::JsCast::unchecked_into(js_val.clone());
+    wasm_bindgen_futures::spawn_local(async move {
+        match idx_owned.upsert(vectors_js).await {
+            Ok(_) => {}
+            Err(e) => console_log!("  vectorize upsert failed for article {article_id}: {e:?}"),
+        }
+    });
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
