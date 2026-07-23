@@ -23,3 +23,14 @@ bucket_name = "sulix-feed-raw"
 [[kv_namespaces]]
 binding = "CACHE"
 id = "38bcc1c3380c4bd99f9e763b6755701f"
+
+[[queues.producers]]
+binding = "FETCH_QUEUE"
+queue = "sulix-feed-fetch-queue"
+
+[[queues.consumers]]
+queue = "sulix-feed-fetch-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "sulix-feed-fetch-dlq"
