@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use worker::*;
 
+
 mod vectorize;
 use vectorize::VectorizeIndex;
 

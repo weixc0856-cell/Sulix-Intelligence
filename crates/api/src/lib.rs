@@ -7,6 +7,18 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
+// ---- KV cache helpers ---
+async fn cache_get(env: &Env, key: &str) -> Option<String> {
+    let kv = env.kv("CACHE").ok()?;
+    kv.get(key).text().await.ok().flatten()
+}
+
+async fn cache_put(env: &Env, key: &str, value: &str, ttl: u64) {
+    if let Ok(kv) = env.kv("CACHE") {
+        let _ = kv.put(key, value).unwrap().expiration_ttl(ttl).execute().await;
+    }
+}
+
 
 use search::D1FtsSearch;
 use store::Store;
@@ -148,12 +160,27 @@ async fn stats(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 }
 
 async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let cache_key = "v1:categories";
+    if let Some(cached) = cache_get(&ctx.env, cache_key).await {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cached) {
+            let mut resp = Response::from_json(&v)?;
+            cors_headers(&mut resp);
+            return Ok(resp);
+        }
+    }
     let store = Store::new(ctx.env.d1("DB")?);
     match store.categories_summary().await {
-        Ok(list) => json_ok(json!({"categories": list.into_iter().map(|(cat, count)| json!({"category": cat, "article_count": count})).collect::<Vec<_>>()})),
+        Ok(list) => {
+            let result = serde_json::json!({"categories": list.into_iter().map(|(cat, count)| serde_json::json!({"category": cat, "article_count": count})).collect::<Vec<_>>()});
+            if let Ok(json_str) = serde_json::to_string(&result) {
+                cache_put(&ctx.env, cache_key, &json_str, 120).await;
+            }
+            json_ok(result)
+        }
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+
 
 async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -168,12 +195,27 @@ async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Re
     }
 }
 async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let cache_key = "v1:tags";
+    if let Some(cached) = cache_get(&ctx.env, cache_key).await {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cached) {
+            let mut resp = Response::from_json(&v)?;
+            cors_headers(&mut resp);
+            return Ok(resp);
+        }
+    }
     let store = Store::new(ctx.env.d1("DB")?);
     match store.tags_summary().await {
-        Ok(list) => json_ok(json!({"tags": list.into_iter().map(|(tag, count)| json!({"tag": tag, "count": count})).collect::<Vec<_>>()})),
+        Ok(list) => {
+            let result = serde_json::json!({"tags": list.into_iter().map(|(tag, count)| serde_json::json!({"tag": tag, "count": count})).collect::<Vec<_>>()});
+            if let Ok(json_str) = serde_json::to_string(&result) {
+                cache_put(&ctx.env, cache_key, &json_str, 120).await;
+            }
+            json_ok(result)
+        }
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+
 
 async fn feeds_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -293,31 +335,54 @@ async fn article_related(_req: Request, ctx: RouteContext<()>) -> Result<Respons
 }
 
 async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
     let url = req.url()?;
     let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
-
-    if let Some(ref tag) = tag {
-        return match store.articles_by_tag(tag, limit, offset).await {
-            Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+    if tag.is_none() && category.is_none() && limit == 30 && offset == 0 {
+        let cache_key = "v1:latest:30:0";
+        if let Some(cached) = cache_get(&ctx.env, cache_key).await {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cached) {
+                let mut resp = Response::from_json(&v)?;
+                cors_headers(&mut resp);
+                return Ok(resp);
+            }
+        }
+        let store = Store::new(ctx.env.d1("DB")?);
+        let total = store.article_count().await.unwrap_or(0);
+        match store.latest_articles(30, 0).await {
+            Ok(a) => {
+                let result = serde_json::json!({"articles": a, "total": total, "limit": 30, "offset": 0});
+                if let Ok(json_str) = serde_json::to_string(&result) {
+                    cache_put(&ctx.env, cache_key, &json_str, 60).await;
+                }
+                json_ok(result)
+            }
             Err(e) => json_err(500, &e.to_string()),
-        };
-    }
-    if let Some(ref cat) = category {
-        return match store.articles_by_category(cat, limit, offset).await {
-            Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+        }
+    } else {
+        let store = Store::new(ctx.env.d1("DB")?);
+        if let Some(ref tag) = tag {
+            return match store.articles_by_tag(tag, limit, offset).await {
+                Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+                Err(e) => json_err(500, &e.to_string()),
+            };
+        }
+        if let Some(ref cat) = category {
+            return match store.articles_by_category(cat, limit, offset).await {
+                Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
+                Err(e) => json_err(500, &e.to_string()),
+            };
+        }
+        let total = store.article_count().await.unwrap_or(0);
+        match store.latest_articles(limit, offset).await {
+            Ok(a) => json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
             Err(e) => json_err(500, &e.to_string()),
-        };
-    }
-    let total = store.article_count().await.unwrap_or(0);
-    match store.latest_articles(limit, offset).await {
-        Ok(a) => json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
-        Err(e) => json_err(500, &e.to_string()),
+        }
     }
 }
+
 
 async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.env.d1("DB")?;
