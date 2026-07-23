@@ -70,7 +70,8 @@ pub fn router() -> Router<'static, ()> {
         // CORS preflight
         .options_async("/api/*path", |_req, _ctx| async move { json_ok(json!({})) })
         // Health / debug
-        .get_async("/api/ping", |_req, _ctx| async move { Response::ok("pong") })
+.get_async("/api/ping", |_req, _ctx| async move { Response::ok("pong") })
+        .get_async("/api/pipeline/status", pipeline_status)
         .get_async("/api/health", health)
         .get_async("/api/debug/feeds-due", debug_feeds_due)
         // Signal Strategies preview
@@ -117,6 +118,14 @@ async fn debug_feeds_due(_req: Request, ctx: RouteContext<()>) -> Result<Respons
     }
 }
 
+async fn pipeline_status(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+    match store.pipeline_status(now).await {
+        Ok(status) => json_ok(status),
+        Err(e) => json_err(500, &e.to_string()),
+    }
+}
 async fn health(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     match store.health_stats().await { Ok(s) => json_ok(json!({"status": "ok", "stats": s})), Err(e) => json_err(500, &e.to_string()) }

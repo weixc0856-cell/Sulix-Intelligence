@@ -295,6 +295,61 @@ impl Store {
         ).first::<ScoreDist>(None).await?.unwrap_or(ScoreDist { top: 0, medium: 0, low: 0, unscored: 0 }))
     }
 
+    
+    /// Pipeline health metrics for the operations dashboard.
+    pub async fn pipeline_status(&self, now: i64) -> Result<serde_json::Value, StoreError> {
+        let health = self.health_stats().await?;
+        let dist = self.score_distribution().await.unwrap_or(ScoreDist { top: 0, medium: 0, low: 0, unscored: 0 });
+
+        // Feeds that have never been fetched (last_fetched_at IS NULL) or have errors (status != 'active')
+        let problem_feeds: i64 = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM feeds WHERE status != 'active' OR last_fetched_at IS NULL"
+        ).first::<serde_json::Value>(None).await?
+            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+
+        // Articles with AI summaries completed
+        let with_summary: i64 = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM articles WHERE ai_summary IS NOT NULL AND ai_summary != ''"
+        ).first::<serde_json::Value>(None).await?
+            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+
+        // Articles with non-zero scores (affected by strategies)
+        let scored: i64 = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM articles WHERE score != 0"
+        ).first::<serde_json::Value>(None).await?
+            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+
+        // Articles with scores >= 8 (high signal)
+        let high_score: i64 = self.db.prepare(
+            "SELECT COUNT(*) AS cnt FROM articles WHERE score >= 8"
+        ).first::<serde_json::Value>(None).await?
+            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+
+        Ok(serde_json::json!({
+            "cron": {
+                "last_run_at": health.last_cron_run_at,
+                "healthy": health.last_cron_run_at.map_or(false, |ts| now - ts < 3600),
+            },
+            "feeds": {
+                "total": health.feed_count,
+                "active": health.active_feed_count,
+                "problem_feeds": problem_feeds,
+            },
+            "articles": {
+                "total": health.article_count,
+                "with_summary": with_summary,
+                "scored": scored,
+                "high_score": high_score,
+                "unscored": dist.unscored,
+            },
+            "embedding_coverage": {
+                "total": health.article_count,
+                "embedded": 0,
+                "pending": health.article_count,
+            },
+        }))
+    }
+
     pub async fn article_trend(&self, days: i64) -> Result<Vec<DayCount>, StoreError> {
         Ok(self.db.prepare(
             "SELECT DATE(published_at, 'unixepoch') AS day, COUNT(*) AS cnt FROM articles WHERE published_at IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT ?1",
@@ -537,5 +592,6 @@ impl Store {
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
     }
 }
+
 
 
