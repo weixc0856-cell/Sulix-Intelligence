@@ -1,37 +1,33 @@
 name: Deploy backend Worker
 
 on:
+  pull_request:
+    branches: [master]
   push:
     branches: [master]
-  workflow_dispatch:
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-
       - uses: Swatinem/rust-cache@v2
-
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-
       - uses: Swatinem/rust-cache@v2
-
       - name: Cache worker-build binary
         uses: actions/cache@v4
         with:
@@ -39,33 +35,35 @@ jobs:
             ~/.cargo/bin/worker-build
             ~/.cargo/bin/wasm-bindgen-cli
           key: worker-build-${{ runner.os }}
-
       - name: Install worker-build
         run: which worker-build || cargo install worker-build
-
       - name: Build Worker
         run: worker-build --release
         working-directory: crates/worker-entry
-
       - name: Deploy to Cloudflare Workers
         working-directory: crates/worker-entry
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@latest deploy
 
-      - name: Health check
+      - name: Smoke test — health
         run: |
-          echo "Checking /api/health..."
           for i in $(seq 1 5); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://sulix-feed-worker.weixc0856.workers.dev/api/health" --connect-timeout 10)
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Health check passed (HTTP $STATUS)"
-              curl -s "https://sulix-feed-worker.weixc0856.workers.dev/api/health"
-              echo ""
-              exit 0
-            fi
-            echo "  Attempt $i/5: HTTP $STATUS, waiting..."
-            sleep 5
+            if [ "$STATUS" = "200" ]; then echo "✅ Health check OK (HTTP $STATUS)"; curl -s "https://sulix-feed-worker.weixc0856.workers.dev/api/health"; echo ""; exit 0; fi
+            echo "  Attempt $i/5: HTTP $STATUS, waiting..."; sleep 5
           done
-          echo "❌ Health check failed after 5 attempts"
-          exit 1
+          echo "❌ Health check failed after 5 attempts"; exit 1
+
+      - name: Smoke test — semantic search
+        run: |
+          RESP=$(curl -s -X POST "https://sulix-feed-worker.weixc0856.workers.dev/api/articles/search" \
+            -H "Content-Type: application/json" \
+            -d '{"q":"AI infrastructure","mode":"semantic","limit":1}')
+          if echo "$RESP" | grep -q '"mode":"semantic"'; then
+            echo "✅ Semantic search OK"
+            echo "$RESP" | head -c 200
+            echo ""
+          else
+            echo "❌ Semantic search failed: $RESP"; exit 1
+          fi
