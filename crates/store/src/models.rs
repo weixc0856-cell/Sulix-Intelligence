@@ -137,9 +137,11 @@ pub struct SignalStrategy {
     pub signal_type: Option<String>,
     pub rule_json: String,
     pub audience_tag: String,
+    #[serde(default)]
     pub score_delta: f64,
     pub enabled: bool,
     pub created_at: i64,
+    #[serde(default)]
     pub updated_at: i64,
 }
 
@@ -148,6 +150,7 @@ pub struct SignalStrategy {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PreviewRequest {
     pub condition: serde_json::Value,
+    #[serde(default)]
     pub score_delta: f64,
     pub signal_type: Option<String>,
 }

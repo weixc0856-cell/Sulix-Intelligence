@@ -9,6 +9,7 @@ mod models;
 pub use models::*;
 
 use serde::Deserialize;
+use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
 use worker::D1Database;
 
@@ -523,7 +524,7 @@ impl Store {
         Ok(signals)
     }
 
-    pub async fn list_rules(&self) -> Result<Vec<SignalStrategy>, StoreError> {
+    pub async fn list_rules(&self) -> Result<Vec<Value>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC",
         ).all().await?.results()?)
