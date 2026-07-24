@@ -54,13 +54,13 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
                 match vectorize::upsert_vector(&vectorize, &record).await {
                     Ok(_) => processed += 1,
                     Err(e) => {
-                        console_log!("  upsert failed for article {}: {e}", article.id);
+                        console_log!("[Sulix:rebuild] upsert failed for article {}: {e:?}", article.id);
                         errors += 1;
                     }
                 }
             }
             Err(e) => {
-                console_log!("  embedding failed for article {}: {e}", article.id);
+                console_log!("[Sulix:rebuild] embedding failed for article {}: {e}", article.id);
                 errors += 1;
             }
         }
