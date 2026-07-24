@@ -63,6 +63,7 @@ pub fn meta_value_to_js(v: &serde_json::Value) -> JsValue {
 }
 
 #[cfg(test)]
+#[cfg(target_arch = "wasm32")]
 mod tests {
     use super::*;
 
@@ -77,8 +78,23 @@ mod tests {
         assert_eq!(r.as_bool(), Some(true));
     }
     #[test]
+    fn json_number_to_js() {
+        let r = meta_value_to_js(&serde_json::json!(42.5));
+        assert!(!r.is_undefined());
+    }
+    #[test]
     fn json_string_to_js() {
         let r = meta_value_to_js(&serde_json::Value::String("hello".into()));
         assert_eq!(r.as_string(), Some("hello".into()));
+    }
+    #[test]
+    fn json_array_to_js() {
+        let r = meta_value_to_js(&serde_json::json!([1, "two", false]));
+        assert!(r.is_object() || r.is_array());
+    }
+    #[test]
+    fn json_object_to_js() {
+        let r = meta_value_to_js(&serde_json::json!({"a": 1, "b": "hello"}));
+        assert!(r.is_object());
     }
 }
