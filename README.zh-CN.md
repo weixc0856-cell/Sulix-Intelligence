@@ -4,146 +4,154 @@
 
 # Sulix Intelligence
 
-> **全自动认知引擎 — 个人创业者的战略决策操作系统。**
+> RSS Feed + AI Digest — 全量部署于 Cloudflare Workers 之上。
 
-Sulix Intelligence 将原始信号转化为结构化**战略记忆**—— Signal → Assessment → Decision → Outcome。回答的不是「发生了什么」，而是「这件事是否改变我未来 6 个月的决策」。
-
-```
-原始信号 (RSS/USPTO/Reddit)
-    ↓
-SignalClassificationStep — Fast Path (规则) | Slow Path (LLM)
-    ↓
-ThesisGenerationStep — 匹配已有 | LLM 生成新判断
-    ↓
-DecisionMappingStep — RuleEngine + 可选 LlmJudge
-    ↓
-PipelineStats + MDX 输出
-```
+订阅 RSS/Atom 源，通过规则引擎对文章进行评分，经由 DeepSeek V4 Flash 摘要和打标，最终呈现为精选情报流。管线指标和可观测性通过 KV 逐周期记录。
 
 ## 架构
 
 ```
-crates/                    cargo run -p sulix-cli
-├── sulix-contract/       ← 层间契约类型 (Observation/Signal/Thesis/Decision)
-├── sulix-config/         ← TOML 配置加载
-├── sulix-llm/            ← LLM Provider (client/retry/api/parser/dispatch/audit)
-├── sulix-intelligence/   ← 认知管线 (PipelineStep trait + 3 步骤)
-├── sulix-observation/    ← 数据源适配器 (RSS/Reddit/USPTO)
-└── sulix-cli/            ← 命令行入口 (sulix-cli + intel-pipeline)
+Cron 触发器（每 30 分钟）→ FETCH_QUEUE → 队列消费者
+  → RSS 抓取 → D1 存储 → 规则引擎 → AI 管线 → Vectorize 索引
+  → KV 管线指标 → /api/pipeline/status
+
+HTTP (Worker Router) ←─ service binding ─→ Astro 前端 (Worker)
 ```
 
-## 三仓储架构
+### Crate 依赖图
 
-| 仓库 | 职责 | 技术栈 |
-|------|------|--------|
-| **sulix-engine** ← 本仓库 | 数据采集、分析、战略记忆 | Rust + DeepSeek API |
-| [sulix-web](https://github.com/weixc0856-cell/Intel-Web) | UI 壳、导航、UX | Astro + Tailwind |
-| **sulix-docs** | 产品决策、架构、ADR | Obsidian Markdown |
+```
+worker-entry → api → store → worker (D1, Queues, Router)
+            → fetcher → worker, feed-rs
+            → rules（纯逻辑 — 无 worker 依赖）
+            → ai-pipeline → store（通过 StoreBackend trait）, Summarizer trait
+            → vectorize（共享 wasm 绑定）
+api → store, search, rules, embedding, vectorize
+store → worker (D1Database)
+```
 
-## 三层产品
+## Crate 一览
 
-| 产品 | 目标 | 价格 |
-|------|------|------|
-| **News Layer** | 获客 | $0 |
-| **Research Layer** | 收入 | $99-$4999 |
-| **Memory Layer** | 护城河 | 不对外 |
+| Crate | 用途 |
+|---|---|
+| `store` | D1 访问层（feeds、articles、CRUD、健康检查）+ `StoreBackend` trait + `MemoryStore` 测试实现 |
+| `vectorize` | 共享 `#[wasm_bindgen]` 绑定 — Cloudflare Vectorize（upsert + query + delete） |
+| `fetcher` | RSS/Atom 抓取 + SSRF 防护 + 全文提取（按源开启）+ AbortSignal 超时 |
+| `rules` | 评分引擎（关键词匹配、来源过滤、AND/OR）— 纯逻辑，单元测试覆盖 |
+| `ai-pipeline` | `Summarizer` / `HttpClient` trait + `HttpSummarizer`（兼容 OpenAI 协议）+ 标签归一化 |
+| `search` | D1 FTS5 关键词搜索 + 可选标签/分类过滤 |
+| `embedding` | Workers AI 嵌入向量（bge-large-en-v1.5） |
+| `api` | HTTP 路由 — 健康检查、仪表盘、标签、feeds CRUD、文章、策略、管线状态 |
+| `worker-entry` | `#[event(fetch/scheduled/queue)]` — Workers 入口 + 管线指标收集 |
+
+## 关键设计决策
+
+- **Cloudflare Workers**（非 VPS）— 单人运维成本可控，免费套餐，原生 D1/Queues/R2
+- **D1 + FTS5**（非 Postgres/Meilisearch）— CF 生态内唯一的结构化存储方案，通过触发器维护全文索引
+- **Cloudflare Queues**（非同步 cron 循环）— 每源隔离，内置重试，不存在超时风险
+- **Astro 服务端渲染 + service binding**（非静态站点）— 每次请求获取最新数据，无需重建即可展示新文章
+- **worker::Router**（非 Axum）— `worker::Env`/`D1Database` 不支持 `Send`/`Sync`；`worker::Router` 专为此场景设计
+- **StoreBackend trait** — `D1Store`（生产环境）与 `MemoryStore`（测试环境）通过 trait 互换；管线对后端实现无感
+- **SSRF 防护** — 抓取器拦截 IP 字面量与本地回环别名 URL；DNS 重绑定为已知局限
+
+## 管线流程
+
+```
+crates/fetcher/          — RSS/Atom 抓取 → 全文提取（可选）→ Article
+    ↓
+crates/store/            — D1 去重 + 持久化
+    ↓
+crates/rules/            — 规则评分（关键词、来源、AND/OR）
+    ↓
+crates/ai-pipeline/      — LLM 摘要 + 标签归一化
+    ↓
+crates/embedding/ + crates/vectorize/ — 生成向量 → 存入 Vectorize 索引
+    ↓
+KV 管线指标               — 每周期执行时间、文章数、LLM 调用次数
+```
 
 ## 快速开始
 
 ```bash
-# 1. 编译
-git clone https://github.com/weixc0856-cell/Sulix-Intelligence.git
-cd Sulix-Intelligence
-cp config.example.toml config.toml
-cargo build --release -p sulix-cli
+# 后端（需要 wasm32-unknown-unknown 目标）
+cargo check --workspace
+cargo test --workspace              # 100+ 单元测试
+cargo clippy --workspace -- -D warnings
+cargo fmt --check
 
-# 2. 运行（需要 DEEPSEEK_API_KEY）
-export DEEPSEEK_API_KEY="sk-..."
-cargo run -p sulix-cli --release
-
-# 3. 管线独立调试（使用 mock 输入）
-cargo run --bin intel-pipeline -- --input tests/fixtures/observation.json
+cargo install worker-build          # 首次安装
+cd crates/worker-entry
+worker-build --release
+npx wrangler deploy -c wrangler.toml
 ```
 
-## 管线
+## API 端点
+
+| 端点 | 说明 |
+|---|---|
+| `GET /api/health` | 源/文章/Cron 统计 |
+| `GET /api/dashboard` | 健康检查 + 每源统计 |
+| `GET /api/pipeline/status` | 管线健康 + 执行耗时 |
+| `GET /api/tags` | 聚合标签云（含计数） |
+| `GET/POST /api/feeds` | 列出 / 创建订阅源 |
+| `GET/PUT/DELETE /api/feeds/:id` | 读取 / 更新 / 软删除 |
+| `GET /api/articles/latest` | 最新文章（?tag=, ?limit=） |
+| `GET /api/articles/trending` | 高分文章（score > 0） |
+| `GET /api/articles/search?q=` | FTS5 关键词 + 语义搜索 |
+| `GET /api/articles/:id` | 文章详情 |
+| `GET /api/articles/:id/content` | 文章全文（来自 R2） |
+| `GET /api/articles/:id/related` | 按共享标签推荐相关文章 |
+| `GET /api/articles/:id/adjacent` | 上一篇 / 下一篇 |
+| `GET/POST/PUT/DELETE /api/rules` | 过滤/评分规则 CRUD |
+| `POST /api/strategies/preview` | 预览策略影响 |
+| `POST /api/admin/rebuild-embeddings` | 批量重建嵌入向量 |
+
+## CI/CD
+
+推送至 `master` 分支 → GitHub Actions：
+1. `cargo clippy --workspace -D warnings`
+2. `cargo test --workspace`
+3. `worker-build --release`
+4. `wrangler deploy`
+5. 冒烟测试（健康检查 + 语义搜索）
+
+所需 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
+
+## 前端
+
+[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 前端，以 Cloudflare Worker 形式部署，通过 service binding 连接后端 API。功能包括语义搜索、深色模式、标签云、热门文章、订阅源管理、信号策略与书签。
+
+前端仓库：[weixc0856-cell/Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
+
+## 项目结构
 
 ```
-crates/sulix-observation/     — 数据源采集 (RSS / USPTO / Reddit)
-    ↓  RawSignal → Article → Observation
-    ↓
-crates/sulix-cli/src/agent/  — Signal Agent: 抓取 → SQLite 去重 → 丰富
-    ↓  Vec<Observation>
-    ↓
-crates/sulix-intelligence/
-    │
-    ├── SignalClassificationStep  — Fast Path (规则) | Slow Path (LLM 批处理)
-    │   observation → Signal { importance, domain, category, why }
-    │
-    ├── ThesisGenerationStep     — 匹配已有 | LLM 生成新 Thesis
-    │   signal → Thesis { claim, confidence, evidence, status }
-    │
-    └── DecisionMappingStep      — RuleEngine + 可选 LlmJudge
-        thesis → Decision { action, horizon, confidence, reasoning }
-    ↓
-    后处理: calibration (LLM 扎心问题) + summary (规则摘要)
-    ↓
-    MDX 输出: thesis/{slug}.md + decision/{slug}.md
+D:\Project\Sulix Intelligence（Rust 工作区 — 后端）
+├── Cargo.toml               ← 工作区根配置（9 个成员 crate）
+├── migrations/
+│   └── 0001_init.sql        ← D1 数据库模式（feeds, articles, filter_rules）
+├── crates/
+│   ├── store/               ← D1 访问层 + StoreBackend trait + MemoryStore
+│   ├── fetcher/             ← RSS/Atom 抓取 + SSRF 防护 + AbortSignal 超时
+│   ├── rules/               ← 过滤/评分引擎（纯逻辑，单元测试覆盖）
+│   ├── ai-pipeline/         ← AI 摘要 trait + HttpSummarizer + 标签归一化
+│   ├── search/              ← FTS5 搜索抽象 + WHERE 条件构建器（已测试）
+│   ├── embedding/           ← Workers AI 嵌入向量（bge-large-en-v1.5）
+│   ├── vectorize/           ← Vectorize 共享 wasm 绑定（upsert/query/delete）
+│   ├── api/                 ← HTTP 路由（worker::Router）
+│   └── worker-entry/        ← Workers 入口（HTTP + Cron + Queue + 指标）
+
+D:\Project\intel-web（Astro — 前端）
+├── astro.config.mjs         ← @astrojs/cloudflare, server 模式
+├── tailwind.config.mjs      ← "Informed Modernity" 设计系统
+├── wrangler.toml             ← Worker 配置，指向 API Worker 的 service binding
+└── src/
+    ├── pages/               ← 17 个路由页面 + API 代理
+    ├── components/          ← 15 个 Astro 组件
+    ├── layouts/             ← Base → Marketing / Reader 布局层级
+    ├── lib/api/             ← 按领域拆分的 API 客户端
+    └── styles/              ← Tailwind + 自定义实用类
 ```
-
-## 代码结构
-
-```
-crates/
-├── sulix-contract/     — 层间契约类型 (7 模型: Observation/Signal/Thesis/Decision/Theme/Belief/Reflection)
-├── sulix-config/       — TOML 配置加载 (LlmConfig, SourceConfig, OutputConfig)
-├── sulix-llm/          — LLM Provider (client/retry/api/parser/dispatch/audit — 7 子模块)
-├── sulix-intelligence/ — 认知管线 (PipelineStep<Observation, Signal, Thesis, Decision>)
-│   ├── step.rs          — PipelineStep trait + PipelineStats
-│   ├── signal_classification.rs — 双路径分类
-│   ├── thesis_generation.rs    — 标题重叠 + LLM 生成
-│   ├── decision_mapping.rs     — RuleEngine + 平滑 + 稳定性
-│   ├── loader.rs        — Memory DB 桥接 + load_last_decisions()
-│   └── output.rs        — MDX 渲染
-├── sulix-observation/  — 数据源适配器 (RSS/Reddit/USPTO) + fetcher + 客户端缓存
-└── sulix-cli/          — 入口点: `cargo run -p sulix-cli` | `cargo run --bin intel-pipeline`
-    ├── src/main.rs              — 生产管线入口
-    ├── src/bin/intel_pipeline.rs — 独立管线调试器
-    ├── src/agent/signal.rs       — Signal Agent (抓取 → 去重)
-    ├── src/db.rs                — SQLite 去重数据库
-    └── src/entity.rs            — EntitySanctionDb (OpenCTI 风格)
-```
-
-## 关键架构模式
-
-- **PipelineStep trait**: 统一步骤抽象接口（参考 ripgrep Matcher trait）
-- **Builder 模式**: 每步有 XxxStepBuilder 和 build()（参考 ripgrep SearcherBuilder）
-- **Fast/Slow 双路径**: 规则分类（零 LLM）或 LLM 语义分类（参考 ripgrep is_line_by_line_fast）
-- **PipelineStats**: 运行时间 + 每步数量 + LLM 审计计数器
-
-## 配置
-
-| 配置段 | 用途 |
-|--------|------|
-| `[llm]` | API key、模型、端点 |
-| `[[sources]]` | 数据源 (名称、URL、分类、层级、评分) |
-| `[prompts]` | 各分析阶段的系统提示词 |
-| `[output]` | 输出路径 (vault_path, mdx_dir, frontend_public_dir) |
-| `[storage]` | data_dir 持久化状态 |
-| `[r2]` | Cloudflare R2 配置 (bucket, endpoint, public_url) |
-
-## 部署
-
-### CI 管线 (GitHub Actions)
-
-```yaml
-# .github/workflows/cron_brief.yml
-# 每日：cargo run -p sulix-cli --release → R2 → sulix-web 构建 → CF Pages
-```
-
-所需 Secrets：
-- `DEEPSEEK_API_KEY` — LLM 提供商
-- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ENDPOINT` — R2 存储
-- `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` — Pages 部署
 
 ## 许可证
 
