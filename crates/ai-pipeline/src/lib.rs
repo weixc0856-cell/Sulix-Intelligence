@@ -13,6 +13,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::{StoreBackend, StoreError};
 
+pub mod tag_normalizer;
+
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
     #[error("summarizer error: {0}")]
@@ -63,7 +65,8 @@ pub async fn process_article(
     score: f64,
 ) -> Result<SummaryResult, PipelineError> {
     let result = summarizer.summarize(title, body).await?;
-    let tags_json = serde_json::to_string(&result.tags).unwrap_or_else(|_| "[]".to_string());
+    let normalized = tag_normalizer::normalize_tags(&result.tags);
+    let tags_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
     let vector_id = format!("article-{article_id}");
     store.set_ai_summary(article_id, &result.summary, &tags_json, &vector_id, score).await?;
     Ok(result)
