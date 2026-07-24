@@ -36,7 +36,7 @@ pub async fn preview(mut req: Request, ctx: RouteContext<()>) -> Result<Response
     // Fetch recent articles (max 500, default 100)
     let articles = match store.recent_articles_for_preview(100).await {
         Ok(a) => a,
-        Err(e) => return json_err(500, &e.to_string()),
+        Err(e) => return crate::json_err_internal(&e.to_string()),
     };
 
     let total = articles.len() as i64;

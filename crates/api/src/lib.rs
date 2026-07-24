@@ -56,6 +56,13 @@ fn json_err(status: u16, msg: &str) -> Result<Response> {
     cors_headers(&mut resp);
     Ok(resp)
 }
+
+/// Log an internal error server-side and return a generic 500 response.
+/// Never passes internal details to the HTTP client.
+pub fn json_err_internal(msg: &str) -> Result<Response> {
+    console_log!("[Sulix:api] internal error: {msg}");
+    json_err(500, "Internal server error")
+}
 fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> {
     ctx.param(name)?.parse().ok()
 }
@@ -131,7 +138,7 @@ async fn debug_feeds_due(_req: Request, ctx: RouteContext<()>) -> Result<Respons
         Ok(feeds) => json_ok(
             json!({"now": now, "feeds_due": feeds.len(), "feeds": feeds.iter().map(|f| json!({"id": f.id, "title": f.title, "last_fetched_at": f.last_fetched_at, "fetch_interval_sec": f.fetch_interval_sec, "extraction_level": f.extraction_level})).collect::<Vec<_>>()}),
         ),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -150,14 +157,14 @@ async fn pipeline_status(_req: Request, ctx: RouteContext<()>) -> Result<Respons
             }
             json_ok(status)
         }
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 async fn health(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     match store.health_stats().await {
         Ok(s) => json_ok(json!({"status": "ok", "stats": s})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -195,7 +202,7 @@ async fn categories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
             }
             json_ok(result)
         }
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -208,7 +215,7 @@ async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Re
             "generated_at": fmt_datetime_iso(now),
             "signals": signals,
         })),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -229,7 +236,7 @@ async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
             }
             json_ok(result)
         }
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -239,7 +246,7 @@ async fn feeds_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     match store.all_feeds(status_filter.as_deref()).await {
         Ok(list) => json_ok(json!({"feeds": list})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -252,7 +259,7 @@ async fn feeds_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     match store.get_feed(id).await {
         Ok(Some(feed)) => json_ok(json!({"feed": feed})),
         Ok(None) => json_err(404, "feed not found"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -287,7 +294,7 @@ async fn feeds_create(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
             _ => json_ok(json!({"id": id})),
         },
         Ok(None) => json_err(409, "feed with this URL already exists"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -312,7 +319,7 @@ async fn feeds_update(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
     };
     if let Some(ref status) = body.status {
         if let Err(e) = store.set_feed_status(id, status).await {
-            return json_err(500, &e.to_string());
+            return json_err_internal(&e.to_string());
         }
     }
     if let Err(e) = store
@@ -325,12 +332,12 @@ async fn feeds_update(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         )
         .await
     {
-        return json_err(500, &e.to_string());
+        return json_err_internal(&e.to_string());
     }
     match store.get_feed(id).await {
         Ok(Some(feed)) => json_ok(json!({"feed": feed})),
         Ok(None) => json_err(404, "feed not found"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -342,7 +349,7 @@ async fn feeds_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
     };
     match store.set_feed_status(id, "inactive").await {
         Ok(()) => json_ok(json!({"status": "deleted", "id": id})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -354,7 +361,7 @@ async fn trending(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let total = store.trending_count().await.unwrap_or(0);
     match store.trending_articles(limit, offset).await {
         Ok(articles) => json_ok(json!({"articles": articles, "total": total, "limit": limit, "offset": offset})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -368,22 +375,22 @@ async fn article_content(_req: Request, ctx: RouteContext<()>) -> Result<Respons
         Ok(Some(k)) => {
             let bucket = match ctx.env.bucket("RAW_CONTENT") {
                 Ok(b) => b,
-                Err(e) => return json_err(500, &format!("RAW_CONTENT bucket: {e}")),
+                Err(e) => return json_err_internal(&format!("RAW_CONTENT bucket: {e}")),
             };
             match bucket.get(&k).execute().await {
                 Ok(Some(obj)) => match obj.body() {
                     Some(body) => match body.text().await {
                         Ok(t) => json_ok(json!({"id": id, "content": t, "format": "html", "source": "r2"})),
-                        Err(e) => json_err(500, &format!("body read: {e}")),
+                        Err(e) => json_err_internal(&format!("body read: {e}")),
                     },
                     None => json_err(500, "R2 object has no body"),
                 },
                 Ok(None) => json_err(404, "content not found in storage"),
-                Err(e) => json_err(500, &format!("R2 read: {e}")),
+                Err(e) => json_err_internal(&format!("R2 read: {e}")),
             }
         }
         Ok(None) => json_err(404, "no raw content for this article"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -396,7 +403,7 @@ async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response
     match store.article_detail(id).await {
         Ok(Some(a)) => json_ok(json!({"article": a})),
         Ok(None) => json_err(404, "not found"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -413,7 +420,7 @@ async fn articles_batch(req: Request, ctx: RouteContext<()>) -> Result<Response>
     }
     match store.articles_by_ids(&ids).await {
         Ok(articles) => json_ok(json!({"articles": articles})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -425,7 +432,7 @@ async fn article_adjacent(_req: Request, ctx: RouteContext<()>) -> Result<Respon
     };
     match store.adjacent_articles(id).await {
         Ok((prev, next)) => json_ok(json!({"prev": prev, "next": next})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -437,7 +444,7 @@ async fn article_related(_req: Request, ctx: RouteContext<()>) -> Result<Respons
     };
     match store.related_articles(id, 6).await {
         Ok(articles) => json_ok(json!({"articles": articles})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -466,26 +473,26 @@ async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
                 }
                 json_ok(result)
             }
-            Err(e) => json_err(500, &e.to_string()),
+            Err(e) => json_err_internal(&e.to_string()),
         }
     } else {
         let store = Store::new(ctx.env.d1("DB")?);
         if let Some(ref tag) = tag {
             return match store.articles_by_tag(tag, limit, offset).await {
                 Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
-                Err(e) => json_err(500, &e.to_string()),
+                Err(e) => json_err_internal(&e.to_string()),
             };
         }
         if let Some(ref cat) = category {
             return match store.articles_by_category(cat, limit, offset).await {
                 Ok(a) => json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
-                Err(e) => json_err(500, &e.to_string()),
+                Err(e) => json_err_internal(&e.to_string()),
             };
         }
         let total = store.article_count().await.unwrap_or(0);
         match store.latest_articles(limit, offset).await {
             Ok(a) => json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
-            Err(e) => json_err(500, &e.to_string()),
+            Err(e) => json_err_internal(&e.to_string()),
         }
     }
 }
@@ -508,7 +515,7 @@ async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response
 
     match search.search_filtered(&query, limit, offset, tag.as_deref(), category.as_deref(), sort.as_deref()).await {
         Ok(hits) => json_ok(json!({"results": hits, "total": total, "limit": limit, "offset": offset})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -518,7 +525,7 @@ async fn rules_list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     match store.list_rules().await {
         Ok(list) => json_ok(json!({"rules": list})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -531,7 +538,7 @@ async fn rules_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     match store.get_rule(id).await {
         Ok(Some(rule)) => json_ok(json!({"rule": rule})),
         Ok(None) => json_err(404, "rule not found"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -588,7 +595,7 @@ async fn rules_create(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
             _ => json_ok(json!({"id": id})),
         },
         Ok(None) => json_err(500, "rule creation returned no id"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -637,12 +644,12 @@ async fn rules_update(mut req: Request, ctx: RouteContext<()>) -> Result<Respons
         )
         .await
     {
-        return json_err(500, &e.to_string());
+        return json_err_internal(&e.to_string());
     }
     match store.get_rule(id).await {
         Ok(Some(rule)) => json_ok(json!({"rule": rule})),
         Ok(None) => json_err(404, "rule not found"),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 
@@ -654,7 +661,7 @@ async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
     };
     match store.delete_rule(id).await {
         Ok(()) => json_ok(json!({"status": "disabled", "id": id})),
-        Err(e) => json_err(500, &e.to_string()),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }
 

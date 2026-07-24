@@ -6,7 +6,7 @@
 //! Workers AI, and upserts to Vectorize. Limited to 50 articles per
 //! call to stay within Workers CPU time limits.
 
-use crate::{json_err, json_ok};
+use crate::{json_err_internal, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use store::Store;
 use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
@@ -16,13 +16,13 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
     let store = Store::new(ctx.env.d1("DB")?);
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
-        Err(e) => return json_err(500, &format!("VECTORIZE binding: {e}")),
+        Err(e) => return json_err_internal(&format!("VECTORIZE binding: {e}")),
     };
     let embedder = WorkersAiEmbedder::new(&ctx.env);
 
     let articles = match store.pending_ai_articles(50).await {
         Ok(a) => a,
-        Err(e) => return json_err(500, &e.to_string()),
+        Err(e) => return json_err_internal(&e.to_string()),
     };
 
     if articles.is_empty() {
