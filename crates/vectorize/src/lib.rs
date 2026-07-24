@@ -29,7 +29,7 @@ impl EnvBinding for VectorizeIndex {
     const TYPE_NAME: &'static str = "VectorizeIndexImpl";
 }
 
-use js_sys::{Array, Object, Reflect};
+use js_sys::{Array, Float32Array, Object, Reflect};
 
 /// Convert a `serde_json::Value` to a `JsValue` for use with Vectorize metadata.
 /// Recursively handles Null, Bool, Number, String, Array, and Object.
@@ -60,6 +60,57 @@ pub fn meta_value_to_js(v: &serde_json::Value) -> JsValue {
             obj.into()
         }
     }
+}
+
+/// A single vector record to be upserted into a Vectorize index.
+pub struct VectorRecord {
+    /// Namespaced ID, e.g. "article-{id}".
+    pub id: String,
+    /// Float32 embedding values.
+    pub values: Vec<f32>,
+    /// Optional metadata attached to the vector.
+    pub metadata: Option<VectorMetadata>,
+}
+
+/// Structured metadata for a Vectorize vector.
+pub struct VectorMetadata {
+    pub article_id: i64,
+    pub feed_id: Option<i64>,
+    pub published_at: Option<i64>,
+}
+
+/// Upsert a single embedding vector to a Vectorize index.
+///
+/// Builds a Float32Array from `record.values`, attaches metadata
+/// as a JS Object when present, then delegates to `idx.upsert()`.
+pub async fn upsert_vector(
+    idx: &VectorizeIndex,
+    record: &VectorRecord,
+) -> Result<(), String> {
+    let vec_obj = Object::new();
+    let _ = Reflect::set(&vec_obj, &"id".into(), &record.id.clone().into());
+
+    let values = Float32Array::new_with_length(record.values.len() as u32);
+    for (i, v) in record.values.iter().enumerate() {
+        values.set_index(i as u32, *v);
+    }
+    let _ = Reflect::set(&vec_obj, &"values".into(), &values.into());
+
+    if let Some(ref meta) = record.metadata {
+        let meta_obj = Object::new();
+        let _ = Reflect::set(&meta_obj, &"article_id".into(), &JsValue::from_f64(meta.article_id as f64));
+        if let Some(fid) = meta.feed_id {
+            let _ = Reflect::set(&meta_obj, &"feed_id".into(), &JsValue::from_f64(fid as f64));
+        }
+        if let Some(ts) = meta.published_at {
+            let _ = Reflect::set(&meta_obj, &"published_at".into(), &JsValue::from_f64(ts as f64));
+        }
+        let _ = Reflect::set(&vec_obj, &"metadata".into(), &meta_obj.into());
+    }
+
+    let vectors = Array::new();
+    vectors.push(&vec_obj);
+    idx.upsert(vectors.into()).await.map(|_| ()).map_err(|e| format!("{e:?}"))
 }
 
 #[cfg(test)]
