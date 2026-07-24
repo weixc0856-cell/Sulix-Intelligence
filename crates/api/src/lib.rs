@@ -8,12 +8,12 @@ use serde_json::{json, Value};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 // ---- KV cache helpers ---
-async fn cache_get(env: &Env, key: &str) -> Option<String> {
+pub(crate) async fn cache_get(env: &Env, key: &str) -> Option<String> {
     let kv = env.kv("CACHE").ok()?;
     kv.get(key).text().await.ok().flatten()
 }
 
-async fn cache_put(env: &Env, key: &str, value: &str, ttl: u64) {
+pub(crate) async fn cache_put(env: &Env, key: &str, value: &str, ttl: u64) {
     if let Ok(kv) = env.kv("CACHE") {
         if let Ok(builder) = kv.put(key, value) {
             let _ = builder.expiration_ttl(ttl).execute().await;
@@ -24,6 +24,7 @@ async fn cache_put(env: &Env, key: &str, value: &str, ttl: u64) {
 use search::D1FtsSearch;
 use store::Store;
 
+mod briefing;
 mod rebuild;
 mod semantic;
 mod strategies;
@@ -36,7 +37,7 @@ fn parse_offset(url: &Url) -> u32 {
     url.query_pairs().find(|(k, _)| k == "offset").and_then(|(_, v)| v.parse().ok()).unwrap_or(0)
 }
 
-fn cors_headers(resp: &mut Response) {
+pub(crate) fn cors_headers(resp: &mut Response) {
     let h = resp.headers_mut();
     let _ = h.set("Access-Control-Allow-Origin", "*");
     let _ = h.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -46,7 +47,7 @@ fn cors_headers(resp: &mut Response) {
     let _ = h.set("Cache-Control", "public, max-age=60");
 }
 
-fn json_ok(v: Value) -> Result<Response> {
+pub(crate) fn json_ok(v: Value) -> Result<Response> {
     let mut resp = Response::from_json(&v)?;
     cors_headers(&mut resp);
     Ok(resp)
@@ -68,7 +69,7 @@ fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> {
 }
 
 /// Format a unix timestamp (seconds) as YYYY-MM-DD using js_sys::Date.
-fn fmt_date_ymd(ts_secs: i64) -> String {
+pub(crate) fn fmt_date_ymd(ts_secs: i64) -> String {
     let d = js_sys::Date::new(&JsValue::from_f64((ts_secs as f64) * 1000.0));
     format!("{:04}-{:02}-{:02}", d.get_full_year(), d.get_month() + 1, d.get_date())
 }
@@ -106,6 +107,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/categories", categories)
         .get_async("/api/tags", tags)
         .get_async("/api/intelligence/signals", intelligence_signals)
+        .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
         // Feed CRUD
         .get_async("/api/feeds", feeds_list)
         .post_async("/api/feeds", feeds_create)
