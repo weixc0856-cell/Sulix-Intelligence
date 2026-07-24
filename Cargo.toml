@@ -9,6 +9,7 @@ members = [
     "crates/embedding",
     "crates/api",
     "crates/worker-entry",
+    "crates/vectorize",
 ]
 
 [workspace.package]
@@ -29,6 +30,8 @@ scraper = "0.22"
 js-sys = "0.3"
 url = "2"
 console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2.126"
+wasm-bindgen-futures = "0.4"
 
 fetcher = { path = "crates/fetcher" }
 store = { path = "crates/store" }
@@ -37,6 +40,7 @@ ai-pipeline = { path = "crates/ai-pipeline" }
 embedding = { path = "crates/embedding" }
 search = { path = "crates/search" }
 api = { path = "crates/api" }
+vectorize = { path = "crates/vectorize" }
 
 [profile.release]
 panic = "unwind"

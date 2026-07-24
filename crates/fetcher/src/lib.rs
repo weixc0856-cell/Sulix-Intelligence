@@ -32,10 +32,9 @@ impl FetchError {
     /// would waste the queue's retry quota.
     pub fn is_transient(&self) -> bool {
         match self {
-            FetchError::Http(_) => true,       // network / connection level
+            FetchError::Http(_) => true, // network / connection level
             FetchError::Status(code) => {
-                *code >= 500
-                    || *code == 429             // rate limit, may lift
+                *code >= 500 || *code == 429 // rate limit, may lift
             }
             FetchError::Parse(_) => false,      // bad XML won't get better
             FetchError::Ssrf(_) => false,       // policy block, won't change
@@ -66,15 +65,10 @@ fn guard_public_url(url: &str) -> Result<(), FetchError> {
     let parsed = url::Url::parse(url).map_err(|e| FetchError::Ssrf(e.to_string()))?;
 
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(FetchError::Ssrf(format!(
-            "disallowed scheme: {}",
-            parsed.scheme()
-        )));
+        return Err(FetchError::Ssrf(format!("disallowed scheme: {}", parsed.scheme())));
     }
 
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| FetchError::Ssrf("missing host".into()))?;
+    let host = parsed.host_str().ok_or_else(|| FetchError::Ssrf("missing host".into()))?;
 
     if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") {
         return Err(FetchError::Ssrf(format!("localhost-alias host: {host}")));
@@ -100,7 +94,11 @@ fn guard_public_url(url: &str) -> Result<(), FetchError> {
 
 /// Low-level HTTP GET used by both `fetch_feed` and `extract_full_text`.
 /// Returns the full response so callers can choose between text/json/status.
-async fn http_get(url: &str, etag: Option<&str>, last_modified: Option<&str>) -> Result<(u16, String, Option<String>, Option<String>), FetchError> {
+async fn http_get(
+    url: &str,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) -> Result<(u16, String, Option<String>, Option<String>), FetchError> {
     guard_public_url(url)?;
 
     let mut init = RequestInit::new();
@@ -108,33 +106,23 @@ async fn http_get(url: &str, etag: Option<&str>, last_modified: Option<&str>) ->
 
     let headers = worker::Headers::new();
     if let Some(etag) = etag {
-        headers
-            .set("If-None-Match", etag)
-            .map_err(|e| FetchError::Http(e.to_string()))?;
+        headers.set("If-None-Match", etag).map_err(|e| FetchError::Http(e.to_string()))?;
     }
     if let Some(lm) = last_modified {
-        headers
-            .set("If-Modified-Since", lm)
-            .map_err(|e| FetchError::Http(e.to_string()))?;
+        headers.set("If-Modified-Since", lm).map_err(|e| FetchError::Http(e.to_string()))?;
     }
     init.with_headers(headers);
 
     let req = Request::new_with_init(url, &init).map_err(|e| FetchError::Http(e.to_string()))?;
 
-    let mut resp = Fetch::Request(req)
-        .send()
-        .await
-        .map_err(|e| FetchError::Http(e.to_string()))?;
+    let mut resp = Fetch::Request(req).send().await.map_err(|e| FetchError::Http(e.to_string()))?;
 
     let status = resp.status_code();
 
     let etag = resp.headers().get("etag").ok().flatten();
     let last_modified = resp.headers().get("last-modified").ok().flatten();
 
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| FetchError::Http(e.to_string()))?;
+    let body = resp.text().await.map_err(|e| FetchError::Http(e.to_string()))?;
 
     Ok((status, body, etag, last_modified))
 }
@@ -157,12 +145,7 @@ pub async fn fetch_feed(
 
     let feed = parser::parse(body.as_bytes())?;
 
-    Ok(FetchOutcome::Updated(Box::new(FetchedFeed {
-        feed,
-        raw_body: body,
-        etag,
-        last_modified,
-    })))
+    Ok(FetchOutcome::Updated(Box::new(FetchedFeed { feed, raw_body: body, etag, last_modified })))
 }
 
 /// Fetch the full text of a single article URL using CSS selectors.
@@ -179,15 +162,7 @@ pub async fn extract_full_text(url: &str) -> Result<String, FetchError> {
     let document = Html::parse_document(&body);
 
     // Ordered list of content selectors, from most specific to fallback.
-    let selectors = [
-        "article",
-        "main",
-        ".post-content",
-        ".entry-content",
-        "#content",
-        ".content",
-        ".article-body",
-    ];
+    let selectors = ["article", "main", ".post-content", ".entry-content", "#content", ".content", ".article-body"];
 
     for raw in &selectors {
         if let Ok(sel) = Selector::parse(raw) {
@@ -203,11 +178,8 @@ pub async fn extract_full_text(url: &str) -> Result<String, FetchError> {
 
     // Fallback: concatenate all <p> text.
     if let Ok(sel) = Selector::parse("p") {
-        let text: String = document
-            .select(&sel)
-            .map(|el| el.text().collect::<String>())
-            .collect::<Vec<_>>()
-            .join("\n\n");
+        let text: String =
+            document.select(&sel).map(|el| el.text().collect::<String>()).collect::<Vec<_>>().join("\n\n");
         let trimmed = text.split_whitespace().collect::<Vec<_>>().join(" ");
         if !trimmed.is_empty() {
             return Ok(trimmed);

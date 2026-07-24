@@ -12,3 +12,4 @@ serde.workspace = true
 serde_json.workspace = true
 js-sys.workspace = true
 embedding.workspace = true
+vectorize.workspace = true

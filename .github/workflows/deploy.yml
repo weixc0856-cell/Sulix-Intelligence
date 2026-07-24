@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  lint:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +17,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --workspace --all-features
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: lint
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

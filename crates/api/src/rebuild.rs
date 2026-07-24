@@ -1,4 +1,4 @@
-﻿//! Admin endpoint to trigger bulk embedding rebuild.
+//! Admin endpoint to trigger bulk embedding rebuild.
 //!
 //! POST /api/admin/rebuild-embeddings
 //!
@@ -9,23 +9,11 @@
 use crate::{json_err, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use store::Store;
+use vectorize::VectorizeIndex;
+use worker::wasm_bindgen::JsValue;
 use worker::*;
-use worker::wasm_bindgen::prelude::*;
-use worker::EnvBinding;
 
 use js_sys::{Array, Object, Reflect};
-
-#[wasm_bindgen]
-extern "C" {
-    pub type VectorizeIndex;
-
-    #[wasm_bindgen(method, catch)]
-    async fn upsert(this: &VectorizeIndex, vectors: JsValue) -> Result<JsValue, JsValue>;
-}
-
-impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "VectorizeIndexImpl";
-}
 
 pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -51,7 +39,8 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
     let mut errors = 0u64;
 
     for article in &articles {
-        let tags: Vec<String> = article.ai_tags.as_deref().and_then(|t| serde_json::from_str(t).ok()).unwrap_or_default();
+        let tags: Vec<String> =
+            article.ai_tags.as_deref().and_then(|t| serde_json::from_str(t).ok()).unwrap_or_default();
         let embed_text = build_embedding_text(&article.title, &article.ai_summary, &tags, None);
 
         match embedder.embed(&embed_text).await {
@@ -69,7 +58,11 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
                 let _ = Reflect::set(&meta_obj, &"embedding_model".into(), &"bge-large-en-v1.5".into());
                 let _ = Reflect::set(&meta_obj, &"embedding_version".into(), &JsValue::from_f64(1.0));
                 let _ = Reflect::set(&meta_obj, &"language".into(), &"en".into());
-                let _ = Reflect::set(&meta_obj, &"published_at".into(), &JsValue::from_f64(article.published_at.unwrap_or(0) as f64));
+                let _ = Reflect::set(
+                    &meta_obj,
+                    &"published_at".into(),
+                    &JsValue::from_f64(article.published_at.unwrap_or(0) as f64),
+                );
                 let _ = Reflect::set(&vec_obj, &"metadata".into(), &meta_obj.into());
 
                 let vectors = Array::new();

@@ -78,17 +78,10 @@ mod tests {
         let rule = Rule {
             name: "boost macro".into(),
             audience_tag: "default".into(),
-            condition: Condition::KeywordIncludes {
-                field: Field::Title,
-                keyword: "macro".into(),
-            },
+            condition: Condition::KeywordIncludes { field: Field::Title, keyword: "macro".into() },
             score_delta: 2.0,
         };
-        let article = ArticleInput {
-            title: "China Macro Outlook",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let article = ArticleInput { title: "China Macro Outlook", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&article, &[rule], "default"), 2.0);
     }
 
@@ -97,17 +90,10 @@ mod tests {
         let rule = Rule {
             name: "no politics".into(),
             audience_tag: "default".into(),
-            condition: Condition::KeywordExcludes {
-                field: Field::Title,
-                keyword: "politics".into(),
-            },
+            condition: Condition::KeywordExcludes { field: Field::Title, keyword: "politics".into() },
             score_delta: 1.0,
         };
-        let article = ArticleInput {
-            title: "Politics Today",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let article = ArticleInput { title: "Politics Today", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&article, &[rule], "default"), 0.0);
     }
 
@@ -116,16 +102,10 @@ mod tests {
         let rule = Rule {
             name: "only techcrunch".into(),
             audience_tag: "default".into(),
-            condition: Condition::SourceIn {
-                feed_urls: vec!["https://techcrunch.com/feed".into()],
-            },
+            condition: Condition::SourceIn { feed_urls: vec!["https://techcrunch.com/feed".into()] },
             score_delta: 3.0,
         };
-        let article = ArticleInput {
-            title: "A Startup",
-            summary: "",
-            feed_url: "https://techcrunch.com/feed",
-        };
+        let article = ArticleInput { title: "A Startup", summary: "", feed_url: "https://techcrunch.com/feed" };
         assert_eq!(score(&article, &[rule], "default"), 3.0);
     }
 
@@ -142,16 +122,8 @@ mod tests {
             },
             score_delta: 5.0,
         };
-        let match_both = ArticleInput {
-            title: "AI Macro Trends",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
-        let match_one = ArticleInput {
-            title: "AI Daily",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let match_both = ArticleInput { title: "AI Macro Trends", summary: "", feed_url: "https://example.com/feed" };
+        let match_one = ArticleInput { title: "AI Daily", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&match_both, std::slice::from_ref(&rule), "default"), 5.0);
         assert_eq!(score(&match_one, std::slice::from_ref(&rule), "default"), 0.0);
     }
@@ -169,11 +141,7 @@ mod tests {
             },
             score_delta: 2.0,
         };
-        let article = ArticleInput {
-            title: "Crypto Winter",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let article = ArticleInput { title: "Crypto Winter", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&article, &[rule], "default"), 2.0);
     }
 
@@ -182,17 +150,10 @@ mod tests {
         let rule = Rule {
             name: "only for devs".into(),
             audience_tag: "developer".into(),
-            condition: Condition::KeywordIncludes {
-                field: Field::Title,
-                keyword: "rust".into(),
-            },
+            condition: Condition::KeywordIncludes { field: Field::Title, keyword: "rust".into() },
             score_delta: 1.0,
         };
-        let article = ArticleInput {
-            title: "Rust is Fast",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let article = ArticleInput { title: "Rust is Fast", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&article, std::slice::from_ref(&rule), "default"), 0.0);
         assert_eq!(score(&article, std::slice::from_ref(&rule), "developer"), 1.0);
     }
@@ -213,11 +174,7 @@ mod tests {
                 score_delta: 3.0,
             },
         ];
-        let article = ArticleInput {
-            title: "AI Macro Outlook",
-            summary: "",
-            feed_url: "https://example.com/feed",
-        };
+        let article = ArticleInput { title: "AI Macro Outlook", summary: "", feed_url: "https://example.com/feed" };
         assert_eq!(score(&article, &rules, "default"), 5.0);
     }
 
@@ -271,7 +228,8 @@ mod tests {
             condition: Condition::KeywordIncludes { field: Field::Title, keyword: "safety".into() },
             score_delta: 3.0,
         };
-        let article = ArticleInput { title: "Other news", summary: "AI safety is important", feed_url: "https://example.com" };
+        let article =
+            ArticleInput { title: "Other news", summary: "AI safety is important", feed_url: "https://example.com" };
         assert_eq!(score(&article, &[rule], "default"), 0.0);
     }
 
@@ -294,7 +252,8 @@ mod tests {
             score_delta: 5.0,
         };
         let match_both = ArticleInput { title: "AI safety breakthrough", summary: "", feed_url: "https://example.com" };
-        let match_only_ai = ArticleInput { title: "AI performance gains", summary: "", feed_url: "https://example.com" };
+        let match_only_ai =
+            ArticleInput { title: "AI performance gains", summary: "", feed_url: "https://example.com" };
         assert_eq!(score(&match_both, std::slice::from_ref(&rule), "default"), 5.0);
         assert_eq!(score(&match_only_ai, std::slice::from_ref(&rule), "default"), 0.0);
     }

@@ -1,10 +1,14 @@
-﻿use async_trait::async_trait;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use worker::wasm_bindgen::JsValue;
 use worker::*;
 
-
-mod vectorize;
+use js_sys::{Array, Float32Array, Object, Reflect};
 use vectorize::VectorizeIndex;
+
+mod metrics;
+use metrics::PipelineMetrics;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
 use api::router;
@@ -21,19 +25,28 @@ struct WorkerHttpClient;
 #[async_trait(?Send)]
 impl HttpClient for WorkerHttpClient {
     async fn post_json(
-        &self, url: &str, headers: &[(String, String)], body: &serde_json::Value,
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        body: &serde_json::Value,
     ) -> Result<serde_json::Value, PipelineError> {
         use worker::{Fetch, Headers, Method, Request, RequestInit};
         let mut init = RequestInit::new();
         init.with_method(Method::Post);
         let wh = Headers::new();
-        for (k, v) in headers { wh.set(k, v).map_err(|e| PipelineError::Summarizer(e.to_string()))?; }
+        for (k, v) in headers {
+            wh.set(k, v).map_err(|e| PipelineError::Summarizer(e.to_string()))?;
+        }
         init.with_headers(wh);
         init.with_body(Some(serde_json::to_string(body).map_err(|e| PipelineError::Summarizer(e.to_string()))?.into()));
         let req = Request::new_with_init(url, &init).map_err(|e| PipelineError::Summarizer(e.to_string()))?;
         let mut resp = Fetch::Request(req).send().await.map_err(|e| PipelineError::Summarizer(e.to_string()))?;
         if resp.status_code() >= 400 {
-            return Err(PipelineError::Summarizer(format!("API returned {}: {}", resp.status_code(), resp.text().await.unwrap_or_default())));
+            return Err(PipelineError::Summarizer(format!(
+                "API returned {}: {}",
+                resp.status_code(),
+                resp.text().await.unwrap_or_default()
+            )));
         }
         resp.json::<serde_json::Value>().await.map_err(|e| PipelineError::Summarizer(e.to_string()))
     }
@@ -50,7 +63,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
     } else {
         let result = router().run(req, env).await;
-        if let Err(ref e) = result { console_log!("[ERROR] router.run failed: {e}"); }
+        if let Err(ref e) = result {
+            console_log!("[ERROR] router.run failed: {e}");
+        }
         result
     }
 }
@@ -59,7 +74,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
     console_log!("scheduled handler at ts={}", js_sys::Date::now());
-    if let Err(e) = process_all_feeds(&env).await { console_log!("scheduled handler failed: {e}"); }
+    if let Err(e) = process_all_feeds(&env).await {
+        console_log!("scheduled handler failed: {e}");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +92,8 @@ struct FeedContext<'a> {
     rules: &'a [Rule],
     has_rules: bool,
     now: i64,
+    /// Per-feed pipeline metrics accumulator.
+    metrics: RefCell<PipelineMetrics>,
 }
 
 /// Outcome of processing a single feed through the pipeline.
@@ -88,11 +107,15 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
     let do_ai = ctx.summarizer.is_some();
     match fetch_feed(&job.feed_url, job.prior_etag.as_deref(), job.prior_last_modified.as_deref()).await {
         Ok(FetchOutcome::NotModified) => {
+            let start = js_sys::Date::now();
             if let Err(e) = ctx.store.record_fetch_result(job.feed_id, ctx.now, None, None).await {
                 console_log!("    record_fetch_result failed: {e}");
             }
+            ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
+            ctx.metrics.borrow_mut().articles_fetched += 1;
         }
         Ok(FetchOutcome::Updated(fetched)) => {
+            ctx.metrics.borrow_mut().articles_fetched += 1;
             for entry in fetched.feed.entries {
                 let feed_summary = extract_body(&entry);
                 let mut body = feed_summary.clone();
@@ -104,17 +127,30 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
                     published_at: entry.published.map(|d| d.timestamp()).filter(|&ts| ts <= ctx.now),
                     raw_content_r2_key: None,
                 };
+                let start = js_sys::Date::now();
                 match ctx.store.insert_article(&article).await {
                     Ok(Some(article_id)) => {
+                        ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
+                        ctx.metrics.borrow_mut().articles_new += 1;
                         let article_score = if ctx.has_rules {
-                            score(&ArticleInput { title: &article.title, summary: &body, feed_url: &job.feed_url }, ctx.rules, "default")
-                        } else { 0.0 };
+                            score(
+                                &ArticleInput { title: &article.title, summary: &body, feed_url: &job.feed_url },
+                                ctx.rules,
+                                "default",
+                            )
+                        } else {
+                            0.0
+                        };
                         if job.extraction_level == "full_text" {
                             if let Some(ref url) = article.url {
+                                let fr_start = js_sys::Date::now();
                                 if let Ok(full_text) = fetcher::extract_full_text(url).await {
+                                    ctx.metrics.borrow_mut().record_ms("fetch", PipelineMetrics::since(fr_start));
                                     let r2_key = format!("articles/{article_id}");
                                     if let Some(ref bucket) = ctx.r2_bucket {
+                                        let r2_start = js_sys::Date::now();
                                         let _ = bucket.put(&r2_key, full_text.as_bytes().to_vec()).execute().await;
+                                        ctx.metrics.borrow_mut().record_ms("r2", PipelineMetrics::since(r2_start));
                                         let _ = ctx.store.set_raw_content_r2_key(article_id, Some(&r2_key)).await;
                                     }
                                     body = full_text;
@@ -123,33 +159,64 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
                         }
                         if do_ai {
                             if let Some(ref s) = ctx.summarizer {
-                                match process_article(ctx.store, s, article_id, &article.title, &body, article_score).await {
+                                let llm_start = js_sys::Date::now();
+                                match process_article(ctx.store, s, article_id, &article.title, &body, article_score)
+                                    .await
+                                {
                                     Ok(result) => {
+                                        ctx.metrics.borrow_mut().record_ms("llm", PipelineMetrics::since(llm_start));
                                         if !result.embedding.is_empty() {
                                             if let Some(ref idx) = ctx.vectorize {
-                                                upsert_vector(idx, article_id, &result.embedding);
+                                                let emb_start = js_sys::Date::now();
+                                                if let Err(e) = upsert_vector(idx, article_id, &result.embedding).await
+                                                {
+                                                    console_log!(
+                                                        "  vectorize upsert failed for article {article_id}: {e}"
+                                                    );
+                                                    ctx.metrics.borrow_mut().errors += 1;
+                                                }
+                                                ctx.metrics
+                                                    .borrow_mut()
+                                                    .record_ms("embedding", PipelineMetrics::since(emb_start));
                                             }
                                         }
                                     }
                                     Err(_) => {
+                                        ctx.metrics.borrow_mut().errors += 1;
                                         let excerpt = if body.len() > 500 { &body[..500] } else { &body };
                                         let _ = ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
                                     }
                                 }
                             }
                         } else if article_score != 0.0 {
-                            let _ = ctx.store.set_ai_summary(article_id, "", "[]", &format!("article-{article_id}"), article_score).await;
+                            let _ = ctx
+                                .store
+                                .set_ai_summary(article_id, "", "[]", &format!("article-{article_id}"), article_score)
+                                .await;
                         }
                     }
-                    Ok(None) => {}
-                    Err(e) => console_log!("    insert_article failed: {e}"),
+                    Ok(None) => {
+                        ctx.metrics.borrow_mut().articles_dup += 1;
+                    }
+                    Err(e) => {
+                        console_log!("    insert_article failed: {e}");
+                        ctx.metrics.borrow_mut().errors += 1;
+                    }
                 }
             }
-            let _ = ctx.store.record_fetch_result(job.feed_id, ctx.now, fetched.etag.as_deref(), fetched.last_modified.as_deref()).await;
+            let start = js_sys::Date::now();
+            let _ = ctx
+                .store
+                .record_fetch_result(job.feed_id, ctx.now, fetched.etag.as_deref(), fetched.last_modified.as_deref())
+                .await;
+            ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
         }
         Err(e) => {
             console_log!("    fetch_feed failed: {e}");
-            if !e.is_transient() { let _ = ctx.store.record_fetch_result(job.feed_id, ctx.now, None, None).await; }
+            ctx.metrics.borrow_mut().errors += 1;
+            if !e.is_transient() {
+                let _ = ctx.store.record_fetch_result(job.feed_id, ctx.now, None, None).await;
+            }
         }
     }
     Ok(())
@@ -159,28 +226,52 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
 /// Shared by the queue handler (individual messages) and the sync fallback (batch).
 /// Extracted to eliminate duplicate context-building code between queue/fallback paths.
 async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i64) -> Vec<FeedProcessResult> {
-    let store = match env.d1("DB") { Ok(d) => Store::new(d), Err(e) => { console_log!("D1 error: {e}"); return Vec::new(); } };
+    let store = match env.d1("DB") {
+        Ok(d) => Store::new(d),
+        Err(e) => {
+            console_log!("D1 error: {e}");
+            return Vec::new();
+        }
+    };
     let summarizer = try_build_summarizer(env);
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
     let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
     let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
+    let metrics = RefCell::new(PipelineMetrics::default());
     let ctx = FeedContext {
-        store: &store, summarizer: &summarizer, r2_bucket: &r2_bucket, vectorize: &vectorize,
-        rules: &rules, has_rules: !rules.is_empty(), now,
+        store: &store,
+        summarizer: &summarizer,
+        r2_bucket: &r2_bucket,
+        vectorize: &vectorize,
+        rules: &rules,
+        has_rules: !rules.is_empty(),
+        now,
+        metrics,
     };
 
     let mut results = Vec::with_capacity(feeds.len());
     for feed in feeds {
         let job = FetchJob {
-            feed_id: feed.id, feed_url: feed.url.clone(), prior_etag: feed.etag.clone(),
-            prior_last_modified: feed.last_modified.clone(), extraction_level: feed.extraction_level.clone(),
+            feed_id: feed.id,
+            feed_url: feed.url.clone(),
+            prior_etag: feed.etag.clone(),
+            prior_last_modified: feed.last_modified.clone(),
+            extraction_level: feed.extraction_level.clone(),
         };
         match process_one_feed(&ctx, env, &job).await {
             Ok(()) => results.push(FeedProcessResult { feed_id: feed.id, articles_processed: 0 }),
             Err(e) => console_log!("  feed {} pipeline error: {e}", feed.id),
         }
     }
+    // Persist metrics to KV so the API can serve them
+    if let Ok(cache) = env.kv("CACHE") {
+        let metrics_json = ctx.metrics.borrow().snapshot().to_string();
+        if let Ok(pb) = cache.put("pipeline_metrics", metrics_json) {
+            let _ = pb.execute().await;
+        }
+    }
+    console_log!("  metrics: {}", ctx.metrics.borrow().snapshot());
     results
 }
 
@@ -194,9 +285,16 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     let now = (js_sys::Date::now() / 1000.0) as i64;
     let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
     let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
+    let metrics = RefCell::new(PipelineMetrics::default());
     let feed_ctx = FeedContext {
-        store: &store, summarizer: &summarizer, r2_bucket: &r2_bucket, vectorize: &vectorize,
-        rules: &rules, has_rules: !rules.is_empty(), now,
+        store: &store,
+        summarizer: &summarizer,
+        r2_bucket: &r2_bucket,
+        vectorize: &vectorize,
+        rules: &rules,
+        has_rules: !rules.is_empty(),
+        now,
+        metrics,
     };
     for msg in batch.messages()?.iter() {
         let job = msg.body();
@@ -204,7 +302,16 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
         if let Err(e) = process_one_feed(&feed_ctx, &env, job).await {
             console_log!("  feed {} failed: {e}", job.feed_id);
             msg.retry();
-        } else { msg.ack(); }
+        } else {
+            msg.ack();
+        }
+    }
+    console_log!("  queue metrics: {}", feed_ctx.metrics.borrow().snapshot());
+    if let Ok(cache) = env.kv("CACHE") {
+        let metrics_json = feed_ctx.metrics.borrow().snapshot().to_string();
+        if let Ok(pb) = cache.put("pipeline_metrics", metrics_json) {
+            let _ = pb.execute().await;
+        }
     }
     Ok(())
 }
@@ -219,40 +326,72 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
     if let Some(ref q) = queue {
         for feed in &feeds {
             let job = FetchJob {
-                feed_id: feed.id, feed_url: feed.url.clone(), prior_etag: feed.etag.clone(),
-                prior_last_modified: feed.last_modified.clone(), extraction_level: feed.extraction_level.clone(),
+                feed_id: feed.id,
+                feed_url: feed.url.clone(),
+                prior_etag: feed.etag.clone(),
+                prior_last_modified: feed.last_modified.clone(),
+                extraction_level: feed.extraction_level.clone(),
             };
-            if let Err(e) = q.send(job).await { console_log!("  failed to enqueue feed {}: {e}", feed.id); }
+            if let Err(e) = q.send(job).await {
+                console_log!("  failed to enqueue feed {}: {e}", feed.id);
+            }
         }
     } else {
         console_log!("  FETCH_QUEUE not bound, processing via execute_feed_batch");
         execute_feed_batch(env, &feeds, now).await;
     }
 
-    if let Err(e) = store.expire_old_articles(now, 30).await { console_log!("expire_old_articles failed: {e}"); }
+    if let Err(e) = store.expire_old_articles(now, 30).await {
+        console_log!("expire_old_articles failed: {e}");
+    }
     Ok(())
 }
 
-fn upsert_vector(idx: &VectorizeIndex, article_id: i64, embedding: &[f32]) {
-    vectorize::upsert_vector_faf(idx, article_id, embedding);
+async fn upsert_vector(idx: &VectorizeIndex, article_id: i64, embedding: &[f32]) -> Result<(), String> {
+    let vec_obj = Object::new();
+    let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{article_id}").into());
+    let values = Float32Array::new_with_length(embedding.len() as u32);
+    for (i, v) in embedding.iter().enumerate() {
+        values.set_index(i as u32, *v);
+    }
+    let _ = Reflect::set(&vec_obj, &"values".into(), &values.into());
+    let metadata = Object::new();
+    let _ = Reflect::set(&metadata, &"article_id".into(), &JsValue::from_f64(article_id as f64));
+    let _ = Reflect::set(&vec_obj, &"metadata".into(), &metadata.into());
+    let vectors = Array::new();
+    vectors.push(&vec_obj);
+    idx.upsert(vectors.into()).await.map(|_| ()).map_err(|e| format!("{e:?}"))
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
-    let api_key = match env.secret("AI_API_KEY") { Ok(v) => v.to_string(), Err(_) => { console_log!("AI_API_KEY not set"); return None; } };
-    let base_url = env.var("AI_BASE_URL").ok().map(|v| v.to_string()).unwrap_or_else(|| "https://api.deepseek.com/v1".into());
+    let api_key = match env.secret("AI_API_KEY") {
+        Ok(v) => v.to_string(),
+        Err(_) => {
+            console_log!("AI_API_KEY not set");
+            return None;
+        }
+    };
+    let base_url =
+        env.var("AI_BASE_URL").ok().map(|v| v.to_string()).unwrap_or_else(|| "https://api.deepseek.com/v1".into());
     let chat_model = env.var("AI_CHAT_MODEL").ok().map(|v| v.to_string()).unwrap_or_else(|| "deepseek-v4-flash".into());
     let embedding_model = env.var("AI_EMBEDDING_MODEL").ok().map(|v| v.to_string()).unwrap_or_default();
     Some(HttpSummarizer::new(base_url, api_key, chat_model, embedding_model, Box::new(WorkerHttpClient)))
 }
 
 fn extract_body(entry: &feed_rs::model::Entry) -> String {
-    entry.summary.as_ref().map(|s| s.content.clone())
+    entry
+        .summary
+        .as_ref()
+        .map(|s| s.content.clone())
         .or_else(|| entry.content.as_ref().and_then(|c| c.body.clone()))
         .or_else(|| {
-            let texts: Vec<&str> = entry.media.iter()
-                .filter_map(|m| m.description.as_ref().map(|d| d.content.as_str()))
-                .collect();
-            if texts.is_empty() { None } else { Some(texts.join("\n")) }
+            let texts: Vec<&str> =
+                entry.media.iter().filter_map(|m| m.description.as_ref().map(|d| d.content.as_str())).collect();
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join("\n"))
+            }
         })
         .unwrap_or_default()
 }
@@ -269,18 +408,24 @@ struct FetchJob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use feed_rs::model::{Entry, Content};
+    use feed_rs::model::{Content, Entry};
 
     #[test]
     fn extract_body_from_content() {
-        let entry = Entry { content: Some(Content { body: Some("content".into()), ..Default::default() }), ..Default::default() };
+        let entry = Entry {
+            content: Some(Content { body: Some("content".into()), ..Default::default() }),
+            ..Default::default()
+        };
         assert_eq!(extract_body(&entry), "content");
     }
 
     #[test]
     fn extract_body_prefers_summary() {
         // Summary is accessed but needs proper MediaTypeBuf; use content-only entry
-        let entry = Entry { content: Some(Content { body: Some("fallback".into()), ..Default::default() }), ..Default::default() };
+        let entry = Entry {
+            content: Some(Content { body: Some("fallback".into()), ..Default::default() }),
+            ..Default::default()
+        };
         assert_eq!(extract_body(&entry), "fallback");
     }
 
@@ -292,7 +437,13 @@ mod tests {
 
     #[test]
     fn fetch_job_roundtrip() {
-        let job = FetchJob { feed_id: 42, feed_url: "https://example.com/feed".into(), prior_etag: Some("abc".into()), prior_last_modified: None, extraction_level: "full_text".into() };
+        let job = FetchJob {
+            feed_id: 42,
+            feed_url: "https://example.com/feed".into(),
+            prior_etag: Some("abc".into()),
+            prior_last_modified: None,
+            extraction_level: "full_text".into(),
+        };
         let json = serde_json::to_string(&job).unwrap();
         let de: FetchJob = serde_json::from_str(&json).unwrap();
         assert_eq!(de.feed_id, 42);

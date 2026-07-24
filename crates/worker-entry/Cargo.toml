@@ -20,6 +20,7 @@ feed-rs.workspace = true
 console_error_panic_hook.workspace = true
 async-trait.workspace = true
 embedding.workspace = true
+vectorize.workspace = true
 
 
 [package.metadata.release]

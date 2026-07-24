@@ -1,26 +1,16 @@
-﻿//! Semantic search endpoint.
+//! Semantic search endpoint.
 //!
 //! POST /api/articles/search
 
 use crate::{json_err, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
+use js_sys::{Object, Reflect};
 use serde::Deserialize;
 use store::Store;
+use vectorize::VectorizeIndex;
+use worker::wasm_bindgen::JsCast;
+use worker::wasm_bindgen::JsValue;
 use worker::*;
-use worker::wasm_bindgen::prelude::*;
-use worker::EnvBinding;
-use js_sys::{Object, Reflect};
-
-#[wasm_bindgen]
-extern "C" {
-    pub type VectorizeIndex;
-    #[wasm_bindgen(method, catch)]
-    async fn query(this: &VectorizeIndex, vector: JsValue, opts: JsValue) -> Result<JsValue, JsValue>;
-}
-
-impl EnvBinding for VectorizeIndex {
-    const TYPE_NAME: &'static str = "VectorizeIndexImpl";
-}
 
 #[derive(Deserialize)]
 struct SemanticSearchRequest {
@@ -97,8 +87,13 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<
     let mut enriched: Vec<serde_json::Value> = articles.into_iter().map(|a| {
         serde_json::json!({"id":a.id,"title":a.title,"url":a.url,"published_at":a.published_at,"ai_summary":a.ai_summary,"ai_tags":a.ai_tags,"similarity":sim_map.get(&a.id).copied().unwrap_or(0.0)})
     }).collect();
-    enriched.sort_by(|a,b| b["similarity"].as_f64().unwrap_or(0.0).partial_cmp(&a["similarity"].as_f64().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+    enriched.sort_by(|a, b| {
+        b["similarity"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .partial_cmp(&a["similarity"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     json_ok(serde_json::json!({"mode":"semantic","query":body.q,"results":enriched}))
 }
-

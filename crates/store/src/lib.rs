@@ -28,7 +28,8 @@ impl Store {
 
     /// Feeds due for fetch: active AND past their fetch_interval_sec.
     pub async fn feeds_due_for_fetch(&self, now: i64, category: Option<&str>) -> Result<Vec<Feed>, StoreError> {
-        let (sql, _has_cat) = if category.is_some() {  // has_cat used below for bind count
+        let (sql, _has_cat) = if category.is_some() {
+            // has_cat used below for bind count
 
             ("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level
               FROM feeds WHERE status = 'active' AND category = ?1
@@ -49,17 +50,13 @@ impl Store {
 
     /// All feeds, regardless of status.  Optional ?status= filter.
     pub async fn all_feeds(&self, status_filter: Option<&str>) -> Result<Vec<Feed>, StoreError> {
-        let (sql, has_filter) = if status_filter.is_some() {
-            ("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE status = ?1 ORDER BY last_fetched_at DESC", true)
+        let sql = if status_filter.is_some() {
+            "SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE status = ?1 ORDER BY last_fetched_at DESC"
         } else {
-            ("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds ORDER BY last_fetched_at DESC", false)
+            "SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds ORDER BY last_fetched_at DESC"
         };
         let stmt = self.db.prepare(sql);
-        let stmt = if has_filter {
-            stmt.bind(&[status_filter.unwrap().into()])?
-        } else {
-            stmt
-        };
+        let stmt = if let Some(sf) = status_filter { stmt.bind(&[sf.into()])? } else { stmt };
         Ok(stmt.all().await?.results()?)
     }
 
@@ -70,10 +67,17 @@ impl Store {
         Ok(stmt.first::<Feed>(None).await?)
     }
 
-    pub async fn insert_feed(&self, url: &str, title: &str, category: &str, interval: i64) -> Result<Option<i64>, StoreError> {
-        let stmt = self.db.prepare(
-            "INSERT OR IGNORE INTO feeds (url, title, category, fetch_interval_sec) VALUES (?1, ?2, ?3, ?4)",
-        ).bind(&[url.into(), title.into(), category.into(), JsValue::from_f64(interval as f64)])?;
+    pub async fn insert_feed(
+        &self,
+        url: &str,
+        title: &str,
+        category: &str,
+        interval: i64,
+    ) -> Result<Option<i64>, StoreError> {
+        let stmt = self
+            .db
+            .prepare("INSERT OR IGNORE INTO feeds (url, title, category, fetch_interval_sec) VALUES (?1, ?2, ?3, ?4)")
+            .bind(&[url.into(), title.into(), category.into(), JsValue::from_f64(interval as f64)])?;
         stmt.run().await?;
         let q = self.db.prepare("SELECT id FROM feeds WHERE url = ?1").bind(&[url.into()])?;
         let row = q.first::<serde_json::Value>(None).await?;
@@ -81,26 +85,56 @@ impl Store {
     }
 
     /// Dynamic update: only non-None fields are applied.
-    pub async fn update_feed(&self, id: i64, title: Option<&str>, category: Option<&str>, interval: Option<i64>, extraction_level: Option<&str>) -> Result<(), StoreError> {
+    pub async fn update_feed(
+        &self,
+        id: i64,
+        title: Option<&str>,
+        category: Option<&str>,
+        interval: Option<i64>,
+        extraction_level: Option<&str>,
+    ) -> Result<(), StoreError> {
         let mut parts: Vec<String> = Vec::new();
         let mut vals: Vec<JsValue> = Vec::new();
-        if let Some(v) = title          { parts.push("title = ?".into()); vals.push(v.into()); }
-        if let Some(v) = category       { parts.push("category = ?".into()); vals.push(v.into()); }
-        if let Some(v) = interval       { parts.push("fetch_interval_sec = ?".into()); vals.push(JsValue::from_f64(v as f64)); }
-        if let Some(v) = extraction_level { parts.push("extraction_level = ?".into()); vals.push(v.into()); }
-        if parts.is_empty() { return Ok(()); }
+        if let Some(v) = title {
+            parts.push("title = ?".into());
+            vals.push(v.into());
+        }
+        if let Some(v) = category {
+            parts.push("category = ?".into());
+            vals.push(v.into());
+        }
+        if let Some(v) = interval {
+            parts.push("fetch_interval_sec = ?".into());
+            vals.push(JsValue::from_f64(v as f64));
+        }
+        if let Some(v) = extraction_level {
+            parts.push("extraction_level = ?".into());
+            vals.push(v.into());
+        }
+        if parts.is_empty() {
+            return Ok(());
+        }
         vals.push(JsValue::from_f64(id as f64));
         self.db.prepare(format!("UPDATE feeds SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
         Ok(())
     }
 
     pub async fn set_feed_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
-        self.db.prepare("UPDATE feeds SET status = ?1 WHERE id = ?2")
-            .bind(&[status.into(), JsValue::from_f64(id as f64)])?.run().await?;
+        self.db
+            .prepare("UPDATE feeds SET status = ?1 WHERE id = ?2")
+            .bind(&[status.into(), JsValue::from_f64(id as f64)])?
+            .run()
+            .await?;
         Ok(())
     }
 
-    pub async fn record_fetch_result(&self, feed_id: i64, fetched_at: i64, etag: Option<&str>, last_modified: Option<&str>) -> Result<(), StoreError> {
+    pub async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError> {
         self.db.prepare(
             "UPDATE feeds SET last_fetched_at = ?1, etag = COALESCE(?2, etag), last_modified = COALESCE(?3, last_modified) WHERE id = ?4",
         ).bind(&[
@@ -124,31 +158,56 @@ impl Store {
             article.published_at.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
             article.raw_content_r2_key.clone().map_or(JsValue::null(), |v| v.into()),
         ])?.run().await?;
-        let q = self.db.prepare("SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2")
+        let q = self
+            .db
+            .prepare("SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2")
             .bind(&[JsValue::from_f64(article.feed_id as f64), article.guid.clone().into()])?;
         let row = q.first::<serde_json::Value>(None).await?;
         Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
     }
 
-    pub async fn set_ai_summary(&self, article_id: i64, summary: &str, tags_json: &str, vector_id: &str, score: f64) -> Result<(), StoreError> {
-        self.db.prepare(
-            "UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5",
-        ).bind(&[summary.into(), tags_json.into(), vector_id.into(), JsValue::from_f64(score), JsValue::from_f64(article_id as f64)])?.run().await?;
+    pub async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        tags_json: &str,
+        vector_id: &str,
+        score: f64,
+    ) -> Result<(), StoreError> {
+        self.db
+            .prepare("UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5")
+            .bind(&[
+                summary.into(),
+                tags_json.into(),
+                vector_id.into(),
+                JsValue::from_f64(score),
+                JsValue::from_f64(article_id as f64),
+            ])?
+            .run()
+            .await?;
         Ok(())
     }
 
-    
     pub async fn get_raw_content_key(&self, article_id: i64) -> Result<Option<String>, StoreError> {
         #[derive(Deserialize)]
-        struct Row { raw_content_r2_key: Option<String> }
-        Ok(self.db.prepare(
-            "SELECT raw_content_r2_key FROM articles WHERE id = ?1",
-        ).bind(&[JsValue::from_f64(article_id as f64)])?.first::<Row>(None).await?.and_then(|r| r.raw_content_r2_key))
+        struct Row {
+            raw_content_r2_key: Option<String>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT raw_content_r2_key FROM articles WHERE id = ?1")
+            .bind(&[JsValue::from_f64(article_id as f64)])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|r| r.raw_content_r2_key))
     }
 
     pub async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
-        self.db.prepare("UPDATE articles SET raw_content_r2_key = ?1 WHERE id = ?2")
-            .bind(&[r2_key.into(), JsValue::from_f64(article_id as f64)])?.run().await?;
+        self.db
+            .prepare("UPDATE articles SET raw_content_r2_key = ?1 WHERE id = ?2")
+            .bind(&[r2_key.into(), JsValue::from_f64(article_id as f64)])?
+            .run()
+            .await?;
         Ok(())
     }
 
@@ -159,9 +218,7 @@ impl Store {
     }
 
     pub async fn article_count(&self) -> Result<i64, StoreError> {
-        let row = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM articles",
-        ).first::<serde_json::Value>(None).await?;
+        let row = self.db.prepare("SELECT COUNT(*) AS cnt FROM articles").first::<serde_json::Value>(None).await?;
         Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
     }
 
@@ -172,9 +229,11 @@ impl Store {
     }
 
     pub async fn trending_count(&self) -> Result<i64, StoreError> {
-        let row = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM articles WHERE score != 0",
-        ).first::<serde_json::Value>(None).await?;
+        let row = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE score != 0")
+            .first::<serde_json::Value>(None)
+            .await?;
         Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
     }
 
@@ -186,7 +245,9 @@ impl Store {
 
     /// Batch fetch by IDs.  Used by the bookmarks / batch endpoint.
     pub async fn articles_by_ids(&self, ids: &[i64]) -> Result<Vec<Article>, StoreError> {
-        if ids.is_empty() { return Ok(Vec::new()); }
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
         let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{i}")).collect();
         let sql = format!(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id IN ({})",
@@ -223,7 +284,12 @@ impl Store {
         ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
     }
 
-    pub async fn articles_by_category(&self, category: &str, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
+    pub async fn articles_by_category(
+        &self,
+        category: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<PendingArticle>, StoreError> {
         Ok(self.db.prepare(
             "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2 OFFSET ?3",
         ).bind(&[category.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -231,7 +297,10 @@ impl Store {
 
     pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
         #[derive(Deserialize)]
-        struct Row { category: String, article_count: i64 }
+        struct Row {
+            category: String,
+            article_count: i64,
+        }
         let rows: Vec<Row> = self.db.prepare(
             "SELECT f.category, COUNT(a.id) AS article_count FROM feeds f LEFT JOIN articles a ON a.feed_id = f.id WHERE f.category IS NOT NULL AND f.category != '' GROUP BY f.category ORDER BY article_count DESC",
         ).all().await?.results()?;
@@ -241,22 +310,34 @@ impl Store {
     /// Find articles sharing tags with a given article, ordered by match
     /// count desc then recency.  Returns empty when source has no tags.
     pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
-        let src = self.db.prepare("SELECT ai_tags FROM articles WHERE id = ?1")
+        let src = self
+            .db
+            .prepare("SELECT ai_tags FROM articles WHERE id = ?1")
             .bind(&[JsValue::from_f64(article_id as f64)])?;
         let tags_json = match src.first::<String>(None).await? {
-            Some(t) => t, None => return Ok(Vec::new()),
+            Some(t) => t,
+            None => return Ok(Vec::new()),
         };
         let tags: Vec<String> = match serde_json::from_str(&tags_json) {
-            Ok(t) => t, Err(_) => return Ok(Vec::new()),
+            Ok(t) => t,
+            Err(_) => return Ok(Vec::new()),
         };
-        if tags.is_empty() { return Ok(Vec::new()); }
+        if tags.is_empty() {
+            return Ok(Vec::new());
+        }
         let conds: Vec<String> = tags.iter().map(|t| format!("ai_tags LIKE '%\"{}%'", t.replace('\'', "''"))).collect();
         let sql = format!(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id != ?1 AND ({}) ORDER BY ({} DESC), published_at DESC LIMIT ?2",
             conds.join(" OR "),
             conds.iter().map(|c| format!("CASE WHEN {} THEN 1 ELSE 0 END", c)).collect::<Vec<_>>().join(" + "),
         );
-        Ok(self.db.prepare(&sql).bind(&[JsValue::from_f64(article_id as f64), JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+        Ok(self
+            .db
+            .prepare(&sql)
+            .bind(&[JsValue::from_f64(article_id as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
     }
 
     // ------------------------------------------------------------------
@@ -265,14 +346,21 @@ impl Store {
 
     pub async fn tags_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
         #[derive(Deserialize)]
-        struct Row { ai_tags: String }
-        let rows: Vec<Row> = self.db.prepare(
-            "SELECT ai_tags FROM articles WHERE ai_tags IS NOT NULL AND ai_tags != '[]'",
-        ).all().await?.results()?;
+        struct Row {
+            ai_tags: String,
+        }
+        let rows: Vec<Row> = self
+            .db
+            .prepare("SELECT ai_tags FROM articles WHERE ai_tags IS NOT NULL AND ai_tags != '[]'")
+            .all()
+            .await?
+            .results()?;
         let mut map: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
         for row in &rows {
             if let Ok(tags) = serde_json::from_str::<Vec<String>>(&row.ai_tags) {
-                for tag in tags { *map.entry(tag).or_default() += 1; }
+                for tag in tags {
+                    *map.entry(tag).or_default() += 1;
+                }
             }
         }
         Ok(map.into_iter().collect())
@@ -296,35 +384,46 @@ impl Store {
         ).first::<ScoreDist>(None).await?.unwrap_or(ScoreDist { top: 0, medium: 0, low: 0, unscored: 0 }))
     }
 
-    
     /// Pipeline health metrics for the operations dashboard.
     pub async fn pipeline_status(&self, now: i64) -> Result<serde_json::Value, StoreError> {
         let health = self.health_stats().await?;
         let dist = self.score_distribution().await.unwrap_or(ScoreDist { top: 0, medium: 0, low: 0, unscored: 0 });
 
         // Feeds that have never been fetched (last_fetched_at IS NULL) or have errors (status != 'active')
-        let problem_feeds: i64 = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM feeds WHERE status != 'active' OR last_fetched_at IS NULL"
-        ).first::<serde_json::Value>(None).await?
-            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+        let problem_feeds: i64 = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM feeds WHERE status != 'active' OR last_fetched_at IS NULL")
+            .first::<serde_json::Value>(None)
+            .await?
+            .and_then(|v| v["cnt"].as_i64())
+            .unwrap_or(0);
 
         // Articles with AI summaries completed
-        let with_summary: i64 = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM articles WHERE ai_summary IS NOT NULL AND ai_summary != ''"
-        ).first::<serde_json::Value>(None).await?
-            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+        let with_summary: i64 = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE ai_summary IS NOT NULL AND ai_summary != ''")
+            .first::<serde_json::Value>(None)
+            .await?
+            .and_then(|v| v["cnt"].as_i64())
+            .unwrap_or(0);
 
         // Articles with non-zero scores (affected by strategies)
-        let scored: i64 = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM articles WHERE score != 0"
-        ).first::<serde_json::Value>(None).await?
-            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+        let scored: i64 = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE score != 0")
+            .first::<serde_json::Value>(None)
+            .await?
+            .and_then(|v| v["cnt"].as_i64())
+            .unwrap_or(0);
 
         // Articles with scores >= 8 (high signal)
-        let high_score: i64 = self.db.prepare(
-            "SELECT COUNT(*) AS cnt FROM articles WHERE score >= 8"
-        ).first::<serde_json::Value>(None).await?
-            .and_then(|v| v["cnt"].as_i64()).unwrap_or(0);
+        let high_score: i64 = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE score >= 8")
+            .first::<serde_json::Value>(None)
+            .await?
+            .and_then(|v| v["cnt"].as_i64())
+            .unwrap_or(0);
 
         Ok(serde_json::json!({
             "cron": {
@@ -360,11 +459,17 @@ impl Store {
     /// Get articles that still need AI summarization, oldest first.
     /// Batch size limits per call to stay within Workers CPU time budget.
     pub async fn pending_ai_articles(&self, batch_size: u32) -> Result<Vec<PendingArticle>, StoreError> {
-        Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score, raw_content_r2_key
+        Ok(self
+            .db
+            .prepare(
+                "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score, raw_content_r2_key
              FROM articles WHERE (ai_summary IS NULL OR ai_summary = '')
              ORDER BY published_at ASC LIMIT ?1",
-        ).bind(&[JsValue::from_f64(batch_size as f64)])?.all().await?.results()?)
+            )
+            .bind(&[JsValue::from_f64(batch_size as f64)])?
+            .all()
+            .await?
+            .results()?)
     }
 
     /// Delete articles older than `days` whose AI processing is complete.
@@ -373,9 +478,10 @@ impl Store {
     /// Protects D1 from unbounded growth as feed volume increases.
     pub async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError> {
         let cutoff = now - days * 86400;
-        let stmt = self.db.prepare(
-            "DELETE FROM articles WHERE published_at < ?1 AND ai_summary != '' AND ai_summary IS NOT NULL",
-        ).bind(&[JsValue::from_f64(cutoff as f64)])?;
+        let stmt = self
+            .db
+            .prepare("DELETE FROM articles WHERE published_at < ?1 AND ai_summary != '' AND ai_summary IS NOT NULL")
+            .bind(&[JsValue::from_f64(cutoff as f64)])?;
         let result = stmt.run().await?;
         Ok(result.meta().ok().flatten().and_then(|m| m.changes).unwrap_or(0) as u64)
     }
@@ -386,14 +492,19 @@ impl Store {
 
     pub async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
         #[derive(Deserialize)]
-        struct Row { rule_json: String }
-        let rows: Vec<Row> = self.db.prepare(
-            "SELECT rule_json FROM filter_rules WHERE audience_tag = ?1 AND enabled = 1",
-        ).bind(&[audience_tag.into()])?.all().await?.results()?;
+        struct Row {
+            rule_json: String,
+        }
+        let rows: Vec<Row> = self
+            .db
+            .prepare("SELECT rule_json FROM filter_rules WHERE audience_tag = ?1 AND enabled = 1")
+            .bind(&[audience_tag.into()])?
+            .all()
+            .await?
+            .results()?;
         Ok(rows.into_iter().map(|r| r.rule_json).collect())
     }
 
-    
     /// Aggregate strategies by signal_type for the Intelligence dashboard.
     pub async fn signal_summary(&self) -> Result<Vec<SignalSummary>, StoreError> {
         Ok(self.db.prepare(
@@ -419,12 +530,18 @@ impl Store {
             score: f64,
         }
 
-        let articles: Vec<Row> = self.db.prepare(
-            "SELECT a.id, a.title, a.url, f.title AS feed_name, a.published_at, a.score \
+        let articles: Vec<Row> = self
+            .db
+            .prepare(
+                "SELECT a.id, a.title, a.url, f.title AS feed_name, a.published_at, a.score \
              FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id \
              WHERE a.score >= 0.6 AND a.published_at >= ?1 \
              ORDER BY a.published_at DESC LIMIT 500",
-        ).bind(&[JsValue::from_f64(cutoff as f64)])?.all().await?.results()?;
+            )
+            .bind(&[JsValue::from_f64(cutoff as f64)])?
+            .all()
+            .await?
+            .results()?;
 
         let total = articles.len() as f64;
         if total == 0.0 {
@@ -447,8 +564,18 @@ impl Store {
         }
 
         let group_defs = [
-            ("technology", "Technology & AI Infrastructure", "High-scoring articles covering technology, AI platforms, and infrastructure developments", tech),
-            ("industry", "Industry & Market Trends", "Notable industry shifts, market movements, and sector analysis", industry),
+            (
+                "technology",
+                "Technology & AI Infrastructure",
+                "High-scoring articles covering technology, AI platforms, and infrastructure developments",
+                tech,
+            ),
+            (
+                "industry",
+                "Industry & Market Trends",
+                "Notable industry shifts, market movements, and sector analysis",
+                industry,
+            ),
             ("other", "Other Signals", "Additional noteworthy developments from the monitoring window", other),
         ];
 
@@ -465,14 +592,16 @@ impl Store {
             let frequency = group_count / total;
 
             // Diversity: unique feed names relative to total articles
-            let unique_feed_count = group_articles.iter()
+            let unique_feed_count = group_articles
+                .iter()
                 .filter_map(|a| a.feed_name.as_deref())
                 .collect::<std::collections::HashSet<&str>>()
                 .len() as f64;
             let diversity = unique_feed_count / total;
 
             // Recency: average freshness (1.0 = now, 0.0 = 7+ days old)
-            let recency_sum: f64 = group_articles.iter()
+            let recency_sum: f64 = group_articles
+                .iter()
                 .filter_map(|a| a.published_at)
                 .map(|ts| 1.0 - ((now - ts) as f64 / 604800.0).clamp(0.0, 1.0))
                 .sum();
@@ -483,27 +612,32 @@ impl Store {
             // Trend direction: compare article count in last 3 days vs 3 days before that
             let recent_cutoff = now - 3 * 86400;
             let earlier_cutoff = now - 6 * 86400;
-            let recent_count = group_articles.iter()
-                .filter(|a| a.published_at.is_some_and(|ts| ts >= recent_cutoff))
-                .count() as f64;
-            let earlier_count = group_articles.iter()
+            let recent_count =
+                group_articles.iter().filter(|a| a.published_at.is_some_and(|ts| ts >= recent_cutoff)).count() as f64;
+            let earlier_count = group_articles
+                .iter()
                 .filter(|a| a.published_at.is_some_and(|ts| ts >= earlier_cutoff && ts < recent_cutoff))
                 .count() as f64;
 
-            let trend = if earlier_count == 0.0 || recent_count > earlier_count * 1.2 { "rising" } else if recent_count < earlier_count * 0.8 {
+            let trend = if earlier_count == 0.0 || recent_count > earlier_count * 1.2 {
+                "rising"
+            } else if recent_count < earlier_count * 0.8 {
                 "declining"
             } else {
                 "stable"
             };
 
-            let evidence: Vec<SignalEvidence> = group_articles.iter().map(|a| SignalEvidence {
-                id: a.id,
-                title: a.title.clone(),
-                url: a.url.clone(),
-                feed_name: a.feed_name.clone(),
-                published_at: a.published_at,
-                score: a.score,
-            }).collect();
+            let evidence: Vec<SignalEvidence> = group_articles
+                .iter()
+                .map(|a| SignalEvidence {
+                    id: a.id,
+                    title: a.title.clone(),
+                    url: a.url.clone(),
+                    feed_name: a.feed_name.clone(),
+                    published_at: a.published_at,
+                    score: a.score,
+                })
+                .collect();
 
             let evidence_count = evidence.len() as i64;
 
@@ -536,7 +670,14 @@ impl Store {
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<SignalStrategy>(None).await?)
     }
 
-    pub async fn insert_rule(&self, name: &str, rule_json: &str, audience_tag: &str, signal_type: Option<&str>, score_delta: f64) -> Result<Option<i64>, StoreError> {
+    pub async fn insert_rule(
+        &self,
+        name: &str,
+        rule_json: &str,
+        audience_tag: &str,
+        signal_type: Option<&str>,
+        score_delta: f64,
+    ) -> Result<Option<i64>, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         self.db.prepare(
             "INSERT INTO filter_rules (name, rule_json, audience_tag, signal_type, score_delta, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -548,33 +689,61 @@ impl Store {
             JsValue::from_f64(score_delta),
             JsValue::from_f64(now as f64),
         ])?.run().await?;
-        let q = self.db.prepare("SELECT id FROM filter_rules WHERE name = ?1 ORDER BY created_at DESC LIMIT 1").bind(&[name.into()])?;
+        let q = self
+            .db
+            .prepare("SELECT id FROM filter_rules WHERE name = ?1 ORDER BY created_at DESC LIMIT 1")
+            .bind(&[name.into()])?;
         let row = q.first::<serde_json::Value>(None).await?;
         Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
     }
 
-    pub async fn update_rule(&self, id: i64, name: Option<&str>, rule_json: Option<&str>, enabled: Option<bool>, signal_type: Option<Option<&str>>) -> Result<(), StoreError> {
+    pub async fn update_rule(
+        &self,
+        id: i64,
+        name: Option<&str>,
+        rule_json: Option<&str>,
+        enabled: Option<bool>,
+        signal_type: Option<Option<&str>>,
+    ) -> Result<(), StoreError> {
         let mut parts: Vec<String> = Vec::new();
         let mut vals: Vec<JsValue> = Vec::new();
-        if let Some(v) = name       { parts.push("name = ?".into()); vals.push(v.into()); }
-        if let Some(v) = rule_json  { parts.push("rule_json = ?".into()); vals.push(v.into()); }
-        if let Some(v) = enabled    { parts.push("enabled = ?".into()); vals.push(JsValue::from_f64(if v { 1.0 } else { 0.0 })); }
+        if let Some(v) = name {
+            parts.push("name = ?".into());
+            vals.push(v.into());
+        }
+        if let Some(v) = rule_json {
+            parts.push("rule_json = ?".into());
+            vals.push(v.into());
+        }
+        if let Some(v) = enabled {
+            parts.push("enabled = ?".into());
+            vals.push(JsValue::from_f64(if v { 1.0 } else { 0.0 }));
+        }
         if let Some(ref v) = signal_type {
             parts.push("signal_type = ?".into());
             vals.push(v.map_or(JsValue::null(), |s| s.into()));
         }
-        if parts.is_empty() { return Ok(()); }
+        if parts.is_empty() {
+            return Ok(());
+        }
         // Always update updated_at when any field changes
         parts.push("updated_at = ?".into());
         vals.push(JsValue::from_f64(js_sys::Date::now() / 1000.0));
         vals.push(JsValue::from_f64(id as f64));
-        self.db.prepare(format!("UPDATE filter_rules SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
+        self.db
+            .prepare(format!("UPDATE filter_rules SET {} WHERE id = ?", parts.join(", ")))
+            .bind(&vals)?
+            .run()
+            .await?;
         Ok(())
     }
 
     pub async fn delete_rule(&self, id: i64) -> Result<(), StoreError> {
-        self.db.prepare("UPDATE filter_rules SET enabled = 0, updated_at = ?1 WHERE id = ?2")
-            .bind(&[JsValue::from_f64(js_sys::Date::now() / 1000.0), JsValue::from_f64(id as f64)])?.run().await?;
+        self.db
+            .prepare("UPDATE filter_rules SET enabled = 0, updated_at = ?1 WHERE id = ?2")
+            .bind(&[JsValue::from_f64(js_sys::Date::now() / 1000.0), JsValue::from_f64(id as f64)])?
+            .run()
+            .await?;
         Ok(())
     }
 
@@ -589,6 +758,3 @@ impl Store {
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
     }
 }
-
-
-
