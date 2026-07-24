@@ -1,11 +1,9 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use worker::wasm_bindgen::JsValue;
 use worker::*;
 
-use js_sys::{Array, Float32Array, Object, Reflect};
-use vectorize::VectorizeIndex;
+use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
 
 mod metrics;
 use metrics::PipelineMetrics;
@@ -388,19 +386,16 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
 }
 
 async fn upsert_vector(idx: &VectorizeIndex, article_id: i64, embedding: &[f32]) -> Result<(), String> {
-    let vec_obj = Object::new();
-    let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{article_id}").into());
-    let values = Float32Array::new_with_length(embedding.len() as u32);
-    for (i, v) in embedding.iter().enumerate() {
-        values.set_index(i as u32, *v);
-    }
-    let _ = Reflect::set(&vec_obj, &"values".into(), &values.into());
-    let metadata = Object::new();
-    let _ = Reflect::set(&metadata, &"article_id".into(), &JsValue::from_f64(article_id as f64));
-    let _ = Reflect::set(&vec_obj, &"metadata".into(), &metadata.into());
-    let vectors = Array::new();
-    vectors.push(&vec_obj);
-    idx.upsert(vectors.into()).await.map(|_| ()).map_err(|e| format!("{e:?}"))
+    let record = VectorRecord {
+        id: format!("article-{article_id}"),
+        values: embedding.to_vec(),
+        metadata: Some(VectorMetadata {
+            article_id,
+            feed_id: None,
+            published_at: None,
+        }),
+    };
+    vectorize::upsert_vector(idx, &record).await
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {

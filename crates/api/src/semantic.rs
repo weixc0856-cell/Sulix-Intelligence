@@ -15,8 +15,6 @@ use worker::*;
 #[derive(Deserialize)]
 struct SemanticSearchRequest {
     q: String,
-    #[allow(dead_code)]
-    mode: Option<String>,
     limit: Option<u32>,
 }
 
@@ -46,7 +44,13 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<
 
     // 2. Build Vectorize query: JSON vector array + options object
     let vec_str = serde_json::to_string(&query_emb).unwrap_or_else(|_| "[]".to_string());
-    let vec_js = js_sys::JSON::parse(&vec_str).unwrap_or(JsValue::NULL);
+    let vec_js = match js_sys::JSON::parse(&vec_str) {
+        Ok(v) => v,
+        Err(e) => {
+            console_log!("[Sulix:semantic] query embedding JSON parse failed: {e:?}");
+            return json_ok(serde_json::json!({"mode":"semantic","query":body.q,"results":[]}));
+        }
+    };
     let opts = Object::new();
     let _ = Reflect::set(&opts, &"topK".into(), &JsValue::from_f64(limit as f64));
 

@@ -450,6 +450,15 @@ impl D1Store {
             .and_then(|v| v["cnt"].as_i64())
             .unwrap_or(0);
 
+        // Articles with vector embeddings (vector_id IS NOT NULL)
+        let embedded: i64 = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE vector_id IS NOT NULL")
+            .first::<serde_json::Value>(None)
+            .await?
+            .and_then(|v| v["cnt"].as_i64())
+            .unwrap_or(0);
+
         Ok(serde_json::json!({
             "cron": {
                 "last_run_at": health.last_cron_run_at,
@@ -469,8 +478,8 @@ impl D1Store {
             },
             "embedding_coverage": {
                 "total": health.article_count,
-                "embedded": 0,
-                "pending": health.article_count,
+                "embedded": embedded,
+                "pending": health.article_count.saturating_sub(embedded),
             },
         }))
     }

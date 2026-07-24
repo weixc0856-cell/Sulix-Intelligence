@@ -9,11 +9,8 @@
 use crate::{json_err, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use store::Store;
-use vectorize::VectorizeIndex;
-use worker::wasm_bindgen::JsValue;
+use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
 use worker::*;
-
-use js_sys::{Array, Object, Reflect};
 
 pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
@@ -45,30 +42,16 @@ pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<
 
         match embedder.embed(&embed_text).await {
             Ok(embedding) => {
-                // Build Vectorize upsert JS object
-                let vec_obj = Object::new();
-                let _ = Reflect::set(&vec_obj, &"id".into(), &format!("article-{}", article.id).into());
-                let vals_str = serde_json::to_string(&embedding).unwrap_or_else(|_| "[]".to_string());
-                let vals_js = js_sys::JSON::parse(&vals_str).unwrap_or(JsValue::NULL);
-                let _ = Reflect::set(&vec_obj, &"values".into(), &vals_js);
-
-                let meta_obj = Object::new();
-                let _ = Reflect::set(&meta_obj, &"article_id".into(), &JsValue::from_f64(article.id as f64));
-                let _ = Reflect::set(&meta_obj, &"feed_id".into(), &JsValue::from_f64(article.feed_id as f64));
-                let _ = Reflect::set(&meta_obj, &"embedding_model".into(), &"bge-large-en-v1.5".into());
-                let _ = Reflect::set(&meta_obj, &"embedding_version".into(), &JsValue::from_f64(1.0));
-                let _ = Reflect::set(&meta_obj, &"language".into(), &"en".into());
-                let _ = Reflect::set(
-                    &meta_obj,
-                    &"published_at".into(),
-                    &JsValue::from_f64(article.published_at.unwrap_or(0) as f64),
-                );
-                let _ = Reflect::set(&vec_obj, &"metadata".into(), &meta_obj.into());
-
-                let vectors = Array::new();
-                vectors.push(&vec_obj);
-
-                match vectorize.upsert(vectors.into()).await {
+                let record = VectorRecord {
+                    id: format!("article-{}", article.id),
+                    values: embedding.clone(),
+                    metadata: Some(VectorMetadata {
+                        article_id: article.id,
+                        feed_id: Some(article.feed_id),
+                        published_at: article.published_at,
+                    }),
+                };
+                match vectorize::upsert_vector(&vectorize, &record).await {
                     Ok(_) => processed += 1,
                     Err(e) => {
                         console_log!("[Sulix:rebuild] upsert failed for article {}: {e:?}", article.id);
