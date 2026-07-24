@@ -657,3 +657,54 @@ async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         Err(e) => json_err(500, &e.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_url(query: &str) -> url::Url {
+        url::Url::parse(&format!("http://example.com/api/test{query}")).unwrap()
+    }
+
+    #[test]
+    fn parse_limit_default() {
+        let url = test_url("");
+        assert_eq!(parse_limit(&url), 30);
+    }
+
+    #[test]
+    fn parse_limit_explicit() {
+        let url = test_url("?limit=10");
+        assert_eq!(parse_limit(&url), 10);
+    }
+
+    #[test]
+    fn parse_limit_invalid() {
+        let url = test_url("?limit=abc");
+        assert_eq!(parse_limit(&url), 30);
+    }
+
+    #[test]
+    fn parse_limit_zero() {
+        let url = test_url("?limit=0");
+        assert_eq!(parse_limit(&url), 0);
+    }
+
+    #[test]
+    fn parse_offset_default() {
+        let url = test_url("");
+        assert_eq!(parse_offset(&url), 0);
+    }
+
+    #[test]
+    fn parse_offset_explicit() {
+        let url = test_url("?offset=20");
+        assert_eq!(parse_offset(&url), 20);
+    }
+
+    #[test]
+    fn parse_offset_invalid() {
+        let url = test_url("?offset=xyz");
+        assert_eq!(parse_offset(&url), 0);
+    }
+}

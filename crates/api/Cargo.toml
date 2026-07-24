@@ -13,3 +13,6 @@ serde_json.workspace = true
 js-sys.workspace = true
 embedding.workspace = true
 vectorize.workspace = true
+
+[dev-dependencies]
+url.workspace = true

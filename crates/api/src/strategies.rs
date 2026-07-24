@@ -103,3 +103,57 @@ fn field_name(f: rules::Field) -> &'static str {
         rules::Field::Summary => "Summary",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_name_title() {
+        assert_eq!(field_name(rules::Field::Title), "Title");
+    }
+    #[test]
+    fn field_name_summary() {
+        assert_eq!(field_name(rules::Field::Summary), "Summary");
+    }
+
+    #[test]
+    fn describe_keyword_includes() {
+        let c = Condition::KeywordIncludes { field: rules::Field::Title, keyword: "AI".into() };
+        let desc = describe_condition(&c);
+        assert_eq!(desc, r#"Title contains "AI""#);
+    }
+
+    #[test]
+    fn describe_keyword_excludes() {
+        let c = Condition::KeywordExcludes { field: rules::Field::Summary, keyword: "crypto".into() };
+        let desc = describe_condition(&c);
+        assert_eq!(desc, r#"Summary excludes "crypto""#);
+    }
+
+    #[test]
+    fn describe_source_in_single() {
+        let c = Condition::SourceIn { feed_urls: vec!["https://example.com/feed".into()] };
+        let desc = describe_condition(&c);
+        assert_eq!(desc, "source is https://example.com/feed");
+    }
+
+    #[test]
+    fn describe_source_in_multiple() {
+        let c = Condition::SourceIn { feed_urls: vec!["a".into(), "b".into()] };
+        let desc = describe_condition(&c);
+        assert_eq!(desc, "source is one of 2 feeds");
+    }
+
+    #[test]
+    fn describe_all() {
+        let c = Condition::All { conditions: vec![] };
+        assert_eq!(describe_condition(&c), "all conditions match");
+    }
+
+    #[test]
+    fn describe_any() {
+        let c = Condition::Any { conditions: vec![] };
+        assert_eq!(describe_condition(&c), "any condition matches");
+    }
+}

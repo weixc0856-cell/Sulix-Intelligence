@@ -8,16 +8,42 @@
 mod models;
 pub use models::*;
 
+pub mod backend;
+pub mod memory;
+pub use backend::StoreBackend;
+
+use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
 use worker::D1Database;
 
-pub struct Store {
+/// Production D1-backed store.
+pub struct D1Store {
     db: D1Database,
 }
 
-impl Store {
+/// Backward-compatible alias.
+pub type Store = D1Store;
+
+// ---- Pure helper functions (extracted for testability) ----
+
+/// Generate `?1,?2,?3` placeholders for SQL `IN` clauses.
+pub(crate) fn in_placeholders(count: usize) -> String {
+    (1..=count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",")
+}
+
+/// Build a SQL LIKE pattern that matches a JSON-stringified tag: `%"tag"%`.
+pub(crate) fn tag_like_pattern(tag: &str) -> String {
+    format!("%\"{}\"%", tag)
+}
+
+/// Check whether a cron last-run timestamp is within 3600 seconds of `now`.
+pub(crate) fn is_cron_healthy(last_run_at: Option<i64>, now: i64) -> bool {
+    last_run_at.is_some_and(|ts| now - ts < 3600)
+}
+
+impl D1Store {
     pub fn new(db: D1Database) -> Self {
         Self { db }
     }
@@ -248,10 +274,9 @@ impl Store {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{i}")).collect();
         let sql = format!(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id IN ({})",
-            placeholders.join(",")
+            in_placeholders(ids.len())
         );
         let binds: Vec<JsValue> = ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
         Ok(self.db.prepare(&sql).bind(&binds)?.all().await?.results()?)
@@ -278,7 +303,7 @@ impl Store {
     }
 
     pub async fn articles_by_tag(&self, tag: &str, limit: u32, offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
-        let pattern = format!("%\"{}\"%", tag);
+        let pattern = tag_like_pattern(tag);
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
         ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -428,7 +453,7 @@ impl Store {
         Ok(serde_json::json!({
             "cron": {
                 "last_run_at": health.last_cron_run_at,
-                "healthy": health.last_cron_run_at.is_some_and(|ts| now - ts < 3600),
+                "healthy": is_cron_healthy(health.last_cron_run_at, now),
             },
             "feeds": {
                 "total": health.feed_count,
@@ -756,5 +781,209 @@ impl Store {
              WHERE a.title != ''
              ORDER BY a.published_at DESC LIMIT ?1",
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+    }
+}
+
+// ---- StoreBackend impl (delegates to D1Store methods) ----
+
+#[async_trait(?Send)]
+impl StoreBackend for D1Store {
+    async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
+        D1Store::get_feed(self, id).await
+    }
+
+    async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError> {
+        D1Store::record_fetch_result(self, feed_id, fetched_at, etag, last_modified).await
+    }
+
+    async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
+        D1Store::active_rule_jsons(self, audience_tag).await
+    }
+
+    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
+        D1Store::insert_article(self, article).await
+    }
+
+    async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        tags_json: &str,
+        vector_id: &str,
+        score: f64,
+    ) -> Result<(), StoreError> {
+        D1Store::set_ai_summary(self, article_id, summary, tags_json, vector_id, score).await
+    }
+
+    async fn set_raw_content_r2_key(
+        &self,
+        article_id: i64,
+        r2_key: Option<&str>,
+    ) -> Result<(), StoreError> {
+        D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
+    }
+
+    async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError> {
+        D1Store::expire_old_articles(self, now, days).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- in_placeholders --
+
+    #[test]
+    fn in_placeholders_three() {
+        assert_eq!(in_placeholders(3), "?1,?2,?3");
+    }
+    #[test]
+    fn in_placeholders_one() {
+        assert_eq!(in_placeholders(1), "?1");
+    }
+    #[test]
+    fn in_placeholders_zero() {
+        assert_eq!(in_placeholders(0), "");
+    }
+
+    // -- tag_like_pattern --
+
+    #[test]
+    fn tag_like_pattern_simple() {
+        assert_eq!(tag_like_pattern("AI"), r#"%"AI"%"#);
+    }
+    #[test]
+    fn tag_like_pattern_empty() {
+        assert_eq!(tag_like_pattern(""), r#"%""%"#);
+    }
+
+    // -- is_cron_healthy --
+
+    #[test]
+    fn cron_healthy_recent() {
+        assert!(is_cron_healthy(Some(1000), 3599));
+    }
+    #[test]
+    fn cron_healthy_exact_boundary() {
+        assert!(!is_cron_healthy(Some(1000), 4600));
+    }
+    #[test]
+    fn cron_healthy_never() {
+        assert!(!is_cron_healthy(None, 1000));
+    }
+
+    // -- MemoryStore integration tests --
+
+    #[test]
+    fn mem_store_loads_active_rules() {
+        let store = memory::MemoryStore::new().with_rules(vec!["{\"score\":10}".into()]);
+        let rules = futures::executor::block_on(store.active_rule_jsons("default")).unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0], "{\"score\":10}");
+    }
+
+    #[test]
+    fn mem_store_active_rules_empty_when_none() {
+        let store = memory::MemoryStore::new();
+        let rules = futures::executor::block_on(store.active_rule_jsons("default")).unwrap();
+        assert!(rules.is_empty());
+    }
+
+    #[test]
+    fn mem_store_inserts_article() {
+        let store = memory::MemoryStore::new();
+        let article = NewArticle {
+            feed_id: 1,
+            guid: "guid-1".into(),
+            title: "Test".into(),
+            url: None,
+            published_at: None,
+            raw_content_r2_key: None,
+        };
+        let id = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        assert!(id.is_some());
+    }
+
+    #[test]
+    fn mem_store_dedup_article() {
+        let store = memory::MemoryStore::new();
+        let article = NewArticle {
+            feed_id: 1,
+            guid: "dup-guid".into(),
+            title: "Original".into(),
+            url: None,
+            published_at: None,
+            raw_content_r2_key: None,
+        };
+        let id1 = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        assert!(id1.is_some());
+        let id2 = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        assert!(id2.is_none(), "duplicate should return None");
+    }
+
+    #[test]
+    fn mem_store_set_ai_summary() {
+        let store = memory::MemoryStore::new();
+        let result = futures::executor::block_on(store.set_ai_summary(42, "AI summary text", "[\"tag1\"]", "vec-42", 8.5));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mem_store_record_fetch_result() {
+        let store = memory::MemoryStore::new();
+        let result = futures::executor::block_on(store.record_fetch_result(1, 1000, Some("etag-x"), Some("modified-y")));
+        assert!(result.is_ok());
+        assert_eq!(store.fetch_results.borrow().len(), 1);
+        let (fid, _, e, lm) = store.fetch_results.borrow().first().unwrap().clone();
+        assert_eq!(fid, 1);
+        assert_eq!(e, Some("etag-x".into()));
+        assert_eq!(lm, Some("modified-y".into()));
+    }
+
+    #[test]
+    fn mem_store_returns_err_on_fail_insert() {
+        let mut store = memory::MemoryStore::new();
+        store.fail_insert = true;
+        let article = NewArticle {
+            feed_id: 1,
+            guid: "err-test".into(),
+            title: "Err".into(),
+            url: None,
+            published_at: None,
+            raw_content_r2_key: None,
+        };
+        let result = futures::executor::block_on(store.insert_article(&article));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mem_store_returns_err_on_fail_rules() {
+        let mut store = memory::MemoryStore::new();
+        store.fail_rules = true;
+        let result = futures::executor::block_on(store.active_rule_jsons("default"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mem_store_returns_err_on_fail_fetch_result() {
+        let mut store = memory::MemoryStore::new();
+        store.fail_fetch_result = true;
+        let result = futures::executor::block_on(store.record_fetch_result(1, 0, None, None));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mem_store_returns_err_on_fail_summary() {
+        let mut store = memory::MemoryStore::new();
+        store.fail_summary = true;
+        let result = futures::executor::block_on(store.set_ai_summary(1, "summary", "[]", "vec-1", 0.0));
+        assert!(result.is_err());
     }
 }
