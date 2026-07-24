@@ -9,6 +9,9 @@ use std::collections::HashMap;
 
 use crate::{backend::StoreBackend, Feed, NewArticle, StoreError};
 
+/// Per-feed fetch-result entry recorded by `record_fetch_result`.
+type FetchResultEntry = (i64, i64, Option<String>, Option<String>);
+
 /// In-memory store with failure-injection flags.
 ///
 /// Uses `RefCell` for interior mutability — safe because the trait is
@@ -22,7 +25,7 @@ pub struct MemoryStore {
     next_article_id: RefCell<i64>,
     summaries: RefCell<HashMap<i64, String>>,
     r2_keys: RefCell<HashMap<i64, Option<String>>>,
-    pub fetch_results: RefCell<Vec<(i64, i64, Option<String>, Option<String>)>>,
+    pub fetch_results: RefCell<Vec<FetchResultEntry>>,
 
     /// When `true`, `insert_article` returns `Err`.
     pub fail_insert: bool,
