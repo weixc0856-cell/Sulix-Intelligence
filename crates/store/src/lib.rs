@@ -101,14 +101,13 @@ impl D1Store {
         category: &str,
         interval: i64,
     ) -> Result<Option<i64>, StoreError> {
-        let stmt = self
+        let row = self
             .db
-            .prepare("INSERT OR IGNORE INTO feeds (url, title, category, fetch_interval_sec) VALUES (?1, ?2, ?3, ?4)")
-            .bind(&[url.into(), title.into(), category.into(), JsValue::from_f64(interval as f64)])?;
-        stmt.run().await?;
-        let q = self.db.prepare("SELECT id FROM feeds WHERE url = ?1").bind(&[url.into()])?;
-        let row = q.first::<serde_json::Value>(None).await?;
-        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
+            .prepare("INSERT OR IGNORE INTO feeds (url, title, category, fetch_interval_sec) VALUES (?1, ?2, ?3, ?4) RETURNING id")
+            .bind(&[url.into(), title.into(), category.into(), JsValue::from_f64(interval as f64)])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        Ok(row.and_then(|v| v["id"].as_i64()))
     }
 
     /// Dynamic update: only non-None fields are applied.
@@ -175,22 +174,20 @@ impl D1Store {
     // ------------------------------------------------------------------
 
     pub async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
-        self.db.prepare(
-            "INSERT OR IGNORE INTO articles (feed_id, guid, title, url, published_at, raw_content_r2_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        ).bind(&[
+        let row = self
+            .db
+            .prepare("INSERT OR IGNORE INTO articles (feed_id, guid, title, url, published_at, raw_content_r2_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id")
+            .bind(&[
             JsValue::from_f64(article.feed_id as f64),
             article.guid.clone().into(),
             article.title.clone().into(),
             article.url.clone().map_or(JsValue::null(), |v| v.into()),
             article.published_at.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
             article.raw_content_r2_key.clone().map_or(JsValue::null(), |v| v.into()),
-        ])?.run().await?;
-        let q = self
-            .db
-            .prepare("SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2")
-            .bind(&[JsValue::from_f64(article.feed_id as f64), article.guid.clone().into()])?;
-        let row = q.first::<serde_json::Value>(None).await?;
-        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
+        ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        Ok(row.and_then(|v| v["id"].as_i64()))
     }
 
     pub async fn set_ai_summary(
@@ -731,22 +728,20 @@ impl D1Store {
         score_delta: f64,
     ) -> Result<Option<i64>, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
-        self.db.prepare(
-            "INSERT INTO filter_rules (name, rule_json, audience_tag, signal_type, score_delta, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        ).bind(&[
+        let row = self
+            .db
+            .prepare("INSERT INTO filter_rules (name, rule_json, audience_tag, signal_type, score_delta, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id")
+            .bind(&[
             name.into(),
             rule_json.into(),
             audience_tag.into(),
             signal_type.map_or(JsValue::null(), |v| v.into()),
             JsValue::from_f64(score_delta),
             JsValue::from_f64(now as f64),
-        ])?.run().await?;
-        let q = self
-            .db
-            .prepare("SELECT id FROM filter_rules WHERE name = ?1 ORDER BY created_at DESC LIMIT 1")
-            .bind(&[name.into()])?;
-        let row = q.first::<serde_json::Value>(None).await?;
-        Ok(row.and_then(|v| v.get("id").and_then(|id| id.as_i64())))
+        ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        Ok(row.and_then(|v| v["id"].as_i64()))
     }
 
     pub async fn update_rule(
