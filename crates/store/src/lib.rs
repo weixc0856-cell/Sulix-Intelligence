@@ -14,6 +14,7 @@ pub use backend::StoreBackend;
 
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::collections::HashSet;
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
 use worker::D1Database;
@@ -506,6 +507,23 @@ impl D1Store {
             .results()?)
     }
 
+    /// Collect R2 keys for articles that match the expiry criteria,
+    /// WITHOUT deleting them.  Caller should delete R2 objects after
+    /// calling `expire_old_articles`.
+    pub async fn expired_article_r2_keys(&self, now: i64, days: i64) -> Result<Vec<String>, StoreError> {
+        let cutoff = now - days * 86400;
+        let rows: Vec<serde_json::Value> = self
+            .db
+            .prepare(
+                "SELECT raw_content_r2_key FROM articles WHERE published_at < ?1 AND ai_summary != '' AND ai_summary IS NOT NULL AND raw_content_r2_key IS NOT NULL",
+            )
+            .bind(&[JsValue::from_f64(cutoff as f64)])?
+            .all()
+            .await?
+            .results()?;
+        Ok(rows.iter().filter_map(|r| r["raw_content_r2_key"].as_str().map(String::from)).collect())
+    }
+
     /// Delete articles older than `days` whose AI processing is complete.
     /// `now` should be the current unix timestamp (seconds), typically
     /// passed from the caller's js_sys::Date::now().
@@ -790,6 +808,21 @@ impl D1Store {
              WHERE a.title != ''
              ORDER BY a.published_at DESC LIMIT ?1",
         ).bind(&[JsValue::from_f64(limit as f64)])?.all().await?.results()?)
+    }
+
+    /// Check which of the given article IDs still exist in the database.
+    /// Used by the R2 garbage collector to identify orphaned objects.
+    pub async fn article_ids_exist(&self, ids: &[i64]) -> Result<HashSet<i64>, StoreError> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let placeholders = in_placeholders(ids.len());
+        let sql = format!("SELECT id FROM articles WHERE id IN ({placeholders})");
+        let mut stmt = self.db.prepare(&sql);
+        let vals: Vec<JsValue> = ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
+        stmt = stmt.bind(&vals)?;
+        let rows: Vec<serde_json::Value> = stmt.all().await?.results()?;
+        Ok(rows.iter().filter_map(|r| r["id"].as_i64()).collect())
     }
 }
 
