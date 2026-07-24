@@ -14,7 +14,7 @@ use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
-use store::{NewArticle, Store};
+use store::{NewArticle, Store, StoreBackend};
 
 // ---------------------------------------------------------------------------
 // WorkerHttpClient - bridges ai_pipeline::HttpClient over worker::Fetch
@@ -84,8 +84,8 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 // ---------------------------------------------------------------------------
 
 /// Context that groups all per-fetch dependencies.
-struct FeedContext<'a> {
-    store: &'a Store,
+struct FeedContext<'a, S: StoreBackend> {
+    store: &'a S,
     summarizer: &'a Option<HttpSummarizer>,
     r2_bucket: &'a Option<Bucket>,
     vectorize: &'a Option<VectorizeIndex>,
@@ -103,7 +103,7 @@ pub struct FeedProcessResult {
 }
 
 /// Process a single feed: fetch -> insert -> score -> AI summarise.
-async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> Result<(), Error> {
+async fn process_one_feed(ctx: &FeedContext<'_, impl StoreBackend>, _env: &Env, job: &FetchJob) -> Result<(), Error> {
     let do_ai = ctx.summarizer.is_some();
     match fetch_feed(&job.feed_url, job.prior_etag.as_deref(), job.prior_last_modified.as_deref()).await {
         Ok(FetchOutcome::NotModified) => {
@@ -149,9 +149,16 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
                                     let r2_key = format!("articles/{article_id}");
                                     if let Some(ref bucket) = ctx.r2_bucket {
                                         let r2_start = js_sys::Date::now();
-                                        let _ = bucket.put(&r2_key, full_text.as_bytes().to_vec()).execute().await;
+                                        if let Err(e) = bucket.put(&r2_key, full_text.as_bytes().to_vec()).execute().await
+                                        {
+                                            console_log!("  R2 write failed for article {article_id}: {e}");
+                                            ctx.metrics.borrow_mut().errors += 1;
+                                        }
                                         ctx.metrics.borrow_mut().record_ms("r2", PipelineMetrics::since(r2_start));
-                                        let _ = ctx.store.set_raw_content_r2_key(article_id, Some(&r2_key)).await;
+                                        if let Err(e) = ctx.store.set_raw_content_r2_key(article_id, Some(&r2_key)).await
+                                        {
+                                            console_log!("  DB R2 key update failed for article {article_id}: {e}");
+                                        }
                                     }
                                     body = full_text;
                                 }
@@ -184,15 +191,23 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
                                     Err(_) => {
                                         ctx.metrics.borrow_mut().errors += 1;
                                         let excerpt = if body.len() > 500 { &body[..500] } else { &body };
-                                        let _ = ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await;
+                                        if let Err(e) = ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await
+                                        {
+                                            console_log!(
+                                                "  DB excerpt write failed for article {article_id} (LLM already failed): {e}"
+                                            );
+                                        }
                                     }
                                 }
                             }
                         } else if article_score != 0.0 {
-                            let _ = ctx
+                            if let Err(e) = ctx
                                 .store
                                 .set_ai_summary(article_id, "", "[]", &format!("article-{article_id}"), article_score)
-                                .await;
+                                .await
+                            {
+                                console_log!("  DB score update failed for article {article_id}: {e}");
+                            }
                         }
                     }
                     Ok(None) => {
@@ -205,17 +220,25 @@ async fn process_one_feed(ctx: &FeedContext<'_>, _env: &Env, job: &FetchJob) -> 
                 }
             }
             let start = js_sys::Date::now();
-            let _ = ctx
+            if let Err(e) = ctx
                 .store
                 .record_fetch_result(job.feed_id, ctx.now, fetched.etag.as_deref(), fetched.last_modified.as_deref())
-                .await;
+                .await
+            {
+                console_log!("  failed to persist fetch result for feed {} (url={}): {e}", job.feed_id, job.feed_url);
+            }
             ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
         }
         Err(e) => {
             console_log!("    fetch_feed failed: {e}");
             ctx.metrics.borrow_mut().errors += 1;
             if !e.is_transient() {
-                let _ = ctx.store.record_fetch_result(job.feed_id, ctx.now, None, None).await;
+                if let Err(db_err) = ctx.store.record_fetch_result(job.feed_id, ctx.now, None, None).await {
+                    console_log!(
+                        "  failed to record fetch error for feed {} (url={}, fetch_err={}): {db_err}",
+                        job.feed_id, job.feed_url, e
+                    );
+                }
             }
         }
     }
@@ -236,7 +259,13 @@ async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i64) -> Vec<F
     let summarizer = try_build_summarizer(env);
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
-    let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
+    let rule_jsons = match store.active_rule_jsons("default").await {
+        Ok(r) => r,
+        Err(e) => {
+            console_log!("  failed to load rules: {e:?}; proceeding without scoring");
+            Vec::new()
+        }
+    };
     let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
     let metrics = RefCell::new(PipelineMetrics::default());
     let ctx = FeedContext {
@@ -268,7 +297,9 @@ async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i64) -> Vec<F
     if let Ok(cache) = env.kv("CACHE") {
         let metrics_json = ctx.metrics.borrow().snapshot().to_string();
         if let Ok(pb) = cache.put("pipeline_metrics", metrics_json) {
-            let _ = pb.execute().await;
+            if let Err(e) = pb.execute().await {
+                console_log!("  KV metrics write failed: {e}");
+            }
         }
     }
     console_log!("  metrics: {}", ctx.metrics.borrow().snapshot());
@@ -283,7 +314,13 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
     let now = (js_sys::Date::now() / 1000.0) as i64;
-    let rule_jsons = store.active_rule_jsons("default").await.unwrap_or_default();
+    let rule_jsons = match store.active_rule_jsons("default").await {
+        Ok(r) => r,
+        Err(e) => {
+            console_log!("  failed to load rules: {e:?}; proceeding without scoring");
+            Vec::new()
+        }
+    };
     let rules: Vec<Rule> = rule_jsons.iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
     let metrics = RefCell::new(PipelineMetrics::default());
     let feed_ctx = FeedContext {
@@ -310,7 +347,9 @@ async fn queue(batch: MessageBatch<FetchJob>, env: Env, _ctx: Context) -> Result
     if let Ok(cache) = env.kv("CACHE") {
         let metrics_json = feed_ctx.metrics.borrow().snapshot().to_string();
         if let Ok(pb) = cache.put("pipeline_metrics", metrics_json) {
-            let _ = pb.execute().await;
+            if let Err(e) = pb.execute().await {
+                console_log!("  KV metrics write failed: {e}");
+            }
         }
     }
     Ok(())
@@ -334,6 +373,7 @@ async fn process_all_feeds(env: &Env) -> Result<()> {
             };
             if let Err(e) = q.send(job).await {
                 console_log!("  failed to enqueue feed {}: {e}", feed.id);
+                // Metrics not available here — this happens before pipeline starts
             }
         }
     } else {

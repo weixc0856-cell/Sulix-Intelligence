@@ -9,3 +9,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 js-sys.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+futures = "0.3"

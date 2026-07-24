@@ -39,6 +39,43 @@ pub struct D1FtsSearch<'a> {
     db: &'a D1Database,
 }
 
+/// Pure query-parameter struct for building FTS5 search WHERE clauses.
+pub struct SearchFilters<'a> {
+    pub query: &'a str,
+    pub tag: Option<&'a str>,
+    pub category: Option<&'a str>,
+}
+
+/// Build the WHERE clause and bind-value list for a filtered FTS5 search.
+/// Returns `(where_sql, bind_values, next_param_index)`.
+pub(crate) fn build_search_where(filters: &SearchFilters) -> (String, Vec<String>, u32) {
+    let mut parts = vec!["articles_fts MATCH ?1".to_string()];
+    let mut binds = vec![filters.query.to_string()];
+    let mut idx = 2u32;
+
+    if let Some(tag) = filters.tag {
+        let pattern = format!("%\"{}\"%", tag);
+        parts.push(format!("a.ai_tags LIKE ?{idx}"));
+        binds.push(pattern);
+        idx += 1;
+    }
+    if let Some(cat) = filters.category {
+        parts.push(format!("f.category = ?{idx}"));
+        binds.push(cat.to_string());
+        idx += 1;
+    }
+
+    (parts.join(" AND "), binds, idx)
+}
+
+/// Select the ORDER BY clause for search results.
+pub(crate) fn search_order_clause(sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("score") => "a.score DESC, articles_fts.rank",
+        _ => "articles_fts.rank",
+    }
+}
+
 impl<'a> D1FtsSearch<'a> {
     pub fn new(db: &'a D1Database) -> Self {
         Self { db }
@@ -54,28 +91,11 @@ impl<'a> D1FtsSearch<'a> {
         category: Option<&str>,
         sort: Option<&str>,
     ) -> Result<Vec<SearchHit>, SearchError> {
-        let mut where_parts = vec!["articles_fts MATCH ?1".to_string()];
-        let mut bind_vals: Vec<JsValue> = vec![query.into()];
-        let mut idx = 2u32;
+        let filters = SearchFilters { query, tag, category };
+        let (where_clause, str_binds, idx) = build_search_where(&filters);
+        let mut bind_vals: Vec<JsValue> = str_binds.into_iter().map(|s| s.into()).collect();
 
-        let tag_pattern = tag.map(|t| format!("%\"{}\"%", t));
-        if let Some(ref p) = tag_pattern {
-            where_parts.push(format!("a.ai_tags LIKE ?{idx}"));
-            bind_vals.push(p.clone().into());
-            idx += 1;
-        }
-
-        if let Some(cat) = category {
-            where_parts.push(format!("f.category = ?{idx}"));
-            bind_vals.push(cat.into());
-            idx += 1;
-        }
-
-        let where_clause = where_parts.join(" AND ");
-        let order = match sort {
-            Some("score") => "a.score DESC, articles_fts.rank",
-            _ => "articles_fts.rank",
-        };
+        let order = search_order_clause(sort);
         let ofs = idx + 1;
         let limit_idx = idx;
         let sql = format!(
@@ -105,23 +125,9 @@ impl<'a> D1FtsSearch<'a> {
         tag: Option<&str>,
         category: Option<&str>,
     ) -> Result<i64, SearchError> {
-        let mut where_parts = vec!["articles_fts MATCH ?1".to_string()];
-        let mut bind_vals: Vec<JsValue> = vec![query.into()];
-        let mut idx = 2u32;
-
-        let tag_pattern = tag.map(|t| format!("%\"{}\"%", t));
-        if let Some(ref p) = tag_pattern {
-            where_parts.push(format!("a.ai_tags LIKE ?{idx}"));
-            bind_vals.push(p.clone().into());
-            idx += 1;
-        }
-
-        if let Some(cat) = category {
-            where_parts.push(format!("f.category = ?{idx}"));
-            bind_vals.push(cat.into());
-        }
-
-        let where_clause = where_parts.join(" AND ");
+        let filters = SearchFilters { query, tag, category };
+        let (where_clause, str_binds, _idx) = build_search_where(&filters);
+        let bind_vals: Vec<JsValue> = str_binds.into_iter().map(|s| s.into()).collect();
         let sql = format!(
             "SELECT COUNT(*) AS cnt
              FROM articles_fts
@@ -151,5 +157,82 @@ impl<'a> ArticleSearch for D1FtsSearch<'a> {
         let stmt = stmt.bind(&[query.into(), JsValue::from_f64(limit as f64)])?;
         let result = stmt.all().await?;
         Ok(result.results::<SearchHit>()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- build_search_where --
+
+    #[test]
+    fn where_query_only() {
+        let f = SearchFilters { query: "AI", tag: None, category: None };
+        let (sql, binds, idx) = build_search_where(&f);
+        assert_eq!(sql, "articles_fts MATCH ?1");
+        assert_eq!(binds, vec!["AI"]);
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
+    fn where_query_and_tag() {
+        let f = SearchFilters { query: "rust", tag: Some("programming"), category: None };
+        let (sql, binds, _) = build_search_where(&f);
+        assert!(sql.contains("a.ai_tags LIKE ?2"));
+        assert_eq!(binds.len(), 2);
+        assert_eq!(binds[1], r#"%"programming"%"#);
+    }
+
+    #[test]
+    fn where_query_and_category() {
+        let f = SearchFilters { query: "AI", tag: None, category: Some("tech") };
+        let (sql, binds, _) = build_search_where(&f);
+        assert!(sql.contains("f.category = ?2"));
+        assert_eq!(binds.len(), 2);
+        assert_eq!(binds[1], "tech");
+    }
+
+    #[test]
+    fn where_all_filters() {
+        let f = SearchFilters { query: "AI", tag: Some("safety"), category: Some("tech") };
+        let (sql, binds, idx) = build_search_where(&f);
+        assert!(sql.contains("articles_fts MATCH ?1"));
+        assert!(sql.contains("a.ai_tags LIKE ?2"));
+        assert!(sql.contains("f.category = ?3"));
+        assert_eq!(binds.len(), 3);
+        assert_eq!(idx, 4);
+    }
+
+    #[test]
+    fn where_empty_tag() {
+        let f = SearchFilters { query: "AI", tag: Some(""), category: None };
+        let (sql, binds, _) = build_search_where(&f);
+        assert!(sql.contains("LIKE ?2"));
+        assert_eq!(binds[1], r#"%""%"#);
+    }
+
+    #[test]
+    fn where_empty_category() {
+        let f = SearchFilters { query: "AI", tag: None, category: Some("") };
+        let (sql, binds, _) = build_search_where(&f);
+        assert!(sql.contains("f.category = ?2"));
+        assert_eq!(binds[1], "");
+    }
+
+    // -- search_order_clause --
+
+    #[test]
+    fn order_default_rank() {
+        assert_eq!(search_order_clause(None), "articles_fts.rank");
+        assert_eq!(search_order_clause(Some("date")), "articles_fts.rank");
+    }
+
+    #[test]
+    fn order_by_score() {
+        assert_eq!(
+            search_order_clause(Some("score")),
+            "a.score DESC, articles_fts.rank"
+        );
     }
 }

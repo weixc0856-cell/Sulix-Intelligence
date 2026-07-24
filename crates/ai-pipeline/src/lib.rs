@@ -11,7 +11,9 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::{Store, StoreError};
+use store::{StoreBackend, StoreError};
+
+pub mod tag_normalizer;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
@@ -55,7 +57,7 @@ pub trait Summarizer {
 /// Runs summarization for one article and writes the result back through
 /// `store`. `score` is the rules-engine output computed upstream.
 pub async fn process_article(
-    store: &Store,
+    store: &impl StoreBackend,
     summarizer: &dyn Summarizer,
     article_id: i64,
     title: &str,
@@ -63,7 +65,8 @@ pub async fn process_article(
     score: f64,
 ) -> Result<SummaryResult, PipelineError> {
     let result = summarizer.summarize(title, body).await?;
-    let tags_json = serde_json::to_string(&result.tags).unwrap_or_else(|_| "[]".to_string());
+    let normalized = tag_normalizer::normalize_tags(&result.tags);
+    let tags_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
     let vector_id = format!("article-{article_id}");
     store.set_ai_summary(article_id, &result.summary, &tags_json, &vector_id, score).await?;
     Ok(result)
@@ -119,22 +122,27 @@ struct ExtractionResult {
     tags: Vec<String>,
 }
 
+/// Build the summarization prompt sent to the LLM.
+pub(crate) fn build_summarize_prompt(title: &str, body: &str) -> String {
+    format!(
+        "Analyze this article and return JSON. RULES:\n\
+         1) summary: 2-3 sentences.\n\
+         2) topics: broad subject areas, 3-5 items. \
+         Use Title Case, singular. DO NOT include company names, \
+         product names, version numbers, or CVE IDs here.\n\
+         3) entities: specific named items (companies, products, people, CVE IDs).\n\n\
+         Examples of good topics: \"AI Safety\", \"Cloud Security\", \"Enterprise AI\"\n\
+         Examples of bad topics: \"OpenAI\", \"GPT-5\", \"CVE-2026-xxxx\"\n\n\
+         Respond ONLY with JSON: \
+         {{\"summary\": string, \"topics\": string[], \"entities\": string[]}}.\n\n\
+         Title: {title}\n\nBody: {body}"
+    )
+}
+
 #[async_trait(?Send)]
 impl Summarizer for HttpSummarizer {
     async fn summarize(&self, title: &str, body: &str) -> Result<SummaryResult, PipelineError> {
-        let prompt = format!(
-            "Analyze this article and return JSON. RULES:\n\
-             1) summary: 2-3 sentences.\n\
-             2) topics: broad subject areas, 3-5 items. \
-             Use Title Case, singular. DO NOT include company names, \
-             product names, version numbers, or CVE IDs here.\n\
-             3) entities: specific named items (companies, products, people, CVE IDs).\n\n\
-             Examples of good topics: \"AI Safety\", \"Cloud Security\", \"Enterprise AI\"\n\
-             Examples of bad topics: \"OpenAI\", \"GPT-5\", \"CVE-2026-xxxx\"\n\n\
-             Respond ONLY with JSON: \
-             {{\"summary\": string, \"topics\": string[], \"entities\": string[]}}.\n\n\
-             Title: {title}\n\nBody: {body}"
-        );
+        let prompt = build_summarize_prompt(title, body);
 
         let chat_response = self
             .post_json(
@@ -186,5 +194,67 @@ impl Summarizer for HttpSummarizer {
             entities: extracted.entities,
             embedding,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_prompt_contains_title() {
+        let prompt = build_summarize_prompt("Test Title", "Test body text");
+        assert!(prompt.contains("Test Title"));
+    }
+
+    #[test]
+    fn build_prompt_contains_body() {
+        let prompt = build_summarize_prompt("Title", "Some article content here");
+        assert!(prompt.contains("Some article content here"));
+    }
+
+    #[test]
+    fn build_prompt_contains_json_keys() {
+        let prompt = build_summarize_prompt("T", "B");
+        assert!(prompt.contains("summary"));
+        assert!(prompt.contains("topics"));
+        assert!(prompt.contains("entities"));
+    }
+
+    #[test]
+    fn build_prompt_handles_special_chars() {
+        let prompt = build_summarize_prompt("Quotes \"and\" braces {}", "Text with\nnewlines");
+        assert!(prompt.contains("Quotes"));
+        assert!(prompt.contains("braces"));
+        assert!(prompt.contains("Text with"));
+    }
+
+    struct DummyHttpClient;
+
+    #[async_trait(?Send)]
+    impl HttpClient for DummyHttpClient {
+        async fn post_json(
+            &self,
+            _url: &str,
+            _headers: &[(String, String)],
+            _body: &serde_json::Value,
+        ) -> Result<serde_json::Value, PipelineError> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    #[test]
+    fn auth_headers_contains_bearer() {
+        let s = HttpSummarizer::new(
+            "https://api.example.com".into(),
+            "test-key-123".into(),
+            "model-x".into(),
+            "".into(),
+            Box::new(DummyHttpClient),
+        );
+        let headers = s.auth_headers();
+        assert_eq!(headers.len(), 2);
+        assert!(headers.contains(&("Content-Type".into(), "application/json".into())));
+        assert!(headers.contains(&("Authorization".into(), "Bearer test-key-123".into())));
     }
 }

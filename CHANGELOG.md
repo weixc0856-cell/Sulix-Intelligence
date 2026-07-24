@@ -1,29 +1,29 @@
 # Changelog
 
-## 2026-06-24
+## [0.1.0] - 2026-07-24
 
-### 架构重构
-- **P0**: Source Scoring (triage 加权) + Evidence Snapshot 增强 + Trend Layer 可视化
-- **P1**: Memory Engine — Thesis: Evidence[] 信念追踪系统 (`src/engine/memory.rs`)
-- **P2**: clusterer 5 文件拆分 (`clustering/analysis/synthesis/llm_prededup`) + change_detection→hermes
-- **PremiumEngine**: 研报独立引擎 (`src/engine/premium.rs`)
-- **AnalysisEngine**: 分析引擎独立 (`src/engine/analysis.rs`)
-- **Hermes 增强**: 趋势检测 + 矛盾写入 + 新 Thesis 发现
-- **Thesis Dashboard**: `/memory/` HTML 看板
+### Added
+- Pipeline observability: timing metrics for fetch/parse/LLM/store/R2 steps, exposed via KV to `/api/pipeline/status`
+- StoreBackend trait with MemoryStore test implementation (7 methods, failure injection)
+- 28 new pure-function unit tests across api/store/ai-pipeline/search crates
+- HTTP fetch timeout via AbortSignal (15s feed / 10s full-text)
+- Dashboard Pipeline Health cards (latency bars + embedding coverage)
+- PipelineMetrics accumulator with per-cycle snapshot
 
-### 修复
-- 429 rate limit 错误地标记为永久错误 → 改为重试
-- `last_error.unwrap()` 潜在 panic → safe fallback
-- 硬编码 Windows 绝对路径 → config 驱动
-- 静默写入失败 x3 → warn 日志
-- LLM 去重 JSON 解析静默回退 → warn 日志
-- BlueTeam LoopBack 名称 bug (`ClusterNode`→`Cluster`)
+### Fixed
+- 10 error-swallowing sites in worker-entry pipeline: `unwrap_or_default()` replaced with `match`+`console_log`; `let _` replaced with `if let Err(e)`
+- `search_count` SQL parameter index bug (missing `idx += 1` in category branch)
+- `store/src/lib.rs:59` — `unwrap()` on status filter eliminated
+- `api/src/lib.rs:457` — redundant JSON re-parse + `unwrap()` eliminated
+- Triplicated VectorizeIndex wasm binding consolidated into shared `crates/vectorize/`
+- 6 dead code items removed from vectorize module (VectorEntry, VectorMatch, typed wrappers)
 
-### 清理
-- 删除未使用模块 `termination.rs` + `versioned.rs` (~600 行)
-- 删除 `template.rs` (~300 行死模板)
-- 删除死渲染函数 `render_analysis_report`/`render_signal_aggregation`
-- 删除死代码实体 normalization + contradiction 计算 (~200 行)
-- 删除 5 个 entity.rs 未使用方法
-- 删除 4 个 db/catalog/pipeline 死函数
-- clippy 警告 35→0, 测试 126→110 (去除死代码对应测试)
+### Changed
+- `Store` renamed to `D1Store` with backward-compatible alias
+- `process_article` and `process_one_feed` generic over `StoreBackend` trait
+- `upsert_vector` from fire-and-forget (`spawn_local`) to awaitable `Result`
+- Clippy fixes: type_complexity, adjusted `fmt` throughout
+
+### Removed
+- `crates/worker-entry/src/vectorize.rs` — dead code module deleted
+- Old V2 architecture entries from CHANGELOG

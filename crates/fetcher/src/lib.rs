@@ -9,7 +9,7 @@ use feed_rs::model::Feed;
 use feed_rs::parser;
 use scraper::{Html, Selector};
 use std::net::IpAddr;
-use worker::{Fetch, Method, Request, RequestInit};
+use worker::{AbortSignal, Fetch, Method, Request, RequestInit};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
@@ -94,10 +94,12 @@ fn guard_public_url(url: &str) -> Result<(), FetchError> {
 
 /// Low-level HTTP GET used by both `fetch_feed` and `extract_full_text`.
 /// Returns the full response so callers can choose between text/json/status.
+/// `timeout_ms` is applied via `AbortSignal::timeout` (noop on wasm32? tested).
 async fn http_get(
     url: &str,
     etag: Option<&str>,
     last_modified: Option<&str>,
+    timeout_ms: u32,
 ) -> Result<(u16, String, Option<String>, Option<String>), FetchError> {
     guard_public_url(url)?;
 
@@ -115,7 +117,15 @@ async fn http_get(
 
     let req = Request::new_with_init(url, &init).map_err(|e| FetchError::Http(e.to_string()))?;
 
-    let mut resp = Fetch::Request(req).send().await.map_err(|e| FetchError::Http(e.to_string()))?;
+    // Apply AbortSignal.timeout so the fetch is cancelled if the server does
+    // not respond within the deadline.  Aborted requests surface as Http
+    // errors which is_transient() classifies as retryable.
+    let ws_signal = worker::web_sys::AbortSignal::timeout_with_u32(timeout_ms);
+    let signal = AbortSignal::from(ws_signal);
+    let mut resp = Fetch::Request(req)
+        .send_with_signal(&signal)
+        .await
+        .map_err(|e| FetchError::Http(e.to_string()))?;
 
     let status = resp.status_code();
 
@@ -134,7 +144,7 @@ pub async fn fetch_feed(
     prior_etag: Option<&str>,
     prior_last_modified: Option<&str>,
 ) -> Result<FetchOutcome, FetchError> {
-    let (status, body, etag, last_modified) = http_get(url, prior_etag, prior_last_modified).await?;
+    let (status, body, etag, last_modified) = http_get(url, prior_etag, prior_last_modified, 15_000).await?;
 
     if status == 304 {
         return Ok(FetchOutcome::NotModified);
@@ -153,7 +163,7 @@ pub async fn fetch_feed(
 /// The `article.url` originates from third-party feed data, so
 /// `guard_public_url` is applied here too.
 pub async fn extract_full_text(url: &str) -> Result<String, FetchError> {
-    let (status, body, _etag, _lm) = http_get(url, None, None).await?;
+    let (status, body, _etag, _lm) = http_get(url, None, None, 10_000).await?;
 
     if status >= 400 {
         return Err(FetchError::Status(status));

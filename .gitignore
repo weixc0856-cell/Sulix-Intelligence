@@ -31,9 +31,8 @@ output/
 # ---- 设计/头脑风暴临时文件 ----
 /.superpowers/
 
-# ---- 文档派生产物（架构 ADR + specs 不受影响）----
-/docs/meeting-notes/
-/docs/research/
+# ---- 开发过程文件（计划、设计稿、会议记录）----
+/docs/
 
 # ---- 代码分析产物 ----
 /.codegraph/

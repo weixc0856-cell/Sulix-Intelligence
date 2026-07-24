@@ -1,32 +1,42 @@
+---
+name: backend-dev-guide
+description: Backend Rust workspace structure, commands, and design decisions
+metadata:
+  type: reference
+---
+
 # Sulix Intelligence V2 — Claude Dev Guide
 
 ## Architecture
 
 ```
 Cron Trigger (every 30 min) → FETCH_QUEUE → Queue Consumer
-  → RSS Fetch → D1 Store → Rules Engine → AI Pipeline → Search Index
+  → RSS Fetch → D1 Store → Rules Engine → AI Pipeline → Vectorize Index
+  → KV Pipeline Metrics → /api/pipeline/status
 
 HTTP (Worker Router) ←─ service binding ─→ Astro Frontend (Worker)
 ```
 
 Sulix is a curated RSS Feed + AI Digest product, deployed entirely on Cloudflare Workers.
-Not a Decision Intelligence System — see V2 PRD/BRD for product context.
 
 ## Project Structure
 
 ```
 D:\Project\Sulix Intelligence (Rust workspace — backend)
-├── Cargo.toml               ← workspace root (7 member crates)
+├── Cargo.toml               ← workspace root (9 member crates)
 ├── migrations/
 │   └── 0001_init.sql        ← D1 schema (feeds, articles, filter_rules)
-└── crates/
-    ├── store/               ← D1 access layer (abstraction over D1Database)
-    ├── fetcher/             ← RSS/Atom fetch + SSRF guard + conditional re-fetch
-    ├── rules/               ← Filter/scoring engine (pure logic, unit-tested)
-    ├── ai-pipeline/         ← AI summarization trait (no concrete impl yet)
-    ├── search/              ← FTS5 search abstraction (D1FtsSearch)
-    ├── api/                 ← HTTP routes (worker::Router)
-    └── worker-entry/        ← Cloudflare Workers entry (HTTP + Cron + Queue)
+├── crates/
+│   ├── store/               ← D1 access layer + StoreBackend trait + MemoryStore
+│   ├── fetcher/             ← RSS/Atom fetch + SSRF guard + AbortSignal timeout
+│   ├── rules/               ← Filter/scoring engine (pure logic, unit-tested)
+│   ├── ai-pipeline/         ← AI summarization trait + HttpSummarizer
+│   ├── search/              ← FTS5 search abstraction + WHERE builder (tested)
+│   ├── embedding/           ← Workers AI embedding (bge-large-en-v1.5)
+│   ├── vectorize/           ← Shared wasm binding (upsert/query/delete)
+│   ├── api/                 ← HTTP routes (worker::Router)
+│   └── worker-entry/        ← Workers entry (HTTP + Cron + Queue + Metrics)
+```
 
 D:\Project\intel-web (Astro — frontend)
 ├── astro.config.mjs         ← @astrojs/cloudflare, server mode
@@ -47,17 +57,22 @@ D:\Project\intel-web (Astro — frontend)
 worker-entry → api → store → worker (D1, Queues, Router)
             → fetcher → worker, feed-rs
             → rules (pure — no worker dep)
-            → ai-pipeline → store, Summarizer trait
+            → ai-pipeline → store (via StoreBackend trait), Summarizer trait
+            → vectorize (shared wasm binding)
+api → store, search, rules, embedding, vectorize
+store → worker (D1Database)
 ```
 
 ## Commands
 
 ### Backend (wasm32-unknown-unknown target required)
 ```bash
-cargo check -p store -p rules -p fetcher -p ai-pipeline -p search -p api
-cargo test -p rules                    # 7 unit tests for rules engine
-cargo install worker-build             # need once per machine
-worker-build --release                 # full Worker build
+cargo check --workspace
+cargo test --workspace              # 90+ unit tests
+cargo clippy --workspace -- -D warnings
+cargo fmt --check
+cargo install worker-build          # need once per machine
+worker-build --release              # full Worker build
 npx wrangler deploy -c crates/worker-entry/wrangler.toml
 ```
 
@@ -65,6 +80,7 @@ npx wrangler deploy -c crates/worker-entry/wrangler.toml
 ```bash
 npm run dev             # astro dev
 npm run build           # astro build (to dist/)
+npm run test            # vitest (36+ tests)
 npm run deploy          # build + wrangler deploy
 ```
 
