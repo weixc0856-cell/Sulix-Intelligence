@@ -4,11 +4,13 @@ use std::cell::RefCell;
 use worker::*;
 
 use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
+use worker::wasm_bindgen::JsValue;
 
 mod metrics;
 use metrics::PipelineMetrics;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
+use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
@@ -82,6 +84,10 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(e) = gc_r2_objects(&env, now).await {
         console_log!("gc_r2_objects failed: {e}");
     }
+    // Daily Intelligence Brief generation — runs once per day.
+    // Uses a KV lock (TTL 1h) to prevent duplicate generation across
+    // multiple cron cycles.  Failure is non-fatal (logged, not retried).
+    generate_briefing_task(&env, now).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +456,117 @@ async fn gc_r2_objects(env: &Env, now: i64) -> Result<u64, Error> {
 
     console_log!("[Sulix:gc] deleted {deleted_r2} R2 objects, {deleted_d1} D1 rows");
     Ok(deleted_r2)
+}
+
+/// Generate today's intelligence briefing and persist it.
+///
+/// Guarded by a KV lock (`briefing_lock:YYYY-MM-DD`, TTL 1h) so only
+/// the first cron cycle of the day creates the briefing.  Subsequent
+/// cycles find the lock and skip.
+async fn generate_briefing_task(env: &Env, now: i64) {
+    let date = {
+        let d = js_sys::Date::new(&JsValue::from_f64((now as f64) * 1000.0));
+        format!("{:04}-{:02}-{:02}", d.get_full_year(), d.get_month() + 1, d.get_date())
+    };
+    let lock_key = format!("briefing_lock:{date}");
+
+    // KV lock — skip if already generated today
+    if let Ok(cache) = env.kv("CACHE") {
+        if let Ok(Some(_)) = cache.get(&lock_key).text().await {
+            console_log!("[Sulix:briefing] already generated for {date} — skipping");
+            return;
+        }
+    }
+
+    let store = match env.d1("DB") {
+        Ok(db) => Store::new(db),
+        Err(e) => {
+            console_log!("[Sulix:briefing] D1 binding failed: {e}");
+            return;
+        }
+    };
+
+    // 1. Load signals
+    let today_signals = match store.signals_today(now).await {
+        Ok(s) => s,
+        Err(e) => {
+            console_log!("[Sulix:briefing] signals_today failed: {e}");
+            return;
+        }
+    };
+    if today_signals.is_empty() {
+        console_log!("[Sulix:briefing] no signals today — skipping");
+        return;
+    }
+
+    // 2. Build summarizer
+    let summarizer = match try_build_summarizer(env) {
+        Some(s) => s,
+        None => {
+            console_log!("[Sulix:briefing] no AI summarizer available — skipping");
+            return;
+        }
+    };
+
+    // 3. Convert to SignalCandidate
+    let candidates: Vec<SignalCandidate> = today_signals
+        .into_iter()
+        .map(|s| {
+            let article_ids: Vec<i64> = s.articles.iter().map(|a| a.id).collect();
+            let avg_score: f64 = if !s.articles.is_empty() {
+                s.articles.iter().map(|a| a.score).sum::<f64>() / s.articles.len() as f64
+            } else {
+                0.0
+            };
+            SignalCandidate {
+                id: s.id,
+                title: s.title,
+                category: String::new(),
+                signal_summary: s.summary,
+                article_count: s.articles.len(),
+                avg_score,
+                trend: s.trend,
+                article_ids,
+            }
+        })
+        .collect();
+
+    // 4. Acquire lock before generating (prevent concurrent cron runs)
+    let cache = env.kv("CACHE").ok();
+    if let Some(ref cache) = cache {
+        if let Ok(pb) = cache.put(&lock_key, "1") {
+            let _ = pb.expiration_ttl(3600).execute().await;
+        }
+    }
+
+    // 5. Generate
+    let briefing = match generate_daily_brief(candidates, &summarizer, &date, now).await {
+        Ok(b) => b,
+        Err(e) => {
+            console_log!("[Sulix:briefing] generation failed: {e}");
+            return;
+        }
+    };
+
+    // 6. Persist to D1
+    let content = serde_json::to_string(&briefing).unwrap_or_default();
+    if let Err(e) = store.save_briefing(&date, now, briefing.signal_count, &content).await {
+        console_log!("[Sulix:briefing] D1 save failed: {e}");
+        return;
+    }
+
+    // 7. Write KV cache
+    if let Some(ref cache) = cache {
+        let cache_key = format!("briefing:{date}");
+        if let Ok(pb) = cache.put(&cache_key, &content) {
+            let _ = pb.expiration_ttl(21600).execute().await;
+        }
+    }
+
+    console_log!(
+        "[Sulix:briefing] generated for {date} — {} insights",
+        briefing.insights.len()
+    );
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {

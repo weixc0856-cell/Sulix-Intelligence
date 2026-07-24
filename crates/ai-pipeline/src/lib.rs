@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::{StoreBackend, StoreError};
 
+pub mod briefing;
 pub mod tag_normalizer;
 
 #[derive(Debug, thiserror::Error)]
