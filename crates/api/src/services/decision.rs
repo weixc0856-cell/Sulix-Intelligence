@@ -68,6 +68,8 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
                 "priority": &new.priority,
             }),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
+            correlation_id: String::new(),
+            causation_id: String::new(),
             occurred_at: now,
             created_at: now,
         }).await;
@@ -93,6 +95,8 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
             event_type: "DecisionStatusChanged".into(),
             payload: serde_json::json!({"status": status}),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
+            correlation_id: String::new(),
+            causation_id: String::new(),
             occurred_at: now,
             created_at: now,
         }).await;
@@ -118,6 +122,8 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
             event_type: "DecisionStatusChanged".into(),
             payload: serde_json::json!({"status": "completed"}),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
+            correlation_id: String::new(),
+            causation_id: String::new(),
             occurred_at: now,
             created_at: now,
         }).await;
@@ -137,6 +143,8 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
                 "observation": &outcome.observation,
             }),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
+            correlation_id: String::new(),
+            causation_id: String::new(),
             occurred_at: now,
             created_at: now,
         }).await;
@@ -165,6 +173,8 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
                 "evaluator": eval.evaluator.to_string(),
             }),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
+            correlation_id: String::new(),
+            causation_id: String::new(),
             occurred_at: now,
             created_at: now,
         }).await;

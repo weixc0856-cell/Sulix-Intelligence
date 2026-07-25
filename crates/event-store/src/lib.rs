@@ -79,6 +79,10 @@ pub struct EventEnvelope {
     pub event_type: String,
     pub payload: serde_json::Value,
     pub metadata: EventMetadata,
+    #[serde(default)]
+    pub correlation_id: String,        // traces a business transaction across aggregates
+    #[serde(default)]
+    pub causation_id: String,          // id of the event that caused this one
     pub occurred_at: i64,
     pub created_at: i64,
 }

@@ -76,6 +76,8 @@ impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
                     .and_then(|p| serde_json::from_str(&p).ok())
                     .unwrap_or(serde_json::Value::Null),
                 metadata: crate::EventMetadata { actor: "system".into(), source: "legacy".into() },
+                correlation_id: String::new(),
+                causation_id: String::new(),
                 occurred_at: r.created_at,
                 created_at: r.created_at,
             })

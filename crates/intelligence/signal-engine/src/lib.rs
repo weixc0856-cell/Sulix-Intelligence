@@ -126,6 +126,8 @@ impl SignalEngine {
                         actor: "system".into(),
                         source: "cron".into(),
                     },
+                    correlation_id: String::new(),
+                    causation_id: String::new(),
                     occurred_at: now,
                     created_at: now,
                 };
@@ -151,6 +153,8 @@ impl SignalEngine {
                             actor: "system".into(),
                             source: "cron".into(),
                         },
+                        correlation_id: String::new(),
+                        causation_id: String::new(),
                         occurred_at: now,
                         created_at: now,
                     };
