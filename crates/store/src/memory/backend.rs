@@ -12,8 +12,8 @@ use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
     EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary, Feed, NewArticle, NewArtifact,
-    NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity,
+    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -565,5 +565,46 @@ impl StoreBackend for MemoryStore {
         let result: Vec<DecisionEvaluation> =
             self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
         Ok(result.into_iter().last())
+    }
+
+    // ── Object Outbox ──
+
+    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_outbox_id.borrow();
+        *self.next_outbox_id.borrow_mut() = id + 1;
+        self.outbox.borrow_mut().push(OutboxEntry {
+            id,
+            object_type: entry.object_type.clone(),
+            object_key: entry.object_key.clone(),
+            payload: entry.payload.clone(),
+            status: "pending".into(),
+            created_at: now,
+            retry_count: 0,
+        });
+        Ok(id)
+    }
+    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
+        let outbox = self.outbox.borrow();
+        let pending: Vec<OutboxEntry> = outbox
+            .iter()
+            .filter(|e| e.status == "pending")
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok(pending)
+    }
+    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
+        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id) {
+            e.status = "archived".into();
+        }
+        Ok(())
+    }
+    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
+        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id && e.retry_count >= 3) {
+            e.status = "failed".into();
+            e.retry_count += 1;
+        }
+        Ok(())
     }
 }

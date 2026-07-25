@@ -12,6 +12,7 @@ members = [
     "crates/vectorize",
     "crates/entity",
     "crates/intelligence/signal-engine",
+    "crates/object-store",
 ]
 
 [workspace.package]
@@ -45,6 +46,7 @@ api = { path = "crates/api" }
 vectorize = { path = "crates/vectorize" }
 entity = { path = "crates/entity" }
 signal-engine = { path = "crates/intelligence/signal-engine" }
+object-store = { path = "crates/object-store" }
 
 [profile.release]
 panic = "unwind"

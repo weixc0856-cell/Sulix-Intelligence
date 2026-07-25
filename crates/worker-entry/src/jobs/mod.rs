@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod briefing;
 pub mod embedding;
 pub mod gc;

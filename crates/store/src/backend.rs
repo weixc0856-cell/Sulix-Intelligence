@@ -8,8 +8,9 @@ use async_trait::async_trait;
 use crate::{
     ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed,
-    NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity,
-    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent,
+    OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter,
+    SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -236,4 +237,18 @@ pub trait StoreBackend {
 
     /// Get the latest evaluation for a decision.
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
+
+    // ===== Object Outbox =====
+
+    /// Enqueue a new outbox entry for deferred R2 archive write.
+    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError>;
+
+    /// Drain up to `limit` pending outbox entries, oldest first.
+    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError>;
+
+    /// Mark an outbox entry as successfully archived.
+    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError>;
+
+    /// Mark an outbox entry as failed (retries exhausted).
+    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError>;
 }

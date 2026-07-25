@@ -1,6 +1,6 @@
 use worker::*;
 
-use crate::jobs::{briefing, gc, ingestion, signal};
+use crate::jobs::{archive, briefing, gc, ingestion, signal};
 
 pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
@@ -20,4 +20,8 @@ pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleConte
     signal::run_signal_engine(&env, now).await;
     // Daily Intelligence Brief generation — runs once per day (KV lock).
     briefing::generate_briefing_task(&env, now).await;
+
+    // Object Outbox — drain pending archive entries to the R2 Memory Archive.
+    // Runs last so all artifacts from the current cycle are included.
+    archive::archive_outbox(&env).await;
 }

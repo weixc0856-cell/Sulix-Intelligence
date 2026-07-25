@@ -10,8 +10,8 @@ use crate::backend::StoreBackend;
 use crate::{
     Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
-    NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError,
+    NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput,
+    SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -237,5 +237,20 @@ impl StoreBackend for crate::D1Store {
     }
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
         crate::D1Store::get_latest_evaluation(self, decision_id).await
+    }
+
+    // ── Object Outbox ──
+
+    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
+        crate::D1Store::insert_outbox(self, entry).await
+    }
+    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
+        crate::D1Store::drain_outbox(self, limit).await
+    }
+    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::mark_outbox_archived(self, id).await
+    }
+    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::mark_outbox_failed(self, id).await
     }
 }

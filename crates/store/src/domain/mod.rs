@@ -7,4 +7,5 @@ pub mod entity;
 pub mod feed;
 pub mod feed_analytics;
 pub mod feed_rules;
+pub mod outbox;
 pub mod signal;

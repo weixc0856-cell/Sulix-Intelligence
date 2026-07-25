@@ -677,6 +677,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "object-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "worker",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,6 +1474,7 @@ dependencies = [
  "feed-rs",
  "fetcher",
  "js-sys",
+ "object-store",
  "rules",
  "serde",
  "serde_json",

@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{Feed, NewArticle, OutcomeEvent, SignalEvent};
+use crate::{Feed, NewArticle, OutcomeEvent, OutboxEntry, SignalEvent};
 
 mod backend;
 
@@ -61,6 +61,10 @@ pub struct MemoryStore {
 
     // Evaluation state
     evaluations: RefCell<Vec<crate::DecisionEvaluation>>,
+
+    // Outbox state
+    outbox: RefCell<Vec<OutboxEntry>>,
+    next_outbox_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -125,6 +129,8 @@ impl MemoryStore {
             outcomes: RefCell::new(Vec::new()),
             next_outcome_id: RefCell::new(1),
             evaluations: RefCell::new(Vec::new()),
+            outbox: RefCell::new(Vec::new()),
+            next_outbox_id: RefCell::new(1),
         }
     }
 
