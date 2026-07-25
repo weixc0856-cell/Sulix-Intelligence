@@ -7,10 +7,10 @@ use async_trait::async_trait;
 
 use crate::{
     ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed,
-    NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent,
-    OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
+    EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
+    NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
+    SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -260,4 +260,25 @@ pub trait StoreBackend {
 
     /// Mark an outbox entry as failed (retries exhausted).
     async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError>;
+
+    // ===== Event Archive Index =====
+
+    /// Insert a row into the event_archive_index table.
+    async fn insert_event_index(
+        &self,
+        event_id: &str,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        event_type: &str,
+        object_key: &str,
+        occurred_at: i64,
+    ) -> Result<(), StoreError>;
+
+    /// Find event index entries for an aggregate, newest first.
+    async fn find_event_keys(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        limit: u32,
+    ) -> Result<Vec<EventIndexEntry>, StoreError>;
 }

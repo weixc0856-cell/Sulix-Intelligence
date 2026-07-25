@@ -12,9 +12,9 @@ use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
-    Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent,
-    OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError,
+    EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
+    NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
+    SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -642,6 +642,50 @@ impl StoreBackend for MemoryStore {
             .borrow()
             .iter()
             .filter(|a| a.artifact_type == artifact_type)
+            .cloned()
+            .collect();
+        results.reverse();
+        results.truncate(limit as usize);
+        Ok(results)
+    }
+
+    // ── Event Archive Index ──
+
+    async fn insert_event_index(
+        &self,
+        event_id: &str,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        event_type: &str,
+        object_key: &str,
+        occurred_at: i64,
+    ) -> Result<(), StoreError> {
+        let now = 1000000;
+        let id = *self.next_event_archive_id.borrow();
+        *self.next_event_archive_id.borrow_mut() = id + 1;
+        self.event_archive.borrow_mut().push(EventIndexEntry {
+            id,
+            event_id: event_id.to_string(),
+            aggregate_type: aggregate_type.to_string(),
+            aggregate_id,
+            event_type: event_type.to_string(),
+            object_key: object_key.to_string(),
+            occurred_at,
+            created_at: now,
+        });
+        Ok(())
+    }
+    async fn find_event_keys(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        limit: u32,
+    ) -> Result<Vec<EventIndexEntry>, StoreError> {
+        let mut results: Vec<EventIndexEntry> = self
+            .event_archive
+            .borrow()
+            .iter()
+            .filter(|e| e.aggregate_type == aggregate_type && e.aggregate_id == aggregate_id)
             .cloned()
             .collect();
         results.reverse();

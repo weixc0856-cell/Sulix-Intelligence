@@ -19,6 +19,7 @@ mod candidate;
 
 pub use scoring::score_to_impact;
 
+use event_store::EventStore;
 use store::StoreBackend;
 use vectorize::VectorizeIndex;
 
@@ -43,6 +44,7 @@ impl SignalEngine {
     /// and persists them as signal threads.
     pub async fn run(
         store: &impl StoreBackend,
+        event_store: Option<&dyn EventStore>,
         vectorize: Option<&VectorizeIndex>,
         sources: &[&dyn SignalSource],
         now: i64,
@@ -102,12 +104,43 @@ impl SignalEngine {
                 "trend": candidate.trend,
                 "signal_key": candidate.signal_key,
             });
+
+            // Legacy D1 insert (transitional)
             store.insert_signal_event(thread_id, "score_changed", Some(&payload.to_string())).await?;
             report.events_written += 1;
+
+            // R2 Event Archive (canonical)
+            if let Some(es) = event_store {
+                let event = event_store::Event {
+                    schema_version: 1,
+                    event_id: event_store::keys::format_id(thread_id, now, report.events_written),
+                    aggregate_type: "signal_thread".into(),
+                    aggregate_id: thread_id,
+                    event_type: "SignalScoreChanged".into(),
+                    payload: payload.clone(),
+                    occurred_at: now,
+                    created_at: now,
+                };
+                let _ = es.append_event(&event).await;
+            }
 
             if upsert.mutation == store::SignalMutation::Created {
                 store.insert_signal_event(thread_id, "created", None).await?;
                 report.events_written += 1;
+
+                if let Some(es) = event_store {
+                    let event = event_store::Event {
+                        schema_version: 1,
+                        event_id: event_store::keys::format_id(thread_id, now, report.events_written),
+                        aggregate_type: "signal_thread".into(),
+                        aggregate_id: thread_id,
+                        event_type: "SignalCreated".into(),
+                        payload: serde_json::json!({"signal_key": candidate.signal_key}),
+                        occurred_at: now,
+                        created_at: now,
+                    };
+                    let _ = es.append_event(&event).await;
+                }
             }
         }
 
@@ -162,7 +195,7 @@ mod tests {
 
         let source = crate::source::EntitySignalSource;
         let sources = [&source as &dyn crate::source::SignalSource];
-        let report = futures::executor::block_on(crate::SignalEngine::run(&store, None, &sources, now)).unwrap();
+        let report = futures::executor::block_on(crate::SignalEngine::run(&store, None::<&dyn event_store::EventStore>, None, &sources, now)).unwrap();
         assert!(report.threads_created >= 2, "should create at least 2 threads");
         assert!(report.instances_appended >= 2, "should append at least 2 instances");
 

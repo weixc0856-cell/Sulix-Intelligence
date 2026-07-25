@@ -24,6 +24,7 @@ signal-engine.workspace = true
 vectorize.workspace = true
 entity.workspace = true
 object-store.workspace = true
+event-store.workspace = true
 
 
 [package.metadata.release]

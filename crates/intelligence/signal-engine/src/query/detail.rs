@@ -7,11 +7,19 @@
 //! 3. Entity relations → related entities with relation_type
 //!
 //! Also computes a rule-based "Why This Matters" analysis.
+//!
+//! Sprint 5.2+: Events are read from the R2 Event Archive via EventStore,
+//! with D1 signal_events as fallback.
 
+use event_store::EventStore;
 use store::{SignalAnalysis, SignalDetail, SignalTimelineEvent, StoreBackend, StoreError};
 
 /// Build the full SignalDetail for a thread.
-pub async fn build(store: &impl StoreBackend, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+pub async fn build(
+    store: &impl StoreBackend,
+    event_store: Option<&dyn EventStore>,
+    thread_id: i64,
+) -> Result<Option<SignalDetail>, StoreError> {
     // 1. Load thread via existing detail method
     let detail = store.load_signal_detail(thread_id).await?;
     let mut detail = match detail {
@@ -20,7 +28,7 @@ pub async fn build(store: &impl StoreBackend, thread_id: i64) -> Result<Option<S
     };
 
     // 2. Merge signal_events into timeline
-    let merged = merge_signal_events(store, thread_id, &detail.timeline).await?;
+    let merged = merge_signal_events(store, event_store, thread_id, &detail.timeline).await?;
     detail.timeline = merged;
 
     // 3. Build SignalAnalysis (structured, not appended to description)
@@ -29,12 +37,39 @@ pub async fn build(store: &impl StoreBackend, thread_id: i64) -> Result<Option<S
     Ok(Some(detail))
 }
 
-/// Merge stored signal_events into the timeline alongside instance-based events.
+/// Merge stored signal events into the timeline.
+///
+/// Prefers the R2 Event Archive via [`EventStore`], falling back to the D1
+/// `signal_events` table for backward compatibility.
 async fn merge_signal_events(
     store: &impl StoreBackend,
+    event_store: Option<&dyn EventStore>,
     thread_id: i64,
     instance_timeline: &[SignalTimelineEvent],
 ) -> Result<Vec<SignalTimelineEvent>, StoreError> {
+    // Try EventStore first (R2 archive)
+    if let Some(es) = event_store {
+        match es.load_events("signal_thread", thread_id, 50).await {
+            Ok(events) if !events.is_empty() => {
+                let mut merged: Vec<SignalTimelineEvent> = instance_timeline.to_vec();
+                for e in events {
+                    merged.push(SignalTimelineEvent {
+                        timestamp: e.occurred_at,
+                        event_type: e.event_type.clone(),
+                        score: e.payload.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                        article_count: e.payload.get("article_count").and_then(|v| v.as_i64()).unwrap_or(0),
+                        description: e.event_type,
+                    });
+                }
+                merged.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
+                merged.dedup_by(|a, b| a.timestamp == b.timestamp && a.event_type == b.event_type);
+                return Ok(merged);
+            }
+            _ => {} // R2 unavailable or empty — fall through to D1
+        }
+    }
+
+    // D1 legacy fallback
     let events = store.load_signal_events(thread_id, 50).await?;
 
     if events.is_empty() {

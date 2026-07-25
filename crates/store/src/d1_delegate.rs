@@ -9,9 +9,10 @@ use async_trait::async_trait;
 use crate::backend::StoreBackend;
 use crate::{
     ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
-    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewArtifactRecord,
-    NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity,
-    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, NewArticle, NewArtifact,
+    NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter,
+    SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -261,5 +262,27 @@ impl StoreBackend for crate::D1Store {
     }
     async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
         crate::D1Store::mark_outbox_failed(self, id).await
+    }
+
+    // ── Event Archive Index ──
+
+    async fn insert_event_index(
+        &self,
+        event_id: &str,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        event_type: &str,
+        object_key: &str,
+        occurred_at: i64,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::insert_event_index(self, event_id, aggregate_type, aggregate_id, event_type, object_key, occurred_at).await
+    }
+    async fn find_event_keys(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: i64,
+        limit: u32,
+    ) -> Result<Vec<EventIndexEntry>, StoreError> {
+        crate::D1Store::find_event_keys(self, aggregate_type, aggregate_id, limit).await
     }
 }

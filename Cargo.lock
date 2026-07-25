@@ -230,6 +230,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "js-sys",
+ "object-store",
+ "serde",
+ "serde_json",
+ "store",
+ "thiserror",
+ "wasm-bindgen",
+ "worker",
+]
+
+[[package]]
 name = "feed-rs"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1062,6 +1078,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "embedding",
+ "event-store",
  "futures",
  "serde",
  "serde_json",
@@ -1472,6 +1489,7 @@ dependencies = [
  "api",
  "console_error_panic_hook",
  "entity",
+ "event-store",
  "feed-rs",
  "fetcher",
  "js-sys",

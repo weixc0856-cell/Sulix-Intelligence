@@ -12,3 +12,4 @@ async-trait = { workspace = true }
 vectorize = { path = "../../vectorize" }
 embedding = { path = "../../embedding", optional = true }
 futures = "0.3"
+event-store = { path = "../../event-store" }

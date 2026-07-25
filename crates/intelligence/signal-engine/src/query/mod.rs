@@ -17,16 +17,22 @@ pub mod detail;
 pub mod entity;
 pub mod radar;
 
+use event_store::EventStore;
 use store::{RelatedEntityRef, StoreBackend, StoreError};
 
 /// Unified query service for Intelligence read models.
 pub struct SignalQueryService<'a, S: StoreBackend> {
     pub store: &'a S,
+    pub event_store: Option<&'a dyn EventStore>,
 }
 
 impl<'a, S: StoreBackend> SignalQueryService<'a, S> {
     pub fn new(store: &'a S) -> Self {
-        Self { store }
+        Self { store, event_store: None }
+    }
+
+    pub fn with_event_store(store: &'a S, event_store: &'a dyn EventStore) -> Self {
+        Self { store, event_store: Some(event_store) }
     }
 
     /// Radar dashboard — active threads with health projection.
@@ -36,7 +42,7 @@ impl<'a, S: StoreBackend> SignalQueryService<'a, S> {
 
     /// Thread detail — thread + instances + signal_events + evidence + entities.
     pub async fn thread_detail(&self, thread_id: i64) -> Result<Option<store::SignalDetail>, StoreError> {
-        detail::build(self.store, thread_id).await
+        detail::build(self.store, self.event_store, thread_id).await
     }
 
     /// Entity signal threads — threads anchored to an entity.
