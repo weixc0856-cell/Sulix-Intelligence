@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{Feed, NewArticle, SignalEvent};
+use crate::{Feed, NewArticle, OutcomeEvent, SignalEvent};
 
 mod backend;
 
@@ -54,6 +54,10 @@ pub struct MemoryStore {
     // Decision state
     decisions: RefCell<Vec<crate::Decision>>,
     next_decision_id: RefCell<i64>,
+
+    // Outcome state
+    outcomes: RefCell<Vec<OutcomeEvent>>,
+    next_outcome_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -115,6 +119,8 @@ impl MemoryStore {
             next_signal_event_id: RefCell::new(1),
             decisions: RefCell::new(Vec::new()),
             next_decision_id: RefCell::new(1),
+            outcomes: RefCell::new(Vec::new()),
+            next_outcome_id: RefCell::new(1),
         }
     }
 

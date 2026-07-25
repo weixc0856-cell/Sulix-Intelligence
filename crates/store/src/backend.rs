@@ -7,8 +7,8 @@ use async_trait::async_trait;
 
 use crate::{
     ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
-    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, NewOutcomeEvent, OutcomeEvent,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -238,4 +238,12 @@ pub trait StoreBackend {
 
     /// List decisions for a specific signal thread.
     async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError>;
+
+    // ===== Outcome Events =====
+
+    /// Record a factual outcome observation.
+    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError>;
+
+    /// List outcome observations for a decision.
+    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError>;
 }

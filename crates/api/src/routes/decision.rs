@@ -10,7 +10,7 @@
 use serde_json::json;
 use worker::*;
 
-use store::{NewDecision, Store};
+use store::{NewDecision, NewOutcomeEvent, Store};
 
 use crate::shared::response;
 
@@ -123,6 +123,54 @@ pub async fn update_status(mut req: Request, ctx: RouteContext<()>) -> Result<Re
         Err(e) => {
             console_log!("[Sulix:decisions] update_status failed: {e}");
             response::json_err_internal("update status failed")
+        }
+    }
+}
+
+// ===== Outcome Event handlers =====
+
+/// POST /api/intelligence/decisions/:id/outcomes
+pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+
+    let body: serde_json::Value = match req.json().await {
+        Ok(v) => v,
+        Err(_) => return response::json_err(400, "invalid request body"),
+    };
+
+    let new_outcome = NewOutcomeEvent {
+        decision_id,
+        outcome_type: body["outcome_type"].as_str().unwrap_or("observation").to_string(),
+        observation: body["observation"].as_str().unwrap_or("").to_string(),
+        evidence_url: body["evidence_url"].as_str().map(String::from),
+        observed_at: body["observed_at"].as_i64(),
+    };
+
+    match store.create_outcome(&new_outcome).await {
+        Ok(id) => response::json_ok(json!({ "success": true, "id": id })),
+        Err(e) => {
+            console_log!("[Sulix:outcomes] create failed: {e}");
+            response::json_err_internal("create outcome failed")
+        }
+    }
+}
+
+/// GET /api/intelligence/decisions/:id/outcomes
+pub async fn list_outcomes(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+    match store.get_decision_outcomes(decision_id).await {
+        Ok(outcomes) => response::json_ok(json!({ "success": true, "outcomes": outcomes })),
+        Err(e) => {
+            console_log!("[Sulix:outcomes] list failed: {e}");
+            response::json_err_internal("list outcomes failed")
         }
     }
 }

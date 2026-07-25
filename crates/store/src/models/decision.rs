@@ -66,3 +66,34 @@ impl From<Decision> for DecisionSummary {
         }
     }
 }
+
+// ===== Outcome Events =====
+
+/// Outcome Observation — records what actually happened after a decision.
+///
+/// This is the **fact layer**: it only captures observations, not judgments.
+/// Evaluation of whether the outcome confirms or contradicts the hypothesis
+/// is handled separately by `DecisionEvaluation` (Sprint 3.3).
+///
+/// Multiple outcomes can be attached to a single decision over time,
+/// forming a timeline of real-world observations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutcomeEvent {
+    pub id: i64,
+    pub decision_id: i64,
+    pub outcome_type: String,
+    pub observation: String,
+    pub evidence_url: Option<String>,
+    pub observed_at: i64,
+    pub created_at: i64,
+}
+
+/// Input for recording a new outcome observation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewOutcomeEvent {
+    pub decision_id: i64,
+    pub outcome_type: String,
+    pub observation: String,
+    pub evidence_url: Option<String>,
+    pub observed_at: Option<i64>,
+}

@@ -4,8 +4,8 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
-    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, NewOutcomeEvent, OutcomeEvent,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -563,5 +563,28 @@ impl StoreBackend for MemoryStore {
         let filtered: Vec<Decision> =
             decisions.iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect();
         Ok(filtered)
+    }
+
+    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_outcome_id.borrow();
+        *self.next_outcome_id.borrow_mut() = id + 1;
+        let observed_at = e.observed_at.unwrap_or(now);
+        self.outcomes.borrow_mut().push(OutcomeEvent {
+            id,
+            decision_id: e.decision_id,
+            outcome_type: e.outcome_type.clone(),
+            observation: e.observation.clone(),
+            evidence_url: e.evidence_url.clone(),
+            observed_at,
+            created_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
+        let outcomes = self.outcomes.borrow();
+        let result: Vec<OutcomeEvent> = outcomes.iter().filter(|o| o.decision_id == decision_id).cloned().collect();
+        Ok(result)
     }
 }

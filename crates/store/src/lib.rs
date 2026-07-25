@@ -320,6 +320,14 @@ impl StoreBackend for D1Store {
     async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
         D1Store::decisions_by_signal(self, signal_thread_id).await
     }
+
+    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
+        D1Store::create_outcome(self, e).await
+    }
+
+    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
+        D1Store::get_decision_outcomes(self, decision_id).await
+    }
 }
 
 #[cfg(test)]
