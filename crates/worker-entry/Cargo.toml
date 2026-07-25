@@ -19,6 +19,7 @@ js-sys.workspace = true
 feed-rs.workspace = true
 console_error_panic_hook.workspace = true
 async-trait.workspace = true
+signal-engine.workspace = true
 embedding.workspace = true
 vectorize.workspace = true
 entity.workspace = true

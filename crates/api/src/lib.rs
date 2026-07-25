@@ -5,7 +5,6 @@
 
 use worker::*;
 
-
 // Backward-compatible re-exports for existing module files
 pub(crate) use shared::cache::cache_get;
 pub(crate) use shared::cache::cache_put;
@@ -18,7 +17,6 @@ pub(crate) use shared::response::json_err;
 pub(crate) use shared::response::json_err_internal;
 pub(crate) use shared::response::json_ok;
 pub use store::Store;
-
 
 mod briefing;
 mod entities;
@@ -49,6 +47,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/signals", routes::system::intelligence_signals)
         .get_async("/api/intelligence/radar", routes::signal::radar)
         .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
+        .get_async("/api/intelligence/threads/:id", routes::signal::thread_detail)
         .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
         // Entity Graph
         .get_async("/api/intelligence/entities", entities::entities_list)
@@ -57,6 +56,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/entities/:id/articles", entities::entities_articles)
         .get_async("/api/intelligence/entities/:id/signals", entities::entities_signals)
         .get_async("/api/intelligence/entities/:id/relations", entities::entities_get_relations)
+        .get_async("/api/intelligence/entities/:id/threads", entities::entities_threads)
         // Feed CRUD
         .get_async("/api/feeds", routes::feed::feeds_list)
         .post_async("/api/feeds", routes::feed::feeds_create)

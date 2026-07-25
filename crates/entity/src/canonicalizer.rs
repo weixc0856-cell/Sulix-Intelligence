@@ -70,10 +70,7 @@ static CANONICAL_MAP: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::
 /// assert_eq!(normalize("open-ai"), normalize("openai"));
 /// ```
 pub fn normalize(name: &str) -> String {
-    name.to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect()
+    name.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
 /// Return the canonical display name for `raw_name`, or a cleaned-up version
@@ -83,10 +80,7 @@ pub fn normalize(name: &str) -> String {
 /// to the input with leading/trailing whitespace trimmed.
 pub fn canonicalize(raw_name: &str) -> String {
     let key = normalize(raw_name);
-    CANONICAL_MAP
-        .get(key.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| raw_name.trim().to_string())
+    CANONICAL_MAP.get(key.as_str()).map(|s| s.to_string()).unwrap_or_else(|| raw_name.trim().to_string())
 }
 
 #[cfg(test)]

@@ -9,8 +9,8 @@
 use worker::wasm_bindgen::JsValue;
 
 use crate::{
-    BriefArticle, EntitySignalRef, HealthComponents, RelatedEntityRef, RelatedSignalRef,
-    SignalDetail, SignalHealthDetail2, SignalTimelineEvent, SignalBriefInput, StoreError,
+    BriefArticle, EntitySignalRef, HealthComponents, RelatedEntityRef, RelatedSignalRef, SignalBriefInput,
+    SignalDetail, SignalHealthDetail2, SignalTimelineEvent, StoreError,
 };
 
 impl crate::D1Store {
@@ -64,7 +64,10 @@ impl crate::D1Store {
     }
 
     /// Load a single thread by id, reusing assembly logic.
-    async fn load_single_thread(&self, thread_id: i64) -> Result<Option<(SignalBriefInput, Option<i64>, Option<i64>)>, StoreError> {
+    async fn load_single_thread(
+        &self,
+        thread_id: i64,
+    ) -> Result<Option<(SignalBriefInput, Option<i64>, Option<i64>)>, StoreError> {
         // Query thread + entity
         #[derive(serde::Deserialize)]
         struct ThreadRow {
@@ -112,8 +115,9 @@ impl crate::D1Store {
         let ev: Vec<BriefArticle> = self
             .db
             .prepare(
-                "SELECT DISTINCT se.article_id AS id, a.title, a.score \
+                "SELECT DISTINCT se.article_id AS id, a.title, a.url, f.title AS feed_name, a.score \
                  FROM signal_evidence se JOIN articles a ON a.id = se.article_id \
+                 LEFT JOIN feeds f ON f.id = a.feed_id \
                  WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) \
                  ORDER BY a.score DESC LIMIT 10",
             )
@@ -152,8 +156,9 @@ impl crate::D1Store {
         Ok(self
             .db
             .prepare(
-                "SELECT DISTINCT se.article_id AS id, a.title, a.score \
+                "SELECT DISTINCT se.article_id AS id, a.title, a.url, f.title AS feed_name, a.score \
                  FROM signal_evidence se JOIN articles a ON a.id = se.article_id \
+                 LEFT JOIN feeds f ON f.id = a.feed_id \
                  WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) \
                  ORDER BY a.score DESC LIMIT 10",
             )
@@ -164,7 +169,11 @@ impl crate::D1Store {
     }
 
     /// Load related entities for a signal thread via entity_relations.
-    async fn load_signal_related_entities(&self, thread_id: i64) -> Result<Vec<RelatedEntityRef>, StoreError> {
+    pub async fn load_thread_related_entities(
+        &self,
+        thread_id: i64,
+        limit: u32,
+    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
         // Get anchor entity from thread, then get its relations
         Ok(self
             .db
@@ -174,12 +183,17 @@ impl crate::D1Store {
                  JOIN entity_relations er ON er.source_entity_id = st.anchor_entity_id OR er.target_entity_id = st.anchor_entity_id \
                  JOIN entities e ON e.id = CASE WHEN er.source_entity_id = st.anchor_entity_id THEN er.target_entity_id ELSE er.source_entity_id END \
                  WHERE st.id = ?1 \
-                 ORDER BY er.confidence DESC LIMIT 5",
+                 ORDER BY er.confidence DESC LIMIT ?2",
             )
-            .bind(&[JsValue::from_f64(thread_id as f64)])?
+            .bind(&[JsValue::from_f64(thread_id as f64), JsValue::from_f64(limit as f64)])?
             .all()
             .await?
             .results()?)
+    }
+
+    /// Backward-compatible wrapper for internal use.
+    async fn load_signal_related_entities(&self, thread_id: i64) -> Result<Vec<RelatedEntityRef>, StoreError> {
+        self.load_thread_related_entities(thread_id, 5).await
     }
 
     /// Load related signals (other threads sharing the same anchor entity).
@@ -229,13 +243,7 @@ pub fn build_health(input: &SignalBriefInput, now: i64) -> SignalHealthDetail2 {
 
     SignalHealthDetail2 {
         score: (score * 100.0).round() / 100.0,
-        components: HealthComponents {
-            volume,
-            diversity,
-            quality,
-            velocity,
-            persistence,
-        },
+        components: HealthComponents { volume, diversity, quality, velocity, persistence },
     }
 }
 
@@ -257,10 +265,7 @@ pub fn build_timeline(instances: &[crate::SignalInstanceSummary], created_at: i6
     // Instance-based events
     for (i, inst) in instances.iter().enumerate() {
         let desc = if i == 0 {
-            format!(
-                "Current score: {:.2}, trend: {}",
-                inst.score, inst.trend
-            )
+            format!("Current score: {:.2}, trend: {}", inst.score, inst.trend)
         } else if i == instances.len() - 1 {
             format!("Signal detected — score: {:.2}", inst.score)
         } else {

@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use worker::*;
 
-use crate::jobs::ingestion::{process_one_feed, FeedContext};
 pub(crate) use crate::jobs::ingestion::FetchJob;
+use crate::jobs::ingestion::{process_one_feed, FeedContext};
 use crate::metrics::PipelineMetrics;
 use rules::Rule;
 use store::Store;

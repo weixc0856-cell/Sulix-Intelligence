@@ -47,11 +47,7 @@ pub fn build_briefing_prompt(candidates: &[SignalCandidate]) -> String {
     for sig in candidates.iter() {
         // Top article titles (max 3) as evidence context
         let top_titles: Vec<&str> = sig.articles.iter().take(3).map(|a| a.title.as_str()).collect();
-        let titles_str = if top_titles.is_empty() {
-            "none".to_string()
-        } else {
-            top_titles.join(" | ")
-        };
+        let titles_str = if top_titles.is_empty() { "none".to_string() } else { top_titles.join(" | ") };
 
         signals_section.push_str(&format!(
             "[{id}] {title}

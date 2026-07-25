@@ -38,8 +38,7 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await?;
 
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))
     }
 
     /// Append a signal instance to a thread.
@@ -71,12 +70,14 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await?;
 
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| crate::StoreError::D1("append_signal_instance failed".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("append_signal_instance failed".into()))
     }
 
     /// Get active signal threads with instances and evidence.
-    pub async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<crate::SignalBriefInput>, crate::StoreError> {
+    pub async fn get_active_signal_threads(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<crate::SignalBriefInput>, crate::StoreError> {
         #[derive(Deserialize)]
         #[allow(dead_code)]
         struct ThreadRow {
@@ -104,10 +105,16 @@ impl crate::D1Store {
                 .prepare("SELECT id, score, confidence, trend, article_count, source_count, created_at AS generated_at FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 30")
                 .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
             #[derive(Deserialize)]
-            struct EvRow { article_id: i64, title: String, score: f64 }
+            struct EvRow {
+                article_id: i64,
+                title: String,
+                url: Option<String>,
+                feed_name: Option<String>,
+                score: f64,
+            }
             let ev: Vec<EvRow> = self
                 .db
-                .prepare("SELECT DISTINCT se.article_id, a.title, a.score FROM signal_evidence se JOIN articles a ON a.id = se.article_id WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) ORDER BY a.score DESC LIMIT 10")
+                .prepare("SELECT DISTINCT se.article_id, a.title, a.url, f.title AS feed_name, a.score FROM signal_evidence se JOIN articles a ON a.id = se.article_id LEFT JOIN feeds f ON f.id = a.feed_id WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) ORDER BY a.score DESC LIMIT 10")
                 .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
             results.push(crate::SignalBriefInput {
                 thread_id: t.id,
@@ -118,16 +125,22 @@ impl crate::D1Store {
                 status: t.status.clone(),
                 health_score: t.health_score,
                 current_score: instances.first().map(|i| i.score).unwrap_or(0.0),
-                trend: instances
-                    .first()
-                    .map(|i| i.trend.clone())
-                    .unwrap_or_else(|| "stable".into()),
+                trend: instances.first().map(|i| i.trend.clone()).unwrap_or_else(|| "stable".into()),
                 cumulative_article_count: instances.iter().map(|i| i.article_count).sum(),
                 recent_article_count: instances.iter().map(|i| i.article_count).sum(),
                 source_count: instances.first().map(|i| i.source_count).unwrap_or(0),
                 velocity: 0.5,
                 instances,
-                evidence: ev.into_iter().map(|r| crate::BriefArticle { id: r.article_id, title: r.title, score: r.score }).collect(),
+                evidence: ev
+                    .into_iter()
+                    .map(|r| crate::BriefArticle {
+                        id: r.article_id,
+                        title: r.title,
+                        url: r.url,
+                        feed_name: r.feed_name,
+                        score: r.score,
+                    })
+                    .collect(),
                 related_entities: Vec::new(),
             });
         }
@@ -137,7 +150,10 @@ impl crate::D1Store {
     /// List signal threads with dynamic filtering (statuses, min_score, limit).
     /// Returns fully-populated [`SignalBriefInput`] including derived metrics
     /// computed from the thread's instance history.
-    pub async fn list_signal_threads(&self, filter: &crate::SignalThreadFilter) -> Result<Vec<crate::SignalBriefInput>, crate::StoreError> {
+    pub async fn list_signal_threads(
+        &self,
+        filter: &crate::SignalThreadFilter,
+    ) -> Result<Vec<crate::SignalBriefInput>, crate::StoreError> {
         #[derive(Deserialize)]
         #[allow(dead_code)]
         struct ThreadRow {
@@ -188,37 +204,38 @@ impl crate::D1Store {
                      FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 30",
                 )
                 .bind(&[JsValue::from_f64(t.id as f64)])?
-                .all().await?.results()?;
+                .all()
+                .await?
+                .results()?;
 
             #[derive(Deserialize)]
             struct EvRow {
                 article_id: i64,
                 title: String,
+                url: Option<String>,
+                feed_name: Option<String>,
                 score: f64,
             }
             let ev: Vec<EvRow> = self
                 .db
                 .prepare(
-                    "SELECT DISTINCT se.article_id, a.title, a.score \
+                    "SELECT DISTINCT se.article_id, a.title, a.url, f.title AS feed_name, a.score \
                      FROM signal_evidence se \
                      JOIN articles a ON a.id = se.article_id \
+                     LEFT JOIN feeds f ON f.id = a.feed_id \
                      WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) \
                      ORDER BY a.score DESC LIMIT 10",
                 )
                 .bind(&[JsValue::from_f64(t.id as f64)])?
-                .all().await?.results()?;
+                .all()
+                .await?
+                .results()?;
 
             let current_score = instances.first().map(|i| i.score).unwrap_or(0.0);
-            let trend = instances
-                .first()
-                .map(|i| i.trend.clone())
-                .unwrap_or_else(|| "stable".into());
+            let trend = instances.first().map(|i| i.trend.clone()).unwrap_or_else(|| "stable".into());
             let cumulative_article_count: i64 = instances.iter().map(|i| i.article_count).sum();
-            let recent_article_count: i64 = instances
-                .iter()
-                .filter(|i| i.generated_at >= seven_days_ago)
-                .map(|i| i.article_count)
-                .sum();
+            let recent_article_count: i64 =
+                instances.iter().filter(|i| i.generated_at >= seven_days_ago).map(|i| i.article_count).sum();
             let source_count = instances.first().map(|i| i.source_count).unwrap_or(0);
             let velocity = if cumulative_article_count > 0 {
                 recent_article_count as f64 / cumulative_article_count as f64
@@ -243,7 +260,13 @@ impl crate::D1Store {
                 instances,
                 evidence: ev
                     .into_iter()
-                    .map(|r| crate::BriefArticle { id: r.article_id, title: r.title, score: r.score })
+                    .map(|r| crate::BriefArticle {
+                        id: r.article_id,
+                        title: r.title,
+                        url: r.url,
+                        feed_name: r.feed_name,
+                        score: r.score,
+                    })
                     .collect(),
                 related_entities: Vec::new(),
             });

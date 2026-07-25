@@ -1,9 +1,9 @@
 use worker::*;
 
-mod runtime;
 mod jobs;
-pub(crate) mod services;
 pub(crate) mod metrics;
+mod runtime;
+pub(crate) mod services;
 pub(crate) mod version;
 
 #[event(fetch)]

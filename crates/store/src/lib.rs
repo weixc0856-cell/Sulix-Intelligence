@@ -85,11 +85,7 @@ impl StoreBackend for D1Store {
         D1Store::set_ai_summary(self, article_id, summary, tags_json, vector_id, score).await
     }
 
-    async fn set_raw_content_r2_key(
-        &self,
-        article_id: i64,
-        r2_key: Option<&str>,
-    ) -> Result<(), StoreError> {
+    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
         D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
     }
 
@@ -145,12 +141,7 @@ impl StoreBackend for D1Store {
         D1Store::list_artifacts_by_entity(self, entity_id, limit).await
     }
 
-    async fn entity_articles(
-        &self,
-        entity_id: i64,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<EntityArticle>, StoreError> {
+    async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError> {
         D1Store::entity_articles(self, entity_id, limit, offset).await
     }
 
@@ -163,13 +154,43 @@ impl StoreBackend for D1Store {
         D1Store::entity_activity_summary(self, entity_id, now, days).await
     }
 
-    async fn entity_signal_candidates(&self, now: i64, days: i64, limit: u32) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+    async fn entity_signal_candidates(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
         D1Store::entity_signal_candidates(self, now, days, limit).await
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn save_signal(&self, entity_id: Option<i64>, title: &str, summary: &str, confidence: f64, impact: &str, trend: &str, article_count: i64, source_count: i64, evidence_ids: &[i64], related_ids: &[i64]) -> Result<i64, StoreError> {
-        D1Store::save_signal(self, entity_id, title, summary, confidence, impact, trend, article_count, source_count, evidence_ids, related_ids).await
+    async fn save_signal(
+        &self,
+        entity_id: Option<i64>,
+        title: &str,
+        summary: &str,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        evidence_ids: &[i64],
+        related_ids: &[i64],
+    ) -> Result<i64, StoreError> {
+        D1Store::save_signal(
+            self,
+            entity_id,
+            title,
+            summary,
+            confidence,
+            impact,
+            trend,
+            article_count,
+            source_count,
+            evidence_ids,
+            related_ids,
+        )
+        .await
     }
 
     async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
@@ -184,11 +205,25 @@ impl StoreBackend for D1Store {
         D1Store::entity_signals(self, entity_id, limit).await
     }
 
-    async fn upsert_signal_thread(&self, signal_key: &str, anchor_entity_id: Option<i64>, title: &str, status: &str) -> Result<i64, StoreError> {
+    async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+    ) -> Result<i64, StoreError> {
         D1Store::upsert_signal_thread(self, signal_key, anchor_entity_id, title, status).await
     }
 
-    async fn append_signal_instance(&self, thread_id: i64, confidence: f64, impact: &str, trend: &str, article_count: i64, source_count: i64) -> Result<i64, StoreError> {
+    async fn append_signal_instance(
+        &self,
+        thread_id: i64,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+    ) -> Result<i64, StoreError> {
         D1Store::append_signal_instance(self, thread_id, confidence, impact, trend, article_count, source_count).await
     }
 
@@ -206,6 +241,64 @@ impl StoreBackend for D1Store {
 
     async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
         D1Store::load_signal_detail(self, thread_id).await
+    }
+
+    async fn entity_signal_candidates_filtered(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+        min_entity_articles: u32,
+        min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        D1Store::entity_signal_candidates_filtered(self, now, days, limit, min_entity_articles, min_sources).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn append_signal_instance_v2(
+        &self,
+        thread_id: i64,
+        score: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        avg_score: f64,
+        entity_id: i64,
+    ) -> Result<i64, StoreError> {
+        D1Store::append_signal_instance_v2(
+            self,
+            thread_id,
+            score,
+            impact,
+            trend,
+            article_count,
+            source_count,
+            avg_score,
+            entity_id,
+        )
+        .await
+    }
+
+    async fn insert_signal_event(
+        &self,
+        thread_id: i64,
+        event_type: &str,
+        payload: Option<&str>,
+    ) -> Result<(), StoreError> {
+        D1Store::insert_signal_event(self, thread_id, event_type, payload).await
+    }
+
+    async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
+        D1Store::load_signal_events(self, thread_id, limit).await
+    }
+
+    async fn load_thread_related_entities(
+        &self,
+        thread_id: i64,
+        limit: u32,
+    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
+        D1Store::load_thread_related_entities(self, thread_id, limit).await
     }
 }
 
@@ -306,14 +399,16 @@ mod tests {
     #[test]
     fn mem_store_set_ai_summary() {
         let store = memory::MemoryStore::new();
-        let result = futures::executor::block_on(store.set_ai_summary(42, "AI summary text", "[\"tag1\"]", "vec-42", 8.5));
+        let result =
+            futures::executor::block_on(store.set_ai_summary(42, "AI summary text", "[\"tag1\"]", "vec-42", 8.5));
         assert!(result.is_ok());
     }
 
     #[test]
     fn mem_store_record_fetch_result() {
         let store = memory::MemoryStore::new();
-        let result = futures::executor::block_on(store.record_fetch_result(1, 1000, Some("etag-x"), Some("modified-y")));
+        let result =
+            futures::executor::block_on(store.record_fetch_result(1, 1000, Some("etag-x"), Some("modified-y")));
         assert!(result.is_ok());
         assert_eq!(store.fetch_results.borrow().len(), 1);
         let (fid, _, e, lm) = store.fetch_results.borrow().first().unwrap().clone();

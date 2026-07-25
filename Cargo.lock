@@ -41,6 +41,7 @@ dependencies = [
  "search",
  "serde",
  "serde_json",
+ "signal-engine",
  "store",
  "url",
  "vectorize",
@@ -1044,6 +1045,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "signal-engine"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "serde",
+ "serde_json",
+ "store",
+ "worker",
+]
+
+[[package]]
 name = "siphasher"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1452,6 +1464,7 @@ dependencies = [
  "rules",
  "serde",
  "serde_json",
+ "signal-engine",
  "store",
  "vectorize",
  "worker",

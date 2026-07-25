@@ -230,9 +230,6 @@ mod tests {
 
     #[test]
     fn order_by_score() {
-        assert_eq!(
-            search_order_clause(Some("score")),
-            "a.score DESC, articles_fts.rank"
-        );
+        assert_eq!(search_order_clause(Some("score")), "a.score DESC, articles_fts.rank");
     }
 }

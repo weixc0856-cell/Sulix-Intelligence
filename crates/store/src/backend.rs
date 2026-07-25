@@ -7,7 +7,8 @@ use async_trait::async_trait;
 
 use crate::{
     ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, SignalDetail, SignalThreadFilter, StoreError,
+    Feed, IntelligenceSignal, NewArticle, NewArtifact, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
+    SignalEvent, SignalThreadFilter, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -54,11 +55,7 @@ pub trait StoreBackend {
     ) -> Result<(), StoreError>;
 
     /// Update the R2 key pointing to the article's full-text body.
-    async fn set_raw_content_r2_key(
-        &self,
-        article_id: i64,
-        r2_key: Option<&str>,
-    ) -> Result<(), StoreError>;
+    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError>;
 
     /// Delete articles older than `days` whose AI processing is complete.
     async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError>;
@@ -107,12 +104,7 @@ pub trait StoreBackend {
     // ===== Entity Intelligence methods =====
 
     /// List articles linked to an entity (Evidence).
-    async fn entity_articles(
-        &self,
-        entity_id: i64,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<EntityArticle>, StoreError>;
+    async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError>;
 
     /// Activity summary for an entity over the last N days.
     async fn entity_activity_summary(
@@ -183,4 +175,50 @@ pub trait StoreBackend {
     async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError>;
 
     async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError>;
+
+    // ===== Signal Engine V2 methods =====
+
+    /// Generate entity-anchored signal candidates with quality filters.
+    /// - `min_entity_articles`: minimum articles linked to entity (anti-noise).
+    /// - `min_sources`: minimum distinct feed sources (requires corroboration).
+    async fn entity_signal_candidates_filtered(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+        min_entity_articles: u32,
+        min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
+
+    /// Append a signal instance with enriched snapshot (avg_score, entity_id).
+    #[allow(clippy::too_many_arguments)]
+    async fn append_signal_instance_v2(
+        &self,
+        thread_id: i64,
+        score: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        avg_score: f64,
+        entity_id: i64,
+    ) -> Result<i64, StoreError>;
+
+    /// Insert a signal timeline event for a thread.
+    async fn insert_signal_event(
+        &self,
+        thread_id: i64,
+        event_type: &str,
+        payload: Option<&str>,
+    ) -> Result<(), StoreError>;
+
+    /// Load signal timeline events for a thread.
+    async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError>;
+
+    /// Load related entities for a signal thread via entity_relations.
+    async fn load_thread_related_entities(
+        &self,
+        thread_id: i64,
+        limit: u32,
+    ) -> Result<Vec<RelatedEntityRef>, StoreError>;
 }

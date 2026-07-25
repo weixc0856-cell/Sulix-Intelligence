@@ -2,13 +2,14 @@
 //! Moved from the monolithic impl block in lib.rs to keep the store crate more modular.
 
 use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
 use serde_json::Value;
 use std::collections::HashSet;
+use worker::wasm_bindgen::JsValue;
 
-use crate::{D1Store, StoreError, Feed, FeedStats, HealthStats, ScoreDist, DayCount,
-            PendingArticle, ArticleDetail, SignalSummary, SignalStrategy, is_cron_healthy,
-            in_placeholders};
+use crate::{
+    in_placeholders, is_cron_healthy, ArticleDetail, D1Store, DayCount, Feed, FeedStats, HealthStats, PendingArticle,
+    ScoreDist, SignalStrategy, SignalSummary, StoreError,
+};
 
 impl D1Store {
     // ------------------------------------------------------------------

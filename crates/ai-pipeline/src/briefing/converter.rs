@@ -20,12 +20,6 @@ impl From<store::SignalBriefInput> for SignalCandidate {
 
 impl From<store::BriefArticle> for EvidenceArticle {
     fn from(input: store::BriefArticle) -> Self {
-        Self {
-            id: input.id,
-            title: input.title,
-            url: None,
-            feed_name: None,
-            score: input.score,
-        }
+        Self { id: input.id, title: input.title, url: None, feed_name: None, score: input.score }
     }
 }

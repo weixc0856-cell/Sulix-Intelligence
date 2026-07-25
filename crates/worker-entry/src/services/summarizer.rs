@@ -1,6 +1,6 @@
-use worker::*;
-use ai_pipeline::HttpSummarizer;
 use crate::services::http_client::WorkerHttpClient;
+use ai_pipeline::HttpSummarizer;
+use worker::*;
 
 pub fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
     let api_key = match env.secret("AI_API_KEY") {

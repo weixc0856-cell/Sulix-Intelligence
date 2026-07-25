@@ -1,8 +1,6 @@
 //! Signal projection — assemble domain data into projection views.
 
-use crate::{
-    RadarDashboardSummary, RadarResponse, SignalBriefInput, SignalHealth, SignalRadarItem,
-};
+use crate::{RadarDashboardSummary, RadarResponse, SignalBriefInput, SignalHealth, SignalRadarItem};
 
 /// Build a RadarResponse from active signal threads.
 pub fn build_radar_response(
@@ -50,12 +48,7 @@ pub fn build_radar_response(
 
     RadarResponse {
         generated_at: now,
-        summary: RadarDashboardSummary {
-            total_active,
-            rising,
-            stable,
-            decaying,
-        },
+        summary: RadarDashboardSummary { total_active, rising, stable, decaying },
         signals,
     }
 }

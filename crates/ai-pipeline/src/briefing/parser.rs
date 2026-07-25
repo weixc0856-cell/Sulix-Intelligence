@@ -25,18 +25,14 @@ pub fn parse_briefing_json(text: &str) -> Result<Vec<ParsedInsight>, String> {
         .map(|s| s.trim_end().strip_suffix("```").unwrap_or(s.trim_end()))
         .unwrap_or(text.trim());
 
-    let output: LlmOutput = serde_json::from_str(cleaned).map_err(|e| {
-        format!("failed to parse LLM output as JSON: {e}")
-    })?;
+    let output: LlmOutput =
+        serde_json::from_str(cleaned).map_err(|e| format!("failed to parse LLM output as JSON: {e}"))?;
 
     if output.insights.is_empty() {
         return Err("LLM returned zero insights".into());
     }
     if output.insights.len() > 5 {
-        return Err(format!(
-            "LLM returned {} insights (max 5)",
-            output.insights.len()
-        ));
+        return Err(format!("LLM returned {} insights (max 5)", output.insights.len()));
     }
 
     let mut validated = Vec::new();
@@ -62,10 +58,7 @@ fn validate_insight(ins: &GeneratedInsight, idx: usize) -> Result<(), String> {
         return Err(format!("insight[{idx}] title too short ({})", ins.title.len()));
     }
     if ins.summary.len() < 80 {
-        return Err(format!(
-            "insight[{idx}] summary too short ({} chars, need >= 80)",
-            ins.summary.len()
-        ));
+        return Err(format!("insight[{idx}] summary too short ({} chars, need >= 80)", ins.summary.len()));
     }
     if ins.recommendation.len() < 20 {
         return Err(format!(
@@ -74,10 +67,7 @@ fn validate_insight(ins: &GeneratedInsight, idx: usize) -> Result<(), String> {
         ));
     }
     if !(0.0..=1.0).contains(&ins.confidence) {
-        return Err(format!(
-            "insight[{idx}] confidence {:.2} out of range [0.0, 1.0]",
-            ins.confidence
-        ));
+        return Err(format!("insight[{idx}] confidence {:.2} out of range [0.0, 1.0]", ins.confidence));
     }
     match ins.impact.as_str() {
         "High" | "Medium" | "Low" => {}

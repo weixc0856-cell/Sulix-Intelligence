@@ -1,22 +1,23 @@
 use worker::*;
 
-use crate::jobs::{briefing, gc, ingestion};
+use crate::jobs::{briefing, gc, ingestion, signal};
 
 pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
     console_log!("scheduled handler at ts={}", js_sys::Date::now());
     if let Err(e) = ingestion::process_all_feeds(&env).await {
-        console_log!("scheduled handler failed: {e}");
+        console_log!("scheduled handler: feed ingestion failed: {e}");
     }
-    // R2 garbage collection — runs on every cron cycle but is a no-op
-    // when there's nothing to expire (no R2 bucket configured, or no
-    // articles past the 30-day cutoff with full-text content).
+    // R2 garbage collection
     let now = (js_sys::Date::now() / 1000.0) as i64;
     if let Err(e) = gc::gc_r2_objects(&env, now).await {
         console_log!("gc_r2_objects failed: {e}");
     }
-    // Daily Intelligence Brief generation — runs once per day.
-    // Uses a KV lock (TTL 1h) to prevent duplicate generation across
-    // multiple cron cycles.  Failure is non-fatal (logged, not retried).
+    // Signal Engine — materialise entity candidates into signal threads,
+    // append instances, write timeline events, and run lifecycle transitions.
+    // Runs every cron cycle and is intentionally before briefing generation
+    // so the briefing always sees the latest signal state.
+    signal::run_signal_engine(&env, now).await;
+    // Daily Intelligence Brief generation — runs once per day (KV lock).
     briefing::generate_briefing_task(&env, now).await;
 }

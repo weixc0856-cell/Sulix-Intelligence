@@ -9,7 +9,7 @@
 use crate::{json_err_internal, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use store::Store;
-use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
+use vectorize::{VectorMetadata, VectorRecord, VectorizeIndex};
 use worker::*;
 
 pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {

@@ -86,11 +86,7 @@ pub(crate) async fn process_one_feed(
                         ctx.metrics.borrow_mut().articles_new += 1;
                         let article_score = if ctx.has_rules {
                             score(
-                                &ArticleInput {
-                                    title: &article.title,
-                                    summary: &body,
-                                    feed_url: &job.feed_url,
-                                },
+                                &ArticleInput { title: &article.title, summary: &body, feed_url: &job.feed_url },
                                 ctx.rules,
                                 "default",
                             )
@@ -147,14 +143,11 @@ pub(crate) async fn process_one_feed(
                                     .await
                                 {
                                     Ok(result) => {
-                                        ctx.metrics
-                                            .borrow_mut()
-                                            .record_ms("llm", PipelineMetrics::since(llm_start));
+                                        ctx.metrics.borrow_mut().record_ms("llm", PipelineMetrics::since(llm_start));
                                         if !result.embedding.is_empty() {
                                             if let Some(ref idx) = ctx.vectorize {
                                                 let emb_start = js_sys::Date::now();
-                                                if let Err(e) =
-                                                    upsert_vector(idx, article_id, &result.embedding).await
+                                                if let Err(e) = upsert_vector(idx, article_id, &result.embedding).await
                                                 {
                                                     console_log!(
                                                         "  vectorize upsert failed for article {article_id}: {e}"
@@ -172,7 +165,10 @@ pub(crate) async fn process_one_feed(
                                             for entity_name in &result.entities {
                                                 let normalized = canonicalizer::normalize(entity_name);
                                                 let entity_type = classifier::classify(entity_name);
-                                                match ctx.store.upsert_entity(entity_name, &normalized, entity_type).await
+                                                match ctx
+                                                    .store
+                                                    .upsert_entity(entity_name, &normalized, entity_type)
+                                                    .await
                                                 {
                                                     Ok(eid) => {
                                                         entity_ids.push(eid);
@@ -187,9 +183,7 @@ pub(crate) async fn process_one_feed(
                                                         }
                                                     }
                                                     Err(e) => {
-                                                        console_log!(
-                                                            "  entity upsert failed for '{entity_name}': {e}"
-                                                        );
+                                                        console_log!("  entity upsert failed for '{entity_name}': {e}");
                                                     }
                                                 }
                                             }
@@ -215,10 +209,8 @@ pub(crate) async fn process_one_feed(
                                     Err(_) => {
                                         ctx.metrics.borrow_mut().errors += 1;
                                         let excerpt = if body.len() > 500 { &body[..500] } else { &body };
-                                        if let Err(e) = ctx
-                                            .store
-                                            .set_raw_content_r2_key(article_id, Some(excerpt))
-                                            .await
+                                        if let Err(e) =
+                                            ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await
                                         {
                                             console_log!(
                                                 "  DB excerpt write failed for article {article_id} (LLM already failed): {e}"
@@ -249,19 +241,10 @@ pub(crate) async fn process_one_feed(
             let start = js_sys::Date::now();
             if let Err(e) = ctx
                 .store
-                .record_fetch_result(
-                    job.feed_id,
-                    ctx.now,
-                    fetched.etag.as_deref(),
-                    fetched.last_modified.as_deref(),
-                )
+                .record_fetch_result(job.feed_id, ctx.now, fetched.etag.as_deref(), fetched.last_modified.as_deref())
                 .await
             {
-                console_log!(
-                    "  failed to persist fetch result for feed {} (url={}): {e}",
-                    job.feed_id,
-                    job.feed_url
-                );
+                console_log!("  failed to persist fetch result for feed {} (url={}): {e}", job.feed_id, job.feed_url);
             }
             ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
         }

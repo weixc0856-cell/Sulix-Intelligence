@@ -1,4 +1,4 @@
-use crate::{NewArtifact, ArtifactEntry, StoreError};
+use crate::{ArtifactEntry, NewArtifact, StoreError};
 use worker::wasm_bindgen::JsValue;
 
 impl crate::D1Store {

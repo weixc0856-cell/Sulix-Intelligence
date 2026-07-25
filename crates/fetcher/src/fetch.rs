@@ -1,5 +1,5 @@
 use crate::ssrf::guard_public_url;
-use crate::{FetchError, FetchedFeed, FetchOutcome};
+use crate::{FetchError, FetchOutcome, FetchedFeed};
 use feed_rs::parser;
 use worker::{AbortSignal, Fetch, Method, Request, RequestInit};
 
@@ -30,10 +30,7 @@ pub(crate) async fn http_get(
 
     let ws_signal = worker::web_sys::AbortSignal::timeout_with_u32(timeout_ms);
     let signal = AbortSignal::from(ws_signal);
-    let mut resp = Fetch::Request(req)
-        .send_with_signal(&signal)
-        .await
-        .map_err(|e| FetchError::Http(e.to_string()))?;
+    let mut resp = Fetch::Request(req).send_with_signal(&signal).await.map_err(|e| FetchError::Http(e.to_string()))?;
 
     let status = resp.status_code();
 

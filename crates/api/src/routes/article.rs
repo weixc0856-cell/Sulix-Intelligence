@@ -167,7 +167,9 @@ pub(crate) async fn trending(req: Request, ctx: RouteContext<()>) -> Result<Resp
     let offset = params::parse_offset(&url);
     let total = store.trending_count().await.unwrap_or(0);
     match store.trending_articles(limit, offset).await {
-        Ok(articles) => response::json_ok(json!({"articles": articles, "total": total, "limit": limit, "offset": offset})),
+        Ok(articles) => {
+            response::json_ok(json!({"articles": articles, "total": total, "limit": limit, "offset": offset}))
+        }
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }

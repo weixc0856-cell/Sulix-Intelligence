@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{Feed, NewArticle};
+use crate::{Feed, NewArticle, SignalEvent};
 
 mod backend;
 
@@ -46,6 +46,10 @@ pub struct MemoryStore {
     pub fail_fetch_result: bool,
     /// When `true`, `set_raw_content_r2_key` returns `Err`.
     pub fail_r2_key: bool,
+
+    // Signal engine state
+    pub signal_events: RefCell<Vec<SignalEvent>>,
+    next_signal_event_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -103,6 +107,8 @@ impl MemoryStore {
             fail_summary: false,
             fail_fetch_result: false,
             fail_r2_key: false,
+            signal_events: RefCell::new(Vec::new()),
+            next_signal_event_id: RefCell::new(1),
         }
     }
 

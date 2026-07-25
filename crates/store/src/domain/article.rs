@@ -64,7 +64,11 @@ impl crate::D1Store {
         Ok(())
     }
 
-    pub async fn latest_articles(&self, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+    pub async fn latest_articles(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1 OFFSET ?2",
         ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -75,7 +79,11 @@ impl crate::D1Store {
         Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
     }
 
-    pub async fn trending_articles(&self, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+    pub async fn trending_articles(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1 OFFSET ?2",
         ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -119,7 +127,10 @@ impl crate::D1Store {
 
     /// Get previous and next article relative to a given article id,
     /// ordered by published_at DESC.  Returns (prev, next) — both may be None.
-    pub async fn adjacent_articles(&self, id: i64) -> Result<(Option<crate::Article>, Option<crate::Article>), crate::StoreError> {
+    pub async fn adjacent_articles(
+        &self,
+        id: i64,
+    ) -> Result<(Option<crate::Article>, Option<crate::Article>), crate::StoreError> {
         let prev = self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at < (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at DESC LIMIT 1"
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<crate::Article>(None).await?;
@@ -129,7 +140,12 @@ impl crate::D1Store {
         Ok((prev, next))
     }
 
-    pub async fn articles_by_tag(&self, tag: &str, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+    pub async fn articles_by_tag(
+        &self,
+        tag: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         let pattern = crate::tag_like_pattern(tag);
         Ok(self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
@@ -161,7 +177,11 @@ impl crate::D1Store {
 
     /// Find articles sharing tags with a given article, ordered by match
     /// count desc then recency.  Returns empty when source has no tags.
-    pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+    pub async fn related_articles(
+        &self,
+        article_id: i64,
+        limit: u32,
+    ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         let src = self
             .db
             .prepare("SELECT ai_tags FROM articles WHERE id = ?1")

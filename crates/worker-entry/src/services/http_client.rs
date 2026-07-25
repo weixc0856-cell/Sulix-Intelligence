@@ -1,6 +1,6 @@
+use ai_pipeline::{HttpClient, PipelineError};
 use async_trait::async_trait;
 use worker::*;
-use ai_pipeline::{HttpClient, PipelineError};
 
 /// Bridges ai_pipeline::HttpClient over worker::Fetch
 pub struct WorkerHttpClient;

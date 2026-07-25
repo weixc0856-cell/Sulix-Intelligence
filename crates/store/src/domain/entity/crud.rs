@@ -2,7 +2,12 @@ use worker::wasm_bindgen::JsValue;
 
 impl crate::D1Store {
     /// Upsert an entity by normalized_name. Returns the entity id.
-    pub async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, crate::StoreError> {
+    pub async fn upsert_entity(
+        &self,
+        name: &str,
+        normalized: &str,
+        entity_type: &str,
+    ) -> Result<i64, crate::StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let row = self
             .db
@@ -129,7 +134,11 @@ impl crate::D1Store {
     }
 
     /// Get related entities for a given entity.
-    pub async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<crate::RelatedEntity>, crate::StoreError> {
+    pub async fn entity_relations(
+        &self,
+        entity_id: i64,
+        limit: u32,
+    ) -> Result<Vec<crate::RelatedEntity>, crate::StoreError> {
         Ok(self
             .db
             .prepare(

@@ -154,6 +154,8 @@ pub struct SignalThreadFilter {
 pub struct BriefArticle {
     pub id: i64,
     pub title: String,
+    pub url: Option<String>,
+    pub feed_name: Option<String>,
     pub score: f64,
 }
 
@@ -268,4 +270,45 @@ pub struct SignalDetail {
     pub evidence_top: Vec<BriefArticle>,
     pub related_entities: Vec<RelatedEntityRef>,
     pub related_signals: Vec<RelatedSignalRef>,
+}
+
+// ===== Signal Event types (V2 Signal Engine) =====
+
+/// Fixed set of signal event types — prevents string inconsistency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalEventType {
+    Created,
+    ScoreChanged,
+    EvidenceAdded,
+    EntityAdded,
+    StatusChanged,
+    Accelerating,
+    Decaying,
+    Resolved,
+}
+
+impl std::fmt::Display for SignalEventType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Created => write!(f, "created"),
+            Self::ScoreChanged => write!(f, "score_changed"),
+            Self::EvidenceAdded => write!(f, "evidence_added"),
+            Self::EntityAdded => write!(f, "entity_added"),
+            Self::StatusChanged => write!(f, "status_changed"),
+            Self::Accelerating => write!(f, "accelerating"),
+            Self::Decaying => write!(f, "decaying"),
+            Self::Resolved => write!(f, "resolved"),
+        }
+    }
+}
+
+/// A single timeline event for a signal thread.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalEvent {
+    pub id: i64,
+    pub thread_id: i64,
+    pub event_type: String,
+    pub payload: Option<String>,
+    pub created_at: i64,
 }

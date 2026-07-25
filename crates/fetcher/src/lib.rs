@@ -5,13 +5,13 @@
 //! extracts readable body text via CSS selectors -- only called for feeds
 //! with `extraction_level = 'full_text'`, which is opt-in per source.
 
-mod ssrf;
-mod fetch;
 mod extract;
+mod fetch;
+mod ssrf;
 
-pub use ssrf::*;
-pub use fetch::*;
 pub use extract::*;
+pub use fetch::*;
+pub use ssrf::*;
 
 use feed_rs::model::Feed;
 

@@ -1,5 +1,5 @@
-use worker::*;
 use store::Store;
+use worker::*;
 
 /// Garbage-collect orphaned R2 objects.
 ///
@@ -19,10 +19,7 @@ pub(crate) async fn gc_r2_objects(env: &Env, now: i64) -> Result<u64, Error> {
     let store = Store::new(env.d1("DB").map_err(|e| Error::RustError(e.to_string()))?);
 
     // 1. Collect R2 keys for articles about to expire
-    let r2_keys = store
-        .expired_article_r2_keys(now, 30)
-        .await
-        .map_err(|e| Error::RustError(e.to_string()))?;
+    let r2_keys = store.expired_article_r2_keys(now, 30).await.map_err(|e| Error::RustError(e.to_string()))?;
 
     if r2_keys.is_empty() {
         return Ok(0);
@@ -39,10 +36,7 @@ pub(crate) async fn gc_r2_objects(env: &Env, now: i64) -> Result<u64, Error> {
     }
 
     // 3. Expire the D1 rows
-    let deleted_d1 = store
-        .expire_old_articles(now, 30)
-        .await
-        .map_err(|e| Error::RustError(e.to_string()))?;
+    let deleted_d1 = store.expire_old_articles(now, 30).await.map_err(|e| Error::RustError(e.to_string()))?;
 
     console_log!("[Sulix:gc] deleted {deleted_r2} R2 objects, {deleted_d1} D1 rows");
     Ok(deleted_r2)

@@ -53,12 +53,8 @@ const TAG_CANONICAL_MAP: &[(&str, &str)] = &[
 /// Normalize a list of tag strings: trim, filter empties,
 /// canonicalize via map, deduplicate, sort.
 pub fn normalize_tags(tags: &[String]) -> Vec<String> {
-    let mut result: Vec<String> = tags
-        .iter()
-        .map(|t| t.trim())
-        .filter(|t| !t.is_empty())
-        .map(canonicalize_tag)
-        .collect();
+    let mut result: Vec<String> =
+        tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()).map(canonicalize_tag).collect();
 
     result.sort_unstable();
     result.dedup();

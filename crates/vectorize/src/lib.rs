@@ -83,10 +83,7 @@ pub struct VectorMetadata {
 ///
 /// Builds a Float32Array from `record.values`, attaches metadata
 /// as a JS Object when present, then delegates to `idx.upsert()`.
-pub async fn upsert_vector(
-    idx: &VectorizeIndex,
-    record: &VectorRecord,
-) -> Result<(), String> {
+pub async fn upsert_vector(idx: &VectorizeIndex, record: &VectorRecord) -> Result<(), String> {
     let vec_obj = Object::new();
     let _ = Reflect::set(&vec_obj, &"id".into(), &record.id.clone().into());
 

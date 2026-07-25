@@ -55,10 +55,8 @@ pub async fn generate_daily_brief(
     let prompt = build_briefing_prompt(&candidates);
 
     // 3. Call LLM
-    let result: SummaryResult = summarizer
-        .summarize("Daily Intelligence Brief", &prompt)
-        .await
-        .map_err(|e| format!("LLM call failed: {e}"))?;
+    let result: SummaryResult =
+        summarizer.summarize("Daily Intelligence Brief", &prompt).await.map_err(|e| format!("LLM call failed: {e}"))?;
 
     // 4. Parse + validate
     let parsed = parse_briefing_json(&result.summary)?;
@@ -115,10 +113,5 @@ pub async fn generate_daily_brief(
         });
     }
 
-    Ok(Briefing {
-        date: date.to_string(),
-        generated_at: now,
-        signal_count: candidates.len() as u32,
-        insights,
-    })
+    Ok(Briefing { date: date.to_string(), generated_at: now, signal_count: candidates.len() as u32, insights })
 }

@@ -1,6 +1,6 @@
 use serde::Serialize;
-use worker::*;
 use worker::wasm_bindgen::JsValue;
+use worker::*;
 
 use crate::version::PIPELINE_VERSION;
 use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
@@ -43,13 +43,10 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
             return;
         }
     };
+    let cache = env.kv("CACHE").ok();
 
     // 1. Load active signal threads via filter-based query
-    let filter = SignalThreadFilter {
-        statuses: vec!["active".into(), "decaying".into()],
-        limit: 30,
-        min_score: 0.0,
-    };
+    let filter = SignalThreadFilter { statuses: vec!["active".into(), "decaying".into()], limit: 30, min_score: 0.0 };
     let thread_inputs = match store.list_signal_threads(&filter).await {
         Ok(s) => s,
         Err(e) => {
@@ -58,15 +55,50 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
     if thread_inputs.is_empty() {
-        console_log!("[Sulix:briefing] no active signal threads — skipping");
+        // Fallback to legacy signals_today() — retains compatibility during
+        // the transition period (1-2 weeks) while the Signal Engine builds
+        // its first signal threads from historical data.
+        console_log!("[Sulix:briefing] no signal threads — falling back to signals_today()");
+        let candidates = match fallback_signals_today(&store, now).await {
+            Some(c) => c,
+            None => {
+                console_log!("[Sulix:briefing] no signals available — skipping");
+                return;
+            }
+        };
+        // Skip lifecycle update in fallback mode
+        let total_signals_loaded = candidates.len() as u32;
+
+        // Build summarizer (shared logic continues below)
+        let summarizer = match crate::services::summarizer::try_build_summarizer(env) {
+            Some(s) => s,
+            None => {
+                console_log!("[Sulix:briefing] no AI summarizer available — skipping");
+                return;
+            }
+        };
+
+        // Acquire lock
+        if let Some(ref cache) = cache {
+            if let Ok(pb) = cache.put(&lock_key, "1") {
+                let _ = pb.expiration_ttl(3600).execute().await;
+            }
+        }
+
+        // Generate, persist, cache
+        if let Err(e) =
+            generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded).await
+        {
+            console_log!("[Sulix:briefing] fallback generation failed: {e}");
+        }
         return;
     }
 
-    // 2. Convert to SignalCandidate via the From<SignalBriefInput> converter
+    // V2 path: convert signal threads to candidates
     let candidates: Vec<SignalCandidate> = thread_inputs.into_iter().map(Into::into).collect();
     let total_signals_loaded = candidates.len() as u32;
 
-    // 3. Build summarizer
+    // 3-5. Build summarizer + lifecycle + lock (same for both paths)
     let summarizer = match crate::services::summarizer::try_build_summarizer(env) {
         Some(s) => s,
         None => {
@@ -75,36 +107,43 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 4. Lifecycle evaluation (signals already persisted in signal_threads table)
     if let Err(e) = store.update_signal_lifecycle(now).await {
         console_log!("[Sulix:briefing] lifecycle update failed: {e}");
     }
 
-    // 5. Acquire lock before generating (prevent concurrent cron runs)
-    let cache = env.kv("CACHE").ok();
     if let Some(ref cache) = cache {
         if let Ok(pb) = cache.put(&lock_key, "1") {
             let _ = pb.expiration_ttl(3600).execute().await;
         }
     }
 
-    // 6. Generate
-    let briefing = match generate_daily_brief(candidates, &summarizer, &date, now).await {
-        Ok(b) => b,
-        Err(e) => {
-            console_log!("[Sulix:briefing] generation failed: {e}");
-            return;
-        }
-    };
-
-    // 7. Persist to D1
-    let content = serde_json::to_string(&briefing).unwrap_or_default();
-    if let Err(e) = store.save_briefing(&date, now, briefing.signal_count, &content).await {
-        console_log!("[Sulix:briefing] D1 save failed: {e}");
-        return;
+    // 6-9. Generate + persist + cache + provenance
+    if let Err(e) =
+        generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded).await
+    {
+        console_log!("[Sulix:briefing] generation failed: {e}");
     }
+}
 
-    // 8. Write KV cache
+/// Generate a briefing, persist to D1, cache to KV, and log provenance.
+///
+/// Shared between the V2 (signal thread) and fallback (legacy signals_today) paths.
+async fn generate_and_persist(
+    store: &store::Store,
+    cache: &Option<worker::kv::KvStore>,
+    candidates: Vec<SignalCandidate>,
+    summarizer: &ai_pipeline::HttpSummarizer,
+    date: &str,
+    now: i64,
+    total_signals_loaded: u32,
+) -> Result<(), String> {
+    let briefing =
+        generate_daily_brief(candidates, summarizer, date, now).await.map_err(|e| format!("generation failed: {e}"))?;
+
+    let content = serde_json::to_string(&briefing).map_err(|e| format!("serialisation: {e}"))?;
+
+    store.save_briefing(date, now, briefing.signal_count, &content).await.map_err(|e| format!("D1 save: {e}"))?;
+
     if let Some(ref cache) = cache {
         let cache_key = format!("briefing:{date}");
         if let Ok(pb) = cache.put(&cache_key, &content) {
@@ -112,7 +151,6 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         }
     }
 
-    // 9. Save provenance alongside the briefing
     let provenance = BriefingProvenance {
         pipeline_version: PIPELINE_VERSION.into(),
         generated_at: now,
@@ -127,8 +165,47 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         }
     }
 
-    console_log!(
-        "[Sulix:briefing] generated for {date} — {} insights",
-        briefing.insights.len()
-    );
+    console_log!("[Sulix:briefing] generated for {date} — {} insights", briefing.insights.len());
+    Ok(())
+}
+
+/// Fallback: load legacy `signals_today()` candidates when no signal threads exist.
+///
+/// This bridges the transition period (1-2 weeks) while the Signal Engine builds
+/// its first signal threads from historical entity activity.
+async fn fallback_signals_today(store: &store::Store, now: i64) -> Option<Vec<SignalCandidate>> {
+    let today_signals = store.signals_today(now).await.ok()?;
+    if today_signals.is_empty() {
+        return None;
+    }
+
+    let candidates: Vec<SignalCandidate> = today_signals
+        .into_iter()
+        .map(|s| SignalCandidate {
+            id: s.id,
+            title: s.title,
+            category: String::new(),
+            signal_summary: s.summary,
+            article_count: s.articles.len(),
+            source_count: 1,
+            avg_score: s.confidence,
+            trend: s.trend,
+            articles: s
+                .articles
+                .into_iter()
+                .map(|a| ai_pipeline::briefing::EvidenceArticle {
+                    id: a.id,
+                    title: a.title,
+                    url: a.url,
+                    feed_name: a.feed_name,
+                    score: a.score,
+                })
+                .collect(),
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+    Some(candidates)
 }

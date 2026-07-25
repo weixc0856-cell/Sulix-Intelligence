@@ -1,0 +1,13 @@
+[package]
+name = "signal-engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+store = { path = "../../store" }
+worker = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+futures = "0.3"
