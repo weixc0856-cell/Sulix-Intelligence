@@ -211,8 +211,19 @@ impl StoreBackend for D1Store {
         anchor_entity_id: Option<i64>,
         title: &str,
         status: &str,
+        discovery_method: &DiscoveryMethod,
+        discovery_score: Option<f64>,
     ) -> Result<i64, StoreError> {
-        D1Store::upsert_signal_thread(self, signal_key, anchor_entity_id, title, status).await
+        D1Store::upsert_signal_thread(
+            self,
+            signal_key,
+            anchor_entity_id,
+            title,
+            status,
+            discovery_method,
+            discovery_score,
+        )
+        .await
     }
 
     async fn append_signal_instance(

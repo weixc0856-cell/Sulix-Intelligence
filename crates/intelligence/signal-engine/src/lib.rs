@@ -34,7 +34,7 @@ mod candidate;
 
 pub use scoring::score_to_impact;
 
-use store::StoreBackend;
+use store::{DiscoveryMethod, StoreBackend};
 
 /// Aggregate report from a single Signal Engine run.
 #[derive(Debug, Default, Clone)]
@@ -79,7 +79,14 @@ impl SignalEngine {
 
             // Upsert thread (create or update existing by key)
             let thread_id = store
-                .upsert_signal_thread(&signal_key, Some(candidate.entity_id), &candidate.entity_name, "active")
+                .upsert_signal_thread(
+                    &signal_key,
+                    Some(candidate.entity_id),
+                    &candidate.entity_name,
+                    "active",
+                    &DiscoveryMethod::Entity,
+                    Some(candidate.score),
+                )
                 .await?;
             report.threads_created += 1;
 

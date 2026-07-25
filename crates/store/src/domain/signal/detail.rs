@@ -148,6 +148,7 @@ impl crate::D1Store {
             instances,
             evidence: ev,
             related_entities: Vec::new(),
+            provenance: Default::default(),
         };
         Ok(Some((brief, t.first_seen_at, t.last_seen_at)))
     }

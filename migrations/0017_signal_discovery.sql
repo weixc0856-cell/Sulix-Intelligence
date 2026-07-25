@@ -3,5 +3,5 @@
 -- Adds provenance tracking so we can distinguish entity-driven signals
 -- from semantic-discovery signals (and later hybrids).
 
-ALTER TABLE signal_threads ADD COLUMN discovery_method TEXT DEFAULT 'entity';
--- 'entity' | 'semantic' | 'hybrid'
+ALTER TABLE signal_threads ADD COLUMN discovery_method TEXT NOT NULL DEFAULT 'entity';
+ALTER TABLE signal_threads ADD COLUMN discovery_score REAL;

@@ -9,18 +9,22 @@ impl crate::D1Store {
         anchor_entity_id: Option<i64>,
         title: &str,
         status: &str,
+        discovery_method: &crate::DiscoveryMethod,
+        discovery_score: Option<f64>,
     ) -> Result<i64, crate::StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let row = self
             .db
             .prepare(
-                "INSERT INTO signal_threads (signal_key, anchor_entity_id, title, status, first_seen_at, last_seen_at, created_at, updated_at)                  VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?6) RETURNING id",
+                "INSERT INTO signal_threads (signal_key, anchor_entity_id, title, status, discovery_method, discovery_score, first_seen_at, last_seen_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?8) RETURNING id",
             )
             .bind(&[
                 signal_key.into(),
                 anchor_entity_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
                 title.into(),
                 status.into(),
+                discovery_method.to_string().into(),
+                discovery_score.map_or(JsValue::null(), JsValue::from_f64),
                 JsValue::from_f64(now as f64),
                 JsValue::from_f64(now as f64),
             ])?
@@ -33,8 +37,14 @@ impl crate::D1Store {
 
         let row = self
             .db
-            .prepare("UPDATE signal_threads SET title = ?1, updated_at = ?2, last_seen_at = ?3 WHERE signal_key = ?4 RETURNING id")
-            .bind(&[title.into(), JsValue::from_f64(now as f64), JsValue::from_f64(now as f64), signal_key.into()])?
+            .prepare("UPDATE signal_threads SET title = ?1, updated_at = ?2, last_seen_at = ?3, discovery_score = ?4 WHERE signal_key = ?5 RETURNING id")
+            .bind(&[
+                title.into(),
+                JsValue::from_f64(now as f64),
+                JsValue::from_f64(now as f64),
+                discovery_score.map_or(JsValue::null(), JsValue::from_f64),
+                signal_key.into(),
+            ])?
             .first::<serde_json::Value>(None)
             .await?;
 
@@ -143,6 +153,7 @@ impl crate::D1Store {
                     })
                     .collect(),
                 related_entities: related,
+                provenance: Default::default(),
             });
         }
         Ok(results)
@@ -271,6 +282,7 @@ impl crate::D1Store {
                     })
                     .collect(),
                 related_entities: related,
+                provenance: Default::default(),
             });
         }
         Ok(results)

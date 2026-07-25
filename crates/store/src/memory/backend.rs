@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
-    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
+    ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
+    EntityRef, EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
     NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
     SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
@@ -378,6 +378,8 @@ impl StoreBackend for MemoryStore {
         _anchor_entity_id: Option<i64>,
         _title: &str,
         _status: &str,
+        _discovery_method: &DiscoveryMethod,
+        _discovery_score: Option<f64>,
     ) -> Result<i64, StoreError> {
         Ok(1)
     }

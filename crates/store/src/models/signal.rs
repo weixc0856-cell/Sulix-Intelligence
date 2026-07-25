@@ -1,5 +1,46 @@
 use serde::{Deserialize, Serialize};
 
+/// How a signal thread was discovered — provenance tracking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DiscoveryMethod {
+    Entity,
+    Semantic,
+    Hybrid,
+}
+
+impl std::fmt::Display for DiscoveryMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity => write!(f, "entity"),
+            Self::Semantic => write!(f, "semantic"),
+            Self::Hybrid => write!(f, "hybrid"),
+        }
+    }
+}
+
+impl From<&str> for DiscoveryMethod {
+    fn from(s: &str) -> Self {
+        match s {
+            "semantic" => Self::Semantic,
+            "hybrid" => Self::Hybrid,
+            _ => Self::Entity,
+        }
+    }
+}
+
+/// Provenance metadata for a signal — how and why it was discovered.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalProvenance {
+    pub method: DiscoveryMethod,
+    pub score: Option<f64>,
+}
+
+impl Default for SignalProvenance {
+    fn default() -> Self {
+        Self { method: DiscoveryMethod::Entity, score: None }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SignalEvidence {
     pub id: i64,
@@ -94,6 +135,8 @@ pub struct SignalThread {
     pub description: String,
     pub status: String,
     pub health_score: f64,
+    pub discovery_method: String,
+    pub discovery_score: Option<f64>,
     pub first_seen_at: Option<i64>,
     pub last_seen_at: Option<i64>,
     pub created_at: i64,
@@ -140,6 +183,8 @@ pub struct SignalBriefInput {
     pub instances: Vec<SignalInstanceSummary>,
     pub evidence: Vec<BriefArticle>,
     pub related_entities: Vec<RelatedEntityRef>,
+    /// Provenance — how this signal was discovered.
+    pub provenance: SignalProvenance,
 }
 
 /// Filter for listing signal threads.

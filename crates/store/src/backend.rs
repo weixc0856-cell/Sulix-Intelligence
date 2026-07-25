@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
-    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
+    ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
+    EntityRef, EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
     NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
     SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
@@ -156,6 +156,8 @@ pub trait StoreBackend {
         anchor_entity_id: Option<i64>,
         title: &str,
         status: &str,
+        discovery_method: &DiscoveryMethod,
+        discovery_score: Option<f64>,
     ) -> Result<i64, StoreError>;
 
     async fn append_signal_instance(
