@@ -1,17 +1,24 @@
+//! Single `impl StoreBackend for MemoryStore` block.
+//!
+//! Rust does not allow splitting trait impls across files in the same crate.
+//! However, the methods are thin wrappers around MemoryStore fields.
+//!
+//! Section headers follow the domain aggregate boundaries for readability.
+
 use async_trait::async_trait;
 
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EvalSummary,
-    EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
-    NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError,
+    ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
+    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary, Feed, NewArticle, NewArtifact,
+    NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
 impl StoreBackend for MemoryStore {
-    // ===== Feed / Article / Rule domain =====
+    // ── Feed / Article / Rules ──
 
     async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
         Ok(self.feeds.get(&id).cloned())
@@ -47,7 +54,6 @@ impl StoreBackend for MemoryStore {
         if self.fail_insert {
             return Err(StoreError::D1("injected insert failure".into()));
         }
-        // Dedup by feed_id + guid (same as D1's INSERT OR IGNORE)
         let dup = self.articles.borrow().iter().any(|a| a.feed_id == article.feed_id && a.guid == article.guid);
         if dup {
             return Ok(None);
@@ -92,33 +98,29 @@ impl StoreBackend for MemoryStore {
         Ok(0)
     }
 
-    // ===== Entity domain =====
+    // ── Entity ──
 
     async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let mut entities = self.entities.borrow_mut();
-
-        // Check for existing by normalized_name
-        if let Some(existing) = entities.values().find(|e| e.normalized_name == normalized) {
-            let existing_id = existing.id;
-            let updated_at = now;
-            let type_str = entity_type.to_string();
-            if let Some(e) = entities.get_mut(&existing_id) {
-                e.updated_at = updated_at;
-                e.entity_type = type_str;
+        // Find existing by normalized_name — must clone id to satisfy borrow checker
+        let existing_id = entities.values().find(|e| e.normalized_name == normalized).map(|e| e.id);
+        if let Some(eid) = existing_id {
+            if let Some(e) = entities.get_mut(&eid) {
+                e.updated_at = now;
+                e.entity_type = entity_type.to_string();
             }
-            return Ok(existing_id);
+            return Ok(eid);
         }
-
         let id = *self.next_entity_id.borrow();
         *self.next_entity_id.borrow_mut() = id + 1;
         entities.insert(
             id,
             EntityInternal {
                 id,
-                name: name.to_string(),
-                normalized_name: normalized.to_string(),
-                entity_type: entity_type.to_string(),
+                name: name.into(),
+                normalized_name: normalized.into(),
+                entity_type: entity_type.into(),
                 canonical_id: None,
                 description: None,
                 metadata: None,
@@ -149,17 +151,15 @@ impl StoreBackend for MemoryStore {
     ) -> Result<(), StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let mut edges = self.entity_relation_edges.borrow_mut();
-
-        // Check for existing relation (unique constraint equivalent)
         let existing = edges.iter_mut().find(|e| e.source == source && e.target == target && e.rtype == rtype);
-        if let Some(existing) = existing {
-            existing.last_seen = now;
-            existing.confidence = confidence;
+        if let Some(e) = existing {
+            e.last_seen = now;
+            e.confidence = confidence;
         } else {
             edges.push(RelationEdge {
                 source,
                 target,
-                rtype: rtype.to_string(),
+                rtype: rtype.into(),
                 confidence,
                 first_seen: now,
                 last_seen: now,
@@ -171,23 +171,18 @@ impl StoreBackend for MemoryStore {
     async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError> {
         let entities = self.entities.borrow();
         let links = self.article_entity_links.borrow();
-
         let mut result: Vec<EntitySummary> = entities
             .values()
-            .map(|e| {
-                let article_count = links.iter().filter(|(_, eid)| *eid == e.id).count() as i64;
-                EntitySummary {
-                    id: e.id,
-                    name: e.name.clone(),
-                    normalized_name: e.normalized_name.clone(),
-                    entity_type: e.entity_type.clone(),
-                    canonical_id: e.canonical_id,
-                    article_count,
-                    last_seen: e.updated_at,
-                }
+            .map(|e| EntitySummary {
+                id: e.id,
+                name: e.name.clone(),
+                normalized_name: e.normalized_name.clone(),
+                entity_type: e.entity_type.clone(),
+                canonical_id: e.canonical_id,
+                article_count: links.iter().filter(|(_, eid)| *eid == e.id).count() as i64,
+                last_seen: e.updated_at,
             })
             .collect();
-
         result.sort_by_key(|b| std::cmp::Reverse(b.article_count));
         let start = offset as usize;
         let end = (start + limit as usize).min(result.len());
@@ -197,28 +192,23 @@ impl StoreBackend for MemoryStore {
     async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
         let entities = self.entities.borrow();
         let links = self.article_entity_links.borrow();
-
-        Ok(entities.get(&id).map(|e| {
-            let article_count = links.iter().filter(|(_, eid)| *eid == e.id).count() as i64;
-            EntityDetail {
-                id: e.id,
-                name: e.name.clone(),
-                normalized_name: e.normalized_name.clone(),
-                entity_type: e.entity_type.clone(),
-                canonical_id: e.canonical_id,
-                description: e.description.clone(),
-                metadata: e.metadata.clone(),
-                article_count,
-                created_at: e.created_at,
-                updated_at: e.updated_at,
-            }
+        Ok(entities.get(&id).map(|e| EntityDetail {
+            id: e.id,
+            name: e.name.clone(),
+            normalized_name: e.normalized_name.clone(),
+            entity_type: e.entity_type.clone(),
+            canonical_id: e.canonical_id,
+            description: e.description.clone(),
+            metadata: e.metadata.clone(),
+            article_count: links.iter().filter(|(_, eid)| *eid == e.id).count() as i64,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
         }))
     }
 
     async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError> {
         let entities = self.entities.borrow();
         let edges = self.entity_relation_edges.borrow();
-
         let mut related: Vec<RelatedEntity> = edges
             .iter()
             .filter(|e| e.source == entity_id || e.target == entity_id)
@@ -235,7 +225,6 @@ impl StoreBackend for MemoryStore {
                 }
             })
             .collect();
-
         related.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
         let limit = limit as usize;
         related.truncate(limit);
@@ -245,7 +234,6 @@ impl StoreBackend for MemoryStore {
     async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError> {
         let entities = self.entities.borrow();
         let links = self.article_entity_links.borrow();
-
         Ok(links
             .iter()
             .filter(|(aid, _)| *aid == article_id)
@@ -264,8 +252,6 @@ impl StoreBackend for MemoryStore {
 
     async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError> {
         let links = self.article_entity_links.borrow();
-
-        // Collect article IDs linked to this entity (dedup by id)
         let mut ids: Vec<i64> = links
             .iter()
             .filter(|(_, eid)| *eid == entity_id)
@@ -273,13 +259,11 @@ impl StoreBackend for MemoryStore {
             .collect::<std::collections::HashSet<i64>>()
             .into_iter()
             .collect();
-
         ids.sort();
         ids.reverse();
-
         let start = offset as usize;
         let end = (start + limit as usize).min(ids.len());
-        let paged: Vec<EntityArticle> = if start < ids.len() {
+        Ok(if start < ids.len() {
             ids[start..end]
                 .iter()
                 .map(|&id| EntityArticle {
@@ -294,8 +278,7 @@ impl StoreBackend for MemoryStore {
                 .collect()
         } else {
             vec![]
-        };
-        Ok(paged)
+        })
     }
 
     async fn entity_activity_summary(
@@ -305,12 +288,10 @@ impl StoreBackend for MemoryStore {
         _days: i64,
     ) -> Result<EntityActivitySummary, StoreError> {
         let links = self.article_entity_links.borrow();
-
-        let article_ids: std::collections::HashSet<i64> =
+        let ids: std::collections::HashSet<i64> =
             links.iter().filter(|(_, eid)| *eid == entity_id).map(|(aid, _)| *aid).collect();
-
         Ok(EntityActivitySummary {
-            article_count: article_ids.len() as i64,
+            article_count: ids.len() as i64,
             source_count: 0,
             avg_score: 0.0,
             max_score: 0.0,
@@ -320,8 +301,6 @@ impl StoreBackend for MemoryStore {
         })
     }
 
-    // ===== Signal domain =====
-
     async fn entity_signal_candidates(
         &self,
         _now: i64,
@@ -330,7 +309,16 @@ impl StoreBackend for MemoryStore {
     ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
         Ok(Vec::new())
     }
-
+    async fn entity_signal_candidates_filtered(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+        _min_entity_articles: u32,
+        _min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        Ok(Vec::new())
+    }
     async fn recent_embedded_articles(
         &self,
         _now: i64,
@@ -339,6 +327,8 @@ impl StoreBackend for MemoryStore {
     ) -> Result<Vec<crate::ArticleEmbeddingRef>, StoreError> {
         Ok(Vec::new())
     }
+
+    // ── Signal Threads ──
 
     async fn upsert_signal_thread(
         &self,
@@ -351,20 +341,66 @@ impl StoreBackend for MemoryStore {
     ) -> Result<SignalUpsertResult, StoreError> {
         Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
     }
-
     async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
         Ok(())
     }
-
     async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
         Ok(Vec::new())
     }
-
     async fn list_signal_threads(&self, _filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
         Ok(Vec::new())
     }
+    async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        Ok(None)
+    }
 
-    // ===== Artifact / Briefing domain =====
+    async fn append_signal_instance_v2(
+        &self,
+        _thread_id: i64,
+        _score: f64,
+        _impact: &str,
+        _trend: &str,
+        _article_count: i64,
+        _source_count: i64,
+        _avg_score: f64,
+        _entity_id: i64,
+    ) -> Result<i64, StoreError> {
+        let id = *self.next_signal_event_id.borrow();
+        *self.next_signal_event_id.borrow_mut() = id + 1;
+        Ok(id)
+    }
+
+    async fn insert_signal_event(
+        &self,
+        thread_id: i64,
+        event_type: &str,
+        payload: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let id = *self.next_signal_event_id.borrow();
+        *self.next_signal_event_id.borrow_mut() = id + 1;
+        self.signal_events.borrow_mut().push(SignalEvent {
+            id,
+            thread_id,
+            event_type: event_type.to_string(),
+            payload: payload.map(|s| s.to_string()),
+            created_at: 1000000,
+        });
+        Ok(())
+    }
+
+    async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
+        Ok(self.signal_events.borrow().iter().filter(|e| e.thread_id == thread_id).cloned().collect())
+    }
+
+    async fn load_thread_related_entities(
+        &self,
+        _thread_id: i64,
+        _limit: u32,
+    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    // ── Artifact / Briefing ──
 
     async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
@@ -407,69 +443,7 @@ impl StoreBackend for MemoryStore {
         Ok(result)
     }
 
-    async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
-        Ok(None)
-    }
-
-    async fn entity_signal_candidates_filtered(
-        &self,
-        _now: i64,
-        _days: i64,
-        _limit: u32,
-        _min_entity_articles: u32,
-        _min_sources: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
-        Ok(Vec::new())
-    }
-
-    async fn append_signal_instance_v2(
-        &self,
-        _thread_id: i64,
-        _score: f64,
-        _impact: &str,
-        _trend: &str,
-        _article_count: i64,
-        _source_count: i64,
-        _avg_score: f64,
-        _entity_id: i64,
-    ) -> Result<i64, StoreError> {
-        let id = *self.next_signal_event_id.borrow();
-        *self.next_signal_event_id.borrow_mut() = id + 1;
-        Ok(id)
-    }
-
-    async fn insert_signal_event(
-        &self,
-        thread_id: i64,
-        event_type: &str,
-        payload: Option<&str>,
-    ) -> Result<(), StoreError> {
-        let id = *self.next_signal_event_id.borrow();
-        *self.next_signal_event_id.borrow_mut() = id + 1;
-        let now = 1000000; // fixed timestamp for deterministic tests
-        self.signal_events.borrow_mut().push(SignalEvent {
-            id,
-            thread_id,
-            event_type: event_type.to_string(),
-            payload: payload.map(|s| s.to_string()),
-            created_at: now,
-        });
-        Ok(())
-    }
-
-    async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
-        let events = self.signal_events.borrow();
-        let result: Vec<SignalEvent> = events.iter().filter(|e| e.thread_id == thread_id).cloned().collect();
-        Ok(result)
-    }
-
-    async fn load_thread_related_entities(
-        &self,
-        _thread_id: i64,
-        _limit: u32,
-    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
-        Ok(Vec::new())
-    }
+    // ── Decision ──
 
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
         let now = 1000000;
@@ -491,39 +465,26 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-
     async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
-        let decisions = self.decisions.borrow();
-        Ok(decisions.iter().find(|d| d.id == id).cloned())
+        Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
     }
-
     async fn list_decisions(&self, status: Option<&str>, _limit: u32) -> Result<Vec<Decision>, StoreError> {
         let decisions = self.decisions.borrow();
         match status {
-            Some(s) => {
-                let filtered: Vec<Decision> = decisions.iter().filter(|d| d.status == s).cloned().collect();
-                Ok(filtered)
-            }
+            Some(s) => Ok(decisions.iter().filter(|d| d.status == s).cloned().collect()),
             None => Ok(decisions.clone()),
         }
     }
-
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
-        let mut decisions = self.decisions.borrow_mut();
-        if let Some(d) = decisions.iter_mut().find(|d| d.id == id) {
+        if let Some(d) = self.decisions.borrow_mut().iter_mut().find(|d| d.id == id) {
             d.status = status.to_string();
             d.updated_at = 1000000;
         }
         Ok(())
     }
-
     async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
-        let decisions = self.decisions.borrow();
-        let filtered: Vec<Decision> =
-            decisions.iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect();
-        Ok(filtered)
+        Ok(self.decisions.borrow().iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect())
     }
-
     async fn decision_stats(&self) -> Result<DecisionStats, StoreError> {
         let decisions = self.decisions.borrow();
         let evals = self.evaluations.borrow();
@@ -536,15 +497,27 @@ impl StoreBackend for MemoryStore {
             by_priority: vec![],
             evaluation_summary: EvalSummary {
                 total_evaluated: evals.len() as i64,
-                confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Confirmed)).count() as i64,
-                partially_confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::PartiallyConfirmed)).count() as i64,
-                contradicted: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Contradicted)).count() as i64,
-                inconclusive: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Inconclusive)).count() as i64,
+                confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Confirmed)).count()
+                    as i64,
+                partially_confirmed: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::PartiallyConfirmed))
+                    .count() as i64,
+                contradicted: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Contradicted))
+                    .count() as i64,
+                inconclusive: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Inconclusive))
+                    .count() as i64,
                 accuracy_rate: 0.0,
             },
             top_signals: vec![],
         })
     }
+
+    // ── Outcome ──
 
     async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
         let now = 1000000;
@@ -562,12 +535,11 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-
     async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
-        let outcomes = self.outcomes.borrow();
-        let result: Vec<OutcomeEvent> = outcomes.iter().filter(|o| o.decision_id == decision_id).cloned().collect();
-        Ok(result)
+        Ok(self.outcomes.borrow().iter().filter(|o| o.decision_id == decision_id).cloned().collect())
     }
+
+    // ── Evaluation ──
 
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
         let now = 1000000;
@@ -586,16 +558,12 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-
     async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
-        let evals = self.evaluations.borrow();
-        let result: Vec<DecisionEvaluation> = evals.iter().filter(|e| e.decision_id == decision_id).cloned().collect();
-        Ok(result)
+        Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
     }
-
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        let evals = self.evaluations.borrow();
-        let result: Vec<DecisionEvaluation> = evals.iter().filter(|e| e.decision_id == decision_id).cloned().collect();
+        let result: Vec<DecisionEvaluation> =
+            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
         Ok(result.into_iter().last())
     }
 }

@@ -108,8 +108,14 @@ impl crate::D1Store {
         let accuracy_rate = if eval_total > inconclusive {
             let numerator = confirmed as f64 + partially as f64 * 0.5;
             let denominator = (eval_total - inconclusive) as f64;
-            if denominator > 0.0 { numerator / denominator } else { 0.0 }
-        } else { 0.0 };
+            if denominator > 0.0 {
+                numerator / denominator
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
 
         let top_signals: Vec<crate::SignalDecisionCount> = self
             .db

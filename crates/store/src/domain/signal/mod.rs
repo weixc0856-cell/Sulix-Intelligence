@@ -1,4 +1,5 @@
 mod candidate;
+pub mod candidate_scoring;
 pub mod detail;
 pub mod events;
 mod lifecycle;

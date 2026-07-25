@@ -5,4 +5,6 @@ pub mod briefing_context;
 pub mod decision;
 pub mod entity;
 pub mod feed;
+pub mod feed_analytics;
+pub mod feed_rules;
 pub mod signal;

@@ -6,10 +6,10 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary,
-    EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact,
-    NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed,
+    NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity,
+    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
