@@ -5,6 +5,7 @@ pub(crate) mod event;
 pub(crate) mod feed;
 pub(crate) mod outbox;
 pub(crate) mod preview;
+pub(crate) mod reflection;
 pub(crate) mod signal;
 
 pub use artifact::*;
@@ -14,4 +15,5 @@ pub use event::*;
 pub use feed::*;
 pub use outbox::*;
 pub use preview::*;
+pub use reflection::*;
 pub use signal::*;

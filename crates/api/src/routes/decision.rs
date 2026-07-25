@@ -7,8 +7,6 @@
 //! - `GET    /api/intelligence/signals/:id/decisions`    — decisions by signal
 //! - `POST   /api/intelligence/decisions/:id/status`     — update status
 
-use event_store::{EventR2Backend, EventStore, NoopEventStore};
-use object_store::R2Store;
 use serde_json::json;
 use store::{D1Store, NewDecisionEvaluation, NewOutcomeEvent, Store};
 use worker::*;
@@ -16,19 +14,8 @@ use worker::*;
 use crate::services::decision::{CreateDecision, DecisionService};
 use crate::shared::response;
 
-/// Build a DecisionService from worker env bindings.
-/// Uses NoopEventStore (safe fallback) when R2 is unavailable.
-fn build_decision_service(env: &Env) -> Result<DecisionService<D1Store, Box<dyn EventStore>>> {
-    let db = env.d1("DB")?;
-    let store = D1Store::new(db);
-    let event_store: Box<dyn EventStore> = match env.bucket("RAW_CONTENT").ok() {
-        Some(bucket) => Box::new(EventR2Backend::new(
-            D1Store::new(env.d1("DB")?),
-            R2Store::new(bucket),
-        )),
-        None => Box::new(NoopEventStore::new()),
-    };
-    Ok(DecisionService::new(store, event_store))
+fn build_decision_service(env: &Env) -> Result<DecisionService<D1Store>> {
+    Ok(DecisionService::new(D1Store::new(env.d1("DB")?)))
 }
 
 /// GET /api/intelligence/decisions?status=active
