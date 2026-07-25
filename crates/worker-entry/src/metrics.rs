@@ -19,6 +19,9 @@ pub struct PipelineMetrics {
     pub articles_fetched: u32,
     pub articles_new: u32,
     pub articles_dup: u32,
+    pub entities_created: u32,
+    pub entity_links: u32,
+    pub entity_relations: u32,
     pub errors: u32,
 }
 
@@ -51,10 +54,13 @@ impl PipelineMetrics {
             "llm_ms":        (self.llm_ms * 10.0).round() / 10.0,
             "embedding_ms":  (self.embedding_ms * 10.0).round() / 10.0,
             "r2_ms":         (self.r2_ms * 10.0).round() / 10.0,
-            "articles_fetched": self.articles_fetched,
-            "articles_new":     self.articles_new,
-            "articles_dup":     self.articles_dup,
-            "errors":           self.errors,
+            "articles_fetched":   self.articles_fetched,
+            "articles_new":       self.articles_new,
+            "articles_dup":       self.articles_dup,
+            "entities_created":   self.entities_created,
+            "entity_links":       self.entity_links,
+            "entity_relations":   self.entity_relations,
+            "errors":             self.errors,
         })
     }
 }

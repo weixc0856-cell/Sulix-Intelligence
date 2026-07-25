@@ -8,17 +8,23 @@
 //!
 //! When no briefing has been generated yet, returns HTTP 202 with
 //! `{"status":"processing"}`.
+//!
+//! Error semantics:
+//! - 202  No briefing exists yet (the generation cron hasn't run)
+//! - 503  D1 dependency failure (transient — brief may still be generated)
+//! - 500  Stored content is corrupted (non-transient — investigate)
 
 use crate::{fmt_date_ymd, json_err, json_err_internal, json_ok, param_i64, Store};
 use worker::*;
 
+/// KV cache TTL for the briefing endpoint (6 hours).
+const BRIEFING_CACHE_TTL_SEC: u64 = 21_600;
+
 pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
-    let now = (js_sys::Date::now() / 1000.0) as i64;
-    let date = fmt_date_ymd(now);
+    let date = fmt_date_ymd((js_sys::Date::now() / 1000.0) as i64);
+    let cache_key = format!("briefing:{date}");
 
     // 1. Try KV cache
-    let cache_key = format!("briefing:{date}");
     if let Some(cached) = crate::cache_get(&ctx.env, &cache_key).await {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&cached) {
             let mut resp = Response::from_json(&v)?;
@@ -28,20 +34,33 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Resp
     }
 
     // 2. KV miss — query D1
+    let store = match ctx.env.d1("DB") {
+        Ok(db) => Store::new(db),
+        Err(e) => {
+            console_log!("[briefing] d1_binding_failed date={} error={:?}", date, e);
+            return json_err(503, "Briefing temporarily unavailable");
+        }
+    };
+
     match store.load_today_briefing(&date).await {
         Ok(Some(content)) => {
             // Parse the stored JSON content and return it
             match serde_json::from_str::<serde_json::Value>(&content) {
                 Ok(briefing) => {
-                    // Warm the cache (TTL: 6 hours)
+                    // Warm the cache (6-hour TTL, same as generator)
                     if let Ok(json_str) = serde_json::to_string(&briefing) {
-                        crate::cache_put(&ctx.env, &cache_key, &json_str, 360).await;
+                        crate::cache_put(&ctx.env, &cache_key, &json_str, BRIEFING_CACHE_TTL_SEC).await;
                     }
                     json_ok(briefing)
                 }
                 Err(e) => {
-                    console_log!("[Sulix:briefing] parse stored content failed: {e}");
-                    crate::json_err_internal("briefing content parse failed")
+                    console_log!(
+                        "[briefing] invalid_content date={} len={} error={}",
+                        date,
+                        content.len(),
+                        e
+                    );
+                    json_err(500, "Briefing content corrupted")
                 }
             }
         }
@@ -51,7 +70,10 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Resp
             crate::cors_headers(&mut resp);
             Ok(resp)
         }
-        Err(e) => crate::json_err_internal(&e.to_string()),
+        Err(e) => {
+            console_log!("[briefing] d1_load_failed date={} error={:?}", date, e);
+            json_err(503, "Briefing temporarily unavailable")
+        }
     }
 }
 

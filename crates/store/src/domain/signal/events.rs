@@ -19,7 +19,7 @@ impl crate::D1Store {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         self.db
             .prepare(
-                "INSERT INTO signal_events (thread_id, event_type, payload, created_at) \
+                "INSERT OR IGNORE INTO signal_events (thread_id, event_type, payload, created_at) \
                  VALUES (?1, ?2, ?3, ?4)",
             )
             .bind(&[

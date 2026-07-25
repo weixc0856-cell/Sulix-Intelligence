@@ -171,6 +171,7 @@ pub(crate) async fn process_one_feed(
                                                     .await
                                                 {
                                                     Ok(eid) => {
+                                                        ctx.metrics.borrow_mut().entities_created += 1;
                                                         entity_ids.push(eid);
                                                         if let Err(e) = ctx
                                                             .store
@@ -180,6 +181,8 @@ pub(crate) async fn process_one_feed(
                                                             console_log!(
                                                                 "  entity link failed for article {article_id}: {e}"
                                                             );
+                                                        } else {
+                                                            ctx.metrics.borrow_mut().entity_links += 1;
                                                         }
                                                     }
                                                     Err(e) => {
@@ -201,6 +204,8 @@ pub(crate) async fn process_one_feed(
                                                         .await
                                                     {
                                                         console_log!("  entity relation failed: {e}");
+                                                    } else {
+                                                        ctx.metrics.borrow_mut().entity_relations += 1;
                                                     }
                                                 }
                                             }
