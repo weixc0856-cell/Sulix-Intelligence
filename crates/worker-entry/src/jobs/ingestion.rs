@@ -30,6 +30,7 @@ pub(crate) struct FeedContext<'a, S: StoreBackend> {
 }
 
 /// Outcome of processing a single feed through the pipeline.
+#[allow(dead_code)]
 pub(crate) struct FeedProcessResult {
     pub(crate) feed_id: i64,
     pub(crate) articles_processed: usize,

@@ -5,7 +5,7 @@
 //! Type definitions live in [`models`] and are re-exported from the crate
 //! root so callers write `store::Feed` / `store::StoreError` etc.
 
-mod models;
+pub mod models;
 pub use models::*;
 
 pub mod backend;
