@@ -5,7 +5,7 @@
 //! Type definitions live in [`models`] and are re-exported from the crate
 //! root so callers write `store::Feed` / `store::StoreError` etc.
 
-mod models;
+pub mod models;
 pub use models::*;
 
 pub mod backend;
@@ -202,6 +202,10 @@ impl StoreBackend for D1Store {
 
     async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
         D1Store::list_signal_threads(self, filter).await
+    }
+
+    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        D1Store::load_signal_detail(self, thread_id).await
     }
 }
 
