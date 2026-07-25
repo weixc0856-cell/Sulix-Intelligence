@@ -193,6 +193,15 @@ pub struct SignalEvidence {
     pub score: f64,
 }
 
+/// Signal origin — which engine generated this signal.
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum SignalOrigin {
+    #[default]
+    Entity,
+    LegacyScoreBucket,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TodaySignal {
     pub id: String,
@@ -202,6 +211,11 @@ pub struct TodaySignal {
     pub evidence_count: i64,
     pub trend: String,
     pub articles: Vec<SignalEvidence>,
+    /// Which engine generated this signal.
+    #[serde(default)]
+    pub origin: SignalOrigin,
+    /// Entity anchor, if the signal was entity-derived.
+    pub anchor_entity: Option<EntitySignalRef>,
 }
 
 // ===== Entity Graph types =====
@@ -317,6 +331,7 @@ pub struct IntelligenceSignal {
     pub anchor_entity_id: Option<i64>,
     pub title: String,
     pub summary: String,
+    pub signal_type: String,
     pub confidence: f64,
     pub impact: String,
     pub trend: String,

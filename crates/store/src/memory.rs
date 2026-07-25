@@ -535,4 +535,8 @@ impl StoreBackend for MemoryStore {
     async fn load_signal_by_id(&self, _id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
         Ok(None)
     }
+
+    async fn entity_signals(&self, _entity_id: i64, _limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(Vec::new())
+    }
 }

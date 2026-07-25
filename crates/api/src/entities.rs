@@ -42,6 +42,19 @@ pub async fn entities_get(_req: Request, ctx: RouteContext<()>) -> Result<Respon
     }
 }
 
+/// GET /api/intelligence/entities/:id/signals
+pub async fn entities_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") {
+        Some(v) => v,
+        None => return json_err(400, "invalid entity id"),
+    };
+    match store.entity_signals(id, 20).await {
+        Ok(signals) => json_ok(serde_json::json!({ "success": true, "signals": signals })),
+        Err(e) => json_err_internal(&e.to_string()),
+    }
+}
+
 pub async fn entities_get_relations(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     let id = match param_i64(&ctx, "id") {

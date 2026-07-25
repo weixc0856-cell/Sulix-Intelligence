@@ -791,6 +791,12 @@ impl D1Store {
                     evidence_count,
                     trend: c.trend.clone(),
                     articles: c.evidence,
+                    origin: SignalOrigin::Entity,
+                    anchor_entity: Some(EntitySignalRef {
+                        id: c.entity_id,
+                        name: c.entity_name.clone(),
+                        entity_type: c.entity_type.clone(),
+                    }),
                 }
             })
             .collect();
@@ -822,8 +828,8 @@ impl D1Store {
             .db
             .prepare(
                 "INSERT INTO intelligence_signals \
-                 (anchor_entity_id, title, summary, confidence, impact, trend, article_count, source_count, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) RETURNING id",
+                 (anchor_entity_id, title, summary, signal_type, confidence, impact, trend, article_count, source_count, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, 'entity', ?4, ?5, ?6, ?7, ?8, ?9, ?10) RETURNING id",
             )
             .bind(&[
                 entity_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
@@ -851,7 +857,7 @@ impl D1Store {
     /// Load recent intelligence signals.
     pub async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
         Ok(self.db.prepare(
-            "SELECT id, anchor_entity_id, title, summary, confidence, impact, \
+            "SELECT id, anchor_entity_id, title, summary, signal_type, confidence, impact, \
                     trend, article_count, source_count, created_at, updated_at \
              FROM intelligence_signals ORDER BY confidence DESC LIMIT ?1 OFFSET ?2",
         ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
@@ -860,11 +866,29 @@ impl D1Store {
     /// Load a single intelligence signal by id.
     pub async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
         let r = self.db.prepare(
-            "SELECT id, anchor_entity_id, title, summary, confidence, impact, \
+            "SELECT id, anchor_entity_id, title, summary, signal_type, confidence, impact, \
                     trend, article_count, source_count, created_at, updated_at \
              FROM intelligence_signals WHERE id = ?1",
         ).bind(&[JsValue::from_f64(id as f64)])?.first::<IntelligenceSignal>(None).await?;
         Ok(r)
+    }
+
+    /// Load signals anchored to a specific entity.
+    pub async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(self
+            .db
+            .prepare(
+                "SELECT id, anchor_entity_id, title, summary, signal_type, confidence, impact, \
+                        trend, article_count, source_count, created_at, updated_at \
+                 FROM intelligence_signals \
+                 WHERE anchor_entity_id = ?1 \
+                 ORDER BY created_at DESC \
+                 LIMIT ?2",
+            )
+            .bind(&[JsValue::from_f64(entity_id as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
     }
 
     pub async fn list_rules(&self) -> Result<Vec<Value>, StoreError> {
@@ -1442,6 +1466,10 @@ impl StoreBackend for D1Store {
 
     async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
         D1Store::load_signal_by_id(self, id).await
+    }
+
+    async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        D1Store::entity_signals(self, entity_id, limit).await
     }
 }
 

@@ -153,4 +153,7 @@ pub trait StoreBackend {
 
     /// Load a single signal by id.
     async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError>;
+
+    /// Load signals anchored to a specific entity.
+    async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
 }
