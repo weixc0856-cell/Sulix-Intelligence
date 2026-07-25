@@ -4,6 +4,7 @@ mod jobs;
 pub(crate) mod metrics;
 mod runtime;
 pub(crate) mod services;
+pub(crate) mod utils;
 pub(crate) mod version;
 
 #[event(fetch)]

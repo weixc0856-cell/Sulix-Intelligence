@@ -8,8 +8,7 @@ store = { path = "../../store" }
 worker = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+async-trait = { workspace = true }
 vectorize = { path = "../../vectorize", optional = true }
 embedding = { path = "../../embedding", optional = true }
-
-[dev-dependencies]
 futures = "0.3"

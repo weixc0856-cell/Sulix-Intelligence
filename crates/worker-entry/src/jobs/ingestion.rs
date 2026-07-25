@@ -208,7 +208,7 @@ pub(crate) async fn process_one_feed(
                                     }
                                     Err(_) => {
                                         ctx.metrics.borrow_mut().errors += 1;
-                                        let excerpt = if body.len() > 500 { &body[..500] } else { &body };
+                                        let excerpt = crate::utils::truncate_chars(&body, 500);
                                         if let Err(e) =
                                             ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await
                                         {

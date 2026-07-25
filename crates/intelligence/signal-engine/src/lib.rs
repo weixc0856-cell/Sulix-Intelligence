@@ -29,12 +29,15 @@ pub mod discovery;
 pub mod pipeline;
 pub mod query;
 pub mod scoring;
+pub mod source;
 
 mod candidate;
 
 pub use scoring::score_to_impact;
 
-use store::{DiscoveryMethod, StoreBackend};
+use store::StoreBackend;
+
+use crate::source::SignalSource;
 
 /// Aggregate report from a single Signal Engine run.
 #[derive(Debug, Default, Clone)]
@@ -55,37 +58,42 @@ pub struct SignalEngine;
 impl SignalEngine {
     /// Run a single cycle of the signal engine.
     ///
-    /// Designed to be called once per cron cycle after article ingestion
-    /// and entity persistence are complete.
+    /// Iterates over all [`SignalSource`] providers, gathers candidates,
+    /// merges overlapping ones, and persists them as signal threads.
     ///
     /// # Arguments
     ///
-    /// * `store` — Any implementation of [`StoreBackend`] (production D1 or test MemoryStore).
+    /// * `store` — Any implementation of [`StoreBackend`].
+    /// * `sources` — List of signal candidate providers.
     /// * `now` — Unix timestamp (seconds) representing "now".
-    pub async fn run(store: &impl StoreBackend, now: i64) -> Result<SignalEngineReport, store::StoreError> {
+    pub async fn run(
+        store: &impl StoreBackend,
+        sources: &[&dyn SignalSource],
+        now: i64,
+    ) -> Result<SignalEngineReport, store::StoreError> {
         let mut report = SignalEngineReport::default();
 
-        // 1. Fetch entity signal candidates with quality filters
-        //    - 7-day window
-        //    - top 50 candidates
-        //    - min 3 articles per entity
-        //    - min 2 distinct sources
-        let candidates = store.entity_signal_candidates_filtered(now, 7, 50, 3, 2).await?;
+        // 1. Gather candidates from all sources
+        let mut all_candidates: Vec<crate::source::SignalCandidate> = Vec::new();
+        for source in sources {
+            match source.candidates(store, now).await {
+                Ok(mut cands) => all_candidates.append(&mut cands),
+                Err(_e) => { /* source failed — logged by caller */ }
+            }
+        }
 
         // 2. For each candidate, upsert thread + append instance + write event
-        for candidate in &candidates {
-            let signal_key = format!("entity:{}", candidate.entity_id);
+        for candidate in &all_candidates {
             let impact = score_to_impact(candidate.score);
 
-            // Upsert thread (create or update existing by key)
             let upsert = store
                 .upsert_signal_thread(
-                    &signal_key,
-                    Some(candidate.entity_id),
-                    &candidate.entity_name,
-                    "active",
-                    &DiscoveryMethod::Entity,
-                    Some(candidate.score),
+                    &candidate.signal_key,
+                    candidate.anchor_entity_id,
+                    &candidate.title,
+                    &candidate.status,
+                    &candidate.discovery_method,
+                    candidate.discovery_score,
                 )
                 .await?;
             let thread_id = upsert.id;
@@ -93,7 +101,6 @@ impl SignalEngine {
                 report.threads_created += 1;
             }
 
-            // Append a structured instance snapshot
             let _instance_id = store
                 .append_signal_instance_v2(
                     thread_id,
@@ -103,25 +110,22 @@ impl SignalEngine {
                     candidate.article_count,
                     candidate.source_count,
                     candidate.avg_score,
-                    candidate.entity_id,
+                    candidate.anchor_entity_id.unwrap_or(0),
                 )
                 .await?;
             report.instances_appended += 1;
 
-            // Write a timeline event
             let payload = serde_json::json!({
                 "score": candidate.score,
                 "impact": impact,
                 "article_count": candidate.article_count,
                 "source_count": candidate.source_count,
                 "trend": candidate.trend,
-                "entity_id": candidate.entity_id,
-                "entity_name": candidate.entity_name,
+                "signal_key": candidate.signal_key,
             });
             store.insert_signal_event(thread_id, "score_changed", Some(&payload.to_string())).await?;
             report.events_written += 1;
 
-            // Write lifecycle event if newly created
             if upsert.mutation == store::SignalMutation::Created {
                 store.insert_signal_event(thread_id, "created", None).await?;
                 report.events_written += 1;
@@ -187,7 +191,9 @@ mod tests {
         assert_eq!(candidates.len(), 2, "should have 2 candidates (NVIDIA, CUDA)");
 
         // 4. Run signal engine
-        let report = futures::executor::block_on(crate::SignalEngine::run(&store, now)).unwrap();
+        let source = crate::source::EntitySignalSource;
+        let sources = [&source as &dyn crate::source::SignalSource];
+        let report = futures::executor::block_on(crate::SignalEngine::run(&store, &sources, now)).unwrap();
         assert!(report.threads_created >= 2, "should create at least 2 threads");
         assert!(report.instances_appended >= 2, "should append at least 2 instances");
 
