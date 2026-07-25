@@ -33,9 +33,16 @@ pub(crate) fn in_placeholders(count: usize) -> String {
     (1..=count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",")
 }
 
+/// Escape SQL LIKE wildcards (`%`, `_`) and the escape character (`\`) itself.
+/// Must be applied in this order: `\` first, then `%`, then `_`.
+pub(crate) fn escape_like(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 /// Build a SQL LIKE pattern that matches a JSON-stringified tag: `%"tag"%`.
+/// Uses `ESCAPE '\'` semantics — caller must add the ESCAPE clause to the SQL.
 pub(crate) fn tag_like_pattern(tag: &str) -> String {
-    format!("%\"{}\"%", tag)
+    format!("%\"{}\"%", escape_like(tag))
 }
 
 /// Check whether a cron last-run timestamp is within 3600 seconds of `now`.
@@ -77,6 +84,28 @@ mod tests {
     #[test]
     fn tag_like_pattern_empty() {
         assert_eq!(tag_like_pattern(""), r#"%""%"#);
+    }
+
+    // -- escape_like --
+
+    #[test]
+    fn escape_like_normal() {
+        assert_eq!(escape_like("rust"), "rust");
+    }
+
+    #[test]
+    fn escape_like_percent() {
+        assert_eq!(escape_like("100%"), r"100\%");
+    }
+
+    #[test]
+    fn escape_like_underscore() {
+        assert_eq!(escape_like("GPT_5"), r"GPT\_5");
+    }
+
+    #[test]
+    fn escape_like_all_wildcards() {
+        assert_eq!(escape_like(r"a%b_c"), r"a\%b\_c");
     }
 
     // -- is_cron_healthy --

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// How a signal thread was discovered — provenance tracking.
+/// How a signal thread was discovered -- provenance tracking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiscoveryMethod {
     Entity,
@@ -28,7 +28,7 @@ impl From<&str> for DiscoveryMethod {
     }
 }
 
-/// Provenance metadata for a signal — how and why it was discovered.
+/// Provenance metadata for a signal -- how and why it was discovered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalProvenance {
     pub method: DiscoveryMethod,
@@ -65,7 +65,7 @@ pub struct SignalEvidence {
     pub score: f64,
 }
 
-/// Signal origin — which engine generated this signal.
+/// Signal origin -- which engine generated this signal.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SignalOrigin {
@@ -90,26 +90,7 @@ pub struct TodaySignal {
     pub anchor_entity: Option<EntitySignalRef>,
 }
 
-// ===== Intelligence Signal types =====
-
-/// Core Intelligence Signal — first-class artifact, NOT an entity ranking.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IntelligenceSignal {
-    pub id: i64,
-    pub anchor_entity_id: Option<i64>,
-    pub title: String,
-    pub summary: String,
-    pub signal_type: String,
-    pub confidence: f64,
-    pub impact: String,
-    pub trend: String,
-    pub article_count: i64,
-    pub source_count: i64,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-/// Transient candidate before materialization.
+/// Core Intelligence Signal -- first-class artifact, NOT an entity ranking.
 #[derive(Debug, Clone)]
 pub struct EntitySignalCandidate {
     pub entity_id: i64,
@@ -139,7 +120,7 @@ pub struct EntitySignalRef {
 
 // ===== Signal Thread types =====
 
-/// Signal Thread — long-lived intelligence asset.
+/// Signal Thread -- long-lived intelligence asset.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SignalThread {
     pub id: i64,
@@ -169,7 +150,7 @@ pub struct SignalInstanceSummary {
     pub generated_at: i64,
 }
 
-/// Briefing input — domain model assembled from signal threads.
+/// Briefing input -- domain model assembled from signal threads.
 /// Contains both current snapshot and cumulative metrics so the
 /// LLM can distinguish "ongoing trend" from "spike event".
 #[derive(Debug, Clone)]
@@ -197,7 +178,7 @@ pub struct SignalBriefInput {
     pub instances: Vec<SignalInstanceSummary>,
     pub evidence: Vec<BriefArticle>,
     pub related_entities: Vec<RelatedEntityRef>,
-    /// Provenance — how this signal was discovered.
+    /// Provenance -- how this signal was discovered.
     pub provenance: SignalProvenance,
 }
 
@@ -338,7 +319,7 @@ pub struct SignalDetail {
     pub analysis: Option<SignalAnalysis>,
 }
 
-/// Rule-based analysis for a signal thread — answers "Why This Matters".
+/// Rule-based analysis for a signal thread -- answers "Why This Matters".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalAnalysis {
     pub why_it_matters: String,
@@ -348,7 +329,7 @@ pub struct SignalAnalysis {
 
 // ===== Signal Event types (V2 Signal Engine) =====
 
-/// Fixed set of signal event types — prevents string inconsistency.
+/// Fixed set of signal event types -- prevents string inconsistency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SignalEventType {

@@ -148,7 +148,7 @@ impl crate::D1Store {
     ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         let pattern = crate::tag_like_pattern(tag);
         Ok(self.db.prepare(
-            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ESCAPE '\' ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
         ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
     }
 
@@ -197,7 +197,13 @@ impl crate::D1Store {
         if tags.is_empty() {
             return Ok(Vec::new());
         }
-        let conds: Vec<String> = tags.iter().map(|t| format!("ai_tags LIKE '%\"{}%'", t.replace('\'', "''"))).collect();
+        let conds: Vec<String> = tags
+            .iter()
+            .map(|t| {
+                let escaped = crate::escape_like(t);
+                format!("ai_tags LIKE '%\"{}%' ESCAPE '\\'", escaped.replace('\'', "''"))
+            })
+            .collect();
         let sql = format!(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id != ?1 AND ({}) ORDER BY ({} DESC), published_at DESC LIMIT ?2",
             conds.join(" OR "),
