@@ -60,6 +60,7 @@ impl crate::D1Store {
             evidence_top: evidence,
             related_entities,
             related_signals,
+            analysis: None,
         }))
     }
 

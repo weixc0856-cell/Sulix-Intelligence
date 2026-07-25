@@ -270,6 +270,16 @@ pub struct SignalDetail {
     pub evidence_top: Vec<BriefArticle>,
     pub related_entities: Vec<RelatedEntityRef>,
     pub related_signals: Vec<RelatedSignalRef>,
+    /// Rule-based "Why This Matters" analysis.
+    pub analysis: Option<SignalAnalysis>,
+}
+
+/// Rule-based analysis for a signal thread — answers "Why This Matters".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalAnalysis {
+    pub why_it_matters: String,
+    pub impact: String,
+    pub confidence_reason: String,
 }
 
 // ===== Signal Event types (V2 Signal Engine) =====

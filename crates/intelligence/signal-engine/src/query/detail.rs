@@ -1,4 +1,4 @@
-//! Signal Thread Detail Query — thread + instances + events + evidence + summary.
+//! Signal Thread Detail Query — thread + instances + events + evidence + analysis.
 //!
 //! This is the unified read model for the Signal Detail / Investigation page.
 //! It merges three data sources:
@@ -6,9 +6,9 @@
 //! 2. `signal_events` table → stored timeline events (lifecycle, etc.)
 //! 3. Entity relations → related entities with relation_type
 //!
-//! Also computes a rule-based "Why This Matters" summary.
+//! Also computes a rule-based "Why This Matters" analysis.
 
-use store::{SignalDetail, SignalTimelineEvent, StoreBackend, StoreError};
+use store::{SignalAnalysis, SignalDetail, SignalTimelineEvent, StoreBackend, StoreError};
 
 /// Build the full SignalDetail for a thread.
 pub async fn build(store: &impl StoreBackend, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
@@ -23,17 +23,8 @@ pub async fn build(store: &impl StoreBackend, thread_id: i64) -> Result<Option<S
     let merged = merge_signal_events(store, thread_id, &detail.timeline).await?;
     detail.timeline = merged;
 
-    // 3. Add "Why This Matters" summary
-    let summary = build_signal_summary(&detail);
-    // For now we store summary as a serialised field since SignalDetail
-    // already uses `description` for this purpose.
-    // The frontend renders `description` below the title.
-    if !detail.description.is_empty() {
-        // Keep existing description but append summary
-        detail.description = format!("{}\n\n---\n{}", detail.description, summary);
-    } else {
-        detail.description = summary;
-    }
+    // 3. Build SignalAnalysis (structured, not appended to description)
+    detail.analysis = build_analysis(&detail);
 
     Ok(Some(detail))
 }
@@ -103,59 +94,62 @@ fn describe_event(event_type: &str, payload: &Option<String>) -> (f64, i64, Stri
     (score, article_count, description)
 }
 
-/// Build a rule-based "Why This Matters" summary for the signal thread.
-fn build_signal_summary(detail: &SignalDetail) -> String {
-    let confidence = if detail.health.score >= 0.6 {
+/// Build a rule-based "Why This Matters" analysis.
+///
+/// Uses health components to generate structured insight without an LLM.
+/// This is the bridge between raw signal metrics and Decision Loop input.
+fn build_analysis(detail: &SignalDetail) -> Option<SignalAnalysis> {
+    let h = &detail.health;
+    let vol = h.components.volume;
+    let qual = h.components.quality;
+    let vel = h.components.velocity;
+
+    // Confidence label
+    let confidence_label = if h.score >= 0.6 {
         "High confidence"
-    } else if detail.health.score >= 0.3 {
+    } else if h.score >= 0.3 {
         "Moderate confidence"
     } else {
         "Developing signal"
     };
 
-    let vol = detail.health.components.volume;
-    let divers = detail.health.components.diversity;
-    let qual = detail.health.components.quality;
-    let vel = detail.health.components.velocity;
-
-    let volume_note = if vol >= 0.7 {
-        "strong volume"
-    } else if vol >= 0.4 {
-        "moderate volume"
+    // Impact
+    let impact = if h.score >= 0.6 {
+        "High"
+    } else if h.score >= 0.3 {
+        "Moderate"
     } else {
-        "low volume"
+        "Low"
     };
 
-    let diversity_note = if divers >= 0.5 { "across multiple independent sources" } else { "from limited sources" };
-
-    let velocity_note = if vel >= 0.7 {
-        "with rapidly increasing velocity"
+    // Velocity description
+    let velocity_desc = if vel >= 0.7 {
+        "rapidly increasing velocity"
     } else if vel >= 0.4 {
-        "with steady velocity"
+        "steady velocity"
     } else {
-        "with declining velocity"
+        "declining velocity"
     };
 
-    let entities_note = if !detail.related_entities.is_empty() {
-        let names: Vec<&str> = detail.related_entities.iter().map(|e| e.name.as_str()).take(3).collect();
-        format!("Related entities: {}", names.join(", "))
-    } else {
-        String::new()
-    };
-
-    let mut summary = format!(
-        "{} — Signal shows {} {} {}. {} evidence articles, quality {:.0}%.",
-        confidence,
-        volume_note,
-        diversity_note,
-        velocity_note,
+    // Why it matters
+    let why_it_matters = format!(
+        "{} — Signal shows {} activity across {} sources with {}. {} evidence articles, quality {:.0}%.",
+        confidence_label,
+        if vol >= 0.4 { "strong" } else { "developing" },
+        detail.related_entities.len() + 1,
+        velocity_desc,
         detail.evidence_top.len(),
         qual * 100.0,
     );
 
-    if !entities_note.is_empty() {
-        summary.push_str(&format!("\n{}", entities_note));
-    }
+    // Confidence reason (data-driven)
+    let confidence_reason = format!(
+        "{} articles across {} source{} with {:.0}% quality score",
+        detail.evidence_top.len(),
+        detail.related_entities.len() + 1,
+        if detail.related_entities.len() + 1 > 1 { "s" } else { "" },
+        qual * 100.0,
+    );
 
-    summary
+    Some(SignalAnalysis { why_it_matters, impact: impact.into(), confidence_reason })
 }
