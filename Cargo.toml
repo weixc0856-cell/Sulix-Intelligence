@@ -10,6 +10,7 @@ members = [
     "crates/api",
     "crates/worker-entry",
     "crates/vectorize",
+    "crates/entity",
 ]
 
 [workspace.package]
@@ -41,6 +42,7 @@ embedding = { path = "crates/embedding" }
 search = { path = "crates/search" }
 api = { path = "crates/api" }
 vectorize = { path = "crates/vectorize" }
+entity = { path = "crates/entity" }
 
 [profile.release]
 panic = "unwind"

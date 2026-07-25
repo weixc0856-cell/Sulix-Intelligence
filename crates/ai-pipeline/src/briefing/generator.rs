@@ -77,14 +77,14 @@ pub async fn generate_daily_brief(
         let mut seen_ids = std::collections::HashSet::new();
         for sig_id in &p.evidence_signal_ids {
             if let Some(candidate) = signal_map.get(sig_id.as_str()) {
-                for &aid in &candidate.article_ids {
-                    if seen_ids.insert(aid) {
+                for article in &candidate.articles {
+                    if seen_ids.insert(article.id) {
                         articles.push(EvidenceArticle {
-                            id: aid,
-                            title: String::new(),
-                            url: None,
-                            feed_name: None,
-                            score: 0.0,
+                            id: article.id,
+                            title: article.title.clone(),
+                            url: article.url.clone(),
+                            feed_name: article.feed_name.clone(),
+                            score: article.score,
                         });
                     }
                 }

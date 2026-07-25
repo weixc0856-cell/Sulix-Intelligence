@@ -9,8 +9,8 @@ pub struct SignalCandidate {
     pub article_count: usize,
     pub avg_score: f64,
     pub trend: String,
-    /// Article IDs from this signal's evidence (used for evidence binding).
-    pub article_ids: Vec<i64>,
+    /// Evidence articles from this signal, carrying title/url/score for evidence binding.
+    pub articles: Vec<EvidenceArticle>,
 }
 
 /// Single insight returned by the LLM with evidence signal references.

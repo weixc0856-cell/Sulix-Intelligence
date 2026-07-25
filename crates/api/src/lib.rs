@@ -25,6 +25,7 @@ use search::D1FtsSearch;
 use store::Store;
 
 mod briefing;
+mod entities;
 mod rebuild;
 mod semantic;
 mod strategies;
@@ -108,6 +109,10 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/tags", tags)
         .get_async("/api/intelligence/signals", intelligence_signals)
         .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
+        // Entity Graph
+        .get_async("/api/intelligence/entities", entities::entities_list)
+        .get_async("/api/intelligence/entities/:id", entities::entities_get)
+        .get_async("/api/intelligence/entities/:id/relations", entities::entities_get_relations)
         // Feed CRUD
         .get_async("/api/feeds", feeds_list)
         .post_async("/api/feeds", feeds_create)

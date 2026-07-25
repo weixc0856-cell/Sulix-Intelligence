@@ -10,7 +10,8 @@ mod metrics;
 use metrics::PipelineMetrics;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
-use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
+use ai_pipeline::briefing::{generate_daily_brief, EvidenceArticle, SignalCandidate};
+use entity::{canonicalizer, classifier};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
@@ -196,6 +197,39 @@ async fn process_one_feed(ctx: &FeedContext<'_, impl StoreBackend>, _env: &Env, 
                                                 ctx.metrics
                                                     .borrow_mut()
                                                     .record_ms("embedding", PipelineMetrics::since(emb_start));
+                                            }
+                                        }
+                                        // Entity persistence — extract, classify, and link named entities
+                                        if !result.entities.is_empty() {
+                                            let mut entity_ids: Vec<i64> = Vec::new();
+                                            for entity_name in &result.entities {
+                                                let normalized = canonicalizer::normalize(entity_name);
+                                                let entity_type = classifier::classify(entity_name);
+                                                match ctx.store.upsert_entity(entity_name, &normalized, entity_type).await {
+                                                    Ok(eid) => {
+                                                        entity_ids.push(eid);
+                                                        if let Err(e) =
+                                                            ctx.store.link_article_entity(article_id, eid, 1.0, None).await
+                                                        {
+                                                            console_log!("  entity link failed for article {article_id}: {e}");
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        console_log!("  entity upsert failed for '{entity_name}': {e}");
+                                                    }
+                                                }
+                                            }
+                                            // Build mentioned_together co-occurrence relations
+                                            for i in 0..entity_ids.len() {
+                                                for j in (i + 1)..entity_ids.len() {
+                                                    if let Err(e) = ctx
+                                                        .store
+                                                        .link_entity_relation(entity_ids[i], entity_ids[j], "mentioned_together", 1.0)
+                                                        .await
+                                                    {
+                                                        console_log!("  entity relation failed: {e}");
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -508,13 +542,23 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 3. Convert to SignalCandidate
+    // 3. Convert to SignalCandidate (pass article metadata through for evidence binding)
     let candidates: Vec<SignalCandidate> = today_signals
         .into_iter()
         .map(|s| {
-            let article_ids: Vec<i64> = s.articles.iter().map(|a| a.id).collect();
-            let avg_score: f64 = if !s.articles.is_empty() {
-                s.articles.iter().map(|a| a.score).sum::<f64>() / s.articles.len() as f64
+            let articles: Vec<EvidenceArticle> = s
+                .articles
+                .iter()
+                .map(|a| EvidenceArticle {
+                    id: a.id,
+                    title: a.title.clone(),
+                    url: a.url.clone(),
+                    feed_name: a.feed_name.clone(),
+                    score: a.score,
+                })
+                .collect();
+            let avg_score: f64 = if !articles.is_empty() {
+                articles.iter().map(|a| a.score).sum::<f64>() / articles.len() as f64
             } else {
                 0.0
             };
@@ -523,10 +567,10 @@ async fn generate_briefing_task(env: &Env, now: i64) {
                 title: s.title,
                 category: String::new(),
                 signal_summary: s.summary,
-                article_count: s.articles.len(),
+                article_count: articles.len(),
                 avg_score,
                 trend: s.trend,
-                article_ids,
+                articles,
             }
         })
         .collect();

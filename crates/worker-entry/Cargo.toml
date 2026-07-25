@@ -21,6 +21,7 @@ console_error_panic_hook.workspace = true
 async-trait.workspace = true
 embedding.workspace = true
 vectorize.workspace = true
+entity.workspace = true
 
 
 [package.metadata.release]

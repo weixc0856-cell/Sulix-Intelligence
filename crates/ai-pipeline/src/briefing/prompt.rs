@@ -48,6 +48,7 @@ pub fn build_briefing_prompt(candidates: &[SignalCandidate]) -> String {
   Avg Score: {score:.1}
   Trend: {trend}
   Evidence IDs: [{ids}]
+  Article Titles: [{titles}]
 \n",
             id = sig.id,
             title = sig.title,
@@ -55,7 +56,8 @@ pub fn build_briefing_prompt(candidates: &[SignalCandidate]) -> String {
             n = sig.article_count,
             score = sig.avg_score,
             trend = sig.trend,
-            ids = sig.article_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
+            ids = sig.articles.iter().map(|a| a.id.to_string()).collect::<Vec<_>>().join(", "),
+            titles = sig.articles.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(" | "),
         ));
     }
 

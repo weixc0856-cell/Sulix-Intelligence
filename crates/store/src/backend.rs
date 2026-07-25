@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::{Feed, NewArticle, StoreError};
+use crate::{ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle, RelatedEntity, StoreError};
 
 /// Storage backend for the feed pipeline.
 ///
@@ -59,4 +59,45 @@ pub trait StoreBackend {
 
     /// Delete articles older than `days` whose AI processing is complete.
     async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError>;
+
+    // ===== Intelligence / Entity methods =====
+
+    /// Upsert an entity by normalized_name. Returns the entity id.
+    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError>;
+
+    /// Link an article to an entity (many-to-many).
+    async fn link_article_entity(
+        &self,
+        article_id: i64,
+        entity_id: i64,
+        relevance: f64,
+        context: Option<&str>,
+    ) -> Result<(), StoreError>;
+
+    /// Link two entities with a directed relation.
+    async fn link_entity_relation(
+        &self,
+        source: i64,
+        target: i64,
+        rtype: &str,
+        confidence: f64,
+    ) -> Result<(), StoreError>;
+
+    /// List all entities, paginated, ordered by article_count DESC.
+    async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError>;
+
+    /// Get a single entity by id with aggregate article_count.
+    async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError>;
+
+    /// Get related entities for a given entity through entity_relations.
+    async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError>;
+
+    /// Get all entities linked to a specific article.
+    async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError>;
+
+    /// Register an R2 artifact in the artifact_registry.
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError>;
+
+    /// List artifact_registry entries for a given entity.
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
 }

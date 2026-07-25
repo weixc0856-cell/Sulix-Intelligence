@@ -221,6 +221,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "entity"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "feed-rs"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,6 +1445,7 @@ dependencies = [
  "async-trait",
  "console_error_panic_hook",
  "embedding",
+ "entity",
  "feed-rs",
  "fetcher",
  "js-sys",

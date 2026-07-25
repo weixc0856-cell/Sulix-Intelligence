@@ -7,7 +7,10 @@ use async_trait::async_trait;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{backend::StoreBackend, Feed, NewArticle, StoreError};
+use crate::{
+    backend::StoreBackend, ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle,
+    RelatedEntity, StoreError,
+};
 
 /// Per-feed fetch-result entry recorded by `record_fetch_result`.
 type FetchResultEntry = (i64, i64, Option<String>, Option<String>);
@@ -27,6 +30,14 @@ pub struct MemoryStore {
     r2_keys: RefCell<HashMap<i64, Option<String>>>,
     pub fetch_results: RefCell<Vec<FetchResultEntry>>,
 
+    // Entity graph state
+    entities: RefCell<HashMap<i64, EntityInternal>>,
+    next_entity_id: RefCell<i64>,
+    article_entity_links: RefCell<Vec<(i64, i64)>>,
+    entity_relation_edges: RefCell<Vec<RelationEdge>>,
+    artifacts: RefCell<Vec<ArtifactData>>,
+    next_artifact_id: RefCell<i64>,
+
     /// When `true`, `insert_article` returns `Err`.
     pub fail_insert: bool,
     /// When `true`, `active_rule_jsons` returns `Err`.
@@ -39,6 +50,40 @@ pub struct MemoryStore {
     pub fail_r2_key: bool,
 }
 
+struct EntityInternal {
+    id: i64,
+    name: String,
+    normalized_name: String,
+    entity_type: String,
+    canonical_id: Option<i64>,
+    description: Option<String>,
+    metadata: Option<String>,
+    created_at: i64,
+    updated_at: i64,
+}
+
+#[allow(dead_code)]
+struct RelationEdge {
+    source: i64,
+    target: i64,
+    rtype: String,
+    confidence: f64,
+    first_seen: i64,
+    last_seen: i64,
+}
+
+struct ArtifactData {
+    id: i64,
+    artifact_type: String,
+    entity_id: i64,
+    r2_key: String,
+    schema_version: String,
+    model: Option<String>,
+    pipeline_version: String,
+    metadata: Option<String>,
+    created_at: i64,
+}
+
 impl MemoryStore {
     pub fn new() -> Self {
         Self {
@@ -49,6 +94,12 @@ impl MemoryStore {
             r2_keys: RefCell::new(HashMap::new()),
             fetch_results: RefCell::new(Vec::new()),
             next_article_id: RefCell::new(1),
+            entities: RefCell::new(HashMap::new()),
+            next_entity_id: RefCell::new(1),
+            article_entity_links: RefCell::new(Vec::new()),
+            entity_relation_edges: RefCell::new(Vec::new()),
+            artifacts: RefCell::new(Vec::new()),
+            next_artifact_id: RefCell::new(1),
             fail_insert: false,
             fail_rules: false,
             fail_summary: false,
@@ -159,5 +210,216 @@ impl StoreBackend for MemoryStore {
 
     async fn expire_old_articles(&self, _now: i64, _days: i64) -> Result<u64, StoreError> {
         Ok(0)
+    }
+
+    // ===== Intelligence / Entity methods =====
+
+    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let mut entities = self.entities.borrow_mut();
+
+        // Check for existing by normalized_name
+        if let Some(existing) = entities.values().find(|e| e.normalized_name == normalized) {
+            let existing_id = existing.id;
+            let updated_at = now;
+            let type_str = entity_type.to_string();
+            if let Some(e) = entities.get_mut(&existing_id) {
+                e.updated_at = updated_at;
+                e.entity_type = type_str;
+            }
+            return Ok(existing_id);
+        }
+
+        let id = *self.next_entity_id.borrow();
+        *self.next_entity_id.borrow_mut() = id + 1;
+        entities.insert(
+            id,
+            EntityInternal {
+                id,
+                name: name.to_string(),
+                normalized_name: normalized.to_string(),
+                entity_type: entity_type.to_string(),
+                canonical_id: None,
+                description: None,
+                metadata: None,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+        Ok(id)
+    }
+
+    async fn link_article_entity(
+        &self,
+        article_id: i64,
+        entity_id: i64,
+        _relevance: f64,
+        _context: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.article_entity_links.borrow_mut().push((article_id, entity_id));
+        Ok(())
+    }
+
+    async fn link_entity_relation(
+        &self,
+        source: i64,
+        target: i64,
+        rtype: &str,
+        confidence: f64,
+    ) -> Result<(), StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let mut edges = self.entity_relation_edges.borrow_mut();
+
+        // Check for existing relation (unique constraint equivalent)
+        let existing = edges.iter_mut().find(|e| e.source == source && e.target == target && e.rtype == rtype);
+        if let Some(existing) = existing {
+            existing.last_seen = now;
+            existing.confidence = confidence;
+        } else {
+            edges.push(RelationEdge {
+                source,
+                target,
+                rtype: rtype.to_string(),
+                confidence,
+                first_seen: now,
+                last_seen: now,
+            });
+        }
+        Ok(())
+    }
+
+    async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError> {
+        let entities = self.entities.borrow();
+        let links = self.article_entity_links.borrow();
+
+        let mut result: Vec<EntitySummary> = entities
+            .values()
+            .map(|e| {
+                let article_count = links.iter().filter(|(_, eid)| *eid == e.id).count() as i64;
+                EntitySummary {
+                    id: e.id,
+                    name: e.name.clone(),
+                    normalized_name: e.normalized_name.clone(),
+                    entity_type: e.entity_type.clone(),
+                    canonical_id: e.canonical_id,
+                    article_count,
+                    last_seen: e.updated_at,
+                }
+            })
+            .collect();
+
+        result.sort_by_key(|b| std::cmp::Reverse(b.article_count));
+        let start = offset as usize;
+        let end = (start + limit as usize).min(result.len());
+        Ok(if start < result.len() { result[start..end].to_vec() } else { vec![] })
+    }
+
+    async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
+        let entities = self.entities.borrow();
+        let links = self.article_entity_links.borrow();
+
+        Ok(entities.get(&id).map(|e| {
+            let article_count = links.iter().filter(|(_, eid)| *eid == e.id).count() as i64;
+            EntityDetail {
+                id: e.id,
+                name: e.name.clone(),
+                normalized_name: e.normalized_name.clone(),
+                entity_type: e.entity_type.clone(),
+                canonical_id: e.canonical_id,
+                description: e.description.clone(),
+                metadata: e.metadata.clone(),
+                article_count,
+                created_at: e.created_at,
+                updated_at: e.updated_at,
+            }
+        }))
+    }
+
+    async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError> {
+        let entities = self.entities.borrow();
+        let edges = self.entity_relation_edges.borrow();
+
+        let mut related: Vec<RelatedEntity> = edges
+            .iter()
+            .filter(|e| e.source == entity_id || e.target == entity_id)
+            .map(|e| {
+                let other_id = if e.source == entity_id { e.target } else { e.source };
+                let other = entities.get(&other_id);
+                RelatedEntity {
+                    id: other_id,
+                    name: other.map(|o| o.name.clone()).unwrap_or_default(),
+                    entity_type: other.map(|o| o.entity_type.clone()).unwrap_or_default(),
+                    relation_type: e.rtype.clone(),
+                    confidence: e.confidence,
+                    last_seen_at: e.last_seen,
+                }
+            })
+            .collect();
+
+        related.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        let limit = limit as usize;
+        related.truncate(limit);
+        Ok(related)
+    }
+
+    async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError> {
+        let entities = self.entities.borrow();
+        let links = self.article_entity_links.borrow();
+
+        Ok(links
+            .iter()
+            .filter(|(aid, _)| *aid == article_id)
+            .filter_map(|(_, eid)| {
+                entities.get(eid).map(|e| EntityRef {
+                    id: e.id,
+                    name: e.name.clone(),
+                    normalized_name: e.normalized_name.clone(),
+                    entity_type: e.entity_type.clone(),
+                    relevance: 1.0,
+                    context: None,
+                })
+            })
+            .collect())
+    }
+
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let id = *self.next_artifact_id.borrow();
+        *self.next_artifact_id.borrow_mut() = id + 1;
+        self.artifacts.borrow_mut().push(ArtifactData {
+            id,
+            artifact_type: artifact.artifact_type.clone(),
+            entity_id: artifact.entity_id,
+            r2_key: artifact.r2_key.clone(),
+            schema_version: artifact.schema_version.clone(),
+            model: artifact.model.clone(),
+            pipeline_version: artifact.pipeline_version.clone(),
+            metadata: artifact.metadata.clone(),
+            created_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
+        let artifacts = self.artifacts.borrow();
+        let mut result: Vec<ArtifactEntry> = artifacts
+            .iter()
+            .filter(|a| a.entity_id == entity_id)
+            .map(|a| ArtifactEntry {
+                id: a.id,
+                artifact_type: a.artifact_type.clone(),
+                entity_id: a.entity_id,
+                r2_key: a.r2_key.clone(),
+                schema_version: a.schema_version.clone(),
+                model: a.model.clone(),
+                pipeline_version: a.pipeline_version.clone(),
+                metadata: a.metadata.clone(),
+                created_at: a.created_at,
+            })
+            .collect();
+        result.reverse();
+        let limit = limit as usize;
+        result.truncate(limit);
+        Ok(result)
     }
 }
