@@ -328,6 +328,18 @@ impl StoreBackend for D1Store {
     async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
         D1Store::get_decision_outcomes(self, decision_id).await
     }
+
+    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
+        D1Store::create_evaluation(self, e).await
+    }
+
+    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
+        D1Store::get_decision_evaluations(self, decision_id).await
+    }
+
+    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
+        D1Store::get_latest_evaluation(self, decision_id).await
+    }
 }
 
 #[cfg(test)]

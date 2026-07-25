@@ -10,7 +10,7 @@
 use serde_json::json;
 use worker::*;
 
-use store::{NewDecision, NewOutcomeEvent, Store};
+use store::{NewDecision, NewDecisionEvaluation, NewOutcomeEvent, Store};
 
 use crate::shared::response;
 
@@ -155,6 +155,56 @@ pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<R
         Err(e) => {
             console_log!("[Sulix:outcomes] create failed: {e}");
             response::json_err_internal("create outcome failed")
+        }
+    }
+}
+
+// ===== Decision Evaluation handlers =====
+
+/// POST /api/intelligence/decisions/:id/evaluations
+pub async fn create_evaluation(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+
+    let body: serde_json::Value = match req.json().await {
+        Ok(v) => v,
+        Err(_) => return response::json_err(400, "invalid request body"),
+    };
+
+    let eval_str = body["evaluation"].as_str().unwrap_or("inconclusive");
+    let new_eval = NewDecisionEvaluation {
+        decision_id,
+        evaluation: eval_str.into(),
+        confidence: body["confidence"].as_f64(),
+        reasoning: body["reasoning"].as_str().map(String::from),
+        evaluator: body["evaluator"].as_str().unwrap_or("manual").into(),
+        evaluated_at: body["evaluated_at"].as_i64(),
+    };
+
+    match store.create_evaluation(&new_eval).await {
+        Ok(id) => response::json_ok(json!({ "success": true, "id": id })),
+        Err(e) => {
+            console_log!("[Sulix:evaluations] create failed: {e}");
+            response::json_err_internal("create evaluation failed")
+        }
+    }
+}
+
+/// GET /api/intelligence/decisions/:id/evaluations
+pub async fn list_evaluations(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+    match store.get_decision_evaluations(decision_id).await {
+        Ok(evaluations) => response::json_ok(json!({ "success": true, "evaluations": evaluations })),
+        Err(e) => {
+            console_log!("[Sulix:evaluations] list failed: {e}");
+            response::json_err_internal("list evaluations failed")
         }
     }
 }

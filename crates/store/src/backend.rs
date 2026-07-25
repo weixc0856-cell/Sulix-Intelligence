@@ -6,9 +6,10 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
-    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, NewOutcomeEvent, OutcomeEvent,
-    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    ArtifactEntry, Decision, DecisionEvaluation, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
+    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
+    NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
+    SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -246,4 +247,15 @@ pub trait StoreBackend {
 
     /// List outcome observations for a decision.
     async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError>;
+
+    // ===== Decision Evaluation =====
+
+    /// Record a judgment about whether a decision's hypothesis was correct.
+    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError>;
+
+    /// List all evaluations for a decision, newest first.
+    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError>;
+
+    /// Get the latest evaluation for a decision.
+    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
 }

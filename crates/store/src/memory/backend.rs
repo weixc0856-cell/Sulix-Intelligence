@@ -3,9 +3,10 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
-    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, NewOutcomeEvent, OutcomeEvent,
-    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    ArtifactEntry, Decision, DecisionEvaluation, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
+    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
+    NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
+    SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -586,5 +587,35 @@ impl StoreBackend for MemoryStore {
         let outcomes = self.outcomes.borrow();
         let result: Vec<OutcomeEvent> = outcomes.iter().filter(|o| o.decision_id == decision_id).cloned().collect();
         Ok(result)
+    }
+
+    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        let evaluated_at = e.evaluated_at.unwrap_or(now);
+        self.evaluations.borrow_mut().push(DecisionEvaluation {
+            id,
+            decision_id: e.decision_id,
+            evaluation: e.evaluation.clone(),
+            confidence: e.confidence,
+            reasoning: e.reasoning.clone(),
+            evaluator: e.evaluator.clone(),
+            evaluated_at,
+            created_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
+        let evals = self.evaluations.borrow();
+        let result: Vec<DecisionEvaluation> = evals.iter().filter(|e| e.decision_id == decision_id).cloned().collect();
+        Ok(result)
+    }
+
+    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
+        let evals = self.evaluations.borrow();
+        let result: Vec<DecisionEvaluation> = evals.iter().filter(|e| e.decision_id == decision_id).cloned().collect();
+        Ok(result.into_iter().last())
     }
 }

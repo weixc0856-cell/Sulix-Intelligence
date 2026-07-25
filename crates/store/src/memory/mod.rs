@@ -58,6 +58,9 @@ pub struct MemoryStore {
     // Outcome state
     outcomes: RefCell<Vec<OutcomeEvent>>,
     next_outcome_id: RefCell<i64>,
+
+    // Evaluation state
+    evaluations: RefCell<Vec<crate::DecisionEvaluation>>,
 }
 
 struct EntityInternal {
@@ -121,6 +124,7 @@ impl MemoryStore {
             next_decision_id: RefCell::new(1),
             outcomes: RefCell::new(Vec::new()),
             next_outcome_id: RefCell::new(1),
+            evaluations: RefCell::new(Vec::new()),
         }
     }
 
