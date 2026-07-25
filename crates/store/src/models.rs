@@ -203,3 +203,80 @@ pub struct TodaySignal {
     pub trend: String,
     pub articles: Vec<SignalEvidence>,
 }
+
+// ===== Entity Graph types =====
+
+/// Summary row for entity listing.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EntitySummary {
+    pub id: i64,
+    pub name: String,
+    pub normalized_name: String,
+    pub entity_type: String,
+    pub canonical_id: Option<i64>,
+    pub article_count: i64,
+    pub last_seen: i64,
+}
+
+/// Full entity detail with aggregate counts.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EntityDetail {
+    pub id: i64,
+    pub name: String,
+    pub normalized_name: String,
+    pub entity_type: String,
+    pub canonical_id: Option<i64>,
+    pub description: Option<String>,
+    pub metadata: Option<String>,
+    pub article_count: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Entity reference within an article context.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EntityRef {
+    pub id: i64,
+    pub name: String,
+    pub normalized_name: String,
+    pub entity_type: String,
+    pub relevance: f64,
+    pub context: Option<String>,
+}
+
+/// Input for creating a new artifact_registry entry.
+#[derive(Debug, Clone)]
+pub struct NewArtifact {
+    pub artifact_type: String,
+    pub entity_id: i64,
+    pub r2_key: String,
+    pub schema_version: String,
+    pub model: Option<String>,
+    pub pipeline_version: String,
+    pub metadata: Option<String>,
+}
+
+/// Entry in the artifact_registry — unified metadata for all R2-stored assets.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtifactEntry {
+    pub id: i64,
+    pub artifact_type: String,
+    pub entity_id: i64,
+    pub r2_key: String,
+    pub schema_version: String,
+    pub model: Option<String>,
+    pub pipeline_version: String,
+    pub metadata: Option<String>,
+    pub created_at: i64,
+}
+
+/// Related entity through entity_relations edges.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RelatedEntity {
+    pub id: i64,
+    pub name: String,
+    pub entity_type: String,
+    pub relation_type: String,
+    pub confidence: f64,
+    pub last_seen_at: i64,
+}

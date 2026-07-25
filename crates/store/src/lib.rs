@@ -856,6 +856,221 @@ impl D1Store {
         let rows: Vec<serde_json::Value> = stmt.all().await?.results()?;
         Ok(rows.iter().filter_map(|r| r["id"].as_i64()).collect())
     }
+
+    // ------------------------------------------------------------------
+    // Entities
+    // ------------------------------------------------------------------
+
+    /// Upsert an entity by normalized_name. Returns the entity id.
+    pub async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let row = self
+            .db
+            .prepare(
+                "INSERT OR IGNORE INTO entities (name, normalized_name, entity_type, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id",
+            )
+            .bind(&[
+                name.into(),
+                normalized.into(),
+                entity_type.into(),
+                JsValue::from_f64(now as f64),
+                JsValue::from_f64(now as f64),
+            ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        if let Some(id) = row.and_then(|v| v["id"].as_i64()) {
+            return Ok(id);
+        }
+
+        // Already exists — update timestamp and return existing id
+        let row = self
+            .db
+            .prepare("UPDATE entities SET updated_at = ?1, entity_type = ?2 WHERE normalized_name = ?3 RETURNING id")
+            .bind(&[JsValue::from_f64(now as f64), entity_type.into(), normalized.into()])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        row.and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| StoreError::D1("entity upsert failed: no id returned".into()))
+    }
+
+    /// Link an article to an entity.
+    pub async fn link_article_entity(
+        &self,
+        article_id: i64,
+        entity_id: i64,
+        relevance: f64,
+        context: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.db
+            .prepare(
+                "INSERT OR IGNORE INTO article_entities (article_id, entity_id, relevance, context) \
+                 VALUES (?1, ?2, ?3, ?4)",
+            )
+            .bind(&[
+                JsValue::from_f64(article_id as f64),
+                JsValue::from_f64(entity_id as f64),
+                JsValue::from_f64(relevance),
+                context.map_or(JsValue::null(), |c| c.into()),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Link two entities with a directed relation.
+    pub async fn link_entity_relation(
+        &self,
+        source: i64,
+        target: i64,
+        rtype: &str,
+        confidence: f64,
+    ) -> Result<(), StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        self.db
+            .prepare(
+                "INSERT OR IGNORE INTO entity_relations \
+                 (source_entity_id, target_entity_id, relation_type, confidence, first_seen_at, last_seen_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .bind(&[
+                JsValue::from_f64(source as f64),
+                JsValue::from_f64(target as f64),
+                rtype.into(),
+                JsValue::from_f64(confidence),
+                JsValue::from_f64(now as f64),
+                JsValue::from_f64(now as f64),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// List entities, paginated, ordered by article_count DESC.
+    pub async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError> {
+        Ok(self
+            .db
+            .prepare(
+                "SELECT e.id, e.name, e.normalized_name, e.entity_type, e.canonical_id, \
+                        COUNT(ae.article_id) AS article_count, \
+                        COALESCE(MAX(e.updated_at), 0) AS last_seen \
+                 FROM entities e \
+                 LEFT JOIN article_entities ae ON ae.entity_id = e.id \
+                 GROUP BY e.id \
+                 ORDER BY article_count DESC, e.name ASC \
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
+
+    /// Get a single entity by id with aggregate article_count.
+    pub async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
+        let result = self
+            .db
+            .prepare(
+                "SELECT e.id, e.name, e.normalized_name, e.entity_type, e.canonical_id, \
+                        e.description, e.metadata, \
+                        COUNT(ae.article_id) AS article_count, \
+                        e.created_at, e.updated_at \
+                 FROM entities e \
+                 LEFT JOIN article_entities ae ON ae.entity_id = e.id \
+                 WHERE e.id = ?1 \
+                 GROUP BY e.id",
+            )
+            .bind(&[JsValue::from_f64(id as f64)])?
+            .first::<EntityDetail>(None)
+            .await?;
+        Ok(result)
+    }
+
+    /// Get related entities for a given entity.
+    pub async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError> {
+        Ok(self
+            .db
+            .prepare(
+                "SELECT e.id, e.name, e.entity_type, er.relation_type, er.confidence, er.last_seen_at \
+                 FROM entity_relations er \
+                 JOIN entities e ON e.id = CASE WHEN er.source_entity_id = ?1 THEN er.target_entity_id ELSE er.source_entity_id END \
+                 WHERE er.source_entity_id = ?1 OR er.target_entity_id = ?1 \
+                 ORDER BY er.confidence DESC \
+                 LIMIT ?2",
+            )
+            .bind(&[JsValue::from_f64(entity_id as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
+
+    /// Get entities linked to an article.
+    pub async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError> {
+        Ok(self
+            .db
+            .prepare(
+                "SELECT e.id, e.name, e.normalized_name, e.entity_type, ae.relevance, ae.context \
+                 FROM entities e \
+                 JOIN article_entities ae ON ae.entity_id = e.id \
+                 WHERE ae.article_id = ?1 \
+                 ORDER BY ae.relevance DESC",
+            )
+            .bind(&[JsValue::from_f64(article_id as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
+
+    // ------------------------------------------------------------------
+    // Artifact Registry
+    // ------------------------------------------------------------------
+
+    /// Create an artifact_registry entry for an R2-stored intelligence asset.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let row = self
+            .db
+            .prepare(
+                "INSERT INTO artifact_registry \
+                 (artifact_type, entity_id, r2_key, schema_version, model, pipeline_version, metadata, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id",
+            )
+            .bind(&[
+                artifact.artifact_type.as_str().into(),
+                JsValue::from_f64(artifact.entity_id as f64),
+                artifact.r2_key.as_str().into(),
+                artifact.schema_version.as_str().into(),
+                artifact.model.as_deref().map_or(JsValue::null(), |v| v.into()),
+                artifact.pipeline_version.as_str().into(),
+                artifact.metadata.as_deref().map_or(JsValue::null(), |v| v.into()),
+                JsValue::from_f64(now as f64),
+            ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        row.and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| StoreError::D1("create_artifact failed: no id returned".into()))
+    }
+
+    /// List artifact_registry entries for a given entity.
+    pub async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
+        Ok(self
+            .db
+            .prepare(
+                "SELECT id, artifact_type, entity_id, r2_key, schema_version, model, pipeline_version, metadata, created_at \
+                 FROM artifact_registry \
+                 WHERE entity_id = ?1 \
+                 ORDER BY created_at DESC \
+                 LIMIT ?2",
+            )
+            .bind(&[JsValue::from_f64(entity_id as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
 }
 
 // ---- StoreBackend impl (delegates to D1Store methods) ----
@@ -905,6 +1120,54 @@ impl StoreBackend for D1Store {
 
     async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError> {
         D1Store::expire_old_articles(self, now, days).await
+    }
+
+    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
+        D1Store::upsert_entity(self, name, normalized, entity_type).await
+    }
+
+    async fn link_article_entity(
+        &self,
+        article_id: i64,
+        entity_id: i64,
+        relevance: f64,
+        context: Option<&str>,
+    ) -> Result<(), StoreError> {
+        D1Store::link_article_entity(self, article_id, entity_id, relevance, context).await
+    }
+
+    async fn link_entity_relation(
+        &self,
+        source: i64,
+        target: i64,
+        rtype: &str,
+        confidence: f64,
+    ) -> Result<(), StoreError> {
+        D1Store::link_entity_relation(self, source, target, rtype, confidence).await
+    }
+
+    async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError> {
+        D1Store::list_entities(self, limit, offset).await
+    }
+
+    async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
+        D1Store::entity_detail(self, id).await
+    }
+
+    async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError> {
+        D1Store::entity_relations(self, entity_id, limit).await
+    }
+
+    async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError> {
+        D1Store::article_entities(self, article_id).await
+    }
+
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
+        D1Store::create_artifact(self, artifact).await
+    }
+
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
+        D1Store::list_artifacts_by_entity(self, entity_id, limit).await
     }
 }
 
