@@ -399,18 +399,42 @@ pub struct SignalInstanceSummary {
     pub generated_at: i64,
 }
 
-/// Briefing input — domain model assembled from threads + instances.
+/// Briefing input — domain model assembled from signal threads.
+/// Contains both current snapshot and cumulative metrics so the
+/// LLM can distinguish "ongoing trend" from "spike event".
 #[derive(Debug, Clone)]
 pub struct SignalBriefInput {
     pub thread_id: i64,
+    pub signal_key: String,
     pub anchor_entity: Option<String>,
     pub title: String,
     pub description: String,
     pub status: String,
     pub health_score: f64,
+    /// Current score from the latest instance.
+    pub current_score: f64,
+    /// Current trend direction.
+    pub trend: String,
+    /// Total articles across all instances (thread lifetime).
+    pub cumulative_article_count: i64,
+    /// Articles in the last 7 days.
+    pub recent_article_count: i64,
+    /// Unique sources across recent instances.
+    pub source_count: i64,
+    /// Velocity ratio: recent / historical daily rate.
+    pub velocity: f64,
+    /// Recent instance timeline (for charting).
     pub instances: Vec<SignalInstanceSummary>,
     pub evidence: Vec<BriefArticle>,
     pub related_entities: Vec<String>,
+}
+
+/// Filter for listing signal threads.
+#[derive(Debug, Clone)]
+pub struct SignalThreadFilter {
+    pub statuses: Vec<String>,
+    pub limit: u32,
+    pub min_score: f64,
 }
 
 #[derive(Debug, Clone)]

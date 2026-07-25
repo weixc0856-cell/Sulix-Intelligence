@@ -1027,13 +1027,140 @@ impl D1Store {
                 .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
             results.push(SignalBriefInput {
                 thread_id: t.id,
+                signal_key: t.signal_key.clone(),
                 anchor_entity: t.entity_name.clone(),
                 title: t.title.clone(),
                 description: t.description.clone(),
                 status: t.status.clone(),
                 health_score: t.health_score,
+                current_score: instances.first().map(|i| i.score).unwrap_or(0.0),
+                trend: instances
+                    .first()
+                    .map(|i| i.trend.clone())
+                    .unwrap_or_else(|| "stable".into()),
+                cumulative_article_count: instances.iter().map(|i| i.article_count).sum(),
+                recent_article_count: instances.iter().map(|i| i.article_count).sum(),
+                source_count: instances.first().map(|i| i.source_count).unwrap_or(0),
+                velocity: 0.5,
                 instances,
                 evidence: ev.into_iter().map(|r| BriefArticle { id: r.article_id, title: r.title, score: r.score }).collect(),
+                related_entities: Vec::new(),
+            });
+        }
+        Ok(results)
+    }
+
+    /// List signal threads with dynamic filtering (statuses, min_score, limit).
+    /// Returns fully-populated [`SignalBriefInput`] including derived metrics
+    /// computed from the thread's instance history.
+    pub async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct ThreadRow {
+            id: i64,
+            signal_key: String,
+            anchor_entity_id: Option<i64>,
+            title: String,
+            description: String,
+            status: String,
+            health_score: f64,
+            entity_name: Option<String>,
+        }
+
+        let status_count = filter.statuses.len();
+        let placeholders = in_placeholders(status_count);
+        let mut sql = format!(
+            "SELECT t.id, t.signal_key, t.anchor_entity_id, t.title, t.description, t.status, t.health_score, \
+                    e.name AS entity_name \
+             FROM signal_threads t \
+             LEFT JOIN entities e ON e.id = t.anchor_entity_id \
+             WHERE t.status IN ({placeholders})"
+        );
+        let mut binds: Vec<JsValue> = filter.statuses.iter().map(|s| s.as_str().into()).collect();
+
+        if filter.min_score > 0.0 {
+            let idx = binds.len() + 1;
+            sql.push_str(&format!(" AND t.health_score >= ?{idx}"));
+            binds.push(JsValue::from_f64(filter.min_score));
+        }
+
+        {
+            let idx = binds.len() + 1;
+            sql.push_str(&format!(" ORDER BY t.health_score DESC, t.last_seen_at DESC LIMIT ?{idx}"));
+            binds.push(JsValue::from_f64(filter.limit as f64));
+        }
+
+        let threads: Vec<ThreadRow> = self.db.prepare(&sql).bind(&binds)?.all().await?.results()?;
+
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let seven_days_ago = now - 7 * 86400;
+
+        let mut results = Vec::with_capacity(threads.len());
+        for t in &threads {
+            let instances: Vec<SignalInstanceSummary> = self
+                .db
+                .prepare(
+                    "SELECT id, score, confidence, trend, article_count, source_count, created_at AS generated_at \
+                     FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 30",
+                )
+                .bind(&[JsValue::from_f64(t.id as f64)])?
+                .all().await?.results()?;
+
+            #[derive(Deserialize)]
+            struct EvRow {
+                article_id: i64,
+                title: String,
+                score: f64,
+            }
+            let ev: Vec<EvRow> = self
+                .db
+                .prepare(
+                    "SELECT DISTINCT se.article_id, a.title, a.score \
+                     FROM signal_evidence se \
+                     JOIN articles a ON a.id = se.article_id \
+                     WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) \
+                     ORDER BY a.score DESC LIMIT 10",
+                )
+                .bind(&[JsValue::from_f64(t.id as f64)])?
+                .all().await?.results()?;
+
+            let current_score = instances.first().map(|i| i.score).unwrap_or(0.0);
+            let trend = instances
+                .first()
+                .map(|i| i.trend.clone())
+                .unwrap_or_else(|| "stable".into());
+            let cumulative_article_count: i64 = instances.iter().map(|i| i.article_count).sum();
+            let recent_article_count: i64 = instances
+                .iter()
+                .filter(|i| i.generated_at >= seven_days_ago)
+                .map(|i| i.article_count)
+                .sum();
+            let source_count = instances.first().map(|i| i.source_count).unwrap_or(0);
+            let velocity = if cumulative_article_count > 0 {
+                recent_article_count as f64 / cumulative_article_count as f64
+            } else {
+                0.5
+            };
+
+            results.push(SignalBriefInput {
+                thread_id: t.id,
+                signal_key: t.signal_key.clone(),
+                anchor_entity: t.entity_name.clone(),
+                title: t.title.clone(),
+                description: t.description.clone(),
+                status: t.status.clone(),
+                health_score: t.health_score,
+                current_score,
+                trend,
+                cumulative_article_count,
+                recent_article_count,
+                source_count,
+                velocity,
+                instances,
+                evidence: ev
+                    .into_iter()
+                    .map(|r| BriefArticle { id: r.article_id, title: r.title, score: r.score })
+                    .collect(),
                 related_entities: Vec::new(),
             });
         }
@@ -1635,6 +1762,10 @@ impl StoreBackend for D1Store {
 
     async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
         D1Store::get_active_signal_threads(self, limit).await
+    }
+
+    async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
+        D1Store::list_signal_threads(self, filter).await
     }
 }
 

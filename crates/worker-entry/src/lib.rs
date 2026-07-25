@@ -12,12 +12,12 @@ use metrics::PipelineMetrics;
 use version::PIPELINE_VERSION;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
-use ai_pipeline::briefing::{generate_daily_brief, EvidenceArticle, SignalCandidate};
+use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
 use entity::{canonicalizer, classifier};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
-use store::{NewArticle, NewArtifact, Store, StoreBackend};
+use store::{NewArticle, NewArtifact, SignalThreadFilter, Store, StoreBackend};
 
 // ---------------------------------------------------------------------------
 // WorkerHttpClient - bridges ai_pipeline::HttpClient over worker::Fetch
@@ -538,20 +538,29 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 1. Load signals
-    let today_signals = match store.signals_today(now).await {
+    // 1. Load active signal threads via filter-based query
+    let filter = SignalThreadFilter {
+        statuses: vec!["active".into(), "decaying".into()],
+        limit: 30,
+        min_score: 0.0,
+    };
+    let thread_inputs = match store.list_signal_threads(&filter).await {
         Ok(s) => s,
         Err(e) => {
-            console_log!("[Sulix:briefing] signals_today failed: {e}");
+            console_log!("[Sulix:briefing] list_signal_threads failed: {e}");
             return;
         }
     };
-    if today_signals.is_empty() {
-        console_log!("[Sulix:briefing] no signals today — skipping");
+    if thread_inputs.is_empty() {
+        console_log!("[Sulix:briefing] no active signal threads — skipping");
         return;
     }
 
-    // 2. Build summarizer
+    // 2. Convert to SignalCandidate via the From<SignalBriefInput> converter
+    let candidates: Vec<SignalCandidate> = thread_inputs.into_iter().map(Into::into).collect();
+    let total_signals_loaded = candidates.len() as u32;
+
+    // 3. Build summarizer
     let summarizer = match try_build_summarizer(env) {
         Some(s) => s,
         None => {
@@ -560,83 +569,7 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 3. Convert to SignalCandidate (pass article metadata through for evidence binding)
-    let candidates: Vec<SignalCandidate> = today_signals
-        .into_iter()
-        .map(|s| {
-            let articles: Vec<EvidenceArticle> = s
-                .articles
-                .iter()
-                .map(|a| EvidenceArticle {
-                    id: a.id,
-                    title: a.title.clone(),
-                    url: a.url.clone(),
-                    feed_name: a.feed_name.clone(),
-                    score: a.score,
-                })
-                .collect();
-            let avg_score: f64 = if !articles.is_empty() {
-                articles.iter().map(|a| a.score).sum::<f64>() / articles.len() as f64
-            } else {
-                0.0
-            };
-            let source_count: usize = s
-                .articles
-                .iter()
-                .filter_map(|a| a.feed_name.as_deref())
-                .collect::<std::collections::HashSet<&str>>()
-                .len();
-            SignalCandidate {
-                id: s.id,
-                title: s.title,
-                category: String::new(),
-                signal_summary: s.summary,
-                article_count: articles.len(),
-                source_count,
-                avg_score,
-                trend: s.trend,
-                articles,
-            }
-        })
-        .collect();
-
-    // 4. Persist signals via thread+instance pipeline
-    for candidate in &candidates {
-        let entity_id: Option<i64> = candidate
-            .id
-            .strip_prefix("entity_")
-            .and_then(|s| s.parse().ok());
-        let signal_key = entity_id
-            .map(|id| format!("entity:{}", id))
-            .unwrap_or_else(|| format!("unknown:{}", candidate.id));
-        let confidence = (candidate.avg_score.min(10.0) / 10.0).clamp(0.0, 1.0);
-
-        match store
-            .upsert_signal_thread(&signal_key, entity_id, &candidate.title, "active")
-            .await
-        {
-            Ok(thread_id) => {
-                if let Err(e) = store
-                    .append_signal_instance(
-                        thread_id,
-                        confidence,
-                        "Medium",
-                        &candidate.trend,
-                        candidate.article_count as i64,
-                        candidate.source_count as i64,
-                    )
-                    .await
-                {
-                    console_log!("[Sulix:briefing] instance append failed for {}: {e}", candidate.id);
-                }
-            }
-            Err(e) => {
-                console_log!("[Sulix:briefing] thread upsert failed for {}: {e}", candidate.id);
-            }
-        }
-    }
-
-    // Lifecycle evaluation
+    // 4. Lifecycle evaluation (signals already persisted in signal_threads table)
     if let Err(e) = store.update_signal_lifecycle(now).await {
         console_log!("[Sulix:briefing] lifecycle update failed: {e}");
     }
@@ -673,10 +606,35 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     }
 
+    // 9. Save provenance alongside the briefing
+    let provenance = BriefingProvenance {
+        pipeline_version: PIPELINE_VERSION.into(),
+        generated_at: now,
+        signal_count: briefing.signal_count,
+        insight_count: briefing.insights.len() as u32,
+        total_signals_loaded,
+    };
+    if let Some(ref cache) = cache {
+        let prov_key = format!("briefing_provenance:{date}");
+        if let Ok(pb) = cache.put(&prov_key, serde_json::to_string(&provenance).unwrap_or_default()) {
+            let _ = pb.expiration_ttl(21600).execute().await;
+        }
+    }
+
     console_log!(
         "[Sulix:briefing] generated for {date} — {} insights",
         briefing.insights.len()
     );
+}
+
+/// Provenance metadata recorded alongside each generated briefing.
+#[derive(Serialize)]
+struct BriefingProvenance {
+    pipeline_version: String,
+    generated_at: i64,
+    signal_count: u32,
+    insight_count: u32,
+    total_signals_loaded: u32,
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {
