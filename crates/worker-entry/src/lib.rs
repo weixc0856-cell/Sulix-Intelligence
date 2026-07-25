@@ -580,12 +580,19 @@ async fn generate_briefing_task(env: &Env, now: i64) {
             } else {
                 0.0
             };
+            let source_count: usize = s
+                .articles
+                .iter()
+                .filter_map(|a| a.feed_name.as_deref())
+                .collect::<std::collections::HashSet<&str>>()
+                .len();
             SignalCandidate {
                 id: s.id,
                 title: s.title,
                 category: String::new(),
                 signal_summary: s.summary,
                 article_count: articles.len(),
+                source_count,
                 avg_score,
                 trend: s.trend,
                 articles,
@@ -593,7 +600,33 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         })
         .collect();
 
-    // 4. Acquire lock before generating (prevent concurrent cron runs)
+    // 4. Persist signals to intelligence_signals store
+    for candidate in &candidates {
+        let entity_id: Option<i64> = candidate
+            .id
+            .strip_prefix("entity_")
+            .and_then(|s| s.parse().ok());
+        let evidence_ids: Vec<i64> = candidate.articles.iter().map(|a| a.id).collect();
+        if let Err(e) = store
+            .save_signal(
+                entity_id,
+                &candidate.title,
+                &candidate.signal_summary,
+                candidate.avg_score.min(10.0) / 10.0,
+                "Medium",
+                &candidate.trend,
+                candidate.article_count as i64,
+                candidate.source_count as i64,
+                &evidence_ids,
+                &[],
+            )
+            .await
+        {
+            console_log!("[Sulix:briefing] signal persist failed for {}: {e}", candidate.id);
+        }
+    }
+
+    // 5. Acquire lock before generating (prevent concurrent cron runs)
     let cache = env.kv("CACHE").ok();
     if let Some(ref cache) = cache {
         if let Ok(pb) = cache.put(&lock_key, "1") {
@@ -601,7 +634,7 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     }
 
-    // 5. Generate
+    // 6. Generate
     let briefing = match generate_daily_brief(candidates, &summarizer, &date, now).await {
         Ok(b) => b,
         Err(e) => {
@@ -610,14 +643,14 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 6. Persist to D1
+    // 7. Persist to D1
     let content = serde_json::to_string(&briefing).unwrap_or_default();
     if let Err(e) = store.save_briefing(&date, now, briefing.signal_count, &content).await {
         console_log!("[Sulix:briefing] D1 save failed: {e}");
         return;
     }
 
-    // 7. Write KV cache
+    // 8. Write KV cache
     if let Some(ref cache) = cache {
         let cache_key = format!("briefing:{date}");
         if let Ok(pb) = cache.put(&cache_key, &content) {

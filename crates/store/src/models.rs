@@ -307,3 +307,49 @@ pub struct EntityActivitySummary {
     pub last_seen_at: Option<i64>,
     pub trend: String, // "rising", "stable", "declining"
 }
+
+// ===== Intelligence Signal types =====
+
+/// Core Intelligence Signal — first-class artifact, NOT an entity ranking.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IntelligenceSignal {
+    pub id: i64,
+    pub anchor_entity_id: Option<i64>,
+    pub title: String,
+    pub summary: String,
+    pub confidence: f64,
+    pub impact: String,
+    pub trend: String,
+    pub article_count: i64,
+    pub source_count: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Transient candidate before materialization.
+#[derive(Debug, Clone)]
+pub struct EntitySignalCandidate {
+    pub entity_id: i64,
+    pub entity_name: String,
+    pub entity_type: String,
+    pub score: f64,
+    pub volume: f64,
+    pub diversity: f64,
+    pub quality: f64,
+    pub velocity: f64,
+    pub novelty: f64,
+    pub article_count: i64,
+    pub source_count: i64,
+    pub avg_score: f64,
+    pub trend: String,
+    pub evidence: Vec<SignalEvidence>,
+    pub related_entity_ids: Vec<i64>,
+}
+
+/// Lightweight entity reference for API DTO.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EntitySignalRef {
+    pub id: i64,
+    pub name: String,
+    pub entity_type: String,
+}

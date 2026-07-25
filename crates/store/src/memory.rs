@@ -8,8 +8,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::{
-    backend::StoreBackend, ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySummary,
-    Feed, NewArtifact, NewArticle, RelatedEntity, StoreError,
+    backend::StoreBackend, ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
+    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity,
+    StoreError,
 };
 
 /// Per-feed fetch-result entry recorded by `record_fetch_result`.
@@ -487,5 +488,51 @@ impl StoreBackend for MemoryStore {
             last_seen_at: None,
             trend: "stable".into(),
         })
+    }
+
+    async fn entity_signal_candidates(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn save_signal(
+        &self,
+        _entity_id: Option<i64>,
+        title: &str,
+        _summary: &str,
+        _confidence: f64,
+        _impact: &str,
+        _trend: &str,
+        _article_count: i64,
+        _source_count: i64,
+        _evidence_ids: &[i64],
+        _related_ids: &[i64],
+    ) -> Result<i64, StoreError> {
+        // MemoryStore: just count signals for test assertions
+        self.artifacts.borrow_mut().push(ArtifactData {
+            id: 0,
+            artifact_type: "signal".into(),
+            entity_id: _entity_id.unwrap_or(0),
+            r2_key: title.to_string(),
+            schema_version: String::new(),
+            model: None,
+            pipeline_version: String::new(),
+            metadata: None,
+            created_at: 0,
+        });
+        Ok(self.artifacts.borrow().len() as i64)
+    }
+
+    async fn load_recent_signals(&self, _limit: u32, _offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn load_signal_by_id(&self, _id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
+        Ok(None)
     }
 }

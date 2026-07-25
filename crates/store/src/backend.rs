@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact,
-    NewArticle, RelatedEntity, StoreError,
+    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
+    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -121,4 +121,36 @@ pub trait StoreBackend {
         now: i64,
         days: i64,
     ) -> Result<EntityActivitySummary, StoreError>;
+
+    /// Generate entity-anchored signal candidates with 5-factor scoring.
+    async fn entity_signal_candidates(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
+
+    // ===== Signal Persistence =====
+
+    /// Persist an intelligence signal with evidence and entity links.
+    #[allow(clippy::too_many_arguments)]
+    async fn save_signal(
+        &self,
+        entity_id: Option<i64>,
+        title: &str,
+        summary: &str,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        evidence_ids: &[i64],
+        related_ids: &[i64],
+    ) -> Result<i64, StoreError>;
+
+    /// Load recent intelligence signals.
+    async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
+
+    /// Load a single signal by id.
+    async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError>;
 }
