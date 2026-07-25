@@ -110,6 +110,106 @@ pub async fn upsert_vector(idx: &VectorizeIndex, record: &VectorRecord) -> Resul
     idx.upsert(vectors.into()).await.map(|_| ()).map_err(|e| format!("{e:?}"))
 }
 
+// ===== Typed query API for consumers =====
+
+/// Errors from Vectorize operations.
+#[derive(Debug)]
+pub enum VectorizeError {
+    Js(String),
+    InvalidResponse(String),
+    QueryFailed(String),
+}
+
+impl std::fmt::Display for VectorizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Js(s) => write!(f, "js: {s}"),
+            Self::InvalidResponse(s) => write!(f, "invalid response: {s}"),
+            Self::QueryFailed(s) => write!(f, "query failed: {s}"),
+        }
+    }
+}
+
+/// A single match returned by ANN similarity search.
+#[derive(Debug, Clone)]
+pub struct SimilarMatch {
+    pub id: String,
+    pub score: f64,
+}
+
+/// Query a Vectorize index for the nearest neighbors of a vector.
+///
+/// Returns matches with similarity scores, filtered by `min_score`.
+pub async fn query_similar(
+    index: &VectorizeIndex,
+    vector: &[f32],
+    top_k: u32,
+    min_score: f64,
+) -> Result<Vec<SimilarMatch>, VectorizeError> {
+    let opts = Object::new();
+    Reflect::set(&opts, &"topK".into(), &JsValue::from_f64(top_k as f64))
+        .map_err(|e| VectorizeError::Js(format!("set topK: {e:?}")))?;
+    Reflect::set(&opts, &"returnMetadata".into(), &JsValue::from_bool(false))
+        .map_err(|e| VectorizeError::Js(format!("set returnMetadata: {e:?}")))?;
+    Reflect::set(&opts, &"returnValues".into(), &JsValue::from_bool(false))
+        .map_err(|e| VectorizeError::Js(format!("set returnValues: {e:?}")))?;
+
+    let js_vec = serde_wasm_bindgen::to_value(vector).map_err(|e| VectorizeError::Js(format!("serialize vec: {e}")))?;
+
+    let result = index.query(js_vec, opts.into()).await.map_err(|e| VectorizeError::QueryFailed(format!("{e:?}")))?;
+
+    let matches: Vec<serde_json::Value> =
+        serde_wasm_bindgen::from_value(result).map_err(|e| VectorizeError::InvalidResponse(format!("parse: {e}")))?;
+
+    let mut out = Vec::new();
+    for m in matches {
+        if let (Some(id), Some(score)) = (m["id"].as_str(), m["score"].as_f64()) {
+            if score >= min_score {
+                out.push(SimilarMatch { id: id.to_string(), score });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Query a Vectorize index for nearest neighbors of a stored vector by id.
+///
+/// First fetches the vector for `vector_id`, then runs the query.
+/// This is a convenience wrapper for the two-step get+query flow.
+pub async fn query_similar_by_id(
+    index: &VectorizeIndex,
+    vector_id: &str,
+    top_k: u32,
+    min_score: f64,
+) -> Result<Vec<SimilarMatch>, VectorizeError> {
+    // Build a "get by ID" vector lookup. Vectorize supports querying
+    // with a vector ID string — it will use the stored embedding.
+    let opts = Object::new();
+    Reflect::set(&opts, &"topK".into(), &JsValue::from_f64(top_k as f64))
+        .map_err(|e| VectorizeError::Js(format!("set topK: {e:?}")))?;
+    Reflect::set(&opts, &"returnMetadata".into(), &JsValue::from_bool(false))
+        .map_err(|e| VectorizeError::Js(format!("set returnMetadata: {e:?}")))?;
+    Reflect::set(&opts, &"returnValues".into(), &JsValue::from_bool(false))
+        .map_err(|e| VectorizeError::Js(format!("set returnValues: {e:?}")))?;
+
+    // Vectorize can accept a vector id string in place of the raw vector
+    let id_val = JsValue::from_str(vector_id);
+    let result = index.query(id_val, opts.into()).await.map_err(|e| VectorizeError::QueryFailed(format!("{e:?}")))?;
+
+    let matches: Vec<serde_json::Value> =
+        serde_wasm_bindgen::from_value(result).map_err(|e| VectorizeError::InvalidResponse(format!("parse: {e}")))?;
+
+    let mut out = Vec::new();
+    for m in matches {
+        if let (Some(id), Some(score)) = (m["id"].as_str(), m["score"].as_f64()) {
+            if score >= min_score {
+                out.push(SimilarMatch { id: id.to_string(), score });
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 #[cfg(target_arch = "wasm32")]
 mod tests {

@@ -6,10 +6,10 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
-    NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError,
+    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary,
+    EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact,
+    NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -122,6 +122,14 @@ pub trait StoreBackend {
         days: i64,
         limit: u32,
     ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
+
+    /// Load recent articles that have Vectorize embeddings for ANN discovery.
+    async fn recent_embedded_articles(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<ArticleEmbeddingRef>, StoreError>;
 
     // ===== Signal Threads (V2) =====
 

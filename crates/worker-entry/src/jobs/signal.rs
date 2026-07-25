@@ -1,18 +1,15 @@
 //! Signal Engine orchestration — thin cron-job wrapper.
 //!
 //! Responsibility: when to run, error handling, observability.
-//! The actual signal-computation logic lives in `intelligence/signal-engine` crate.
 
 use worker::*;
 
-use signal_engine::source::{EntitySignalSource, SignalSource};
+use signal_engine::source::{EntitySignalSource, SemanticDiscoverySource, SignalSource};
 use signal_engine::SignalEngine;
 use store::D1Store;
+use vectorize::VectorizeIndex;
 
 /// Run one cycle of the Signal Engine.
-///
-/// Designed to be called from the cron handler after feed ingestion
-/// and entity persistence are complete, before briefing generation.
 pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     let db = match env.d1("DB") {
         Ok(db) => db,
@@ -23,18 +20,17 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     };
     let store = D1Store::new(db);
 
-    // Build signal sources
     let entity_source = EntitySignalSource;
-    let sources: [&dyn SignalSource; 1] = [&entity_source];
+    let semantic_source = SemanticDiscoverySource;
 
-    // When SemanticDiscoverySource is ready, add it here:
-    // let vz = env.vectorize("VECTORIZE").ok();
-    // if let Some(v) = vz {
-    //     let discovery = SemanticDiscoverySource { vectorize: &v, embedder: &embedder };
-    //     let sources: [&dyn SignalSource; 2] = [&entity_source, &discovery];
-    // }
+    let vz: Option<VectorizeIndex> = env.get_binding("VECTORIZE").ok();
+    if vz.is_some() {
+        console_log!("semantic discovery: enabled");
+    }
 
-    match SignalEngine::run(&store, &sources, now).await {
+    let sources: [&dyn SignalSource; 2] = [&entity_source, &semantic_source];
+
+    match SignalEngine::run(&store, vz.as_ref(), &sources, now).await {
         Ok(report) => {
             console_log!(
                 "signal engine: {} threads, {} instances, {} events, {} lifecycle transitions",

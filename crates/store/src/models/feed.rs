@@ -81,6 +81,16 @@ pub struct ArticleDetail {
     pub score: f64,
 }
 
+/// Reference to an article with its embedding for ANN-based discovery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArticleEmbeddingRef {
+    pub article_id: i64,
+    pub vector_id: String,
+    pub published_at: i64,
+    pub source_id: i64,
+    pub entity_ids: Vec<i64>,
+}
+
 // ---- View models / query results ----
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -1,12 +1,23 @@
 //! Signal Source trait — extension point for signal candidate providers.
 //!
 //! Each source produces `SignalCandidate` values that the engine persists
-//! and merges.  Currently two sources:
+//! and merges.
 //!
-//! - [`EntitySignalSource`] — the original entity-driven engine
-//! - [`SemanticDiscoverySource`] — ANN + clustering + V2 scoring
+//! - [`EntitySignalSource`] — entity-driven signal candidates
+//! - [`SemanticDiscoverySource`] — ANN + clustering + V2 scoring (needs Vectorize)
 
 use store::{BriefArticle, DiscoveryMethod, RelatedEntityRef, StoreBackend};
+
+use crate::discovery::clustering::{cluster_by_similarity, SimilarityEdge};
+use crate::discovery::converter::cluster_to_candidate;
+
+/// Runtime context provided to every [`SignalSource`].
+#[derive(Clone)]
+pub struct DiscoveryContext<'a> {
+    pub store: &'a dyn StoreBackend,
+    pub vectorize: Option<&'a vectorize::VectorizeIndex>,
+    pub now: i64,
+}
 
 /// A candidate signal before materialisation into a thread.
 #[derive(Debug, Clone)]
@@ -30,8 +41,7 @@ pub struct SignalCandidate {
 pub trait SignalSource {
     fn candidates<'a>(
         &'a self,
-        store: &'a dyn StoreBackend,
-        now: i64,
+        ctx: DiscoveryContext<'a>,
     ) -> futures::future::LocalBoxFuture<'a, Result<Vec<SignalCandidate>, String>>;
 }
 
@@ -41,12 +51,12 @@ pub struct EntitySignalSource;
 impl SignalSource for EntitySignalSource {
     fn candidates<'a>(
         &'a self,
-        store: &'a dyn StoreBackend,
-        now: i64,
+        ctx: DiscoveryContext<'a>,
     ) -> futures::future::LocalBoxFuture<'a, Result<Vec<SignalCandidate>, String>> {
         Box::pin(async move {
-            let rows = store
-                .entity_signal_candidates_filtered(now, 7, 50, 3, 2)
+            let rows = ctx
+                .store
+                .entity_signal_candidates_filtered(ctx.now, 7, 50, 3, 2)
                 .await
                 .map_err(|e| format!("entity_candidates failed: {e}"))?;
 
@@ -94,4 +104,79 @@ impl SignalSource for EntitySignalSource {
                 .collect())
         })
     }
+}
+
+/// Semantic discovery signal source — ANN similarity + clustering + V2 scoring.
+///
+/// Requires a Vectorize binding to be present in [`DiscoveryContext`].
+/// When Vectorize is unavailable, returns empty (no candidates).
+pub struct SemanticDiscoverySource;
+
+impl SignalSource for SemanticDiscoverySource {
+    fn candidates<'a>(
+        &'a self,
+        ctx: DiscoveryContext<'a>,
+    ) -> futures::future::LocalBoxFuture<'a, Result<Vec<SignalCandidate>, String>> {
+        Box::pin(async move {
+            let vz = match ctx.vectorize {
+                Some(v) => v,
+                None => return Ok(Vec::new()),
+            };
+
+            // 1. Load recent articles with embeddings
+            let articles = ctx
+                .store
+                .recent_embedded_articles(ctx.now, 7, 200)
+                .await
+                .map_err(|e| format!("recent_embedded_articles failed: {e}"))?;
+
+            if articles.len() < 3 {
+                return Ok(Vec::new());
+            }
+
+            // 2. Build similarity edges via Vectorize ANN
+            let mut edges: Vec<SimilarityEdge> = Vec::new();
+            let mut seen: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+
+            for a in &articles {
+                let matches = vectorize::query_similar_by_id(vz, &a.vector_id, 20, 0.75)
+                    .await
+                    .map_err(|e| format!("vectorize query for {}: {e}", a.vector_id))?;
+
+                for m in &matches {
+                    if let Ok(neighbor_id) = m.id.parse::<i64>() {
+                        if neighbor_id != a.article_id {
+                            let key = if a.article_id < neighbor_id {
+                                (a.article_id, neighbor_id)
+                            } else {
+                                (neighbor_id, a.article_id)
+                            };
+                            if seen.insert(key) {
+                                edges.push(SimilarityEdge {
+                                    article_a: a.article_id,
+                                    article_b: neighbor_id,
+                                    similarity: m.score,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Cluster by similarity
+            let article_ids: Vec<i64> = articles.iter().map(|a| a.article_id).collect();
+            let clusters = cluster_by_similarity(&edges, &article_ids, 0.75, 3);
+
+            // 4. Convert clusters to candidates
+            let candidates: Vec<SignalCandidate> =
+                clusters.iter().map(|c| cluster_to_candidate_vec(c, &edges, &article_ids)).collect();
+
+            Ok(candidates)
+        })
+    }
+}
+
+fn cluster_to_candidate_vec(cluster: &[i64], edges: &[SimilarityEdge], _article_ids: &[i64]) -> SignalCandidate {
+    let cluster_obj = crate::discovery::clustering::ArticleCluster { article_ids: cluster.to_vec() };
+    cluster_to_candidate(&cluster_obj, edges)
 }

@@ -331,6 +331,15 @@ impl StoreBackend for MemoryStore {
         Ok(Vec::new())
     }
 
+    async fn recent_embedded_articles(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+    ) -> Result<Vec<crate::ArticleEmbeddingRef>, StoreError> {
+        Ok(Vec::new())
+    }
+
     async fn upsert_signal_thread(
         &self,
         _signal_key: &str,

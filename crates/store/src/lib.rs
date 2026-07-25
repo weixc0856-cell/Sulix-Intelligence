@@ -163,6 +163,15 @@ impl StoreBackend for D1Store {
         D1Store::entity_signal_candidates(self, now, days, limit).await
     }
 
+    async fn recent_embedded_articles(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<ArticleEmbeddingRef>, StoreError> {
+        D1Store::recent_embedded_articles(self, now, days, limit).await
+    }
+
     async fn upsert_signal_thread(
         &self,
         signal_key: &str,

@@ -211,4 +211,27 @@ impl crate::D1Store {
             .await?
             .results()?)
     }
+
+    /// Load recent articles that have Vectorize embeddings for ANN discovery.
+    pub async fn recent_embedded_articles(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<crate::ArticleEmbeddingRef>, crate::StoreError> {
+        let cutoff = now - days * 86400;
+        Ok(self
+            .db
+            .prepare(
+                "SELECT a.id AS article_id, a.vector_id, a.published_at, a.feed_id AS source_id, \
+                 COALESCE((SELECT json_group_array(ae.entity_id) FROM article_entities ae WHERE ae.article_id = a.id), '[]') AS entity_ids \
+                 FROM articles a \
+                 WHERE a.vector_id IS NOT NULL AND a.published_at >= ?1 \
+                 ORDER BY a.published_at DESC LIMIT ?2",
+            )
+            .bind(&[JsValue::from_f64(cutoff as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
 }
