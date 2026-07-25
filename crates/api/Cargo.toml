@@ -16,6 +16,7 @@ vectorize.workspace = true
 signal-engine.workspace = true
 object-store.workspace = true
 event-store.workspace = true
+reflection-engine.workspace = true
 
 [dev-dependencies]
 url.workspace = true

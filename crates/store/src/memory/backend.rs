@@ -13,8 +13,8 @@ use crate::{
     ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
     EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
-    NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
-    SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -691,5 +691,70 @@ impl StoreBackend for MemoryStore {
         results.reverse();
         results.truncate(limit as usize);
         Ok(results)
+    }
+
+    // ── Reflection Engine (Sprint 5.4) ──
+
+    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_reflection_id.borrow();
+        *self.next_reflection_id.borrow_mut() = id + 1;
+        self.reflections.borrow_mut().insert(req.decision_id, Reflection {
+            id,
+            decision_id: req.decision_id,
+            outcome_id: req.outcome_id,
+            job_id: req.job_id.clone(),
+            status: req.status.clone(),
+            artifact_key: None,
+            result: None,
+            quality_score: None,
+            generator_version: Some("reflection-v1".into()),
+            lessons_count: 0,
+            rules_count: 0,
+            generated_by: "system".into(),
+            retry_count: 0,
+            last_error: None,
+            started_at: None,
+            lease_until: None,
+            created_at: now,
+            updated_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError> {
+        let mut map = self.reflections.borrow_mut();
+        let r = map.values_mut().find(|r| r.id == req.id);
+        if let Some(r) = r {
+            r.status = req.status.clone();
+            if let Some(v) = &req.result { r.result = Some(v.clone()); }
+            if let Some(v) = req.quality_score { r.quality_score = Some(v); }
+            if let Some(v) = &req.artifact_key { r.artifact_key = Some(v.clone()); }
+            if let Some(v) = req.lessons_count { r.lessons_count = v; }
+            if let Some(v) = req.rules_count { r.rules_count = v; }
+            if let Some(v) = req.retry_count { r.retry_count = v; }
+            if let Some(v) = &req.last_error { r.last_error = Some(v.clone()); }
+            if let Some(v) = req.started_at { r.started_at = Some(v); }
+            if let Some(v) = req.lease_until { r.lease_until = Some(v); }
+            r.updated_at = 1000000;
+        }
+        Ok(())
+    }
+
+    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
+        Ok(self.reflections.borrow().get(&decision_id).cloned())
+    }
+
+    async fn decisions_eligible_for_reflection(&self, _now: i64, _limit: u32) -> Result<Vec<i64>, StoreError> {
+        // MemoryStore has no completed decisions; return empty
+        Ok(Vec::new())
+    }
+
+    async fn failed_reflections_for_retry(&self, _limit: u32) -> Result<Vec<Reflection>, StoreError> {
+        Ok(self.reflections.borrow().values().filter(|r| r.status == "failed" && r.retry_count < 3).cloned().collect())
+    }
+
+    async fn stale_generating_reflections(&self, _now: i64) -> Result<Vec<Reflection>, StoreError> {
+        Ok(Vec::new())
     }
 }

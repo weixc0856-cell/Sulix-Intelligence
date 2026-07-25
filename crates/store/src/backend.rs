@@ -9,8 +9,8 @@ use crate::{
     ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
     EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
-    NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
-    SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
 };
 
 /// Storage backend for the feed pipeline.
@@ -281,4 +281,24 @@ pub trait StoreBackend {
         aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError>;
+
+    // ===== Reflection Engine (Sprint 5.4) =====
+
+    /// Create a new reflection row. Returns the new id.
+    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError>;
+
+    /// Update reflection state (status, result, etc.).
+    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError>;
+
+    /// Get a reflection by decision_id.
+    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError>;
+
+    /// List eligible decisions for reflection (completed >7d, no existing reflection).
+    async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError>;
+
+    /// List failed reflections eligible for retry (retry_count < 3).
+    async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError>;
+
+    /// List stale generating reflections (lease_until < now).
+    async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError>;
 }

@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{ArtifactRecord, EventIndexEntry, Feed, NewArticle, OutcomeEvent, OutboxEntry, SignalEvent};
+use crate::{ArtifactRecord, EventIndexEntry, Feed, NewArticle, OutcomeEvent, OutboxEntry, Reflection, SignalEvent};
 
 mod backend;
 
@@ -73,6 +73,10 @@ pub struct MemoryStore {
     // Event Archive state
     event_archive: RefCell<Vec<EventIndexEntry>>,
     next_event_archive_id: RefCell<i64>,
+
+    // Reflection Engine state
+    reflections: RefCell<HashMap<i64, Reflection>>,  // keyed by decision_id
+    next_reflection_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -143,6 +147,9 @@ impl MemoryStore {
             next_memory_artifact_id: RefCell::new(1),
             event_archive: RefCell::new(Vec::new()),
             next_event_archive_id: RefCell::new(1),
+
+            reflections: RefCell::new(HashMap::new()),
+            next_reflection_id: RefCell::new(1),
         }
     }
 

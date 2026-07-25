@@ -1,6 +1,6 @@
 use worker::*;
 
-use crate::jobs::{archive, briefing, gc, ingestion, signal};
+use crate::jobs::{archive, briefing, gc, ingestion, reflection, signal};
 
 pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
@@ -24,4 +24,7 @@ pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleConte
     // Object Outbox — drain pending archive entries to the R2 Memory Archive.
     // Runs last so all artifacts from the current cycle are included.
     archive::archive_outbox(&env).await;
+
+    // Decision Reflection — process eligible and failed reflections.
+    reflection::process_pending_reflections(&env, now).await;
 }

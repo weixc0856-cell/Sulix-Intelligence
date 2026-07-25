@@ -65,6 +65,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/decisions/stats", routes::decision::stats)
         .get_async("/api/intelligence/decisions/:id", routes::decision::detail)
         .post_async("/api/intelligence/decisions/:id/status", routes::decision::update_status)
+        .post_async("/api/intelligence/decisions/:id/reflect", routes::reflection::reflect)
         .post_async("/api/intelligence/decisions/:id/outcomes", routes::decision::create_outcome)
         .get_async("/api/intelligence/decisions/:id/outcomes", routes::decision::list_outcomes)
         .post_async("/api/intelligence/decisions/:id/evaluations", routes::decision::create_evaluation)

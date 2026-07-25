@@ -10,9 +10,9 @@ use crate::backend::StoreBackend;
 use crate::{
     ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
     EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, NewArticle, NewArtifact,
-    NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry,
-    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter,
-    SignalUpsertResult, StoreError,
+    NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent,
+    OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
+    SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -284,5 +284,26 @@ impl StoreBackend for crate::D1Store {
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError> {
         crate::D1Store::find_event_keys(self, aggregate_type, aggregate_id, limit).await
+    }
+
+    // ── Reflection Engine (Sprint 5.4) ──
+
+    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError> {
+        crate::D1Store::create_reflection(self, req).await
+    }
+    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError> {
+        crate::D1Store::update_reflection(self, req).await
+    }
+    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
+        crate::D1Store::get_reflection_by_decision(self, decision_id).await
+    }
+    async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError> {
+        crate::D1Store::decisions_eligible_for_reflection(self, now, limit).await
+    }
+    async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError> {
+        crate::D1Store::failed_reflections_for_retry(self, limit).await
+    }
+    async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError> {
+        crate::D1Store::stale_generating_reflections(self, now).await
     }
 }

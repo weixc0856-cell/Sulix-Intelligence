@@ -39,6 +39,7 @@ dependencies = [
  "event-store",
  "js-sys",
  "object-store",
+ "reflection-engine",
  "rules",
  "search",
  "serde",
@@ -894,6 +895,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reflection-engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "event-store",
+ "futures",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "store",
+ "thiserror",
+ "worker",
+]
+
+[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1495,6 +1511,7 @@ dependencies = [
  "fetcher",
  "js-sys",
  "object-store",
+ "reflection-engine",
  "rules",
  "serde",
  "serde_json",
