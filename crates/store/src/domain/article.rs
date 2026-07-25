@@ -1,0 +1,194 @@
+use serde::Deserialize;
+use worker::wasm_bindgen::JsValue;
+
+impl crate::D1Store {
+    pub async fn insert_article(&self, article: &crate::NewArticle) -> Result<Option<i64>, crate::StoreError> {
+        let row = self
+            .db
+            .prepare("INSERT OR IGNORE INTO articles (feed_id, guid, title, url, published_at, raw_content_r2_key) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id")
+            .bind(&[
+            JsValue::from_f64(article.feed_id as f64),
+            article.guid.clone().into(),
+            article.title.clone().into(),
+            article.url.clone().map_or(JsValue::null(), |v| v.into()),
+            article.published_at.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+            article.raw_content_r2_key.clone().map_or(JsValue::null(), |v| v.into()),
+        ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        Ok(row.and_then(|v| v["id"].as_i64()))
+    }
+
+    pub async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        tags_json: &str,
+        vector_id: &str,
+        score: f64,
+    ) -> Result<(), crate::StoreError> {
+        self.db
+            .prepare("UPDATE articles SET ai_summary = ?1, ai_tags = ?2, vector_id = ?3, score = ?4 WHERE id = ?5")
+            .bind(&[
+                summary.into(),
+                tags_json.into(),
+                vector_id.into(),
+                JsValue::from_f64(score),
+                JsValue::from_f64(article_id as f64),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_raw_content_key(&self, article_id: i64) -> Result<Option<String>, crate::StoreError> {
+        #[derive(Deserialize)]
+        struct Row {
+            raw_content_r2_key: Option<String>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT raw_content_r2_key FROM articles WHERE id = ?1")
+            .bind(&[JsValue::from_f64(article_id as f64)])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|r| r.raw_content_r2_key))
+    }
+
+    pub async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), crate::StoreError> {
+        self.db
+            .prepare("UPDATE articles SET raw_content_r2_key = ?1 WHERE id = ?2")
+            .bind(&[r2_key.into(), JsValue::from_f64(article_id as f64)])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    pub async fn latest_articles(&self, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1 OFFSET ?2",
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
+    }
+
+    pub async fn article_count(&self) -> Result<i64, crate::StoreError> {
+        let row = self.db.prepare("SELECT COUNT(*) AS cnt FROM articles").first::<serde_json::Value>(None).await?;
+        Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
+    }
+
+    pub async fn trending_articles(&self, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1 OFFSET ?2",
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
+    }
+
+    pub async fn trending_count(&self) -> Result<i64, crate::StoreError> {
+        let row = self
+            .db
+            .prepare("SELECT COUNT(*) AS cnt FROM articles WHERE score != 0")
+            .first::<serde_json::Value>(None)
+            .await?;
+        Ok(row.and_then(|v| v["cnt"].as_i64()).unwrap_or(0))
+    }
+
+    pub async fn article_by_id(&self, id: i64) -> Result<Option<crate::Article>, crate::StoreError> {
+        Ok(self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id = ?1",
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<crate::Article>(None).await?)
+    }
+
+    /// Batch fetch by IDs.  Used by the bookmarks / batch endpoint.
+    pub async fn articles_by_ids(&self, ids: &[i64]) -> Result<Vec<crate::Article>, crate::StoreError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id IN ({})",
+            crate::in_placeholders(ids.len())
+        );
+        let binds: Vec<JsValue> = ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
+        Ok(self.db.prepare(&sql).bind(&binds)?.all().await?.results()?)
+    }
+
+    /// Article with feed metadata joined in for the detail page.
+    pub async fn article_detail(&self, id: i64) -> Result<Option<crate::ArticleDetail>, crate::StoreError> {
+        Ok(self.db.prepare(
+            "SELECT a.id, a.feed_id, f.title AS feed_name, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score
+             FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<crate::ArticleDetail>(None).await?)
+    }
+
+    /// Get previous and next article relative to a given article id,
+    /// ordered by published_at DESC.  Returns (prev, next) — both may be None.
+    pub async fn adjacent_articles(&self, id: i64) -> Result<(Option<crate::Article>, Option<crate::Article>), crate::StoreError> {
+        let prev = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at < (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at DESC LIMIT 1"
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<crate::Article>(None).await?;
+        let next = self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE published_at > (SELECT COALESCE(published_at, 0) FROM articles WHERE id = ?1) ORDER BY published_at ASC LIMIT 1"
+        ).bind(&[JsValue::from_f64(id as f64)])?.first::<crate::Article>(None).await?;
+        Ok((prev, next))
+    }
+
+    pub async fn articles_by_tag(&self, tag: &str, limit: u32, offset: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+        let pattern = crate::tag_like_pattern(tag);
+        Ok(self.db.prepare(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
+        ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
+    }
+
+    pub async fn articles_by_category(
+        &self,
+        category: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+        Ok(self.db.prepare(
+            "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2 OFFSET ?3",
+        ).bind(&[category.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)])?.all().await?.results()?)
+    }
+
+    pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, crate::StoreError> {
+        #[derive(Deserialize)]
+        struct Row {
+            category: String,
+            article_count: i64,
+        }
+        let rows: Vec<Row> = self.db.prepare(
+            "SELECT f.category, COUNT(a.id) AS article_count FROM feeds f LEFT JOIN articles a ON a.feed_id = f.id WHERE f.category IS NOT NULL AND f.category != '' GROUP BY f.category ORDER BY article_count DESC",
+        ).all().await?.results()?;
+        Ok(rows.into_iter().map(|r| (r.category, r.article_count)).collect())
+    }
+
+    /// Find articles sharing tags with a given article, ordered by match
+    /// count desc then recency.  Returns empty when source has no tags.
+    pub async fn related_articles(&self, article_id: i64, limit: u32) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
+        let src = self
+            .db
+            .prepare("SELECT ai_tags FROM articles WHERE id = ?1")
+            .bind(&[JsValue::from_f64(article_id as f64)])?;
+        let tags_json = match src.first::<String>(None).await? {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+        let tags: Vec<String> = match serde_json::from_str(&tags_json) {
+            Ok(t) => t,
+            Err(_) => return Ok(Vec::new()),
+        };
+        if tags.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conds: Vec<String> = tags.iter().map(|t| format!("ai_tags LIKE '%\"{}%'", t.replace('\'', "''"))).collect();
+        let sql = format!(
+            "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id != ?1 AND ({}) ORDER BY ({} DESC), published_at DESC LIMIT ?2",
+            conds.join(" OR "),
+            conds.iter().map(|c| format!("CASE WHEN {} THEN 1 ELSE 0 END", c)).collect::<Vec<_>>().join(" + "),
+        );
+        Ok(self
+            .db
+            .prepare(&sql)
+            .bind(&[JsValue::from_f64(article_id as f64), JsValue::from_f64(limit as f64)])?
+            .all()
+            .await?
+            .results()?)
+    }
+}
