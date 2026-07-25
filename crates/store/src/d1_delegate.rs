@@ -8,10 +8,10 @@ use async_trait::async_trait;
 
 use crate::backend::StoreBackend;
 use crate::{
-    Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
-    NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput,
-    SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
+    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewArtifactRecord,
+    NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity,
+    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -92,6 +92,15 @@ impl StoreBackend for crate::D1Store {
         limit: u32,
     ) -> Result<Vec<crate::ArtifactEntry>, StoreError> {
         crate::D1Store::list_artifacts_by_entity(self, entity_id, limit).await
+    }
+    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError> {
+        crate::D1Store::put_artifact(self, artifact).await
+    }
+    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError> {
+        crate::D1Store::get_artifact(self, artifact_type, date).await
+    }
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
+        crate::D1Store::list_artifacts(self, artifact_type, limit).await
     }
     async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError> {
         crate::D1Store::entity_articles(self, entity_id, limit, offset).await

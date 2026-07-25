@@ -10,10 +10,11 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
-    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary, Feed, NewArticle, NewArtifact,
-    NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent, OutboxEntry, RelatedEntity,
-    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
+    Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent,
+    OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
+    SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -606,5 +607,45 @@ impl StoreBackend for MemoryStore {
             e.retry_count += 1;
         }
         Ok(())
+    }
+
+    // ── Memory Artifacts ──
+
+    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_memory_artifact_id.borrow();
+        *self.next_memory_artifact_id.borrow_mut() = id + 1;
+        self.memory_artifacts.borrow_mut().push(ArtifactRecord {
+            id,
+            artifact_type: artifact.artifact_type.clone(),
+            artifact_date: artifact.artifact_date.clone(),
+            object_key: artifact.object_key.clone(),
+            schema_version: artifact.schema_version,
+            content_hash: artifact.content_hash.clone(),
+            size_bytes: artifact.size_bytes,
+            metadata: artifact.metadata.clone(),
+            created_at: now,
+        });
+        Ok(id)
+    }
+    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError> {
+        Ok(self
+            .memory_artifacts
+            .borrow()
+            .iter()
+            .find(|a| a.artifact_type == artifact_type && a.artifact_date == date)
+            .cloned())
+    }
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
+        let mut results: Vec<ArtifactRecord> = self
+            .memory_artifacts
+            .borrow()
+            .iter()
+            .filter(|a| a.artifact_type == artifact_type)
+            .cloned()
+            .collect();
+        results.reverse();
+        results.truncate(limit as usize);
+        Ok(results)
     }
 }

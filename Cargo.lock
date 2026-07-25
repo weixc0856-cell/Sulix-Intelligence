@@ -37,6 +37,7 @@ version = "0.1.0"
 dependencies = [
  "embedding",
  "js-sys",
+ "object-store",
  "rules",
  "search",
  "serde",

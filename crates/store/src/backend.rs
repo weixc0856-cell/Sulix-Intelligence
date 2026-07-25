@@ -6,11 +6,11 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed,
-    NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, OutcomeEvent,
-    OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter,
-    SignalUpsertResult, StoreError,
+    NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent,
+    OutcomeEvent, OutboxEntry, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
+    SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -102,6 +102,15 @@ pub trait StoreBackend {
 
     /// List artifact_registry entries for a given entity.
     async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
+
+    /// Register a new artifact in the memory_artifacts index.
+    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError>;
+
+    /// Retrieve an artifact record by type + date.
+    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError>;
+
+    /// List artifacts of a given type, newest first.
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError>;
 
     // ===== Entity Intelligence methods =====
 

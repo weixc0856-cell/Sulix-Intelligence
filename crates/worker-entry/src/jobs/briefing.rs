@@ -4,6 +4,7 @@ use worker::*;
 
 use crate::version::PIPELINE_VERSION;
 use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
+use object_store::{ObjectStore, R2Store};
 use store::{SignalThreadFilter, Store};
 
 /// Provenance metadata recorded alongside each generated briefing.
@@ -14,6 +15,23 @@ struct BriefingProvenance {
     signal_count: u32,
     insight_count: u32,
     total_signals_loaded: u32,
+}
+
+/// Envelope stored in the R2 Memory Archive for immutable daily briefings.
+#[derive(Serialize)]
+struct BriefingArtifactEnvelope {
+    schema_version: i32,
+    artifact_type: String,
+    date: String,
+    content: serde_json::Value,
+    metadata: BriefingArtifactMetadata,
+    created_at: i64,
+}
+
+#[derive(Serialize)]
+struct BriefingArtifactMetadata {
+    signal_count: u32,
+    insight_count: u32,
 }
 
 /// Generate today's intelligence briefing and persist it.
@@ -43,6 +61,7 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
             return;
         }
     };
+    let object_store: Option<R2Store> = env.bucket("RAW_CONTENT").ok().map(R2Store::new);
     let cache = env.kv("CACHE").ok();
 
     // 1. Load active signal threads via filter-based query
@@ -86,8 +105,9 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         }
 
         // Generate, persist, cache
+        let obj_ref = object_store.as_ref().map(|r| r as &dyn ObjectStore);
         if let Err(e) =
-            generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded).await
+            generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded, obj_ref).await
         {
             console_log!("[Sulix:briefing] fallback generation failed: {e}");
         }
@@ -138,14 +158,15 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
     }
 
     // 6-9. Generate + persist + cache + provenance
+    let obj_ref = object_store.as_ref().map(|r| r as &dyn ObjectStore);
     if let Err(e) =
-        generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded).await
+        generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded, obj_ref).await
     {
         console_log!("[Sulix:briefing] generation failed: {e}");
     }
 }
 
-/// Generate a briefing, persist to D1, cache to KV, and log provenance.
+/// Generate a briefing, persist to D1 and R2, cache to KV, and log provenance.
 ///
 /// Shared between the V2 (signal thread) and fallback (legacy signals_today) paths.
 async fn generate_and_persist(
@@ -156,12 +177,58 @@ async fn generate_and_persist(
     date: &str,
     now: i64,
     total_signals_loaded: u32,
+    object_store: Option<&dyn ObjectStore>,
 ) -> Result<(), String> {
     let briefing =
         generate_daily_brief(candidates, summarizer, date, now).await.map_err(|e| format!("generation failed: {e}"))?;
 
     let content = serde_json::to_string(&briefing).map_err(|e| format!("serialisation: {e}"))?;
 
+    // 1. R2 Memory Archive — write artifact envelope (canonical source)
+    if let Some(os) = object_store {
+        let envelope = serde_json::to_string(&BriefingArtifactEnvelope {
+            schema_version: 1,
+            artifact_type: "daily_briefing".into(),
+            date: date.to_string(),
+            content: serde_json::to_value(&briefing).map_err(|e| format!("envelope serialisation: {e}"))?,
+            metadata: BriefingArtifactMetadata {
+                signal_count: briefing.signal_count,
+                insight_count: briefing.insights.len() as u32,
+            },
+            created_at: now,
+        })
+        .map_err(|e| format!("envelope serialisation: {e}"))?;
+
+        let r2_key = object_store::keys::briefing(date);
+        if let Err(e) = os.write_object(&r2_key, envelope.as_bytes()).await {
+            // Non-fatal: D1 fallback still works for reads
+            console_log!("[Sulix:briefing] R2 write failed for {date}: {e}");
+        } else {
+            // D1 metadata index (non-fatal on failure)
+            if let Err(e) = store
+                .put_artifact(&store::NewArtifactRecord {
+                    artifact_type: "daily_briefing".into(),
+                    artifact_date: date.to_string(),
+                    object_key: r2_key,
+                    schema_version: 1,
+                    content_hash: None,
+                    size_bytes: Some(envelope.len() as i64),
+                    metadata: Some(
+                        serde_json::json!({
+                            "signal_count": briefing.signal_count,
+                            "insight_count": briefing.insights.len(),
+                        })
+                        .to_string(),
+                    ),
+                })
+                .await
+            {
+                console_log!("[Sulix:briefing] artifact index write failed for {date}: {e}");
+            }
+        }
+    }
+
+    // 2. D1 legacy persistence (intelligence_briefs.content — transitional)
     store.save_briefing(date, now, briefing.signal_count, &content).await.map_err(|e| format!("D1 save: {e}"))?;
 
     if let Some(ref cache) = cache {
