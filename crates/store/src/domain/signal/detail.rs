@@ -220,7 +220,11 @@ impl crate::D1Store {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
-/// Build 5-component health from thread data.
+/// Build health detail from thread data.
+///
+/// The overall `score` uses the canonical 4-factor formula so it always
+/// matches what Radar displays. The breakdown components are provided
+/// for the UI detail view (includes a 5th `persistence` factor).
 pub fn build_health(input: &SignalBriefInput, now: i64) -> SignalHealthDetail2 {
     let instance_count = input.instances.len() as f64;
     let total_days = if instance_count > 1.0 {
@@ -241,10 +245,12 @@ pub fn build_health(input: &SignalBriefInput, now: i64) -> SignalHealthDetail2 {
     };
     let persistence = (total_days.min(30.0) / 30.0 * 100.0).round() / 100.0;
 
-    let score = 0.25 * volume + 0.20 * diversity + 0.25 * quality + 0.20 * velocity + 0.10 * persistence;
+    // Use the canonical 4-factor score (matching Radar / signal-engine).
+    // This ensures the top-level health number is always consistent.
+    let canonical_score = 0.35 * volume + 0.25 * diversity + 0.20 * quality + 0.20 * velocity;
 
     SignalHealthDetail2 {
-        score: (score * 100.0).round() / 100.0,
+        score: (canonical_score * 100.0).round() / 100.0,
         components: HealthComponents { volume, diversity, quality, velocity, persistence },
     }
 }

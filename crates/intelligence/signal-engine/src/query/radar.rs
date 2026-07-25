@@ -6,10 +6,10 @@
 //! - Includes `anchor_entity` from the thread data
 //! - Health is computed by `calculate_signal_health`
 
-use store::domain::signal::health::calculate_signal_health;
-use store::{StoreBackend, StoreError};
+use store::{SignalHealth, SignalHealthBreakdown, StoreBackend, StoreError};
 
 use crate::query::{RadarProjection, RadarSignal, RadarSummary};
+use crate::scoring::health::{calculate_health, health_breakdown, SignalHealthMetrics};
 
 /// Build the radar projection from active signal threads.
 pub async fn build(store: &impl StoreBackend, now: i64) -> Result<RadarProjection, StoreError> {
@@ -29,13 +29,17 @@ pub async fn build(store: &impl StoreBackend, now: i64) -> Result<RadarProjectio
         } else {
             1.0
         };
-        let health = calculate_signal_health(
-            input.recent_article_count,
-            input.source_count,
-            input.instances.first().map(|i| i.score).unwrap_or(0.0),
-            &input.trend,
+        let metrics = SignalHealthMetrics {
+            article_count: input.recent_article_count,
+            source_count: input.source_count,
+            avg_score: input.instances.first().map(|i| i.score).unwrap_or(0.0),
+            trend: input.trend.clone(),
             days_active,
-        );
+        };
+        let score = calculate_health(&metrics);
+        let (activity, diversity, quality, velocity) = health_breakdown(&metrics);
+        let health =
+            SignalHealth { score, breakdown: SignalHealthBreakdown { activity, diversity, quality, velocity } };
 
         // Count summary buckets
         match input.status.as_str() {

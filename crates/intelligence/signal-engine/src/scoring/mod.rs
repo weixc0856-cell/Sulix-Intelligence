@@ -1,5 +1,6 @@
-//! Signal scoring — impact levels and V2 semantic scoring.
+//! Signal scoring — impact levels, health, and V2 semantic scoring.
 
+pub mod health;
 mod impact;
 pub mod semantic;
 

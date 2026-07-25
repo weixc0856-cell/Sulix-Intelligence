@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use store::{StoreBackend, StoreError};
 
 pub mod briefing;
+pub mod retry;
 pub mod tag_normalizer;
 
 #[derive(Debug, thiserror::Error)]

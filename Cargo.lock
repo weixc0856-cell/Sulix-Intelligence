@@ -1469,6 +1469,8 @@ dependencies = [
  "signal-engine",
  "store",
  "vectorize",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "worker",
 ]
 
