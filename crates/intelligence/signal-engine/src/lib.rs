@@ -110,14 +110,21 @@ impl SignalEngine {
             report.events_written += 1;
 
             // R2 Event Archive (canonical)
+            let sig_id = format!("SIG-{thread_id:06}");
             if let Some(es) = event_store {
-                let event = event_store::Event {
+                let event = event_store::EventEnvelope {
                     schema_version: 1,
-                    event_id: event_store::keys::format_id(thread_id, now, report.events_written),
-                    aggregate_type: "signal_thread".into(),
-                    aggregate_id: thread_id,
+                    event_id: event_store::keys::format_id(now, report.events_written),
+                    aggregate: event_store::AggregateRef {
+                        aggregate_type: "signal_thread".into(),
+                        aggregate_id: sig_id.clone(),
+                    },
                     event_type: "SignalScoreChanged".into(),
                     payload: payload.clone(),
+                    metadata: event_store::EventMetadata {
+                        actor: "system".into(),
+                        source: "cron".into(),
+                    },
                     occurred_at: now,
                     created_at: now,
                 };
@@ -129,13 +136,19 @@ impl SignalEngine {
                 report.events_written += 1;
 
                 if let Some(es) = event_store {
-                    let event = event_store::Event {
+                    let event = event_store::EventEnvelope {
                         schema_version: 1,
-                        event_id: event_store::keys::format_id(thread_id, now, report.events_written),
-                        aggregate_type: "signal_thread".into(),
-                        aggregate_id: thread_id,
+                        event_id: event_store::keys::format_id(now, report.events_written),
+                        aggregate: event_store::AggregateRef {
+                            aggregate_type: "signal_thread".into(),
+                            aggregate_id: sig_id,
+                        },
                         event_type: "SignalCreated".into(),
                         payload: serde_json::json!({"signal_key": candidate.signal_key}),
+                        metadata: event_store::EventMetadata {
+                            actor: "system".into(),
+                            source: "cron".into(),
+                        },
                         occurred_at: now,
                         created_at: now,
                     };

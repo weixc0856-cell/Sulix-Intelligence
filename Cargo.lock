@@ -36,6 +36,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "embedding",
+ "event-store",
  "js-sys",
  "object-store",
  "rules",

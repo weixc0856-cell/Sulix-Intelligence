@@ -655,7 +655,7 @@ impl StoreBackend for MemoryStore {
         &self,
         event_id: &str,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         event_type: &str,
         object_key: &str,
         occurred_at: i64,
@@ -667,7 +667,7 @@ impl StoreBackend for MemoryStore {
             id,
             event_id: event_id.to_string(),
             aggregate_type: aggregate_type.to_string(),
-            aggregate_id,
+            aggregate_id: aggregate_id.to_string(),
             event_type: event_type.to_string(),
             object_key: object_key.to_string(),
             occurred_at,
@@ -678,7 +678,7 @@ impl StoreBackend for MemoryStore {
     async fn find_event_keys(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError> {
         let mut results: Vec<EventIndexEntry> = self

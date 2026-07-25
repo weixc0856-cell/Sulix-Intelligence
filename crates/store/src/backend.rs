@@ -268,7 +268,7 @@ pub trait StoreBackend {
         &self,
         event_id: &str,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         event_type: &str,
         object_key: &str,
         occurred_at: i64,
@@ -278,7 +278,7 @@ pub trait StoreBackend {
     async fn find_event_keys(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError>;
 }

@@ -14,7 +14,7 @@ impl crate::D1Store {
         &self,
         event_id: &str,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         event_type: &str,
         object_key: &str,
         occurred_at: i64,
@@ -28,7 +28,7 @@ impl crate::D1Store {
             .bind(&[
                 event_id.into(),
                 aggregate_type.into(),
-                JsValue::from_f64(aggregate_id as f64),
+                aggregate_id.into(),
                 event_type.into(),
                 object_key.into(),
                 JsValue::from_f64(occurred_at as f64),
@@ -42,7 +42,7 @@ impl crate::D1Store {
     pub async fn find_event_keys(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError> {
         Ok(self
@@ -56,7 +56,7 @@ impl crate::D1Store {
             )
             .bind(&[
                 aggregate_type.into(),
-                JsValue::from_f64(aggregate_id as f64),
+                aggregate_id.into(),
                 JsValue::from_f64(limit as f64),
             ])?
             .all()

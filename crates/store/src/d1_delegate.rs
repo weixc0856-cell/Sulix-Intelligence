@@ -270,7 +270,7 @@ impl StoreBackend for crate::D1Store {
         &self,
         event_id: &str,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         event_type: &str,
         object_key: &str,
         occurred_at: i64,
@@ -280,7 +280,7 @@ impl StoreBackend for crate::D1Store {
     async fn find_event_keys(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError> {
         crate::D1Store::find_event_keys(self, aggregate_type, aggregate_id, limit).await

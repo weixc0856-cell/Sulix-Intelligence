@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use store::StoreBackend;
 
-use crate::{Event, EventId, EventStore, EventStoreError};
+use crate::{EventEnvelope, EventId, EventStore, EventStoreError};
 
 /// Legacy EventStore that reads/writes the D1 `signal_events` table.
 ///
@@ -25,12 +25,21 @@ impl<S: StoreBackend> D1EventBackend<S> {
 
 #[async_trait(?Send)]
 impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
-    async fn append_event(&self, event: &Event) -> Result<EventId, EventStoreError> {
+    async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
         let payload_str = serde_json::to_string(&event.payload)
             .map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
 
+        let numeric_id: i64 = event
+            .aggregate
+            .aggregate_id
+            .trim_start_matches("SIG-")
+            .trim_start_matches("DEC-")
+            .trim_start_matches("OUT-")
+            .parse()
+            .unwrap_or(0);
+
         self.store
-            .insert_signal_event(event.aggregate_id, &event.event_type, Some(&payload_str))
+            .insert_signal_event(numeric_id, &event.event_type, Some(&payload_str))
             .await?;
 
         Ok(event.event_id.clone())
@@ -39,23 +48,33 @@ impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
     async fn load_events(
         &self,
         _aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
-    ) -> Result<Vec<Event>, EventStoreError> {
-        let rows = self.store.load_signal_events(aggregate_id, limit).await?;
+    ) -> Result<Vec<EventEnvelope>, EventStoreError> {
+        let numeric_id: i64 = aggregate_id
+            .trim_start_matches("SIG-")
+            .trim_start_matches("DEC-")
+            .trim_start_matches("OUT-")
+            .parse()
+            .unwrap_or(0);
 
-        let events: Vec<Event> = rows
+        let rows = self.store.load_signal_events(numeric_id, limit).await?;
+
+        let events: Vec<EventEnvelope> = rows
             .into_iter()
-            .map(|r| Event {
+            .map(|r| EventEnvelope {
                 schema_version: 1,
                 event_id: format!("legacy_{}", r.id),
-                aggregate_type: "signal_thread".into(),
-                aggregate_id: r.thread_id,
+                aggregate: crate::AggregateRef {
+                    aggregate_type: "signal_thread".into(),
+                    aggregate_id: format!("SIG-{}", r.thread_id),
+                },
                 event_type: r.event_type,
                 payload: r
                     .payload
                     .and_then(|p| serde_json::from_str(&p).ok())
                     .unwrap_or(serde_json::Value::Null),
+                metadata: crate::EventMetadata { actor: "system".into(), source: "legacy".into() },
                 occurred_at: r.created_at,
                 created_at: r.created_at,
             })

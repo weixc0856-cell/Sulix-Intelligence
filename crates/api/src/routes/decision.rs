@@ -7,12 +7,29 @@
 //! - `GET    /api/intelligence/signals/:id/decisions`    — decisions by signal
 //! - `POST   /api/intelligence/decisions/:id/status`     — update status
 
+use event_store::{EventR2Backend, EventStore, NoopEventStore};
+use object_store::R2Store;
 use serde_json::json;
+use store::{D1Store, NewDecisionEvaluation, NewOutcomeEvent, Store};
 use worker::*;
 
-use store::{NewDecision, NewDecisionEvaluation, NewOutcomeEvent, Store};
-
+use crate::services::decision::{CreateDecision, DecisionService};
 use crate::shared::response;
+
+/// Build a DecisionService from worker env bindings.
+/// Uses NoopEventStore (safe fallback) when R2 is unavailable.
+fn build_decision_service(env: &Env) -> Result<DecisionService<D1Store, Box<dyn EventStore>>> {
+    let db = env.d1("DB")?;
+    let store = D1Store::new(db);
+    let event_store: Box<dyn EventStore> = match env.bucket("RAW_CONTENT").ok() {
+        Some(bucket) => Box::new(EventR2Backend::new(
+            D1Store::new(env.d1("DB")?),
+            R2Store::new(bucket),
+        )),
+        None => Box::new(NoopEventStore::new()),
+    };
+    Ok(DecisionService::new(store, event_store))
+}
 
 /// GET /api/intelligence/decisions?status=active
 pub async fn list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -47,7 +64,10 @@ pub async fn detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 
 /// POST /api/intelligence/signals/:id/decisions
 pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let svc = match build_decision_service(&ctx.env) {
+        Ok(s) => s,
+        Err(_) => return response::json_err(503, "service unavailable"),
+    };
     let signal_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal thread id"),
@@ -58,16 +78,15 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    let decision_type = body["decision_type"].as_str().unwrap_or("monitor");
     let title = match body["title"].as_str() {
         Some(t) => t,
         None => return response::json_err(400, "title is required"),
     };
 
-    let new_decision = NewDecision {
+    let cmd = CreateDecision {
         signal_thread_id: Some(signal_id),
-        actor_id: None,
-        decision_type: decision_type.to_string(),
+        actor_id: body["actor_id"].as_i64().or(Some(0)),
+        decision_type: body["decision_type"].as_str().unwrap_or("monitor").to_string(),
         title: title.to_string(),
         hypothesis: body["hypothesis"].as_str().map(String::from),
         rationale: body["rationale"].as_str().map(String::from),
@@ -75,8 +94,8 @@ pub async fn create(mut req: Request, ctx: RouteContext<()>) -> Result<Response>
         priority: body["priority"].as_str().unwrap_or("medium").to_string(),
     };
 
-    match store.create_decision(&new_decision).await {
-        Ok(id) => response::json_ok(json!({ "success": true, "id": id })),
+    match svc.create_decision(cmd).await {
+        Ok(decision) => response::json_ok(json!({ "success": true, "decision": decision })),
         Err(e) => {
             console_log!("[Sulix:decisions] create failed: {e}");
             response::json_err_internal("create decision failed")
@@ -102,7 +121,10 @@ pub async fn by_signal(_req: Request, ctx: RouteContext<()>) -> Result<Response>
 
 /// POST /api/intelligence/decisions/:id/status
 pub async fn update_status(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let svc = match build_decision_service(&ctx.env) {
+        Ok(s) => s,
+        Err(_) => return response::json_err(503, "service unavailable"),
+    };
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -118,7 +140,7 @@ pub async fn update_status(mut req: Request, ctx: RouteContext<()>) -> Result<Re
         None => return response::json_err(400, "status is required"),
     };
 
-    match store.update_decision_status(id, status).await {
+    match svc.change_status(id, status).await {
         Ok(()) => response::json_ok(json!({ "success": true })),
         Err(e) => {
             console_log!("[Sulix:decisions] update_status failed: {e}");
@@ -143,7 +165,10 @@ pub async fn stats(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 
 /// POST /api/intelligence/decisions/:id/outcomes
 pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let svc = match build_decision_service(&ctx.env) {
+        Ok(s) => s,
+        Err(_) => return response::json_err(503, "service unavailable"),
+    };
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -154,7 +179,7 @@ pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<R
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    let new_outcome = NewOutcomeEvent {
+    let outcome = NewOutcomeEvent {
         decision_id,
         outcome_type: body["outcome_type"].as_str().unwrap_or("observation").to_string(),
         observation: body["observation"].as_str().unwrap_or("").to_string(),
@@ -162,8 +187,8 @@ pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<R
         observed_at: body["observed_at"].as_i64(),
     };
 
-    match store.create_outcome(&new_outcome).await {
-        Ok(id) => response::json_ok(json!({ "success": true, "id": id })),
+    match svc.record_outcome(decision_id, &outcome).await {
+        Ok(()) => response::json_ok(json!({ "success": true })),
         Err(e) => {
             console_log!("[Sulix:outcomes] create failed: {e}");
             response::json_err_internal("create outcome failed")
@@ -175,7 +200,10 @@ pub async fn create_outcome(mut req: Request, ctx: RouteContext<()>) -> Result<R
 
 /// POST /api/intelligence/decisions/:id/evaluations
 pub async fn create_evaluation(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let svc = match build_decision_service(&ctx.env) {
+        Ok(s) => s,
+        Err(_) => return response::json_err(503, "service unavailable"),
+    };
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -186,18 +214,17 @@ pub async fn create_evaluation(mut req: Request, ctx: RouteContext<()>) -> Resul
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    let eval_str = body["evaluation"].as_str().unwrap_or("inconclusive");
-    let new_eval = NewDecisionEvaluation {
+    let eval = NewDecisionEvaluation {
         decision_id,
-        evaluation: eval_str.into(),
+        evaluation: body["evaluation"].as_str().unwrap_or("inconclusive").into(),
         confidence: body["confidence"].as_f64(),
         reasoning: body["reasoning"].as_str().map(String::from),
         evaluator: body["evaluator"].as_str().unwrap_or("manual").into(),
         evaluated_at: body["evaluated_at"].as_i64(),
     };
 
-    match store.create_evaluation(&new_eval).await {
-        Ok(id) => response::json_ok(json!({ "success": true, "id": id })),
+    match svc.record_evaluation(decision_id, &eval).await {
+        Ok(()) => response::json_ok(json!({ "success": true })),
         Err(e) => {
             console_log!("[Sulix:evaluations] create failed: {e}");
             response::json_err_internal("create evaluation failed")

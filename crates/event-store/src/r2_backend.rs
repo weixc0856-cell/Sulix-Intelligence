@@ -8,7 +8,7 @@ use object_store::ObjectStore;
 use store::StoreBackend;
 use worker::console_log;
 
-use crate::{Event, EventId, EventStore, EventStoreError, keys};
+use crate::{EventEnvelope, EventId, EventStore, EventStoreError, keys};
 
 /// Production EventStore backed by D1 (index + outbox) and R2 (payload archive).
 pub struct EventR2Backend<S: StoreBackend> {
@@ -24,16 +24,16 @@ impl<S: StoreBackend> EventR2Backend<S> {
 
 #[async_trait(?Send)]
 impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
-    async fn append_event(&self, event: &Event) -> Result<EventId, EventStoreError> {
+    async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
         let event_id = event.event_id.clone();
-        let object_key = keys::event(&event.aggregate_type, event.occurred_at, &event_id);
+        let object_key = keys::event(&event.aggregate.aggregate_type, event.occurred_at, &event_id);
 
         // 1. D1 outbox INSERT (durable first — outbox-first pattern)
         let payload =
             serde_json::to_string(&event).map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
         self.store
             .insert_outbox(&store::NewOutbox {
-                object_type: format!("event:{}", event.aggregate_type),
+                object_type: format!("event:{}", event.aggregate.aggregate_type),
                 object_key: object_key.clone(),
                 payload,
             })
@@ -43,8 +43,8 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
         self.store
             .insert_event_index(
                 &event_id,
-                &event.aggregate_type,
-                event.aggregate_id,
+                &event.aggregate.aggregate_type,
+                &event.aggregate.aggregate_id,
                 &event.event_type,
                 &object_key,
                 event.occurred_at,
@@ -57,9 +57,9 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
     async fn load_events(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
-    ) -> Result<Vec<Event>, EventStoreError> {
+    ) -> Result<Vec<EventEnvelope>, EventStoreError> {
         // 1. D1 index: get object keys
         let index_rows = self
             .store
@@ -71,11 +71,11 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
         }
 
         // 2. R2: batch fetch payloads
-        let mut events: Vec<Event> = Vec::new();
+        let mut events: Vec<EventEnvelope> = Vec::new();
         for row in &index_rows {
             match self.object_store.read_object(&row.object_key).await {
                 Ok(Some(bytes)) => {
-                    if let Ok(event) = serde_json::from_slice::<Event>(&bytes) {
+                    if let Ok(event) = serde_json::from_slice::<EventEnvelope>(&bytes) {
                         events.push(event);
                     }
                 }

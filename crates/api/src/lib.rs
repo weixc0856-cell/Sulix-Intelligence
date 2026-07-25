@@ -23,6 +23,7 @@ mod entities;
 mod rebuild;
 mod routes;
 mod semantic;
+mod services;
 mod shared;
 mod strategies;
 

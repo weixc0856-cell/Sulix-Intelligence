@@ -49,7 +49,8 @@ async fn merge_signal_events(
 ) -> Result<Vec<SignalTimelineEvent>, StoreError> {
     // Try EventStore first (R2 archive)
     if let Some(es) = event_store {
-        match es.load_events("signal_thread", thread_id, 50).await {
+        let agg_id = format!("SIG-{thread_id:06}");
+        match es.load_events("signal_thread", &agg_id, 50).await {
             Ok(events) if !events.is_empty() => {
                 let mut merged: Vec<SignalTimelineEvent> = instance_timeline.to_vec();
                 for e in events {

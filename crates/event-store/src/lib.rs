@@ -1,14 +1,14 @@
 //! Event Store — unified abstraction for append-only event streams.
 //!
 //! Every state mutation in the Intelligence pipeline (signal events, decision
-//! outcomes, reflections) produces an `Event` that is durably recorded via
-//! the [`EventStore`] trait.  Events are written outbox-first to D1, then
+//! outcomes, reflections) produces an [`EventEnvelope`] that is durably recorded
+//! via the [`EventStore`] trait.  Events are written outbox-first to D1, then
 //! asynchronously archived to R2.
 //!
 //! ## Architecture
 //!
 //! ```text
-//! SignalEngine / DecisionEngine / ...
+//! SignalEngine / DecisionService / ...
 //!     │
 //!     └── EventStore::append_event()
 //!             │
@@ -20,25 +20,49 @@
 //! Reading follows the reverse path: D1 index → R2 payload → legacy fallback.
 
 mod d1_backend;
+mod noop;
 mod r2_backend;
 
 use async_trait::async_trait;
 
 pub use d1_backend::D1EventBackend;
+pub use noop::NoopEventStore;
 pub use r2_backend::EventR2Backend;
 
 /// Unique identifier for an event, formatted as `evt_{timestamp}_{aggregate_id}_{seq}`.
 pub type EventId = String;
 
-/// An immutable event in the Memory Event Stream.
+/// Reference to an aggregate (entity) in the system.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Event {
+pub struct AggregateRef {
+    /// e.g. "decision", "signal_thread", "outcome", "reflection"
+    pub aggregate_type: String,
+    /// e.g. "DEC-000123", "SIG-042", "OUT-000001"
+    pub aggregate_id: String,
+}
+
+/// Provenance metadata for an event — who caused it and how.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EventMetadata {
+    /// e.g. "user", "system", "agent"
+    pub actor: String,
+    /// e.g. "api", "cron", "worker", "import"
+    pub source: String,
+}
+
+/// An immutable event in the Memory Event Stream.
+///
+/// This is the canonical envelope for all events in the Sulix Intelligence
+/// Memory Layer.  Every aggregate type (decision, outcome, signal thread,
+/// reflection) uses the same envelope structure.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EventEnvelope {
     pub schema_version: i32,
     pub event_id: EventId,
-    pub aggregate_type: String,
-    pub aggregate_id: i64,
+    pub aggregate: AggregateRef,
     pub event_type: String,
     pub payload: serde_json::Value,
+    pub metadata: EventMetadata,
     pub occurred_at: i64,
     pub created_at: i64,
 }
@@ -73,15 +97,26 @@ impl From<object_store::ObjectStoreError> for EventStoreError {
 pub trait EventStore {
     /// Append an event to the archive.  Outbox-first: the event is durable
     /// in D1 immediately; R2 archival happens asynchronously.
-    async fn append_event(&self, event: &Event) -> Result<EventId, EventStoreError>;
+    async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError>;
 
     /// Load events for an aggregate, newest first.
     async fn load_events(
         &self,
         aggregate_type: &str,
-        aggregate_id: i64,
+        aggregate_id: &str,
         limit: u32,
-    ) -> Result<Vec<Event>, EventStoreError>;
+    ) -> Result<Vec<EventEnvelope>, EventStoreError>;
+}
+
+// Blanket impl: Box<T> implements EventStore when T does.
+#[async_trait(?Send)]
+impl<T: EventStore + ?Sized> EventStore for Box<T> {
+    async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
+        (**self).append_event(event).await
+    }
+    async fn load_events(&self, aggregate_type: &str, aggregate_id: &str, limit: u32) -> Result<Vec<EventEnvelope>, EventStoreError> {
+        (**self).load_events(aggregate_type, aggregate_id, limit).await
+    }
 }
 
 /// Key prefix helpers for the Memory Event Stream.
@@ -130,9 +165,9 @@ pub mod keys {
         format!("memory/events/{aggregate_type}/{year:04}/{month:02}/{day:02}/{event_id}.json")
     }
 
-    /// Helper: event_id from timestamp + aggregate_id + seq.
-    pub fn format_id(aggregate_id: i64, created_at: i64, seq: u64) -> String {
-        format!("evt_{created_at}_{aggregate_id}_{seq}")
+    /// Helper: event_id from created_at + seq.
+    pub fn format_id(created_at: i64, seq: u64) -> String {
+        format!("evt_{created_at}_{seq}")
     }
 }
 
@@ -149,7 +184,7 @@ mod tests {
 
     #[test]
     fn keys_event_id_format() {
-        let id = keys::format_id(42, 1721865600, 1);
-        assert_eq!(id, "evt_1721865600_42_1");
+        let id = keys::format_id(1721865600, 1);
+        assert_eq!(id, "evt_1721865600_1");
     }
 }
