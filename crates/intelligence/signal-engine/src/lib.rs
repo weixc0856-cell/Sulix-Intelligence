@@ -25,10 +25,12 @@
 #![deny(clippy::all)]
 #![deny(unused)]
 
+pub mod discovery;
+pub mod pipeline;
 pub mod query;
+pub mod scoring;
 
 mod candidate;
-mod scoring;
 
 pub use scoring::score_to_impact;
 

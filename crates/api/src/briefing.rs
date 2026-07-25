@@ -9,7 +9,7 @@
 //! When no briefing has been generated yet, returns HTTP 202 with
 //! `{"status":"processing"}`.
 
-use crate::{fmt_date_ymd, json_ok, Store};
+use crate::{fmt_date_ymd, json_err, json_err_internal, json_ok, param_i64, Store};
 use worker::*;
 
 pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -52,5 +52,31 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Resp
             Ok(resp)
         }
         Err(e) => crate::json_err_internal(&e.to_string()),
+    }
+}
+
+/// GET /api/intelligence/briefings — list all historical briefings.
+pub async fn list_briefings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match store.list_briefings().await {
+        Ok(briefings) => json_ok(serde_json::json!({ "success": true, "briefings": briefings })),
+        Err(e) => json_err_internal(&e.to_string()),
+    }
+}
+
+/// GET /api/intelligence/briefings/:id — single historical briefing.
+pub async fn get_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id = match param_i64(&ctx, "id") {
+        Some(v) => v,
+        None => return json_err(400, "invalid briefing id"),
+    };
+    match store.get_briefing_by_id(id).await {
+        Ok(Some(content)) => match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(briefing) => json_ok(briefing),
+            Err(e) => json_err_internal(&e.to_string()),
+        },
+        Ok(None) => json_err(404, "briefing not found"),
+        Err(e) => json_err_internal(&e.to_string()),
     }
 }

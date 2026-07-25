@@ -1454,7 +1454,6 @@ version = "0.1.0"
 dependencies = [
  "ai-pipeline",
  "api",
- "async-trait",
  "console_error_panic_hook",
  "embedding",
  "entity",

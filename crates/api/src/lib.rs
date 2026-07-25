@@ -49,6 +49,8 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
         .get_async("/api/intelligence/threads/:id", routes::signal::thread_detail)
         .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
+        .get_async("/api/intelligence/briefings", briefing::list_briefings)
+        .get_async("/api/intelligence/briefings/:id", briefing::get_briefing)
         // Entity Graph
         .get_async("/api/intelligence/entities", entities::entities_list)
         .get_async("/api/intelligence/entities/:id", entities::entities_get)
