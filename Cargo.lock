@@ -254,6 +254,7 @@ dependencies = [
  "serde",
  "thiserror",
  "url",
+ "uuid",
  "worker",
 ]
 
