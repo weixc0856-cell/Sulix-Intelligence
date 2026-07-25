@@ -41,6 +41,20 @@ impl Default for SignalProvenance {
     }
 }
 
+/// Result of a signal lifecycle mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalMutation {
+    Created,
+    Updated,
+}
+
+/// Result returned by upsert_signal_thread.
+#[derive(Debug, Clone, Copy)]
+pub struct SignalUpsertResult {
+    pub id: i64,
+    pub mutation: SignalMutation,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SignalEvidence {
     pub id: i64,

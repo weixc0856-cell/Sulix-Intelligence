@@ -163,48 +163,6 @@ impl StoreBackend for D1Store {
         D1Store::entity_signal_candidates(self, now, days, limit).await
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn save_signal(
-        &self,
-        entity_id: Option<i64>,
-        title: &str,
-        summary: &str,
-        confidence: f64,
-        impact: &str,
-        trend: &str,
-        article_count: i64,
-        source_count: i64,
-        evidence_ids: &[i64],
-        related_ids: &[i64],
-    ) -> Result<i64, StoreError> {
-        D1Store::save_signal(
-            self,
-            entity_id,
-            title,
-            summary,
-            confidence,
-            impact,
-            trend,
-            article_count,
-            source_count,
-            evidence_ids,
-            related_ids,
-        )
-        .await
-    }
-
-    async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
-        D1Store::load_recent_signals(self, limit, offset).await
-    }
-
-    async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
-        D1Store::load_signal_by_id(self, id).await
-    }
-
-    async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
-        D1Store::entity_signals(self, entity_id, limit).await
-    }
-
     async fn upsert_signal_thread(
         &self,
         signal_key: &str,
@@ -213,7 +171,7 @@ impl StoreBackend for D1Store {
         status: &str,
         discovery_method: &DiscoveryMethod,
         discovery_score: Option<f64>,
-    ) -> Result<i64, StoreError> {
+    ) -> Result<SignalUpsertResult, StoreError> {
         D1Store::upsert_signal_thread(
             self,
             signal_key,
@@ -224,18 +182,6 @@ impl StoreBackend for D1Store {
             discovery_score,
         )
         .await
-    }
-
-    async fn append_signal_instance(
-        &self,
-        thread_id: i64,
-        confidence: f64,
-        impact: &str,
-        trend: &str,
-        article_count: i64,
-        source_count: i64,
-    ) -> Result<i64, StoreError> {
-        D1Store::append_signal_instance(self, thread_id, confidence, impact, trend, article_count, source_count).await
     }
 
     async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError> {

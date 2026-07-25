@@ -1,8 +1,11 @@
 use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 
+use crate::{SignalMutation, SignalUpsertResult};
+
 impl crate::D1Store {
-    /// Upsert a signal thread by signal_key. Returns thread id.
+    /// Upsert a signal thread by signal_key.
+    /// Returns `SignalUpsertResult` indicating whether the thread was created or updated.
     pub async fn upsert_signal_thread(
         &self,
         signal_key: &str,
@@ -11,7 +14,7 @@ impl crate::D1Store {
         status: &str,
         discovery_method: &crate::DiscoveryMethod,
         discovery_score: Option<f64>,
-    ) -> Result<i64, crate::StoreError> {
+    ) -> Result<SignalUpsertResult, crate::StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let row = self
             .db
@@ -32,7 +35,7 @@ impl crate::D1Store {
             .await?;
 
         if let Some(id) = row.and_then(|v| v["id"].as_i64()) {
-            return Ok(id);
+            return Ok(SignalUpsertResult { id, mutation: SignalMutation::Created });
         }
 
         let row = self
@@ -48,7 +51,10 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await?;
 
-        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))
+        let id = row
+            .and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))?;
+        Ok(SignalUpsertResult { id, mutation: SignalMutation::Updated })
     }
 
     /// Append a signal instance to a thread.

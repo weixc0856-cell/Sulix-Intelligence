@@ -78,7 +78,7 @@ impl SignalEngine {
             let impact = score_to_impact(candidate.score);
 
             // Upsert thread (create or update existing by key)
-            let thread_id = store
+            let upsert = store
                 .upsert_signal_thread(
                     &signal_key,
                     Some(candidate.entity_id),
@@ -88,7 +88,10 @@ impl SignalEngine {
                     Some(candidate.score),
                 )
                 .await?;
-            report.threads_created += 1;
+            let thread_id = upsert.id;
+            if upsert.mutation == store::SignalMutation::Created {
+                report.threads_created += 1;
+            }
 
             // Append a structured instance snapshot
             let _instance_id = store
@@ -119,7 +122,7 @@ impl SignalEngine {
             report.events_written += 1;
 
             // Write lifecycle event if newly created
-            if report.threads_created == 1 && report.instances_appended == 1 {
+            if upsert.mutation == store::SignalMutation::Created {
                 store.insert_signal_event(thread_id, "created", None).await?;
                 report.events_written += 1;
             }

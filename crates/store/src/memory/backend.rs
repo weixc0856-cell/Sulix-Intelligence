@@ -4,9 +4,9 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntityRef, EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
-    NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
-    SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
+    NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
+    SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -331,47 +331,6 @@ impl StoreBackend for MemoryStore {
         Ok(Vec::new())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn save_signal(
-        &self,
-        _entity_id: Option<i64>,
-        title: &str,
-        _summary: &str,
-        _confidence: f64,
-        _impact: &str,
-        _trend: &str,
-        _article_count: i64,
-        _source_count: i64,
-        _evidence_ids: &[i64],
-        _related_ids: &[i64],
-    ) -> Result<i64, StoreError> {
-        // MemoryStore: just count signals for test assertions
-        self.artifacts.borrow_mut().push(ArtifactData {
-            id: 0,
-            artifact_type: "signal".into(),
-            entity_id: _entity_id.unwrap_or(0),
-            r2_key: title.to_string(),
-            schema_version: String::new(),
-            model: None,
-            pipeline_version: String::new(),
-            metadata: None,
-            created_at: 0,
-        });
-        Ok(self.artifacts.borrow().len() as i64)
-    }
-
-    async fn load_recent_signals(&self, _limit: u32, _offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
-        Ok(Vec::new())
-    }
-
-    async fn load_signal_by_id(&self, _id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
-        Ok(None)
-    }
-
-    async fn entity_signals(&self, _entity_id: i64, _limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
-        Ok(Vec::new())
-    }
-
     async fn upsert_signal_thread(
         &self,
         _signal_key: &str,
@@ -380,20 +339,8 @@ impl StoreBackend for MemoryStore {
         _status: &str,
         _discovery_method: &DiscoveryMethod,
         _discovery_score: Option<f64>,
-    ) -> Result<i64, StoreError> {
-        Ok(1)
-    }
-
-    async fn append_signal_instance(
-        &self,
-        _thread_id: i64,
-        _confidence: f64,
-        _impact: &str,
-        _trend: &str,
-        _article_count: i64,
-        _source_count: i64,
-    ) -> Result<i64, StoreError> {
-        Ok(1)
+    ) -> Result<SignalUpsertResult, StoreError> {
+        Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
     }
 
     async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {

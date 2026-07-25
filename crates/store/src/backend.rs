@@ -7,9 +7,9 @@ use async_trait::async_trait;
 
 use crate::{
     ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntityRef, EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision,
-    NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput,
-    SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
+    EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
+    NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
+    SignalThreadFilter, SignalUpsertResult, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -123,32 +123,7 @@ pub trait StoreBackend {
         limit: u32,
     ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
 
-    // ===== Signal Persistence =====
-
-    /// Persist an intelligence signal with evidence and entity links.
-    #[allow(clippy::too_many_arguments)]
-    async fn save_signal(
-        &self,
-        entity_id: Option<i64>,
-        title: &str,
-        summary: &str,
-        confidence: f64,
-        impact: &str,
-        trend: &str,
-        article_count: i64,
-        source_count: i64,
-        evidence_ids: &[i64],
-        related_ids: &[i64],
-    ) -> Result<i64, StoreError>;
-
-    /// Load recent intelligence signals.
-    async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
-
-    /// Load a single signal by id.
-    async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError>;
-
-    /// Load signals anchored to a specific entity.
-    async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
+    // ===== Signal Threads (V2) =====
 
     async fn upsert_signal_thread(
         &self,
@@ -158,17 +133,7 @@ pub trait StoreBackend {
         status: &str,
         discovery_method: &DiscoveryMethod,
         discovery_score: Option<f64>,
-    ) -> Result<i64, StoreError>;
-
-    async fn append_signal_instance(
-        &self,
-        thread_id: i64,
-        confidence: f64,
-        impact: &str,
-        trend: &str,
-        article_count: i64,
-        source_count: i64,
-    ) -> Result<i64, StoreError>;
+    ) -> Result<SignalUpsertResult, StoreError>;
 
     async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError>;
 
