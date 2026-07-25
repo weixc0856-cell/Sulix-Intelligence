@@ -7,6 +7,7 @@ pub struct SignalCandidate {
     pub category: String,
     pub signal_summary: String,
     pub article_count: usize,
+    pub source_count: usize,
     pub avg_score: f64,
     pub trend: String,
     /// Evidence articles from this signal, carrying title/url/score for evidence binding.

@@ -8,8 +8,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::{
-    backend::StoreBackend, ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle,
-    RelatedEntity, StoreError,
+    backend::StoreBackend, ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
+    EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity,
+    SignalBriefInput, SignalThreadFilter, StoreError,
 };
 
 /// Per-feed fetch-result entry recorded by `record_fetch_result`.
@@ -421,5 +422,141 @@ impl StoreBackend for MemoryStore {
         let limit = limit as usize;
         result.truncate(limit);
         Ok(result)
+    }
+
+    async fn entity_articles(
+        &self,
+        entity_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<EntityArticle>, StoreError> {
+        let links = self.article_entity_links.borrow();
+
+        // Collect article IDs linked to this entity (dedup by id)
+        let mut ids: Vec<i64> = links
+            .iter()
+            .filter(|(_, eid)| *eid == entity_id)
+            .map(|(aid, _)| *aid)
+            .collect::<std::collections::HashSet<i64>>()
+            .into_iter()
+            .collect();
+
+        ids.sort();
+        ids.reverse();
+
+        let start = offset as usize;
+        let end = (start + limit as usize).min(ids.len());
+        let paged: Vec<EntityArticle> = if start < ids.len() {
+            ids[start..end]
+                .iter()
+                .map(|&id| EntityArticle {
+                    id,
+                    title: String::new(),
+                    url: None,
+                    feed_name: None,
+                    published_at: None,
+                    ai_summary: String::new(),
+                    score: 0.0,
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        Ok(paged)
+    }
+
+    async fn entity_activity_summary(
+        &self,
+        entity_id: i64,
+        _now: i64,
+        _days: i64,
+    ) -> Result<EntityActivitySummary, StoreError> {
+        let links = self.article_entity_links.borrow();
+
+        let article_ids: std::collections::HashSet<i64> = links
+            .iter()
+            .filter(|(_, eid)| *eid == entity_id)
+            .map(|(aid, _)| *aid)
+            .collect();
+
+        Ok(EntityActivitySummary {
+            article_count: article_ids.len() as i64,
+            source_count: 0,
+            avg_score: 0.0,
+            max_score: 0.0,
+            first_seen_at: None,
+            last_seen_at: None,
+            trend: "stable".into(),
+        })
+    }
+
+    async fn entity_signal_candidates(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn save_signal(
+        &self,
+        _entity_id: Option<i64>,
+        title: &str,
+        _summary: &str,
+        _confidence: f64,
+        _impact: &str,
+        _trend: &str,
+        _article_count: i64,
+        _source_count: i64,
+        _evidence_ids: &[i64],
+        _related_ids: &[i64],
+    ) -> Result<i64, StoreError> {
+        // MemoryStore: just count signals for test assertions
+        self.artifacts.borrow_mut().push(ArtifactData {
+            id: 0,
+            artifact_type: "signal".into(),
+            entity_id: _entity_id.unwrap_or(0),
+            r2_key: title.to_string(),
+            schema_version: String::new(),
+            model: None,
+            pipeline_version: String::new(),
+            metadata: None,
+            created_at: 0,
+        });
+        Ok(self.artifacts.borrow().len() as i64)
+    }
+
+    async fn load_recent_signals(&self, _limit: u32, _offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn load_signal_by_id(&self, _id: i64) -> Result<Option<IntelligenceSignal>, StoreError> {
+        Ok(None)
+    }
+
+    async fn entity_signals(&self, _entity_id: i64, _limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn upsert_signal_thread(&self, _signal_key: &str, _anchor_entity_id: Option<i64>, _title: &str, _status: &str) -> Result<i64, StoreError> {
+        Ok(1)
+    }
+
+    async fn append_signal_instance(&self, _thread_id: i64, _confidence: f64, _impact: &str, _trend: &str, _article_count: i64, _source_count: i64) -> Result<i64, StoreError> {
+        Ok(1)
+    }
+
+    async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn list_signal_threads(&self, _filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
+        Ok(Vec::new())
     }
 }

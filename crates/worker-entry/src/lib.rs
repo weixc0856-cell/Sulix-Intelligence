@@ -7,15 +7,17 @@ use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
 use worker::wasm_bindgen::JsValue;
 
 mod metrics;
+mod version;
 use metrics::PipelineMetrics;
+use version::PIPELINE_VERSION;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
-use ai_pipeline::briefing::{generate_daily_brief, EvidenceArticle, SignalCandidate};
+use ai_pipeline::briefing::{generate_daily_brief, SignalCandidate};
 use entity::{canonicalizer, classifier};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
-use store::{NewArticle, Store, StoreBackend};
+use store::{NewArticle, NewArtifact, SignalThreadFilter, Store, StoreBackend};
 
 // ---------------------------------------------------------------------------
 // WorkerHttpClient - bridges ai_pipeline::HttpClient over worker::Fetch
@@ -170,6 +172,22 @@ async fn process_one_feed(ctx: &FeedContext<'_, impl StoreBackend>, _env: &Env, 
                                         if let Err(e) = ctx.store.set_raw_content_r2_key(article_id, Some(&r2_key)).await
                                         {
                                             console_log!("  DB R2 key update failed for article {article_id}: {e}");
+                                        }
+                                        // Register artifact in artifact_registry for traceability
+                                        if let Err(e) = ctx
+                                            .store
+                                            .create_artifact(&NewArtifact {
+                                                artifact_type: "article_snapshot".into(),
+                                                entity_id: article_id,
+                                                r2_key: r2_key.clone(),
+                                                schema_version: "article.v1".into(),
+                                                model: None,
+                                                pipeline_version: PIPELINE_VERSION.into(),
+                                                metadata: None,
+                                            })
+                                            .await
+                                        {
+                                            console_log!("  artifact registry write failed for article {article_id}: {e}");
                                         }
                                     }
                                     body = full_text;
@@ -520,20 +538,29 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 1. Load signals
-    let today_signals = match store.signals_today(now).await {
+    // 1. Load active signal threads via filter-based query
+    let filter = SignalThreadFilter {
+        statuses: vec!["active".into(), "decaying".into()],
+        limit: 30,
+        min_score: 0.0,
+    };
+    let thread_inputs = match store.list_signal_threads(&filter).await {
         Ok(s) => s,
         Err(e) => {
-            console_log!("[Sulix:briefing] signals_today failed: {e}");
+            console_log!("[Sulix:briefing] list_signal_threads failed: {e}");
             return;
         }
     };
-    if today_signals.is_empty() {
-        console_log!("[Sulix:briefing] no signals today — skipping");
+    if thread_inputs.is_empty() {
+        console_log!("[Sulix:briefing] no active signal threads — skipping");
         return;
     }
 
-    // 2. Build summarizer
+    // 2. Convert to SignalCandidate via the From<SignalBriefInput> converter
+    let candidates: Vec<SignalCandidate> = thread_inputs.into_iter().map(Into::into).collect();
+    let total_signals_loaded = candidates.len() as u32;
+
+    // 3. Build summarizer
     let summarizer = match try_build_summarizer(env) {
         Some(s) => s,
         None => {
@@ -542,40 +569,12 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 3. Convert to SignalCandidate (pass article metadata through for evidence binding)
-    let candidates: Vec<SignalCandidate> = today_signals
-        .into_iter()
-        .map(|s| {
-            let articles: Vec<EvidenceArticle> = s
-                .articles
-                .iter()
-                .map(|a| EvidenceArticle {
-                    id: a.id,
-                    title: a.title.clone(),
-                    url: a.url.clone(),
-                    feed_name: a.feed_name.clone(),
-                    score: a.score,
-                })
-                .collect();
-            let avg_score: f64 = if !articles.is_empty() {
-                articles.iter().map(|a| a.score).sum::<f64>() / articles.len() as f64
-            } else {
-                0.0
-            };
-            SignalCandidate {
-                id: s.id,
-                title: s.title,
-                category: String::new(),
-                signal_summary: s.summary,
-                article_count: articles.len(),
-                avg_score,
-                trend: s.trend,
-                articles,
-            }
-        })
-        .collect();
+    // 4. Lifecycle evaluation (signals already persisted in signal_threads table)
+    if let Err(e) = store.update_signal_lifecycle(now).await {
+        console_log!("[Sulix:briefing] lifecycle update failed: {e}");
+    }
 
-    // 4. Acquire lock before generating (prevent concurrent cron runs)
+    // 5. Acquire lock before generating (prevent concurrent cron runs)
     let cache = env.kv("CACHE").ok();
     if let Some(ref cache) = cache {
         if let Ok(pb) = cache.put(&lock_key, "1") {
@@ -583,7 +582,7 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     }
 
-    // 5. Generate
+    // 6. Generate
     let briefing = match generate_daily_brief(candidates, &summarizer, &date, now).await {
         Ok(b) => b,
         Err(e) => {
@@ -592,17 +591,32 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         }
     };
 
-    // 6. Persist to D1
+    // 7. Persist to D1
     let content = serde_json::to_string(&briefing).unwrap_or_default();
     if let Err(e) = store.save_briefing(&date, now, briefing.signal_count, &content).await {
         console_log!("[Sulix:briefing] D1 save failed: {e}");
         return;
     }
 
-    // 7. Write KV cache
+    // 8. Write KV cache
     if let Some(ref cache) = cache {
         let cache_key = format!("briefing:{date}");
         if let Ok(pb) = cache.put(&cache_key, &content) {
+            let _ = pb.expiration_ttl(21600).execute().await;
+        }
+    }
+
+    // 9. Save provenance alongside the briefing
+    let provenance = BriefingProvenance {
+        pipeline_version: PIPELINE_VERSION.into(),
+        generated_at: now,
+        signal_count: briefing.signal_count,
+        insight_count: briefing.insights.len() as u32,
+        total_signals_loaded,
+    };
+    if let Some(ref cache) = cache {
+        let prov_key = format!("briefing_provenance:{date}");
+        if let Ok(pb) = cache.put(&prov_key, serde_json::to_string(&provenance).unwrap_or_default()) {
             let _ = pb.expiration_ttl(21600).execute().await;
         }
     }
@@ -611,6 +625,16 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         "[Sulix:briefing] generated for {date} — {} insights",
         briefing.insights.len()
     );
+}
+
+/// Provenance metadata recorded alongside each generated briefing.
+#[derive(Serialize)]
+struct BriefingProvenance {
+    pipeline_version: String,
+    generated_at: i64,
+    signal_count: u32,
+    insight_count: u32,
+    total_signals_loaded: u32,
 }
 
 fn try_build_summarizer(env: &Env) -> Option<HttpSummarizer> {

@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 
-use crate::{ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle, RelatedEntity, StoreError};
+use crate::{
+    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
+    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, SignalThreadFilter, StoreError,
+};
 
 /// Storage backend for the feed pipeline.
 ///
@@ -100,4 +103,82 @@ pub trait StoreBackend {
 
     /// List artifact_registry entries for a given entity.
     async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
+
+    // ===== Entity Intelligence methods =====
+
+    /// List articles linked to an entity (Evidence).
+    async fn entity_articles(
+        &self,
+        entity_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<EntityArticle>, StoreError>;
+
+    /// Activity summary for an entity over the last N days.
+    async fn entity_activity_summary(
+        &self,
+        entity_id: i64,
+        now: i64,
+        days: i64,
+    ) -> Result<EntityActivitySummary, StoreError>;
+
+    /// Generate entity-anchored signal candidates with 5-factor scoring.
+    async fn entity_signal_candidates(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
+
+    // ===== Signal Persistence =====
+
+    /// Persist an intelligence signal with evidence and entity links.
+    #[allow(clippy::too_many_arguments)]
+    async fn save_signal(
+        &self,
+        entity_id: Option<i64>,
+        title: &str,
+        summary: &str,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        evidence_ids: &[i64],
+        related_ids: &[i64],
+    ) -> Result<i64, StoreError>;
+
+    /// Load recent intelligence signals.
+    async fn load_recent_signals(&self, limit: u32, offset: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
+
+    /// Load a single signal by id.
+    async fn load_signal_by_id(&self, id: i64) -> Result<Option<IntelligenceSignal>, StoreError>;
+
+    /// Load signals anchored to a specific entity.
+    async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
+
+    async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+    ) -> Result<i64, StoreError>;
+
+    async fn append_signal_instance(
+        &self,
+        thread_id: i64,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+    ) -> Result<i64, StoreError>;
+
+    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError>;
+
+    async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError>;
+
+    /// List signal threads with dynamic filtering.
+    async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError>;
 }
