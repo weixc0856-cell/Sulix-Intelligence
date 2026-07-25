@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 
-use crate::{ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle, RelatedEntity, StoreError};
+use crate::{
+    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact,
+    NewArticle, RelatedEntity, StoreError,
+};
 
 /// Storage backend for the feed pipeline.
 ///
@@ -100,4 +103,22 @@ pub trait StoreBackend {
 
     /// List artifact_registry entries for a given entity.
     async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
+
+    // ===== Entity Intelligence methods =====
+
+    /// List articles linked to an entity (Evidence).
+    async fn entity_articles(
+        &self,
+        entity_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<EntityArticle>, StoreError>;
+
+    /// Activity summary for an entity over the last N days.
+    async fn entity_activity_summary(
+        &self,
+        entity_id: i64,
+        now: i64,
+        days: i64,
+    ) -> Result<EntityActivitySummary, StoreError>;
 }

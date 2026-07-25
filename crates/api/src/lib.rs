@@ -112,6 +112,8 @@ pub fn router() -> Router<'static, ()> {
         // Entity Graph
         .get_async("/api/intelligence/entities", entities::entities_list)
         .get_async("/api/intelligence/entities/:id", entities::entities_get)
+        .get_async("/api/intelligence/entities/:id/activity", entities::entities_activity)
+        .get_async("/api/intelligence/entities/:id/articles", entities::entities_articles)
         .get_async("/api/intelligence/entities/:id/relations", entities::entities_get_relations)
         // Feed CRUD
         .get_async("/api/feeds", feeds_list)

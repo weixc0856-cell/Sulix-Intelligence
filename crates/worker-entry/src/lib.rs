@@ -7,7 +7,9 @@ use vectorize::{VectorizeIndex, VectorMetadata, VectorRecord};
 use worker::wasm_bindgen::JsValue;
 
 mod metrics;
+mod version;
 use metrics::PipelineMetrics;
+use version::PIPELINE_VERSION;
 
 use ai_pipeline::{process_article, HttpClient, HttpSummarizer, PipelineError};
 use ai_pipeline::briefing::{generate_daily_brief, EvidenceArticle, SignalCandidate};
@@ -15,7 +17,7 @@ use entity::{canonicalizer, classifier};
 use api::router;
 use fetcher::{fetch_feed, FetchOutcome};
 use rules::{score, ArticleInput, Rule};
-use store::{NewArticle, Store, StoreBackend};
+use store::{NewArticle, NewArtifact, Store, StoreBackend};
 
 // ---------------------------------------------------------------------------
 // WorkerHttpClient - bridges ai_pipeline::HttpClient over worker::Fetch
@@ -170,6 +172,22 @@ async fn process_one_feed(ctx: &FeedContext<'_, impl StoreBackend>, _env: &Env, 
                                         if let Err(e) = ctx.store.set_raw_content_r2_key(article_id, Some(&r2_key)).await
                                         {
                                             console_log!("  DB R2 key update failed for article {article_id}: {e}");
+                                        }
+                                        // Register artifact in artifact_registry for traceability
+                                        if let Err(e) = ctx
+                                            .store
+                                            .create_artifact(&NewArtifact {
+                                                artifact_type: "article_snapshot".into(),
+                                                entity_id: article_id,
+                                                r2_key: r2_key.clone(),
+                                                schema_version: "article.v1".into(),
+                                                model: None,
+                                                pipeline_version: PIPELINE_VERSION.into(),
+                                                metadata: None,
+                                            })
+                                            .await
+                                        {
+                                            console_log!("  artifact registry write failed for article {article_id}: {e}");
                                         }
                                     }
                                     body = full_text;

@@ -8,8 +8,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::{
-    backend::StoreBackend, ArtifactEntry, EntityDetail, EntityRef, EntitySummary, Feed, NewArtifact, NewArticle,
-    RelatedEntity, StoreError,
+    backend::StoreBackend, ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySummary,
+    Feed, NewArtifact, NewArticle, RelatedEntity, StoreError,
 };
 
 /// Per-feed fetch-result entry recorded by `record_fetch_result`.
@@ -421,5 +421,71 @@ impl StoreBackend for MemoryStore {
         let limit = limit as usize;
         result.truncate(limit);
         Ok(result)
+    }
+
+    async fn entity_articles(
+        &self,
+        entity_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<EntityArticle>, StoreError> {
+        let links = self.article_entity_links.borrow();
+
+        // Collect article IDs linked to this entity (dedup by id)
+        let mut ids: Vec<i64> = links
+            .iter()
+            .filter(|(_, eid)| *eid == entity_id)
+            .map(|(aid, _)| *aid)
+            .collect::<std::collections::HashSet<i64>>()
+            .into_iter()
+            .collect();
+
+        ids.sort();
+        ids.reverse();
+
+        let start = offset as usize;
+        let end = (start + limit as usize).min(ids.len());
+        let paged: Vec<EntityArticle> = if start < ids.len() {
+            ids[start..end]
+                .iter()
+                .map(|&id| EntityArticle {
+                    id,
+                    title: String::new(),
+                    url: None,
+                    feed_name: None,
+                    published_at: None,
+                    ai_summary: String::new(),
+                    score: 0.0,
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        Ok(paged)
+    }
+
+    async fn entity_activity_summary(
+        &self,
+        entity_id: i64,
+        _now: i64,
+        _days: i64,
+    ) -> Result<EntityActivitySummary, StoreError> {
+        let links = self.article_entity_links.borrow();
+
+        let article_ids: std::collections::HashSet<i64> = links
+            .iter()
+            .filter(|(_, eid)| *eid == entity_id)
+            .map(|(aid, _)| *aid)
+            .collect();
+
+        Ok(EntityActivitySummary {
+            article_count: article_ids.len() as i64,
+            source_count: 0,
+            avg_score: 0.0,
+            max_score: 0.0,
+            first_seen_at: None,
+            last_seen_at: None,
+            trend: "stable".into(),
+        })
     }
 }
