@@ -6,9 +6,9 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    Feed, IntelligenceSignal, NewArticle, NewArtifact, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
-    SignalEvent, SignalThreadFilter, StoreError,
+    ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
+    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -221,4 +221,21 @@ pub trait StoreBackend {
         thread_id: i64,
         limit: u32,
     ) -> Result<Vec<RelatedEntityRef>, StoreError>;
+
+    // ===== Decision Loop =====
+
+    /// Create a new decision record.
+    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError>;
+
+    /// Get a single decision by id.
+    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError>;
+
+    /// List decisions, optionally filtered by status.
+    async fn list_decisions(&self, status: Option<&str>, limit: u32) -> Result<Vec<Decision>, StoreError>;
+
+    /// Update decision status.
+    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError>;
+
+    /// List decisions for a specific signal thread.
+    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError>;
 }

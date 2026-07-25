@@ -116,6 +116,7 @@ impl crate::D1Store {
                 .db
                 .prepare("SELECT DISTINCT se.article_id, a.title, a.url, f.title AS feed_name, a.score FROM signal_evidence se JOIN articles a ON a.id = se.article_id LEFT JOIN feeds f ON f.id = a.feed_id WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) ORDER BY a.score DESC LIMIT 10")
                 .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
+            let related = self.load_thread_related_entities(t.id, 5).await?;
             results.push(crate::SignalBriefInput {
                 thread_id: t.id,
                 signal_key: t.signal_key.clone(),
@@ -141,7 +142,7 @@ impl crate::D1Store {
                         score: r.score,
                     })
                     .collect(),
-                related_entities: Vec::new(),
+                related_entities: related,
             });
         }
         Ok(results)
@@ -243,6 +244,7 @@ impl crate::D1Store {
                 0.5
             };
 
+            let related = self.load_thread_related_entities(t.id, 5).await?;
             results.push(crate::SignalBriefInput {
                 thread_id: t.id,
                 signal_key: t.signal_key.clone(),
@@ -268,7 +270,7 @@ impl crate::D1Store {
                         score: r.score,
                     })
                     .collect(),
-                related_entities: Vec::new(),
+                related_entities: related,
             });
         }
         Ok(results)

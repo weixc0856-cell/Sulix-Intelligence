@@ -300,6 +300,26 @@ impl StoreBackend for D1Store {
     ) -> Result<Vec<RelatedEntityRef>, StoreError> {
         D1Store::load_thread_related_entities(self, thread_id, limit).await
     }
+
+    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
+        D1Store::create_decision(self, d).await
+    }
+
+    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
+        D1Store::get_decision(self, id).await
+    }
+
+    async fn list_decisions(&self, status: Option<&str>, limit: u32) -> Result<Vec<Decision>, StoreError> {
+        D1Store::list_decisions(self, status, limit).await
+    }
+
+    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
+        D1Store::update_decision_status(self, id, status).await
+    }
+
+    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
+        D1Store::decisions_by_signal(self, signal_thread_id).await
+    }
 }
 
 #[cfg(test)]

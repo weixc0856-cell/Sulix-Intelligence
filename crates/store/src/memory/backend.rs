@@ -3,9 +3,9 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    Feed, IntelligenceSignal, NewArticle, NewArtifact, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail,
-    SignalEvent, SignalThreadFilter, StoreError,
+    ArtifactEntry, Decision, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
+    EntitySummary, Feed, IntelligenceSignal, NewArticle, NewArtifact, NewDecision, RelatedEntity, RelatedEntityRef,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, StoreError,
 };
 
 #[async_trait(?Send)]
@@ -510,5 +510,58 @@ impl StoreBackend for MemoryStore {
         _limit: u32,
     ) -> Result<Vec<RelatedEntityRef>, StoreError> {
         Ok(Vec::new())
+    }
+
+    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        self.decisions.borrow_mut().push(Decision {
+            id,
+            signal_thread_id: d.signal_thread_id,
+            actor_id: d.actor_id,
+            decision_type: d.decision_type.clone(),
+            title: d.title.clone(),
+            hypothesis: d.hypothesis.clone(),
+            rationale: d.rationale.clone(),
+            confidence: d.confidence,
+            status: "active".into(),
+            priority: d.priority.clone(),
+            created_at: now,
+            updated_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
+        let decisions = self.decisions.borrow();
+        Ok(decisions.iter().find(|d| d.id == id).cloned())
+    }
+
+    async fn list_decisions(&self, status: Option<&str>, _limit: u32) -> Result<Vec<Decision>, StoreError> {
+        let decisions = self.decisions.borrow();
+        match status {
+            Some(s) => {
+                let filtered: Vec<Decision> = decisions.iter().filter(|d| d.status == s).cloned().collect();
+                Ok(filtered)
+            }
+            None => Ok(decisions.clone()),
+        }
+    }
+
+    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
+        let mut decisions = self.decisions.borrow_mut();
+        if let Some(d) = decisions.iter_mut().find(|d| d.id == id) {
+            d.status = status.to_string();
+            d.updated_at = 1000000;
+        }
+        Ok(())
+    }
+
+    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
+        let decisions = self.decisions.borrow();
+        let filtered: Vec<Decision> =
+            decisions.iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect();
+        Ok(filtered)
     }
 }

@@ -50,6 +50,10 @@ pub struct MemoryStore {
     // Signal engine state
     pub signal_events: RefCell<Vec<SignalEvent>>,
     next_signal_event_id: RefCell<i64>,
+
+    // Decision state
+    decisions: RefCell<Vec<crate::Decision>>,
+    next_decision_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -109,6 +113,8 @@ impl MemoryStore {
             fail_r2_key: false,
             signal_events: RefCell::new(Vec::new()),
             next_signal_event_id: RefCell::new(1),
+            decisions: RefCell::new(Vec::new()),
+            next_decision_id: RefCell::new(1),
         }
     }
 

@@ -1,4 +1,10 @@
 //! Signal projection — assemble domain data into projection views.
+//!
+//! NOTE: This module is superseded by `signal-engine/src/query/radar.rs`.
+//! The `SignalQueryService::radar()` method produces the correct projection
+//! with `Vec<RelatedEntityRef>` instead of `Vec<String>`. This file is
+//! retained for reference but is no longer imported.
+#![allow(dead_code)]
 
 use crate::{RadarDashboardSummary, RadarResponse, SignalBriefInput, SignalHealth, SignalRadarItem};
 
@@ -38,7 +44,7 @@ pub fn build_radar_response(
                 last_seen: latest_inst.map(|i| i.generated_at).unwrap_or(now),
                 velocity_24h: (input.recent_article_count as f64 / 7.0).round() as i64,
             },
-            related: input.related_entities,
+            related: Vec::new(),
             first_seen_at: first_inst.map(|i| i.generated_at).unwrap_or(now),
             last_evidence_at: latest_inst.map(|i| i.generated_at).unwrap_or(now),
         });

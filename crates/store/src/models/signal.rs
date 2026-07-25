@@ -139,7 +139,7 @@ pub struct SignalBriefInput {
     /// Recent instance timeline (for charting).
     pub instances: Vec<SignalInstanceSummary>,
     pub evidence: Vec<BriefArticle>,
-    pub related_entities: Vec<String>,
+    pub related_entities: Vec<RelatedEntityRef>,
 }
 
 /// Filter for listing signal threads.
@@ -247,12 +247,17 @@ pub struct RelatedSignalRef {
     pub health_score: f64,
 }
 
+/// Entity reference with relationship context for signal threads.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelatedEntityRef {
     pub id: i64,
     pub name: String,
     pub entity_type: String,
     pub relation_type: String,
+    /// Human-readable relationship label, e.g. "supplier", "competitor".
+    pub relation: Option<String>,
+    /// Confidence of the relationship link.
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

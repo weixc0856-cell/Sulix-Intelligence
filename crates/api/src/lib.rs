@@ -57,6 +57,12 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/entities/:id/signals", entities::entities_signals)
         .get_async("/api/intelligence/entities/:id/relations", entities::entities_get_relations)
         .get_async("/api/intelligence/entities/:id/threads", entities::entities_threads)
+        // Decision Loop
+        .get_async("/api/intelligence/decisions", routes::decision::list)
+        .get_async("/api/intelligence/decisions/:id", routes::decision::detail)
+        .post_async("/api/intelligence/decisions/:id/status", routes::decision::update_status)
+        .post_async("/api/intelligence/signals/:id/decisions", routes::decision::create)
+        .get_async("/api/intelligence/signals/:id/decisions", routes::decision::by_signal)
         // Feed CRUD
         .get_async("/api/feeds", routes::feed::feeds_list)
         .post_async("/api/feeds", routes::feed::feeds_create)
