@@ -58,3 +58,24 @@ pub async fn radar(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 
     response::json_ok(json!(radar))
 }
+
+/// GET /api/intelligence/signals/:id — Signal Detail page.
+///
+/// Returns the full SignalDetail DTO for human investigation:
+/// thread metadata, health, timeline, evidence, entities, related signals.
+pub async fn signal_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = crate::Store::new(ctx.env.d1("DB")?);
+    let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid signal id"),
+    };
+
+    match store.load_signal_detail(id).await {
+        Ok(Some(detail)) => response::json_ok(serde_json::json!({ "success": true, "signal": detail })),
+        Ok(None) => response::json_err(404, "signal not found"),
+        Err(e) => {
+            console_log!("[Sulix:signal] load_signal_detail failed: {e}");
+            response::json_err_internal("signal detail query failed")
+        }
+    }
+}

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use crate::{
     ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, SignalThreadFilter, StoreError,
+    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, SignalDetail, SignalThreadFilter, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -181,4 +181,6 @@ pub trait StoreBackend {
 
     /// List signal threads with dynamic filtering.
     async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError>;
+
+    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError>;
 }

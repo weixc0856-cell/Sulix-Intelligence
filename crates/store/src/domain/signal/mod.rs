@@ -1,4 +1,5 @@
 mod candidate;
+pub mod detail;
 pub mod health;
 mod lifecycle;
 mod persistence;

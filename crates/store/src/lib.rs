@@ -203,6 +203,10 @@ impl StoreBackend for D1Store {
     async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
         D1Store::list_signal_threads(self, filter).await
     }
+
+    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        D1Store::load_signal_detail(self, thread_id).await
+    }
 }
 
 #[cfg(test)]

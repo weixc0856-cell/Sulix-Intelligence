@@ -150,7 +150,7 @@ pub struct SignalThreadFilter {
     pub min_score: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BriefArticle {
     pub id: i64,
     pub title: String,
@@ -209,4 +209,63 @@ pub struct RadarResponse {
     pub generated_at: i64,
     pub summary: RadarDashboardSummary,
     pub signals: Vec<SignalRadarItem>,
+}
+
+// ===== Signal Detail / Investigation types =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HealthComponents {
+    pub volume: f64,
+    pub diversity: f64,
+    pub quality: f64,
+    pub velocity: f64,
+    pub persistence: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalHealthDetail2 {
+    pub score: f64,
+    pub components: HealthComponents,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalTimelineEvent {
+    pub timestamp: i64,
+    pub event_type: String,
+    pub score: f64,
+    pub article_count: i64,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RelatedSignalRef {
+    pub id: i64,
+    pub title: String,
+    pub status: String,
+    pub health_score: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RelatedEntityRef {
+    pub id: i64,
+    pub name: String,
+    pub entity_type: String,
+    pub relation_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalDetail {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub trend: String,
+    pub health: SignalHealthDetail2,
+    pub anchor_entity: Option<EntitySignalRef>,
+    pub first_seen_at: i64,
+    pub last_seen_at: i64,
+    pub timeline: Vec<SignalTimelineEvent>,
+    pub evidence_top: Vec<BriefArticle>,
+    pub related_entities: Vec<RelatedEntityRef>,
+    pub related_signals: Vec<RelatedSignalRef>,
 }

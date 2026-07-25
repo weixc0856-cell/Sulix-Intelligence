@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate,
-    EntitySummary, Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput,
+    EntitySummary, Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, SignalDetail,
     SignalThreadFilter, StoreError,
 };
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
@@ -514,5 +514,9 @@ impl StoreBackend for MemoryStore {
         let limit = limit as usize;
         result.truncate(limit);
         Ok(result)
+    }
+
+    async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        Ok(None)
     }
 }
