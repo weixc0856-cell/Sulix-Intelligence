@@ -14,8 +14,18 @@ intelligence observation discovered by the signal detection engine.
 
 For each insight you produce:
 - Reference evidence_signal_ids that support the insight
-- Base your analysis on the entity, evidence, and trend data provided
+- Base your analysis on the signal's context (entities, prior decisions) as well as its metrics
 - Do NOT invent new signal categories or rename signals
+
+Each signal includes a `## Context` section with:
+- **Entities**: entities frequently mentioned alongside this signal with type and relevance
+- **Decisions**: your prior decisions tracking this signal with status and latest evaluation
+
+Use this context to:
+- Identify cross-signal connections visible through shared entities
+- Consider whether prior decisions (active, confirmed, or contradicted) affect your recommendation
+- If a prior decision was contradicted, treat it as a learning signal and adjust confidence accordingly
+- Prioritize signals that are actively being decided upon
 
 Output exactly 3-5 intelligence insights as JSON. No markdown, no code fences.
 
@@ -49,10 +59,32 @@ pub fn build_briefing_prompt(candidates: &[SignalCandidate]) -> String {
         let top_titles: Vec<&str> = sig.articles.iter().take(3).map(|a| a.title.as_str()).collect();
         let titles_str = if top_titles.is_empty() { "none".to_string() } else { top_titles.join(" | ") };
 
+        // Format context section
+        let mut ctx_str = String::new();
+        if !sig.context.entities.is_empty() {
+            ctx_str.push_str("  ## Context\n");
+            ctx_str.push_str("  Entities:\n");
+            for e in &sig.context.entities {
+                ctx_str.push_str(&format!("    - {} ({}, relevance:{:.2})\n", e.name, e.entity_type, e.relevance));
+            }
+            if !sig.context.decisions.is_empty() {
+                ctx_str.push_str("  Decisions:\n");
+                for d in &sig.context.decisions {
+                    let eval_str = d.latest_evaluation.as_deref().unwrap_or("no evaluation");
+                    ctx_str.push_str(&format!(
+                        "    - [{status}] {title} | Latest: {eval}\n",
+                        status = d.status,
+                        title = d.title,
+                        eval = eval_str
+                    ));
+                }
+            }
+        }
+
         signals_section.push_str(&format!(
             "[{id}] {title}
   Articles: {n} | Sources: {src} | Avg Score: {score:.1} | Trend: {trend}
-  Key Evidence: {titles}
+  {context}  Key Evidence: {titles}
 \n",
             id = sig.id,
             title = sig.title,
@@ -60,6 +92,7 @@ pub fn build_briefing_prompt(candidates: &[SignalCandidate]) -> String {
             src = sig.source_count,
             score = sig.avg_score,
             trend = sig.trend,
+            context = ctx_str,
             titles = titles_str,
         ));
     }
@@ -88,6 +121,7 @@ mod tests {
             avg_score: 8.2,
             trend: "rising".into(),
             articles: vec![],
+            context: Default::default(),
         }];
         let prompt = build_briefing_prompt(&candidates);
         assert!(prompt.contains("NVIDIA"));

@@ -3,6 +3,7 @@
 //! Transforms signals from [`store::signals_today`] into a structured
 //! LLM-synthesised briefing with insights, recommendations, and evidence.
 
+pub mod context;
 pub mod converter;
 mod generator;
 mod parser;

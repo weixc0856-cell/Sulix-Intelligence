@@ -94,8 +94,28 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         return;
     }
 
-    // V2 path: convert signal threads to candidates
-    let candidates: Vec<SignalCandidate> = thread_inputs.into_iter().map(Into::into).collect();
+    // V2 path: convert signal threads to candidates with context
+    let thread_ids: Vec<i64> = thread_inputs.iter().map(|t| t.thread_id).collect();
+    let context_bundle = store.get_signal_briefing_context_bundle(&thread_ids).await.unwrap_or_default();
+    let candidates: Vec<SignalCandidate> = thread_inputs
+        .into_iter()
+        .map(|input| {
+            let tid = input.thread_id;
+            let mut candidate: SignalCandidate = input.into();
+            if let Some(decisions) = context_bundle.decision_map.get(&tid) {
+                candidate.context.decisions = decisions
+                    .iter()
+                    .map(|d| ai_pipeline::briefing::context::DecisionContext {
+                        id: d.id,
+                        title: d.title.clone(),
+                        status: d.status.clone(),
+                        latest_evaluation: context_bundle.evaluation_map.get(&d.id).cloned().unwrap_or(None),
+                    })
+                    .collect();
+            }
+            candidate
+        })
+        .collect();
     let total_signals_loaded = candidates.len() as u32;
 
     // 3-5. Build summarizer + lifecycle + lock (same for both paths)
@@ -201,6 +221,7 @@ async fn fallback_signals_today(store: &store::Store, now: i64) -> Option<Vec<Si
                     score: a.score,
                 })
                 .collect(),
+            context: Default::default(),
         })
         .collect();
 

@@ -1,6 +1,11 @@
 //! Domain types for the Daily Intelligence Brief generator.
 
-/// A signal passed to the LLM for analysis. Derived from `signals_today()`.
+use super::context::BriefingContext;
+
+/// A signal passed to the LLM for analysis.
+///
+/// Carries both signal metrics and a `context` field with entity, decision,
+/// and evaluation context so the LLM can produce decision-aware analysis.
 pub struct SignalCandidate {
     pub id: String,
     pub title: String,
@@ -12,6 +17,8 @@ pub struct SignalCandidate {
     pub trend: String,
     /// Evidence articles from this signal, carrying title/url/score for evidence binding.
     pub articles: Vec<EvidenceArticle>,
+    /// Intelligence context — entities, decisions, evaluations.
+    pub context: BriefingContext,
 }
 
 /// Single insight returned by the LLM with evidence signal references.
