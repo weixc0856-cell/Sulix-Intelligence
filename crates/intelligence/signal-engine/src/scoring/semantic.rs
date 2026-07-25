@@ -88,7 +88,7 @@ mod tests {
             source_diversity: 0.5,
         };
         let score = signal_score_v2(&input);
-        assert!(score >= 0.0 && score <= 1.0);
+        assert!((0.0..=1.0).contains(&score));
     }
 
     #[test]
