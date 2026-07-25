@@ -183,3 +183,49 @@ pub struct NewDecisionEvaluation {
     pub evaluator: EvaluationSource,
     pub evaluated_at: Option<i64>,
 }
+
+// ===== Decision Stats (Dashboard) =====
+
+/// Aggregated decision statistics for the Decision Accuracy Dashboard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionStats {
+    pub total_decisions: i64,
+    pub active: i64,
+    pub completed: i64,
+    pub superseded: i64,
+    pub by_type: Vec<TypeCount>,
+    pub by_priority: Vec<PriorityCount>,
+    pub evaluation_summary: EvalSummary,
+    pub top_signals: Vec<SignalDecisionCount>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeCount {
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriorityCount {
+    pub label: String,
+    pub count: i64,
+}
+
+/// Evaluation result summary with accuracy calculation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvalSummary {
+    pub total_evaluated: i64,
+    pub confirmed: i64,
+    pub partially_confirmed: i64,
+    pub contradicted: i64,
+    pub inconclusive: i64,
+    pub accuracy_rate: f64,
+}
+
+/// Signal with decision count for top-signals ranking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalDecisionCount {
+    pub signal_id: i64,
+    pub signal_title: String,
+    pub decision_count: i64,
+}

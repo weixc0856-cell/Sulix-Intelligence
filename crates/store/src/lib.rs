@@ -287,6 +287,10 @@ impl StoreBackend for D1Store {
         D1Store::decisions_by_signal(self, signal_thread_id).await
     }
 
+    async fn decision_stats(&self) -> Result<DecisionStats, StoreError> {
+        D1Store::decision_stats(self).await
+    }
+
     async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
         D1Store::create_outcome(self, e).await
     }

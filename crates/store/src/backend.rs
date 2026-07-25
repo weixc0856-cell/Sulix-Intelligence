@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary,
+    ArticleEmbeddingRef, ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary,
     EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact,
     NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef,
     SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
@@ -214,6 +214,9 @@ pub trait StoreBackend {
 
     /// List decisions for a specific signal thread.
     async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError>;
+
+    /// Get aggregated decision statistics for the dashboard.
+    async fn decision_stats(&self) -> Result<DecisionStats, StoreError>;
 
     // ===== Outcome Events =====
 

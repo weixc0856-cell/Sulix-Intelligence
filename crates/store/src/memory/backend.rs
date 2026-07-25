@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, Decision, DecisionEvaluation, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
+    ArtifactEntry, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EvalSummary,
     EntityRef, EntitySignalCandidate, EntitySummary, Feed, NewArticle, NewArtifact, NewDecision, NewDecisionEvaluation,
     NewOutcomeEvent, OutcomeEvent, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
     SignalThreadFilter, SignalUpsertResult, StoreError,
@@ -522,6 +522,28 @@ impl StoreBackend for MemoryStore {
         let filtered: Vec<Decision> =
             decisions.iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect();
         Ok(filtered)
+    }
+
+    async fn decision_stats(&self) -> Result<DecisionStats, StoreError> {
+        let decisions = self.decisions.borrow();
+        let evals = self.evaluations.borrow();
+        Ok(DecisionStats {
+            total_decisions: decisions.len() as i64,
+            active: decisions.iter().filter(|d| d.status == "active").count() as i64,
+            completed: decisions.iter().filter(|d| d.status == "completed").count() as i64,
+            superseded: decisions.iter().filter(|d| d.status == "superseded").count() as i64,
+            by_type: vec![],
+            by_priority: vec![],
+            evaluation_summary: EvalSummary {
+                total_evaluated: evals.len() as i64,
+                confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Confirmed)).count() as i64,
+                partially_confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::PartiallyConfirmed)).count() as i64,
+                contradicted: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Contradicted)).count() as i64,
+                inconclusive: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Inconclusive)).count() as i64,
+                accuracy_rate: 0.0,
+            },
+            top_signals: vec![],
+        })
     }
 
     async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {

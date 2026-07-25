@@ -47,4 +47,101 @@ impl crate::D1Store {
             .await?
             .results()?)
     }
+
+    /// Get aggregated decision statistics.
+    pub async fn decision_stats(&self) -> Result<crate::DecisionStats, crate::StoreError> {
+        let status_row: Option<serde_json::Value> = self
+            .db
+            .prepare(
+                "SELECT \
+                 COUNT(*) AS total, \
+                 SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active, \
+                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed, \
+                 SUM(CASE WHEN status = 'superseded' THEN 1 ELSE 0 END) AS superseded \
+                 FROM decisions",
+            )
+            .bind(&[])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        let sv = status_row.unwrap_or_default();
+        let total = sv["total"].as_i64().unwrap_or(0);
+        let active = sv["active"].as_i64().unwrap_or(0);
+        let completed = sv["completed"].as_i64().unwrap_or(0);
+        let superseded = sv["superseded"].as_i64().unwrap_or(0);
+
+        let by_type: Vec<crate::TypeCount> = self
+            .db
+            .prepare("SELECT decision_type AS label, COUNT(*) AS count FROM decisions GROUP BY decision_type ORDER BY count DESC")
+            .bind(&[])?
+            .all()
+            .await?
+            .results()?;
+
+        let by_priority: Vec<crate::PriorityCount> = self
+            .db
+            .prepare("SELECT priority AS label, COUNT(*) AS count FROM decisions GROUP BY priority ORDER BY count DESC")
+            .bind(&[])?
+            .all()
+            .await?
+            .results()?;
+
+        let eval_row: Option<serde_json::Value> = self
+            .db
+            .prepare(
+                "SELECT \
+                 COUNT(*) AS total, \
+                 SUM(CASE WHEN evaluation = 'confirmed' THEN 1 ELSE 0 END) AS confirmed, \
+                 SUM(CASE WHEN evaluation = 'partially_confirmed' THEN 1 ELSE 0 END) AS partially, \
+                 SUM(CASE WHEN evaluation = 'contradicted' THEN 1 ELSE 0 END) AS contradicted, \
+                 SUM(CASE WHEN evaluation = 'inconclusive' THEN 1 ELSE 0 END) AS inconclusive \
+                 FROM decision_evaluations",
+            )
+            .bind(&[])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        let ev = eval_row.unwrap_or_default();
+        let eval_total = ev["total"].as_i64().unwrap_or(0);
+        let confirmed = ev["confirmed"].as_i64().unwrap_or(0);
+        let partially = ev["partially"].as_i64().unwrap_or(0);
+        let contradicted = ev["contradicted"].as_i64().unwrap_or(0);
+        let inconclusive = ev["inconclusive"].as_i64().unwrap_or(0);
+        let accuracy_rate = if eval_total > inconclusive {
+            let numerator = confirmed as f64 + partially as f64 * 0.5;
+            let denominator = (eval_total - inconclusive) as f64;
+            if denominator > 0.0 { numerator / denominator } else { 0.0 }
+        } else { 0.0 };
+
+        let top_signals: Vec<crate::SignalDecisionCount> = self
+            .db
+            .prepare(
+                "SELECT d.signal_thread_id AS signal_id, COALESCE(t.title, '') AS signal_title, COUNT(*) AS decision_count \
+                 FROM decisions d \
+                 LEFT JOIN signal_threads t ON t.id = d.signal_thread_id \
+                 WHERE d.signal_thread_id IS NOT NULL \
+                 GROUP BY d.signal_thread_id \
+                 ORDER BY decision_count DESC LIMIT 10",
+            )
+            .bind(&[])?
+            .all()
+            .await?
+            .results()?;
+
+        Ok(crate::DecisionStats {
+            total_decisions: total,
+            active,
+            completed,
+            superseded,
+            by_type,
+            by_priority,
+            evaluation_summary: crate::EvalSummary {
+                total_evaluated: eval_total,
+                confirmed,
+                partially_confirmed: partially,
+                contradicted,
+                inconclusive,
+                accuracy_rate: (accuracy_rate * 1000.0).round() / 1000.0,
+            },
+            top_signals,
+        })
+    }
 }

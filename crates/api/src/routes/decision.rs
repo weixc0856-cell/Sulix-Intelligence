@@ -127,6 +127,18 @@ pub async fn update_status(mut req: Request, ctx: RouteContext<()>) -> Result<Re
     }
 }
 
+/// GET /api/intelligence/decisions/stats — Decision Accuracy Dashboard.
+pub async fn stats(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    match store.decision_stats().await {
+        Ok(stats) => response::json_ok(json!(stats)),
+        Err(e) => {
+            console_log!("[Sulix:decisions] stats failed: {e}");
+            response::json_err_internal("decision stats query failed")
+        }
+    }
+}
+
 // ===== Outcome Event handlers =====
 
 /// POST /api/intelligence/decisions/:id/outcomes
