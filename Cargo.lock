@@ -226,7 +226,6 @@ name = "entity"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -255,7 +254,6 @@ dependencies = [
  "serde",
  "thiserror",
  "url",
- "uuid",
  "worker",
 ]
 
@@ -897,7 +895,6 @@ name = "rules"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1459,7 +1456,6 @@ dependencies = [
  "ai-pipeline",
  "api",
  "console_error_panic_hook",
- "embedding",
  "entity",
  "feed-rs",
  "fetcher",
