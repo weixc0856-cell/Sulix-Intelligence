@@ -156,3 +156,57 @@ pub struct BriefArticle {
     pub title: String,
     pub score: f64,
 }
+
+// ===== Radar / Projection types =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalHealthBreakdown {
+    pub activity: f64,
+    pub diversity: f64,
+    pub quality: f64,
+    pub velocity: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalHealth {
+    pub score: f64,
+    pub breakdown: SignalHealthBreakdown,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalEvidenceSummary {
+    pub articles: i64,
+    pub sources: i64,
+    pub avg_score: f64,
+    pub last_seen: i64,
+    pub velocity_24h: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalRadarItem {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub trend: String,
+    pub health: SignalHealth,
+    pub anchor_entity: Option<EntitySignalRef>,
+    pub evidence: SignalEvidenceSummary,
+    pub related: Vec<String>,
+    pub first_seen_at: i64,
+    pub last_evidence_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RadarDashboardSummary {
+    pub total_active: i64,
+    pub rising: i64,
+    pub stable: i64,
+    pub decaying: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RadarResponse {
+    pub generated_at: i64,
+    pub summary: RadarDashboardSummary,
+    pub signals: Vec<SignalRadarItem>,
+}
