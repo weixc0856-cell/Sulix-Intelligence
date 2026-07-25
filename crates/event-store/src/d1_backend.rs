@@ -64,6 +64,7 @@ impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
             .into_iter()
             .map(|r| EventEnvelope {
                 schema_version: 1,
+                event_version: 1,
                 event_id: format!("legacy_{}", r.id),
                 aggregate: crate::AggregateRef {
                     aggregate_type: "signal_thread".into(),

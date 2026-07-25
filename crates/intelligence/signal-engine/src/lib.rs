@@ -114,6 +114,7 @@ impl SignalEngine {
             if let Some(es) = event_store {
                 let event = event_store::EventEnvelope {
                     schema_version: 1,
+                    event_version: 1,
                     event_id: event_store::keys::format_id(now, report.events_written),
                     aggregate: event_store::AggregateRef {
                         aggregate_type: "signal_thread".into(),
@@ -138,6 +139,7 @@ impl SignalEngine {
                 if let Some(es) = event_store {
                     let event = event_store::EventEnvelope {
                         schema_version: 1,
+                        event_version: 1,
                         event_id: event_store::keys::format_id(now, report.events_written),
                         aggregate: event_store::AggregateRef {
                             aggregate_type: "signal_thread".into(),

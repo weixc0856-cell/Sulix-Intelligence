@@ -41,6 +41,17 @@ pub struct AggregateRef {
     pub aggregate_id: String,
 }
 
+/// Helper for constructing typed aggregate IDs consistently.
+pub struct AggregateId;
+
+impl AggregateId {
+    pub fn decision(id: i64) -> String { format!("DEC-{id:06}") }
+    pub fn signal(id: i64) -> String { format!("SIG-{id:06}") }
+    pub fn outcome(id: i64) -> String { format!("OUT-{id:06}") }
+    pub fn reflection(id: i64) -> String { format!("REF-{id:06}") }
+    pub fn memory(id: i64) -> String { format!("MEM-{id:06}") }
+}
+
 /// Provenance metadata for an event — who caused it and how.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EventMetadata {
@@ -49,6 +60,9 @@ pub struct EventMetadata {
     /// e.g. "api", "cron", "worker", "import"
     pub source: String,
 }
+
+/// Default event_version for deserializing legacy events.
+fn default_event_version() -> i32 { 1 }
 
 /// An immutable event in the Memory Event Stream.
 ///
@@ -59,6 +73,8 @@ pub struct EventMetadata {
 pub struct EventEnvelope {
     pub schema_version: i32,
     pub event_id: EventId,
+    #[serde(default = "default_event_version")]
+    pub event_version: i32,            // per-event-type version for schema evolution
     pub aggregate: AggregateRef,
     pub event_type: String,
     pub payload: serde_json::Value,

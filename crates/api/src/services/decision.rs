@@ -54,6 +54,7 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
 
         let _ = self.event_store.append_event(&EventEnvelope {
             schema_version: 1,
+            event_version: 1,
             event_id: event_keys::format_id(now, id as u64),
             aggregate: AggregateRef {
                 aggregate_type: "decision".into(),
@@ -83,6 +84,7 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
         let agg_id = format!("DEC-{id:06}");
         let _ = self.event_store.append_event(&EventEnvelope {
             schema_version: 1,
+            event_version: 1,
             event_id: event_keys::format_id(now, id as u64),
             aggregate: AggregateRef {
                 aggregate_type: "decision".into(),
@@ -107,6 +109,7 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
         let dec_agg = format!("DEC-{decision_id:06}");
         let _ = self.event_store.append_event(&EventEnvelope {
             schema_version: 1,
+            event_version: 1,
             event_id: event_keys::format_id(now, outcome_id as u64),
             aggregate: AggregateRef {
                 aggregate_type: "decision".into(),
@@ -122,6 +125,7 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
         let out_agg = format!("OUT-{outcome_id:06}");
         let _ = self.event_store.append_event(&EventEnvelope {
             schema_version: 1,
+            event_version: 1,
             event_id: event_keys::format_id(now, outcome_id as u64),
             aggregate: AggregateRef {
                 aggregate_type: "outcome".into(),
@@ -148,6 +152,7 @@ impl<S: StoreBackend, E: EventStore> DecisionService<S, E> {
         let agg_id = format!("DEC-{decision_id:06}");
         let _ = self.event_store.append_event(&EventEnvelope {
             schema_version: 1,
+            event_version: 1,
             event_id: event_keys::format_id(now, decision_id as u64),
             aggregate: AggregateRef {
                 aggregate_type: "decision".into(),
