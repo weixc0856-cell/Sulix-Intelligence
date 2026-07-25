@@ -368,3 +368,54 @@ pub struct EntitySignalRef {
     pub name: String,
     pub entity_type: String,
 }
+
+// ===== Signal Thread types =====
+
+/// Signal Thread — long-lived intelligence asset.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalThread {
+    pub id: i64,
+    pub signal_key: String,
+    pub anchor_entity_id: Option<i64>,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub health_score: f64,
+    pub first_seen_at: Option<i64>,
+    pub last_seen_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Summary of a single signal instance for timeline display.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalInstanceSummary {
+    pub id: i64,
+    pub score: f64,
+    pub confidence: f64,
+    pub trend: String,
+    pub article_count: i64,
+    pub source_count: i64,
+    pub generated_at: i64,
+}
+
+/// Briefing input — domain model assembled from threads + instances.
+#[derive(Debug, Clone)]
+pub struct SignalBriefInput {
+    pub thread_id: i64,
+    pub anchor_entity: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub health_score: f64,
+    pub instances: Vec<SignalInstanceSummary>,
+    pub evidence: Vec<BriefArticle>,
+    pub related_entities: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BriefArticle {
+    pub id: i64,
+    pub title: String,
+    pub score: f64,
+}

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     backend::StoreBackend, ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef,
     EntitySignalCandidate, EntitySummary, Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity,
-    StoreError,
+    SignalBriefInput, StoreError,
 };
 
 /// Per-feed fetch-result entry recorded by `record_fetch_result`.
@@ -537,6 +537,22 @@ impl StoreBackend for MemoryStore {
     }
 
     async fn entity_signals(&self, _entity_id: i64, _limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn upsert_signal_thread(&self, _signal_key: &str, _anchor_entity_id: Option<i64>, _title: &str, _status: &str) -> Result<i64, StoreError> {
+        Ok(1)
+    }
+
+    async fn append_signal_instance(&self, _thread_id: i64, _confidence: f64, _impact: &str, _trend: &str, _article_count: i64, _source_count: i64) -> Result<i64, StoreError> {
+        Ok(1)
+    }
+
+    async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
         Ok(Vec::new())
     }
 }

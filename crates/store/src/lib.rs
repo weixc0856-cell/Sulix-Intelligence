@@ -891,6 +891,155 @@ impl D1Store {
             .results()?)
     }
 
+
+
+    // ------------------------------------------------------------------
+    // Signal Threads
+    // ------------------------------------------------------------------
+
+    /// Upsert a signal thread by signal_key. Returns thread id.
+    pub async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+    ) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let row = self
+            .db
+            .prepare(
+                "INSERT INTO signal_threads (signal_key, anchor_entity_id, title, status, first_seen_at, last_seen_at, created_at, updated_at)                  VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?6) RETURNING id",
+            )
+            .bind(&[
+                signal_key.into(),
+                anchor_entity_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+                title.into(),
+                status.into(),
+                JsValue::from_f64(now as f64),
+                JsValue::from_f64(now as f64),
+            ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        if let Some(id) = row.and_then(|v| v["id"].as_i64()) {
+            return Ok(id);
+        }
+
+        let row = self
+            .db
+            .prepare("UPDATE signal_threads SET title = ?1, updated_at = ?2, last_seen_at = ?3 WHERE signal_key = ?4 RETURNING id")
+            .bind(&[title.into(), JsValue::from_f64(now as f64), JsValue::from_f64(now as f64), signal_key.into()])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        row.and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| StoreError::D1("upsert_signal_thread failed".into()))
+    }
+
+    /// Append a signal instance to a thread.
+    pub async fn append_signal_instance(
+        &self,
+        thread_id: i64,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+    ) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let row = self
+            .db
+            .prepare(
+                "INSERT INTO intelligence_signals                  (signal_thread_id, anchor_entity_id, title, summary, signal_type, confidence, impact, trend, article_count, source_count, created_at, updated_at)                  VALUES (?1, NULL, '', '', 'entity', ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id",
+            )
+            .bind(&[
+                JsValue::from_f64(thread_id as f64),
+                JsValue::from_f64(confidence),
+                impact.into(),
+                trend.into(),
+                JsValue::from_f64(article_count as f64),
+                JsValue::from_f64(source_count as f64),
+                JsValue::from_f64(now as f64),
+                JsValue::from_f64(now as f64),
+            ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+
+        row.and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| StoreError::D1("append_signal_instance failed".into()))
+    }
+
+    /// Evaluate lifecycle transitions for all active/decaying threads.
+    pub async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError> {
+        self.db
+            .prepare("UPDATE signal_threads SET status = 'decaying', updated_at = ?1 WHERE status = 'active' AND last_seen_at < ?2")
+            .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64((now - 7 * 86400) as f64)])?
+            .run().await?;
+        self.db
+            .prepare("UPDATE signal_threads SET status = 'resolved', updated_at = ?1 WHERE status = 'decaying' AND last_seen_at < ?2")
+            .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64((now - 14 * 86400) as f64)])?
+            .run().await?;
+        self.db
+            .prepare("UPDATE signal_threads SET status = 'active', updated_at = ?1 WHERE status = 'decaying' AND last_seen_at >= ?2")
+            .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64((now - 3 * 86400) as f64)])?
+            .run().await?;
+        self.db
+            .prepare("UPDATE signal_threads SET status = 'archived', updated_at = ?1 WHERE status = 'resolved' AND last_seen_at < ?2")
+            .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64((now - 30 * 86400) as f64)])?
+            .run().await?;
+        Ok(())
+    }
+
+    /// Get active signal threads with instances and evidence.
+    pub async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct ThreadRow {
+            id: i64,
+            signal_key: String,
+            anchor_entity_id: Option<i64>,
+            title: String,
+            description: String,
+            status: String,
+            health_score: f64,
+            entity_name: Option<String>,
+        }
+        let threads: Vec<ThreadRow> = self
+            .db
+            .prepare(
+                "SELECT t.id, t.signal_key, t.anchor_entity_id, t.title, t.description, t.status, t.health_score,                         e.name AS entity_name                  FROM signal_threads t                  LEFT JOIN entities e ON e.id = t.anchor_entity_id                  WHERE t.status IN ('active', 'decaying')                  ORDER BY t.health_score DESC, t.last_seen_at DESC LIMIT ?1",
+            )
+            .bind(&[JsValue::from_f64(limit as f64)])?
+            .all().await?.results()?;
+
+        let mut results = Vec::with_capacity(threads.len());
+        for t in &threads {
+            let instances: Vec<SignalInstanceSummary> = self
+                .db
+                .prepare("SELECT id, score, confidence, trend, article_count, source_count, created_at AS generated_at FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 30")
+                .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
+            #[derive(Deserialize)]
+            struct EvRow { article_id: i64, title: String, score: f64 }
+            let ev: Vec<EvRow> = self
+                .db
+                .prepare("SELECT DISTINCT se.article_id, a.title, a.score FROM signal_evidence se JOIN articles a ON a.id = se.article_id WHERE se.signal_id IN (SELECT id FROM intelligence_signals WHERE signal_thread_id = ?1) ORDER BY a.score DESC LIMIT 10")
+                .bind(&[JsValue::from_f64(t.id as f64)])?.all().await?.results()?;
+            results.push(SignalBriefInput {
+                thread_id: t.id,
+                anchor_entity: t.entity_name.clone(),
+                title: t.title.clone(),
+                description: t.description.clone(),
+                status: t.status.clone(),
+                health_score: t.health_score,
+                instances,
+                evidence: ev.into_iter().map(|r| BriefArticle { id: r.article_id, title: r.title, score: r.score }).collect(),
+                related_entities: Vec::new(),
+            });
+        }
+        Ok(results)
+    }
+
     pub async fn list_rules(&self) -> Result<Vec<Value>, StoreError> {
         Ok(self.db.prepare(
             "SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC",
@@ -1470,6 +1619,22 @@ impl StoreBackend for D1Store {
 
     async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError> {
         D1Store::entity_signals(self, entity_id, limit).await
+    }
+
+    async fn upsert_signal_thread(&self, signal_key: &str, anchor_entity_id: Option<i64>, title: &str, status: &str) -> Result<i64, StoreError> {
+        D1Store::upsert_signal_thread(self, signal_key, anchor_entity_id, title, status).await
+    }
+
+    async fn append_signal_instance(&self, thread_id: i64, confidence: f64, impact: &str, trend: &str, article_count: i64, source_count: i64) -> Result<i64, StoreError> {
+        D1Store::append_signal_instance(self, thread_id, confidence, impact, trend, article_count, source_count).await
+    }
+
+    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError> {
+        D1Store::update_signal_lifecycle(self, now).await
+    }
+
+    async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
+        D1Store::get_active_signal_threads(self, limit).await
     }
 }
 

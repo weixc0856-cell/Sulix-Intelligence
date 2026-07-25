@@ -600,30 +600,45 @@ async fn generate_briefing_task(env: &Env, now: i64) {
         })
         .collect();
 
-    // 4. Persist signals to intelligence_signals store
+    // 4. Persist signals via thread+instance pipeline
     for candidate in &candidates {
         let entity_id: Option<i64> = candidate
             .id
             .strip_prefix("entity_")
             .and_then(|s| s.parse().ok());
-        let evidence_ids: Vec<i64> = candidate.articles.iter().map(|a| a.id).collect();
-        if let Err(e) = store
-            .save_signal(
-                entity_id,
-                &candidate.title,
-                &candidate.signal_summary,
-                candidate.avg_score.min(10.0) / 10.0,
-                "Medium",
-                &candidate.trend,
-                candidate.article_count as i64,
-                candidate.source_count as i64,
-                &evidence_ids,
-                &[],
-            )
+        let signal_key = entity_id
+            .map(|id| format!("entity:{}", id))
+            .unwrap_or_else(|| format!("unknown:{}", candidate.id));
+        let confidence = (candidate.avg_score.min(10.0) / 10.0).clamp(0.0, 1.0);
+
+        match store
+            .upsert_signal_thread(&signal_key, entity_id, &candidate.title, "active")
             .await
         {
-            console_log!("[Sulix:briefing] signal persist failed for {}: {e}", candidate.id);
+            Ok(thread_id) => {
+                if let Err(e) = store
+                    .append_signal_instance(
+                        thread_id,
+                        confidence,
+                        "Medium",
+                        &candidate.trend,
+                        candidate.article_count as i64,
+                        candidate.source_count as i64,
+                    )
+                    .await
+                {
+                    console_log!("[Sulix:briefing] instance append failed for {}: {e}", candidate.id);
+                }
+            }
+            Err(e) => {
+                console_log!("[Sulix:briefing] thread upsert failed for {}: {e}", candidate.id);
+            }
         }
+    }
+
+    // Lifecycle evaluation
+    if let Err(e) = store.update_signal_lifecycle(now).await {
+        console_log!("[Sulix:briefing] lifecycle update failed: {e}");
     }
 
     // 5. Acquire lock before generating (prevent concurrent cron runs)

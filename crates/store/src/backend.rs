@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use crate::{
     ArtifactEntry, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, StoreError,
+    Feed, IntelligenceSignal, NewArtifact, NewArticle, RelatedEntity, SignalBriefInput, StoreError,
 };
 
 /// Storage backend for the feed pipeline.
@@ -156,4 +156,26 @@ pub trait StoreBackend {
 
     /// Load signals anchored to a specific entity.
     async fn entity_signals(&self, entity_id: i64, limit: u32) -> Result<Vec<IntelligenceSignal>, StoreError>;
+
+    async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+    ) -> Result<i64, StoreError>;
+
+    async fn append_signal_instance(
+        &self,
+        thread_id: i64,
+        confidence: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+    ) -> Result<i64, StoreError>;
+
+    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError>;
+
+    async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError>;
 }
