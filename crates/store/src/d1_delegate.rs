@@ -1,4 +1,4 @@
-﻿//! Anti-corruption layer: implements every domain trait + the legacy
+//! Anti-corruption layer: implements every domain trait + the legacy
 //! `StoreBackend` for [`D1Store`](crate::D1Store).
 //!
 //! Each method delegates 1:1 to a `D1Store` method ?no additional logic.
@@ -11,6 +11,7 @@ use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
+    NewObservation, Observation,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
@@ -141,6 +142,19 @@ impl ClaimRepository for crate::D1Store {
     }
     async fn find_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
         crate::D1Store::get_claim(self, id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ObservationRepository for crate::D1Store {
+    async fn save_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
+        crate::D1Store::create_observation(self, o).await
+    }
+    async fn find_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
+        crate::D1Store::get_observation(self, id).await
+    }
+    async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
+        crate::D1Store::find_observation_by_hash(self, hash).await
     }
 }
 
@@ -620,6 +634,15 @@ impl StoreBackend for crate::D1Store {
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         crate::D1Store::get_claim_evidence(self, claim_id).await
+    }
+    async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
+        crate::D1Store::create_observation(self, o).await
+    }
+    async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
+        crate::D1Store::get_observation(self, id).await
+    }
+    async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
+        crate::D1Store::find_observation_by_hash(self, hash).await
     }
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {

@@ -16,8 +16,8 @@ use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
-    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
+    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, Observation,
+    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewObservation, NewMemory, NewOutbox,
     NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
     RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
     SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
@@ -216,6 +216,19 @@ impl ClaimRepository for MemoryStore {
     async fn find_claim(&self, id: i64) -> Result<Option<crate::Claim>, StoreError> {
         Ok(self.claims.borrow().iter().find(|c| c.id == id).cloned())
     }
+}
+
+#[async_trait(?Send)]
+#[async_trait(?Send)]
+impl ObservationRepository for MemoryStore {
+    async fn save_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_claim_id.borrow();
+        *self.next_claim_id.borrow_mut() = id + 1;
+        Ok(id)
+    }
+    async fn find_observation(&self, _id: i64) -> Result<Option<Observation>, StoreError> { Ok(None) }
+    async fn find_observation_by_hash(&self, _hash: &str) -> Result<Option<Observation>, StoreError> { Ok(None) }
 }
 
 #[async_trait(?Send)]
@@ -1052,6 +1065,15 @@ impl StoreBackend for MemoryStore {
     }
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
         ClaimQueryService::list_claims(self, status, limit).await
+    }
+    async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
+        self.save_observation(o).await
+    }
+    async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
+        self.find_observation(id).await
+    }
+    async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
+        ObservationRepository::find_observation_by_hash(self, hash).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         ClaimQueryService::get_claim_evidence(self, claim_id).await
