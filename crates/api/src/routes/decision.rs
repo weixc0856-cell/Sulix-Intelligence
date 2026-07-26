@@ -464,3 +464,151 @@ pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Respons
 
     response::json_ok(json!(response))
 }
+
+// ── Sprint 6.0: Decision Records ──
+
+/// GET /api/decision-records — list decision records (?status=)
+pub async fn list_decision_records(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let status = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
+    let limit = 50u32;
+    match store.list_decision_records(status.as_deref(), limit).await {
+        Ok(records) => response::json_ok(json!({ "records": records })),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] list failed: {e}");
+            response::json_err_internal("list failed")
+        }
+    }
+}
+
+/// POST /api/decision-records — create a decision record
+pub async fn create_decision_record(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    #[derive(serde::Deserialize)]
+    struct CreateInput {
+        title: String,
+        context: Option<String>,
+        decision_type: Option<String>,
+        action: Option<String>,
+        rationale: Option<String>,
+        confidence: Option<f64>,
+        signal_id: Option<i64>,
+    }
+    let store = Store::new(ctx.env.d1("DB")?);
+    let input: CreateInput = match req.json().await {
+        Ok(b) => b,
+        Err(_) => return response::json_err(400, "invalid request body"),
+    };
+    let body = store::NewDecisionRecord {
+        title: input.title,
+        context: input.context,
+        decision_type: input.decision_type,
+        action: input.action,
+        rationale: input.rationale,
+        confidence: input.confidence.unwrap_or(0.5),
+        signal_id: input.signal_id,
+    };
+    match store.create_decision_record(&body).await {
+        Ok(id) => response::json_ok(json!({ "id": id })),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] create failed: {e}");
+            response::json_err_internal("create failed")
+        }
+    }
+}
+
+/// GET /api/decision-records/:id — detail with memo
+pub async fn get_decision_record(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid id"),
+    };
+    let record = match store.get_decision_record(id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return response::json_err(404, "not found"),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] get failed: {e}");
+            return response::json_err_internal("get failed");
+        }
+    };
+    let outcomes = store.list_decision_outcomes(id).await.unwrap_or_default();
+    let claims = store.get_decision_claims(id).await.unwrap_or_default();
+    response::json_ok(json!({ "record": record, "outcomes": outcomes, "claims": claims }))
+}
+
+/// GET /api/decision-records/:id/memo — get or generate the decision memo
+pub async fn decision_memo(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid id"),
+    };
+    let record = match store.get_decision_record(id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => return response::json_err(404, "not found"),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] memo get failed: {e}");
+            return response::json_err_internal("memo failed");
+        }
+    };
+    // Return existing memo or generate new one
+    if let Some(ref memo_json) = record.memo_json {
+        if let Ok(memo) = serde_json::from_str::<serde_json::Value>(memo_json) {
+            return response::json_ok(json!({ "memo": memo }));
+        }
+    }
+    let memo =
+        decision_engine::generate_memo(id, &record.title, &record.context, &record.rationale, record.confidence, None);
+    let memo_json = serde_json::to_string(&memo).unwrap_or_default();
+    let _ = store.set_decision_memo(id, &memo_json).await;
+    response::json_ok(json!({ "memo": memo }))
+}
+
+/// POST /api/decision-records/:id/outcomes — create an outcome metric
+pub async fn create_outcome_metric(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    #[derive(serde::Deserialize)]
+    struct OutcomeInput {
+        metric: String,
+        expected_value: Option<String>,
+        measurement_method: Option<String>,
+    }
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid id"),
+    };
+    let input: OutcomeInput = match req.json().await {
+        Ok(b) => b,
+        Err(_) => return response::json_err(400, "invalid request body"),
+    };
+    use store::domain::decision::record_crud::NewOutcome;
+    let body = NewOutcome {
+        decision_id: id,
+        metric: input.metric,
+        expected_value: input.expected_value,
+        measurement_method: input.measurement_method,
+    };
+    match store.create_outcome_metric(&body).await {
+        Ok(outcome_id) => response::json_ok(json!({ "outcome_id": outcome_id })),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] outcome create failed: {e}");
+            response::json_err_internal("create outcome failed")
+        }
+    }
+}
+
+/// GET /api/decision-records/:id/outcomes — list outcomes
+pub async fn list_outcome_metrics(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid id"),
+    };
+    match store.list_decision_outcomes(id).await {
+        Ok(outcomes) => response::json_ok(json!({ "outcomes": outcomes })),
+        Err(e) => {
+            console_log!("[Sulix:decision-records] outcomes list failed: {e}");
+            response::json_err_internal("list outcomes failed")
+        }
+    }
+}

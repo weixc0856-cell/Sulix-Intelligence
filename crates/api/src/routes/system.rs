@@ -152,8 +152,12 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
     // Model invocation stats from reasoning_runs table
     let model_stats = store.model_reliability_stats().await.unwrap_or_default();
 
-    // Calibration stats from confidence_calibrations table
+    // Calibration stats
     let calibration_stats = store.calibration_stats().await.unwrap_or_default();
+
+    // Decision accuracy (Sprint 6.0)
+    let decision_accuracy = store.decision_accuracy_stats().await.unwrap_or_default();
+    let outcome_success = store.outcome_success_stats().await.unwrap_or_default();
 
     response::json_ok(json!({
         "signals_analyzed": health.as_ref().map(|h| h.article_count).unwrap_or(0),
@@ -165,6 +169,8 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
         "evaluation_summary": decision_stats.map(|ds| ds.evaluation_summary),
         "model_reliability": model_stats,
         "calibration": calibration_stats,
+        "decision_accuracy": decision_accuracy,
+        "outcome_success": outcome_success,
     }))
 }
 

@@ -23,6 +23,39 @@ impl crate::D1Store {
             .results()?)
     }
 
+    /// Query decision record accuracy stats.
+    pub async fn decision_accuracy_stats(&self) -> Result<serde_json::Value, StoreError> {
+        self.db
+            .prepare(
+                "SELECT \
+                COUNT(*) AS total_records, \
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count, \
+                ROUND(AVG(confidence), 4) AS avg_confidence \
+                FROM decision_records",
+            )
+            .bind(&[])?
+            .first::<serde_json::Value>(None)
+            .await
+            .map(|opt| opt.unwrap_or_default())
+            .map_err(StoreError::from)
+    }
+
+    /// Query outcome success rate.
+    pub async fn outcome_success_stats(&self) -> Result<serde_json::Value, StoreError> {
+        self.db
+            .prepare(
+                "SELECT \
+                COUNT(*) AS total_outcomes, \
+                ROUND(AVG(CASE WHEN status = 'achieved' THEN 1.0 ELSE 0.0 END), 4) AS success_rate \
+                FROM decision_outcomes WHERE status IN ('achieved', 'missed')",
+            )
+            .bind(&[])?
+            .first::<serde_json::Value>(None)
+            .await
+            .map(|opt| opt.unwrap_or_default())
+            .map_err(StoreError::from)
+    }
+
     /// Query calibration statistics from confidence_calibrations table.
     pub async fn calibration_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
         Ok(self

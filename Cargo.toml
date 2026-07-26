@@ -23,6 +23,7 @@ members = [
     "crates/content-governance",
     "crates/model-runtime",
     "crates/claim-engine",
+    "crates/decision-engine",
 ]
 
 [workspace.package]
@@ -71,6 +72,7 @@ application = { path = "crates/application" }
 content-governance = { path = "crates/content-governance" }
 model-runtime = { path = "crates/model-runtime" }
 claim-engine = { path = "crates/claim-engine" }
+decision-engine = { path = "crates/decision-engine" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

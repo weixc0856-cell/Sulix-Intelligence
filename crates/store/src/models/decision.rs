@@ -222,6 +222,39 @@ pub struct EvalSummary {
     pub accuracy_rate: f64,
 }
 
+// ===== Decision Record (Sprint 6.0) =====
+
+/// Sprint 6.0 Decision Record — the action-feedback-learning loop entity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionRecord {
+    pub id: i64,
+    pub title: String,
+    pub context: Option<String>,
+    pub decision_type: Option<String>,
+    pub action: Option<String>,
+    pub rationale: Option<String>,
+    pub confidence: f64,
+    pub status: String,
+    pub signal_id: Option<i64>,
+    pub memo_json: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Sprint 6.0 Decision Outcome — one metric per row, multiple per decision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionOutcome {
+    pub id: i64,
+    pub decision_id: i64,
+    pub metric: String,
+    pub expected_value: Option<String>,
+    pub actual_value: Option<String>,
+    pub measurement_method: Option<String>,
+    pub status: String,
+    pub observed_at: Option<i64>,
+    pub created_at: i64,
+}
+
 /// Signal with decision count for top-signals ranking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalDecisionCount {

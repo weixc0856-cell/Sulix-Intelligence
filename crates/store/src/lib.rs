@@ -16,6 +16,8 @@ pub use traits::*;
 
 pub mod domain;
 
+pub use domain::decision::record_crud::{NewDecisionRecord, NewOutcome};
+
 mod d1_delegate;
 
 use worker::D1Database;
