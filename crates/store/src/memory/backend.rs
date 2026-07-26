@@ -18,9 +18,9 @@ use crate::{
     EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
     FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
     NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
-    NewReflection, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
-    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
-    SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
+    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
+    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
+    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
@@ -287,6 +287,46 @@ impl ObservationRepository for MemoryStore {
 }
 
 #[async_trait(?Send)]
+impl SourceRepository for MemoryStore {
+    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_source_id.borrow();
+        *self.next_source_id.borrow_mut() = id + 1;
+        self.sources.borrow_mut().insert(
+            id,
+            Source {
+                id,
+                source_type: s.source_type.clone(),
+                feed_id: s.feed_id,
+                name: s.name.clone(),
+                tier: s.tier.clone(),
+                policy: s.policy.clone(),
+                license: s.license.clone(),
+                license_detail: s.license_detail.clone(),
+                attribution: s.attribution.clone(),
+                trust_score: s.trust_score,
+                retention_days: s.retention_days,
+                verified: s.verified,
+                notes: s.notes.clone(),
+                created_at: now,
+                updated_at: now,
+            },
+        );
+        Ok(id)
+    }
+    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
+        Ok(self.sources.borrow().get(&id).cloned())
+    }
+    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
+        Ok(self.sources.borrow().values().find(|s| s.feed_id == Some(feed_id)).cloned())
+    }
+    async fn delete_source(&self, id: i64) -> Result<(), StoreError> {
+        self.sources.borrow_mut().remove(&id);
+        Ok(())
+    }
+}
+
+#[async_trait(?Send)]
 impl ClaimQueryService for MemoryStore {
     async fn get_claim_evidence(&self, _claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         Ok(Vec::new())
@@ -297,6 +337,29 @@ impl ClaimQueryService for MemoryStore {
             Some(s) => Ok(claims.iter().filter(|c| c.status == s).cloned().collect()),
             None => Ok(claims.clone()),
         }
+    }
+}
+
+#[async_trait(?Send)]
+impl SourceQueryService for MemoryStore {
+    async fn list_sources(
+        &self,
+        tier: Option<&str>,
+        policy: Option<&str>,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<Vec<Source>, StoreError> {
+        Ok(self
+            .sources
+            .borrow()
+            .values()
+            .filter(|s| {
+                let tier_match = tier.is_none_or(|t| s.tier == t);
+                let policy_match = policy.is_none_or(|p| s.policy == p);
+                tier_match && policy_match
+            })
+            .cloned()
+            .collect())
     }
 }
 
@@ -1142,6 +1205,24 @@ impl StoreBackend for MemoryStore {
         entity_id: &str,
     ) -> Result<Vec<ConfidenceEvent>, StoreError> {
         ConfidenceRepository::list_confidence_history(self, entity_type, entity_id).await
+    }
+    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
+        SourceRepository::save_source(self, s).await
+    }
+    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
+        SourceRepository::find_source(self, id).await
+    }
+    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
+        SourceRepository::find_source_by_feed(self, feed_id).await
+    }
+    async fn list_sources(
+        &self,
+        tier: Option<&str>,
+        policy: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Source>, StoreError> {
+        SourceQueryService::list_sources(self, tier, policy, limit, offset).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         ClaimQueryService::get_claim_evidence(self, claim_id).await

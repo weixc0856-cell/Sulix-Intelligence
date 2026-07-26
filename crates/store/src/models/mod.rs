@@ -12,6 +12,7 @@ pub(crate) mod outbox;
 pub(crate) mod preview;
 pub(crate) mod reflection;
 pub(crate) mod signal;
+pub(crate) mod source;
 
 pub use artifact::*;
 pub use claim::*;
@@ -27,3 +28,4 @@ pub use outbox::*;
 pub use preview::*;
 pub use reflection::*;
 pub use signal::*;
+pub use source::*;

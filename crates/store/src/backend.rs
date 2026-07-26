@@ -14,8 +14,8 @@ use crate::{
     traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, ContextSnapshot, Decision,
     DecisionEvaluation, DiscoveryMethod, EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact,
     NewArtifactRecord, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory,
-    NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, Observation, OutboxEntry, OutcomeEvent, Reflection,
-    RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, StoreError, UpdateReflection,
+    NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent,
+    Reflection, RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -52,6 +52,8 @@ pub trait StoreBackend:
     + ClaimRepository
     + ObservationRepository
     + ConfidenceRepository
+    + SourceRepository
+    + SourceQueryService
     + ClaimQueryService
 {
     // ---- Rules ----
@@ -302,6 +304,26 @@ pub trait StoreBackend:
         entity_type: &str,
         entity_id: &str,
     ) -> Result<Vec<ConfidenceEvent>, StoreError>;
+
+    // ===== Source Registry (Sprint 5.6) =====
+
+    /// Create or update a source entry.
+    async fn save_source(&self, source: &NewSource) -> Result<i64, StoreError>;
+
+    /// Get a source by its primary key.
+    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError>;
+
+    /// Get a source by feed_id.
+    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError>;
+
+    /// List sources with optional filters.
+    async fn list_sources(
+        &self,
+        tier: Option<&str>,
+        policy: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Source>, StoreError>;
 
     // ===== Memory Engine (Sprint 5.5) =====
 

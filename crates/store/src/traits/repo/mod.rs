@@ -24,3 +24,5 @@ pub use feed_repo::FeedRepository;
 pub use observation_repo::ObservationRepository;
 pub use outcome_repo::OutcomeRepository;
 pub use signal_repo::SignalRepository;
+pub mod source_repo;
+pub use source_repo::SourceRepository;

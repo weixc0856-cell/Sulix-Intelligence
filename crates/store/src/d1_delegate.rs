@@ -15,9 +15,9 @@ use crate::{
     EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
     FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
     NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
-    NewReflection, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
-    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
-    SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
+    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
+    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
+    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 //  Repositories (save / find)
@@ -155,6 +155,22 @@ impl ConfidenceRepository for crate::D1Store {
         entity_id: &str,
     ) -> Result<Vec<ConfidenceEvent>, StoreError> {
         crate::D1Store::list_confidence_history(self, entity_type, entity_id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl SourceRepository for crate::D1Store {
+    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
+        crate::D1Store::save_source(self, s).await
+    }
+    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
+        crate::D1Store::find_source(self, id).await
+    }
+    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
+        crate::D1Store::find_source_by_feed(self, feed_id).await
+    }
+    async fn delete_source(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::delete_source(self, id).await
     }
 }
 
@@ -334,12 +350,26 @@ impl OutcomeQueryService for crate::D1Store {
 }
 
 #[async_trait(?Send)]
+#[async_trait(?Send)]
 impl ClaimQueryService for crate::D1Store {
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
         crate::D1Store::list_claims(self, status, limit).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         crate::D1Store::get_claim_evidence(self, claim_id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl SourceQueryService for crate::D1Store {
+    async fn list_sources(
+        &self,
+        tier: Option<&str>,
+        policy: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Source>, StoreError> {
+        crate::D1Store::list_sources(self, tier, policy, limit, offset).await
     }
 }
 
@@ -669,6 +699,27 @@ impl StoreBackend for crate::D1Store {
         entity_id: &str,
     ) -> Result<Vec<ConfidenceEvent>, StoreError> {
         crate::D1Store::list_confidence_history(self, entity_type, entity_id).await
+    }
+
+    // ===== Source Registry (Sprint 5.6) =====
+
+    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
+        crate::D1Store::save_source(self, s).await
+    }
+    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
+        crate::D1Store::find_source(self, id).await
+    }
+    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
+        crate::D1Store::find_source_by_feed(self, feed_id).await
+    }
+    async fn list_sources(
+        &self,
+        tier: Option<&str>,
+        policy: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Source>, StoreError> {
+        crate::D1Store::list_sources(self, tier, policy, limit, offset).await
     }
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {

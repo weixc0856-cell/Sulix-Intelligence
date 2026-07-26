@@ -22,3 +22,5 @@ pub use evaluation_query::EvaluationQueryService;
 pub use feed_query::FeedQueryService;
 pub use outcome_query::OutcomeQueryService;
 pub use signal_query::{BatchSignalQueryService, SignalQueryService};
+pub mod source_query;
+pub use source_query::SourceQueryService;

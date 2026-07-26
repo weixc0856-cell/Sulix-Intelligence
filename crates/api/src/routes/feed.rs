@@ -64,10 +64,30 @@ pub(crate) async fn feeds_create(mut req: Request, ctx: RouteContext<()>) -> Res
         )
         .await
     {
-        Ok(Some(id)) => match store.get_feed(id).await {
-            Ok(Some(feed)) => response::json_ok(json!({"feed": feed})),
-            _ => response::json_ok(json!({"id": id})),
-        },
+        Ok(Some(feed_id)) => {
+            // Auto-register a default source entry
+            let title = body.title.as_deref().unwrap_or("Untitled");
+            let _ = store
+                .save_source(&store::NewSource {
+                    source_type: "RssFeed".into(),
+                    feed_id: Some(feed_id),
+                    name: Some(title.into()),
+                    tier: "Tier2".into(),
+                    policy: "SummaryAllowed".into(),
+                    license: "Unknown".into(),
+                    license_detail: None,
+                    attribution: Some(title.into()),
+                    trust_score: None,
+                    retention_days: None,
+                    verified: false,
+                    notes: None,
+                })
+                .await;
+            match store.get_feed(feed_id).await {
+                Ok(Some(feed)) => response::json_ok(json!({"feed": feed})),
+                _ => response::json_ok(json!({"id": feed_id})),
+            }
+        }
         Ok(None) => response::json_err(409, "feed with this URL already exists"),
         Err(e) => response::json_err_internal(&e.to_string()),
     }

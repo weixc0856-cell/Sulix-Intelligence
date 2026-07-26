@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::{
     ArtifactRecord, ConfidenceEvent, ContextSnapshot, EventIndexEntry, Feed, Memory, NewArticle, OutboxEntry,
-    OutcomeEvent, Reflection, SignalEvent,
+    OutcomeEvent, Reflection, SignalEvent, Source,
 };
 
 mod backend;
@@ -95,6 +95,10 @@ pub struct MemoryStore {
     // Confidence Event state
     confidence_events: RefCell<Vec<ConfidenceEvent>>,
     next_confidence_event_id: RefCell<i64>,
+
+    // Source Registry state
+    pub sources: RefCell<HashMap<i64, Source>>,
+    next_source_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -179,6 +183,9 @@ impl MemoryStore {
 
             confidence_events: RefCell::new(Vec::new()),
             next_confidence_event_id: RefCell::new(1),
+
+            sources: RefCell::new(HashMap::new()),
+            next_source_id: RefCell::new(1),
         }
     }
 

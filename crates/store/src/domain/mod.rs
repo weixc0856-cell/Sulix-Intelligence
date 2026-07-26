@@ -17,3 +17,4 @@ pub mod observation;
 pub mod outbox;
 pub mod reflection;
 pub mod signal;
+pub mod source;

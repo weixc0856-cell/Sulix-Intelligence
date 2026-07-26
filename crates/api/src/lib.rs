@@ -98,6 +98,12 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/claims/:id", routes::claim::detail_with_evidence)
         // Confidence History (Sprint 5.4B)
         .get_async("/api/confidence/:entity_type/:entity_id", routes::confidence::history)
+        // Source Registry (Sprint 5.6)
+        .get_async("/api/sources", routes::source::sources_list)
+        .get_async("/api/sources/:id", routes::source::sources_get)
+        .post_async("/api/sources", routes::source::sources_create)
+        .put_async("/api/sources/:id", routes::source::sources_update)
+        .delete_async("/api/sources/:id", routes::source::sources_delete)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)
