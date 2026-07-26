@@ -26,6 +26,7 @@ async-trait.workspace = true
 reflection-engine.workspace = true
 agent-engine.workspace = true
 context-engine.workspace = true
+model-runtime.workspace = true
 
 [dev-dependencies]
 url.workspace = true

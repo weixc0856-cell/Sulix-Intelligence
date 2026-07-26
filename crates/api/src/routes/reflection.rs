@@ -1,42 +1,81 @@
 use crate::shared::response;
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
 use object_store::R2Store;
-use reflection_engine::context::ReflectionContext;
-use reflection_engine::generator::{LessonDraft, ReflectionDraft, ReflectionGenerator};
+use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
 use serde_json::json;
 use store::D1Store;
 use worker::*;
 
-struct NoopGenerator;
-
-#[async_trait::async_trait(?Send)]
-impl ReflectionGenerator for NoopGenerator {
-    async fn generate(&self, _context: &ReflectionContext) -> Result<ReflectionDraft, String> {
-        Ok(ReflectionDraft {
-            result: "mixed".into(),
-            confidence_calibration: "accurate".into(),
-            quality_score: 0.7,
-            lessons: vec![LessonDraft {
-                category: "general".into(),
-                domain: "default".into(),
-                description: "This is a placeholder reflection until LLM integration is connected.".into(),
-                severity: "medium".into(),
-                confidence: 0.7,
-                evidence_basis: vec!["PLACEHOLDER".into()],
-            }],
-            rules: vec![],
-        })
-    }
-}
-
-fn build_engine(env: &Env) -> Result<ReflectionEngine<D1Store, Box<dyn EventStore>, NoopGenerator>> {
+fn build_engine(env: &Env) -> Result<ReflectionEngine<D1Store, Box<dyn EventStore>, RealReflectionGenerator>> {
     let store = D1Store::new(env.d1("DB")?);
     let event_store: Box<dyn EventStore> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
         (Some(db), Some(bucket)) => Box::new(EventR2Backend::new(D1Store::new(db), R2Store::new(bucket))),
         _ => Box::new(NoopEventStore::new()),
     };
-    Ok(ReflectionEngine::new(store, event_store, NoopGenerator))
+
+    let provider = try_build_reflection_provider(env);
+    let generator = RealReflectionGenerator::new(provider);
+    Ok(ReflectionEngine::new(store, event_store, generator))
+}
+
+/// Build a model provider for the reflection generator, falling back to NoopProvider.
+fn try_build_reflection_provider(env: &Env) -> Box<dyn model_runtime::ModelProvider> {
+    if let Ok(api_key) = env.secret("AI_API_KEY") {
+        let base_url = env.var("AI_BASE_URL").ok().map(|v| v.to_string());
+        let chat_model = env.var("AI_CHAT_MODEL").ok().map(|v| v.to_string());
+        if let Ok(config) = model_runtime::ModelRuntimeConfig::from_env(
+            &api_key.to_string(),
+            base_url.as_deref(),
+            chat_model.as_deref(),
+        ) {
+            let client = WorkerHttpClient;
+            return model_runtime::build_provider(&config, Box::new(client));
+        }
+    }
+    Box::new(model_runtime::NoopProvider::new())
+}
+
+/// Minimal HTTP client for the reflection route.
+struct WorkerHttpClient;
+
+#[async_trait::async_trait(?Send)]
+impl model_runtime::HttpClient for WorkerHttpClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, model_runtime::ModelError> {
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        let wh = worker::Headers::new();
+        for (k, v) in headers {
+            let _ = wh.set(k, v);
+        }
+        init.with_headers(wh);
+        let body_str =
+            serde_json::to_string(body).map_err(|e| model_runtime::ModelError::ProviderError(e.to_string()))?;
+        init.with_body(Some(body_str.into()));
+        let req = Request::new_with_init(url, &init)
+            .map_err(|e| model_runtime::ModelError::ProviderError(format!("{e:?}")))?;
+        let mut resp = worker::Fetch::Request(req)
+            .send()
+            .await
+            .map_err(|e| model_runtime::ModelError::ProviderError(format!("{e:?}")))?;
+        let status = resp.status_code();
+        if status == 429 {
+            return Err(model_runtime::ModelError::RateLimited);
+        }
+        if status == 401 {
+            return Err(model_runtime::ModelError::AuthenticationFailed);
+        }
+        if status >= 500 {
+            return Err(model_runtime::ModelError::ProviderError(format!("HTTP {status}")));
+        }
+        let text = resp.text().await.map_err(|e| model_runtime::ModelError::InvalidResponse(e.to_string()))?;
+        serde_json::from_str(&text).map_err(|e| model_runtime::ModelError::InvalidResponse(e.to_string()))
+    }
 }
 
 /// POST /api/intelligence/decisions/:id/reflect

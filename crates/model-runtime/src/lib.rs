@@ -9,17 +9,21 @@
 //! dependency is `reqwest` for HTTP (used by `RealDeepSeek`).
 
 pub mod deepseek;
+pub mod factory;
 pub mod noop;
 pub mod provider;
 pub mod retry;
 pub mod schema;
+pub mod task;
 pub mod types;
 
 pub use deepseek::{HttpClient, RealDeepSeek};
+pub use factory::{build_provider, ModelRuntimeConfig, ModelRuntimeError};
 pub use noop::NoopProvider;
 pub use provider::ModelProvider;
 pub use retry::{is_transient_status, RetryPolicy};
 pub use schema::{claim_schema, reflection_schema, summary_schema};
+pub use task::ReasoningTask;
 pub use types::{
     ContextBlock, GenerationParams, ModelCapabilities, ModelError, ModelRequest, ModelResponse, ModelTask, TokenUsage,
 };

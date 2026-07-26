@@ -13,6 +13,7 @@ use crate::types::{ModelCapabilities, ModelError, ModelRequest, ModelResponse};
 /// Implementations:
 /// - `RealDeepSeek` — production, calls DeepSeek API
 /// - `NoopProvider` — tests, returns deterministic responses
+///
 #[async_trait(?Send)]
 pub trait ModelProvider {
     /// Return the capabilities of this provider.

@@ -1,32 +1,11 @@
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
 use object_store::R2Store;
-use reflection_engine::context::ReflectionContext;
-use reflection_engine::generator::{LessonDraft, ReflectionDraft, ReflectionGenerator};
+use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
 use store::D1Store;
 use worker::*;
 
-struct NoopGenerator;
-
-#[async_trait::async_trait(?Send)]
-impl ReflectionGenerator for NoopGenerator {
-    async fn generate(&self, _context: &ReflectionContext) -> Result<ReflectionDraft, String> {
-        Ok(ReflectionDraft {
-            result: "mixed".into(),
-            confidence_calibration: "accurate".into(),
-            quality_score: 0.7,
-            lessons: vec![LessonDraft {
-                category: "general".into(),
-                domain: "default".into(),
-                description: "Placeholder reflection until LLM integration.".into(),
-                severity: "medium".into(),
-                confidence: 0.7,
-                evidence_basis: vec!["PLACEHOLDER".into()],
-            }],
-            rules: vec![],
-        })
-    }
-}
+use crate::runtime::intelligence::IntelligenceRuntime;
 
 const MAX_PER_CYCLE: u32 = 3;
 
@@ -43,7 +22,12 @@ pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
         (Some(db), Some(bucket)) => Box::new(EventR2Backend::new(D1Store::new(db), R2Store::new(bucket))),
         _ => Box::new(NoopEventStore::new()),
     };
-    let engine = ReflectionEngine::new(store, event_store, NoopGenerator);
+
+    let provider = IntelligenceRuntime::new(env)
+        .map(|r| r.provider)
+        .unwrap_or_else(|_| Box::new(model_runtime::NoopProvider::new()));
+    let generator = RealReflectionGenerator::new(provider);
+    let engine = ReflectionEngine::new(store, event_store, generator);
 
     // 1. Stale recovery
     if let Ok(stale) = engine.repository().stale_generating_reflections(now).await {
