@@ -3,7 +3,7 @@ use worker::wasm_bindgen::JsValue;
 use crate::{ConfidenceEvent, NewConfidenceEvent, StoreError};
 
 impl crate::D1Store {
-    /// Append a confidence event. 自动记录前一次的 confidence（如果有）。
+    /// Append a confidence event with optional factor explanations.
     pub async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
 
@@ -18,7 +18,10 @@ impl crate::D1Store {
 
         let row = self
             .db
-            .prepare("INSERT INTO confidence_events (entity_type, entity_id, previous_confidence, confidence, reason, trigger_event, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id")
+            .prepare(
+                "INSERT INTO confidence_events (entity_type, entity_id, previous_confidence, confidence, reason, trigger_event, factors_json, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id",
+            )
             .bind(&[
                 e.entity_type.as_str().into(),
                 e.entity_id.as_str().into(),
@@ -26,6 +29,7 @@ impl crate::D1Store {
                 JsValue::from_f64(e.confidence),
                 e.reason.as_deref().map_or(JsValue::null(), |v| v.into()),
                 e.trigger_event.as_deref().map_or(JsValue::null(), |v| v.into()),
+                e.factors_json.as_deref().map_or(JsValue::null(), |v| v.into()),
                 JsValue::from_f64(now as f64),
             ])?
             .first::<serde_json::Value>(None)
@@ -40,7 +44,11 @@ impl crate::D1Store {
     ) -> Result<Vec<ConfidenceEvent>, StoreError> {
         Ok(self
             .db
-            .prepare("SELECT id, entity_type, entity_id, previous_confidence, confidence, reason, trigger_event, created_at FROM confidence_events WHERE entity_type = ?1 AND entity_id = ?2 ORDER BY created_at ASC")
+            .prepare(
+                "SELECT id, entity_type, entity_id, previous_confidence, confidence, reason, trigger_event, \
+                 factors_json, created_at \
+                 FROM confidence_events WHERE entity_type = ?1 AND entity_id = ?2 ORDER BY created_at ASC",
+            )
             .bind(&[entity_type.into(), entity_id.into()])?
             .all()
             .await?

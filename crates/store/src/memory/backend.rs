@@ -249,6 +249,7 @@ impl ConfidenceRepository for MemoryStore {
             confidence: e.confidence,
             reason: e.reason.clone(),
             trigger_event: e.trigger_event.clone(),
+            factors_json: e.factors_json.clone(),
             created_at: now,
         });
         Ok(id)

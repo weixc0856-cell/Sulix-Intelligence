@@ -241,6 +241,7 @@ mod tests {
             confidence: 0.85,
             reason: Some("initial assessment".into()),
             trigger_event: None,
+            factors_json: None,
         };
         let id = futures::executor::block_on(ConfidenceRepository::append_confidence(&store, &e)).unwrap();
         assert_eq!(id, 1);
