@@ -67,6 +67,7 @@ pub enum GraphNodeType {
     Reflection,
     Memory,
     Strategy,
+    Claim,
 }
 
 // ── Edge ──
@@ -89,6 +90,8 @@ pub enum GraphEdgeType {
     EvaluatedBy,
     LearnedFrom,
     AlignedWith,
+    EvidenceSupportsClaim,
+    ClaimGeneratesSignal,
 }
 
 // ── Projection Service ──
