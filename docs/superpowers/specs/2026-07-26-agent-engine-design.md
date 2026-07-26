@@ -89,17 +89,26 @@ AgentResponse JSON
 /// Request correlation only. Not persisted.
 pub type SessionId = String;
 
+/// Request correlation only. Not persisted.
+pub type SessionId = String;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRequest {
     pub query: String,
     pub mode: AgentMode,
     pub session_id: Option<SessionId>,
+    pub options: Option<AgentRequestOptions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRequestOptions {
+    pub include_evidence: Option<bool>,
+    pub max_context_items: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentMode {
     DecisionAdvisor,
-    // Future: StrategyReview, ReflectionCoach, ResearchAssistant
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,26 +116,55 @@ pub struct AgentResponse {
     pub answer: String,
     pub reasoning: ReasoningTrace,
     pub context_id: String,
+    pub execution: ExecutionMetadata,
+    pub session_id: Option<SessionId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionMetadata {
     pub mode: AgentMode,
     pub model: String,
     pub prompt_version: String,
-    pub session_id: Option<SessionId>,
+    pub reasoning_version: String,
     pub generated_at: i64,
+    pub latency_ms: u64,
+    pub stages: Vec<AgentStage>,
 }
 
-/// Structured reasoning trace — allows users to understand WHY the answer was given.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AgentStage {
+    ContextBuilding,
+    PromptConstruction,
+    LLMInference,
+    ResponseValidation,
+    Completed,
+}
+
+/// Structured reasoning trace — WHY the answer was given.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReasoningTrace {
     pub confidence: f64,
     pub evidence_refs: Vec<String>,
     pub assumptions: Vec<String>,
     pub uncertainty: Vec<String>,
+    pub reasoning_version: String,
 }
 
-/// AgentRuntime depends on ContextProvider (abstract), not ContextBuilder<D1Store>.
+pub struct BuiltPrompt {
+    pub system: String,
+    pub user: String,
+    pub version: String,
+}
+
+pub struct ContextResult {
+    pub context: AgentContext,
+    pub snapshot_id: String,
+    pub confidence: f64,
+}
+
 #[async_trait(?Send)]
 pub trait ContextProvider {
-    async fn build_context(&self, query: &str) -> Result<AgentContext, String>;
+    async fn build_context(&self, query: &str) -> Result<ContextResult, String>;
 }
 ```
 
@@ -136,14 +174,22 @@ pub trait ContextProvider {
 #[async_trait(?Send)]
 pub trait LLMProvider {
     fn capability(&self) -> ModelCapability;
-    async fn complete(&self, request: LLMRequest) -> Result<LLMResponse, String>;
+    async fn complete(&self, request: LLMRequest) -> Result<LLMResponse, LLMError>;
 }
 
 pub struct ModelCapability {
+    pub provider: String,
     pub model_name: String,
     pub context_window: u32,
     pub supports_json: bool,
-    pub supports_streaming: bool,
+}
+
+pub enum LLMError {
+    AuthenticationFailed,
+    RateLimited,
+    Timeout,
+    InvalidResponse,
+    ProviderError(String),
 }
 
 pub struct LLMRequest {
@@ -163,17 +209,11 @@ pub struct LLMUsage {
     pub completion_tokens: u32,
 }
 
-/// Prompt template with version tracking.
-pub struct PromptTemplate {
-    pub version: String,           // "decision_advisor.v1"
-    pub system_prompt: String,
-}
-
-/// ReasoningPolicy — configures agent behavior per mode.
 pub struct ReasoningPolicy {
-    pub context_budget: u32,
-    pub evidence_requirement: EvidencePolicy,
+    pub evidence_policy: EvidencePolicy,
+    pub max_context_items: u32,
     pub confidence_threshold: f64,
+    pub require_uncertainty: bool,
 }
 
 pub enum EvidencePolicy {
