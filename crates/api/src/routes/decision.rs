@@ -326,3 +326,141 @@ pub async fn timeline(req: Request, ctx: RouteContext<()>) -> Result<Response> {
 
     response::json_ok(serde_json::json!({ "success": true, "events": events, "learning": learning }))
 }
+
+// ── Decision Explanation ──
+
+#[derive(serde::Serialize)]
+struct SupportingEvidence {
+    title: String,
+    strength: f64,
+    source: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ConfidenceDriver {
+    factor: String,
+    impact: String,
+}
+
+#[derive(serde::Serialize)]
+struct ExplanationResponse {
+    decision_id: String,
+    decision_title: String,
+    hypothesis: Option<String>,
+    confidence: f64,
+    trend: String,
+    supporting_evidence: Vec<SupportingEvidence>,
+    confidence_drivers: Vec<ConfidenceDriver>,
+    uncertainties: Vec<String>,
+    outcome_summary: Option<String>,
+}
+
+/// GET /api/intelligence/decisions/:id/explanation
+///
+/// Returns a structured explanation of why the system holds this belief:
+/// supporting evidence, confidence drivers, and known uncertainties.
+/// This is the core "Why Sulix Thinks This" API.
+pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+
+    let decision = match store.get_decision(id).await {
+        Ok(Some(d)) => d,
+        Ok(None) => return response::json_err(404, "decision not found"),
+        Err(e) => {
+            console_log!("[Sulix:explanation] get_decision failed: {e}");
+            return response::json_err_internal("explanation query failed");
+        }
+    };
+
+    // Determine trend from confidence history
+    let trend = match store.list_confidence_history("decision", &id.to_string()).await {
+        Ok(events) if events.len() >= 2 => {
+            let latest = events.last().unwrap();
+            let prev = &events[events.len() - 2];
+            if latest.confidence > prev.previous_confidence.unwrap_or(0.0) {
+                "increasing".into()
+            } else if latest.confidence < prev.confidence {
+                "decreasing".into()
+            } else {
+                "stable".into()
+            }
+        }
+        _ => "stable".into(),
+    };
+
+    // Load evidence from signal thread
+    let mut supporting_evidence: Vec<SupportingEvidence> = Vec::new();
+    if let Some(signal_id) = decision.signal_thread_id {
+        if let Ok(Some(detail)) = store.load_signal_detail(signal_id).await {
+            for article in &detail.evidence_top {
+                supporting_evidence.push(SupportingEvidence {
+                    title: article.title.clone(),
+                    strength: article.score.clamp(0.0, 1.0),
+                    source: article.feed_name.clone(),
+                });
+            }
+        }
+    }
+
+    // Load outcomes for accuracy summary
+    let outcome_summary = match store.get_decision_outcomes(id).await {
+        Ok(outcomes) if !outcomes.is_empty() => {
+            let confirmed = outcomes
+                .iter()
+                .filter(|o| o.outcome_type == "confirmed" || o.outcome_type == "prediction_correct")
+                .count();
+            Some(format!("{}/{} outcomes confirmed", confirmed, outcomes.len()))
+        }
+        _ => None,
+    };
+
+    // Build confidence drivers
+    let mut confidence_drivers: Vec<ConfidenceDriver> = Vec::new();
+    let evidence_count = supporting_evidence.len();
+    if evidence_count >= 3 {
+        confidence_drivers.push(ConfidenceDriver {
+            factor: "evidence".into(),
+            impact: format!("{} independent sources", evidence_count),
+        });
+    } else if evidence_count >= 1 {
+        confidence_drivers
+            .push(ConfidenceDriver { factor: "evidence".into(), impact: format!("{} source", evidence_count) });
+    }
+    if trend == "increasing" {
+        confidence_drivers
+            .push(ConfidenceDriver { factor: "trend".into(), impact: "Confidence rising over time".into() });
+    }
+    if let Some(ref _hypothesis) = decision.hypothesis {
+        confidence_drivers.push(ConfidenceDriver {
+            factor: "analysis".into(),
+            impact: "Based on structured hypothesis testing".into(),
+        });
+    }
+
+    // Uncertainties
+    let mut uncertainties: Vec<String> = Vec::new();
+    if evidence_count < 5 {
+        uncertainties.push("Limited number of supporting sources".into());
+    }
+    if outcome_summary.is_none() {
+        uncertainties.push("Outcome not yet observed — prediction pending".into());
+    }
+
+    let response = ExplanationResponse {
+        decision_id: format!("DEC-{:06}", id),
+        decision_title: decision.title,
+        hypothesis: decision.hypothesis,
+        confidence: decision.confidence,
+        trend,
+        supporting_evidence,
+        confidence_drivers,
+        uncertainties,
+        outcome_summary,
+    };
+
+    response::json_ok(json!(response))
+}

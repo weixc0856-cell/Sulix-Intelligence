@@ -72,6 +72,7 @@ pub fn router() -> Router<'static, ()> {
         .post_async("/api/intelligence/decisions/:id/evaluations", routes::decision::create_evaluation)
         .get_async("/api/intelligence/decisions/:id/evaluations", routes::decision::list_evaluations)
         .get_async("/api/intelligence/decisions/:id/timeline", routes::decision::timeline)
+        .get_async("/api/intelligence/decisions/:id/explanation", routes::decision::explanation)
         .post_async("/api/intelligence/signals/:id/decisions", routes::decision::create)
         .get_async("/api/intelligence/signals/:id/decisions", routes::decision::by_signal)
         // Feed CRUD
