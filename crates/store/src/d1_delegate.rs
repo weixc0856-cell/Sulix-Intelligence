@@ -166,6 +166,9 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::entity_signal_candidates_filtered(self, now, days, limit, min_entity_articles, min_sources)
             .await
     }
+    async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
+        crate::D1Store::get_latest_instance_fingerprint(self, thread_id).await
+    }
     async fn append_signal_instance_v2(
         &self,
         thread_id: i64,

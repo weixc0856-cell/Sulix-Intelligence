@@ -356,6 +356,9 @@ impl StoreBackend for MemoryStore {
         Ok(None)
     }
 
+    async fn get_latest_instance_fingerprint(&self, _thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
+        Ok(None)  // MemoryStore: no persisted instances to compare
+    }
     async fn append_signal_instance_v2(
         &self,
         _thread_id: i64,

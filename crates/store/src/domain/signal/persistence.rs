@@ -6,7 +6,23 @@
 
 use worker::wasm_bindgen::JsValue;
 
+#[derive(serde::Deserialize)]
+struct FingerprintRow {
+    score: f64,
+    trend: String,
+}
+
 impl crate::D1Store {
+    /// Get the latest instance's (score, trend) for a thread for change detection.
+    pub async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, crate::StoreError> {
+        let row = self
+            .db
+            .prepare("SELECT score, trend FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 1")
+            .bind(&[JsValue::from_f64(thread_id as f64)])?
+            .first::<FingerprintRow>(None)
+            .await?;
+        Ok(row.map(|r| (r.score, r.trend)))
+    }
     /// Append a signal instance with enriched snapshot (V2).
     ///
     /// Stores additional context (avg_score, entity_id) compared to the

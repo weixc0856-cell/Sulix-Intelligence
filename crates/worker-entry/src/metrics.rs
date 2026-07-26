@@ -22,6 +22,7 @@ pub struct PipelineMetrics {
     pub entities_created: u32,
     pub entity_links: u32,
     pub entity_relations: u32,
+    pub d1_writes: u32,
     pub errors: u32,
 }
 
@@ -60,6 +61,7 @@ impl PipelineMetrics {
             "entities_created":   self.entities_created,
             "entity_links":       self.entity_links,
             "entity_relations":   self.entity_relations,
+            "d1_writes":          self.d1_writes,
             "errors":             self.errors,
         })
     }

@@ -177,6 +177,9 @@ pub trait StoreBackend {
         min_sources: u32,
     ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
 
+    /// Get the latest instance's (score, trend) for a thread, if any.
+    async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, StoreError>;
+
     /// Append a signal instance with enriched snapshot (avg_score, entity_id).
     #[allow(clippy::too_many_arguments)]
     async fn append_signal_instance_v2(

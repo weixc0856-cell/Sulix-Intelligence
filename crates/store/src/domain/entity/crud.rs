@@ -2,6 +2,8 @@ use worker::wasm_bindgen::JsValue;
 
 impl crate::D1Store {
     /// Upsert an entity by normalized_name. Returns the entity id.
+    /// Sprint 5.10: uses single UPSERT via ON CONFLICT instead of INSERT+UPDATE fallback.
+    /// Only updates updated_at when it changes by more than a day to reduce writes.
     pub async fn upsert_entity(
         &self,
         name: &str,
@@ -12,8 +14,13 @@ impl crate::D1Store {
         let row = self
             .db
             .prepare(
-                "INSERT OR IGNORE INTO entities (name, normalized_name, entity_type, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id",
+                "INSERT INTO entities (name, normalized_name, entity_type, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(normalized_name) DO UPDATE SET \
+                   entity_type = excluded.entity_type, \
+                   updated_at = CASE WHEN excluded.updated_at - entities.updated_at > 86400 \
+                     THEN excluded.updated_at ELSE entities.updated_at END \
+                 RETURNING id",
             )
             .bind(&[
                 name.into(),
@@ -22,18 +29,6 @@ impl crate::D1Store {
                 JsValue::from_f64(now as f64),
                 JsValue::from_f64(now as f64),
             ])?
-            .first::<serde_json::Value>(None)
-            .await?;
-
-        if let Some(id) = row.and_then(|v| v["id"].as_i64()) {
-            return Ok(id);
-        }
-
-        // Already exists — update timestamp and return existing id
-        let row = self
-            .db
-            .prepare("UPDATE entities SET updated_at = ?1, entity_type = ?2 WHERE normalized_name = ?3 RETURNING id")
-            .bind(&[JsValue::from_f64(now as f64), entity_type.into(), normalized.into()])?
             .first::<serde_json::Value>(None)
             .await?;
 

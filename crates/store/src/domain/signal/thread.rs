@@ -5,6 +5,7 @@ use crate::{SignalMutation, SignalUpsertResult};
 
 impl crate::D1Store {
     /// Upsert a signal thread by signal_key.
+    /// Sprint 5.10: uses single UPSERT via ON CONFLICT instead of INSERT+UPDATE fallback.
     /// Returns `SignalUpsertResult` indicating whether the thread was created or updated.
     pub async fn upsert_signal_thread(
         &self,
@@ -19,7 +20,14 @@ impl crate::D1Store {
         let row = self
             .db
             .prepare(
-                "INSERT INTO signal_threads (signal_key, anchor_entity_id, title, status, discovery_method, discovery_score, first_seen_at, last_seen_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?8) RETURNING id",
+                "INSERT INTO signal_threads (signal_key, anchor_entity_id, title, status, discovery_method, discovery_score, first_seen_at, last_seen_at, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?8) \
+                 ON CONFLICT(signal_key) DO UPDATE SET \
+                   title = excluded.title, \
+                   last_seen_at = excluded.last_seen_at, \
+                   updated_at = excluded.updated_at, \
+                   discovery_score = COALESCE(excluded.discovery_score, signal_threads.discovery_score) \
+                 RETURNING id, (xmax = 0) AS is_insert",
             )
             .bind(&[
                 signal_key.into(),
@@ -34,27 +42,12 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await?;
 
-        if let Some(id) = row.and_then(|v| v["id"].as_i64()) {
-            return Ok(SignalUpsertResult { id, mutation: SignalMutation::Created });
-        }
-
-        let row = self
-            .db
-            .prepare("UPDATE signal_threads SET title = ?1, updated_at = ?2, last_seen_at = ?3, discovery_score = ?4 WHERE signal_key = ?5 RETURNING id")
-            .bind(&[
-                title.into(),
-                JsValue::from_f64(now as f64),
-                JsValue::from_f64(now as f64),
-                discovery_score.map_or(JsValue::null(), JsValue::from_f64),
-                signal_key.into(),
-            ])?
-            .first::<serde_json::Value>(None)
-            .await?;
-
         let id = row
+            .as_ref()
             .and_then(|v| v["id"].as_i64())
             .ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))?;
-        Ok(SignalUpsertResult { id, mutation: SignalMutation::Updated })
+        let is_insert = row.and_then(|v| v["is_insert"].as_i64()).unwrap_or(0) != 0;
+        Ok(SignalUpsertResult { id, mutation: if is_insert { SignalMutation::Created } else { SignalMutation::Updated } })
     }
 
     /// Append a signal instance to a thread.

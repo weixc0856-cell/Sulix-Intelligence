@@ -82,19 +82,30 @@ impl SignalEngine {
                 report.threads_created += 1;
             }
 
-            let _instance_id = store
-                .append_signal_instance_v2(
-                    thread_id,
-                    candidate.score,
-                    impact,
-                    &candidate.trend,
-                    candidate.article_count,
-                    candidate.source_count,
-                    candidate.avg_score,
-                    candidate.anchor_entity_id.unwrap_or(0),
-                )
-                .await?;
-            report.instances_appended += 1;
+            // Sprint 5.10: skip instance append if score/trend unchanged
+            let should_append = match store
+                .get_latest_instance_fingerprint(thread_id)
+                .await
+            {
+                Ok(Some((s, t))) => (s - candidate.score).abs() > 0.01 || t != candidate.trend,
+                _ => true,
+            };
+
+            if should_append {
+                let _instance_id = store
+                    .append_signal_instance_v2(
+                        thread_id,
+                        candidate.score,
+                        impact,
+                        &candidate.trend,
+                        candidate.article_count,
+                        candidate.source_count,
+                        candidate.avg_score,
+                        candidate.anchor_entity_id.unwrap_or(0),
+                    )
+                    .await?;
+                report.instances_appended += 1;
+            }
 
             let payload = serde_json::json!({
                 "score": candidate.score,
@@ -105,13 +116,10 @@ impl SignalEngine {
                 "signal_key": candidate.signal_key,
             });
 
-            // Legacy D1 insert (transitional)
-            store.insert_signal_event(thread_id, "score_changed", Some(&payload.to_string())).await?;
-            report.events_written += 1;
-
-            // R2 Event Archive (canonical)
+            // Sprint 5.10: EventStore is the canonical path. Legacy signal_events removed.
             let sig_id = format!("SIG-{thread_id:06}");
             if let Some(es) = event_store {
+                report.events_written += 1;
                 let event = event_store::EventEnvelope {
                     schema_version: 1,
                     event_version: 1,
@@ -135,10 +143,8 @@ impl SignalEngine {
             }
 
             if upsert.mutation == store::SignalMutation::Created {
-                store.insert_signal_event(thread_id, "created", None).await?;
-                report.events_written += 1;
-
                 if let Some(es) = event_store {
+                    report.events_written += 1;
                     let event = event_store::EventEnvelope {
                         schema_version: 1,
                         event_version: 1,

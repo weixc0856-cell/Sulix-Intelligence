@@ -191,8 +191,10 @@ pub(crate) async fn process_one_feed(
                                                 }
                                             }
                                             // Build mentioned_together co-occurrence relations
-                                            for i in 0..entity_ids.len() {
-                                                for j in (i + 1)..entity_ids.len() {
+                                            // Sprint 5.10: cap at Top-5 entities by score (max 10 relations/article)
+                                            let top_n = entity_ids.len().min(5);
+                                            for i in 0..top_n {
+                                                for j in (i + 1)..top_n {
                                                     if let Err(e) = ctx
                                                         .store
                                                         .link_entity_relation(
