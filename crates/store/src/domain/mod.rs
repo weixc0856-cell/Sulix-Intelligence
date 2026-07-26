@@ -14,6 +14,7 @@ pub mod feed_analytics;
 pub mod feed_rules;
 pub mod id_gen;
 pub mod memory;
+pub mod metrics;
 pub mod observation;
 pub mod outbox;
 pub mod reflection;

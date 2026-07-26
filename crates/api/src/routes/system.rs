@@ -123,10 +123,8 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
     // Decision stats (evaluations, accuracy)
     let decision_stats = store.decision_stats().await.ok();
 
-    // Source reliability (all sources with trust scores)
+    // Source reliability
     let sources = store.list_sources(None, None, 100, 0).await.unwrap_or_default();
-
-    // Source reliability ranking: filter to sources with trust scores
     let source_reliability: Vec<serde_json::Value> = sources
         .iter()
         .filter(|s| s.trust_score.is_some())
@@ -141,11 +139,7 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
         })
         .collect();
 
-    // Aggregate total counts
-    let total_signals = 0u64; // signal_engine handles this separately
     let total_sources = sources.len();
-
-    // Compute accuracy rate from decision stats
     let accuracy_rate = decision_stats.as_ref().and_then(|ds| {
         let total = ds.evaluation_summary.total_evaluated;
         if total > 0 {
@@ -155,6 +149,12 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
         }
     });
 
+    // Model invocation stats from reasoning_runs table
+    let model_stats = store.model_reliability_stats().await.unwrap_or_default();
+
+    // Calibration stats from confidence_calibrations table
+    let calibration_stats = store.calibration_stats().await.unwrap_or_default();
+
     response::json_ok(json!({
         "signals_analyzed": health.as_ref().map(|h| h.article_count).unwrap_or(0),
         "active_sources": total_sources,
@@ -163,6 +163,8 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Respon
         "accuracy_rate": accuracy_rate,
         "source_reliability": source_reliability,
         "evaluation_summary": decision_stats.map(|ds| ds.evaluation_summary),
+        "model_reliability": model_stats,
+        "calibration": calibration_stats,
     }))
 }
 
