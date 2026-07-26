@@ -84,7 +84,21 @@ pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Resu
         None => return response::json_err(400, "missing id"),
     };
     match store.article_detail(id).await {
-        Ok(Some(a)) => response::json_ok(json!({"article": a})),
+        Ok(Some(article)) => {
+            // Resolve source provenance using service-layer composition
+            let provenance: Option<store::ArticleProvenance> = match store.find_source_by_feed(article.feed_id).await {
+                Ok(Some(source)) => {
+                    let summary: store::SourceSummary = source.into();
+                    Some(store::ArticleProvenance { attribution: summary.attribution.clone(), source: Some(summary) })
+                }
+                _ => None,
+            };
+
+            response::json_ok(json!({
+                "article": article,
+                "provenance": provenance,
+            }))
+        }
         Ok(None) => response::json_err(404, "not found"),
         Err(e) => response::json_err_internal(&e.to_string()),
     }

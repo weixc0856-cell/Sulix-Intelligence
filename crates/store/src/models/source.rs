@@ -74,6 +74,35 @@ pub struct Source {
     pub updated_at: i64,
 }
 
+/// Lightweight source DTO for API responses — not the full Source registry.
+/// Used in provenance projections across Article, Signal, and Decision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSummary {
+    pub id: i64,
+    pub name: Option<String>,
+    pub tier: String,
+    pub policy: String,
+    pub license: String,
+    pub attribution: Option<String>,
+    pub trust_score: Option<f64>,
+    pub verified: bool,
+}
+
+impl From<Source> for SourceSummary {
+    fn from(s: Source) -> Self {
+        Self {
+            id: s.id,
+            name: s.name,
+            tier: s.tier,
+            policy: s.policy,
+            license: s.license,
+            attribution: s.attribution,
+            trust_score: s.trust_score,
+            verified: s.verified,
+        }
+    }
+}
+
 /// Input for creating or updating a Source.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewSource {
