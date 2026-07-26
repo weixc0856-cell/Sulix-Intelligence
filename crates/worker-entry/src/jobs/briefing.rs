@@ -229,7 +229,8 @@ async fn generate_and_persist(
     }
 
     // 2. D1 legacy persistence (intelligence_briefs.content — transitional)
-    store.save_briefing(date, now, briefing.signal_count, &content).await.map_err(|e| format!("D1 save: {e}"))?;
+    // Removed in Sprint 5.9 — R2 + memory_artifacts is canonical.
+    // store.save_briefing(date, now, briefing.signal_count, &content).await.map_err(|e| format!("D1 save: {e}"))?;
 
     if let Some(ref cache) = cache {
         let cache_key = format!("briefing:{date}");
