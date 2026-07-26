@@ -1,4 +1,5 @@
 use serde_json::Value;
+use store::Source;
 use worker::*;
 
 pub(crate) fn cors_headers(resp: &mut Response) {
@@ -28,4 +29,13 @@ pub(crate) fn json_err(status: u16, msg: &str) -> Result<Response> {
 pub(crate) fn json_err_internal(msg: &str) -> Result<Response> {
     console_log!("[Sulix:api] internal error: {msg}");
     json_err(500, "Internal server error")
+}
+
+/// Add source attribution metadata as response headers.
+pub fn add_source_headers(resp: &mut Response, source: &Source) {
+    if let Some(ref attr) = source.attribution {
+        let _ = resp.headers_mut().set("X-Source-Attribution", attr);
+    }
+    let _ = resp.headers_mut().set("X-Content-Policy", &source.policy);
+    let _ = resp.headers_mut().set("X-Source-Tier", &source.tier);
 }

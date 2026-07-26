@@ -3,6 +3,7 @@ pub mod artifact;
 pub mod briefing;
 pub mod briefing_context;
 pub mod claim;
+pub mod compliance;
 pub mod confidence;
 pub mod context_snapshot;
 pub mod decision;

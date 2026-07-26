@@ -108,6 +108,10 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/observations", routes::observation::list)
         .get_async("/api/observations/:id", routes::observation::get)
         .get_async("/api/observations/:id/lineage", routes::observation::lineage)
+        // Compliance (Sprint 5.6)
+        .post_async("/api/compliance/takedown", routes::compliance::submit_takedown)
+        .get_async("/api/compliance/takedowns", routes::compliance::list_takedowns)
+        .put_async("/api/compliance/takedowns/:id/status", routes::compliance::update_takedown_status)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)
