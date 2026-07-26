@@ -830,6 +830,8 @@ impl StoreBackend for MemoryStore {
                 domain: snap.domain.clone(),
                 engine_version: "context-engine-v1".into(),
                 context_json: snap.context_json.clone(),
+                object_key: snap.object_key.clone(),
+                object_size: snap.object_size,
                 evidence_refs: snap.evidence_refs.clone(),
                 confidence: snap.confidence,
                 user_scope: snap.user_scope.clone(),

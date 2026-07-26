@@ -157,6 +157,7 @@ dependencies = [
  "async-trait",
  "futures",
  "js-sys",
+ "object-store",
  "serde",
  "serde_json",
  "store",

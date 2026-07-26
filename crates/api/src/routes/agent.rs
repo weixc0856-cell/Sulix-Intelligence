@@ -12,7 +12,7 @@ struct CtxWrapper(ContextBuilder<D1Store>);
 #[async_trait::async_trait(?Send)]
 impl ContextProvider for CtxWrapper {
     async fn build_context(&self, query: &str) -> Result<ContextResult, String> {
-        let ctx = self.0.build(query, None, None).await?;
+        let ctx = self.0.build(query, None, None, None).await?;
         let confidence = ctx.confidence.overall;
         Ok(ContextResult { snapshot_id: ctx.snapshot_id.clone(), context: ctx, confidence })
     }

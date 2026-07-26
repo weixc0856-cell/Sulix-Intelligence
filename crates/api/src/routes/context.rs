@@ -26,7 +26,7 @@ pub async fn internal_context(mut req: Request, ctx: RouteContext<()>) -> Result
 
     let builder = ContextBuilder::new(store);
 
-    match builder.build(&body.query, body.options, None).await {
+    match builder.build(&body.query, body.options, None, None).await {
         Ok(context) => {
             let resp = ContextResponse {
                 snapshot_id: context.snapshot_id.clone(),
