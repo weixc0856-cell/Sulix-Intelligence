@@ -3,7 +3,7 @@ use crate::llm::provider::LLMProvider;
 use crate::policy::ReasoningPolicy;
 use crate::prompt::PromptBuilder;
 use crate::reasoning::build_trace;
-use crate::types::{AgentRequest, AgentResponse, AgentStage, ExecutionMetadata};
+use crate::types::{AgentRequest, AgentResponse, AgentStage, ContextSummary, ExecutionMetadata};
 use crate::validator::{DefaultValidator, ResponseValidator};
 
 pub struct AgentRuntime {
@@ -58,13 +58,23 @@ impl AgentRuntime {
             .iter()
             .map(|e| e.source_id.clone())
             .collect();
-        let reasoning = build_trace(evidence_refs, ctx_result.confidence);
+        let reasoning = build_trace(evidence_refs.clone(), ctx_result.confidence);
 
-        // 5. Assemble response (before validation so we can validate it)
+        // 5. Build context summary
+        let context_summary = ContextSummary {
+            decisions_count: ctx_result.context.decisions.len() as u32,
+            reflections_count: ctx_result.context.reflections.len() as u32,
+            memories_count: ctx_result.context.memories.len() as u32,
+            patterns_count: ctx_result.context.patterns.len() as u32,
+            evidence_refs: evidence_refs.clone(),
+        };
+
+        // 6. Assemble response (before validation so we can validate it)
         stages.push(AgentStage::ResponseValidation);
         let mut response = AgentResponse {
             answer: llm_result.text,
             reasoning,
+            context: context_summary,
             context_id: ctx_result.snapshot_id,
             execution: ExecutionMetadata {
                 mode: request.mode,

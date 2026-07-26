@@ -25,9 +25,19 @@ pub enum AgentMode {
 pub struct AgentResponse {
     pub answer: String,
     pub reasoning: ReasoningTrace,
+    pub context: ContextSummary,
     pub context_id: String,
     pub execution: ExecutionMetadata,
     pub session_id: Option<SessionId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextSummary {
+    pub decisions_count: u32,
+    pub reflections_count: u32,
+    pub memories_count: u32,
+    pub patterns_count: u32,
+    pub evidence_refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

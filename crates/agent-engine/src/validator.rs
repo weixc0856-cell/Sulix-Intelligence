@@ -50,12 +50,19 @@ impl ResponseValidator for DefaultValidator {
 mod tests {
     use super::*;
     use crate::types::{
-        AgentMode, AgentResponse, ExecutionMetadata, ReasoningTrace,
+        AgentMode, AgentResponse, ContextSummary, ExecutionMetadata, ReasoningTrace,
     };
 
     fn make_response(evidence: Vec<String>, confidence: f64) -> AgentResponse {
         AgentResponse {
             answer: "test".into(),
+            context: ContextSummary {
+                decisions_count: 0,
+                reflections_count: 0,
+                memories_count: 0,
+                patterns_count: 0,
+                evidence_refs: vec![],
+            },
             context_id: "CTX-1".into(),
             reasoning: ReasoningTrace {
                 confidence,
