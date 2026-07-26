@@ -27,10 +27,11 @@ pub fn calculate_confidence(evidence: &[ClaimEvidence]) -> f64 {
     let mut oppose: f64 = 0.0;
 
     for e in evidence {
-        match e.relation {
-            crate::EvidenceRelation::Supports => support += e.strength,
-            crate::EvidenceRelation::Contradicts => oppose += e.strength,
-            crate::EvidenceRelation::Weakens => oppose += e.strength * 0.5,
+        match e.relation.as_str() {
+            "supports" => support += e.strength,
+            "contradicts" => oppose += e.strength,
+            "weakens" => oppose += e.strength * 0.5,
+            _ => {}
         }
     }
 
@@ -42,7 +43,6 @@ pub fn calculate_confidence(evidence: &[ClaimEvidence]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ClaimEvidence, EvidenceRelation};
 
     #[test]
     fn empty_evidence_returns_zero() {
@@ -51,16 +51,26 @@ mod tests {
 
     #[test]
     fn strong_support_high_confidence() {
-        let ev =
-            vec![ClaimEvidence { claim_id: 1, evidence_id: 1, strength: 3.0, relation: EvidenceRelation::Supports }];
+        let ev = vec![ClaimEvidence {
+            claim_id: 1,
+            article_id: 1,
+            strength: 3.0,
+            relation: "supports".into(),
+            created_at: 0,
+        }];
         let c = calculate_confidence(&ev);
         assert!(c > 0.5, "expected >0.5, got {c}");
     }
 
     #[test]
     fn strong_contradiction_low_confidence() {
-        let ev =
-            vec![ClaimEvidence { claim_id: 1, evidence_id: 1, strength: 3.0, relation: EvidenceRelation::Contradicts }];
+        let ev = vec![ClaimEvidence {
+            claim_id: 1,
+            article_id: 1,
+            strength: 3.0,
+            relation: "contradicts".into(),
+            created_at: 0,
+        }];
         let c = calculate_confidence(&ev);
         assert!(c < 0.5, "expected <0.5, got {c}");
     }
@@ -68,8 +78,8 @@ mod tests {
     #[test]
     fn mixed_evidence_cancels() {
         let ev = vec![
-            ClaimEvidence { claim_id: 1, evidence_id: 1, strength: 2.0, relation: EvidenceRelation::Supports },
-            ClaimEvidence { claim_id: 1, evidence_id: 2, strength: 2.0, relation: EvidenceRelation::Contradicts },
+            ClaimEvidence { claim_id: 1, article_id: 1, strength: 2.0, relation: "supports".into(), created_at: 0 },
+            ClaimEvidence { claim_id: 1, article_id: 2, strength: 2.0, relation: "contradicts".into(), created_at: 0 },
         ];
         let c = calculate_confidence(&ev);
         assert!((c - 0.5).abs() < 0.1, "expected ~0.5, got {c}");

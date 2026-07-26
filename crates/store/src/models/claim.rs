@@ -1,32 +1,54 @@
 use serde::{Deserialize, Serialize};
 
-/// Claim — 系统的可验证判断单元。
+/// Claim — an atomic, falsifiable judgment extracted from evidence.
 ///
-/// 核心链路：Evidence → Claim → Signal
-/// confidence 通过 evidence strength 聚合计算，非用户手动打分。
+/// Sprint 5.9C: Claim is immutable (no confidence field).
+/// Confidence is tracked via ConfidenceEvent (entity_type: "claim").
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
     pub id: i64,
     pub statement: String,
-    pub confidence: f64,
+    pub claim_type: String, // "fact" | "trend" | "prediction" | "causal" | "opinion"
+    pub reasoning: Option<String>,
+    pub falsification: Option<String>,
     pub status: String,
+    pub article_id: Option<i64>,
+    pub observation_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
+/// Input for creating a new Claim.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewClaim {
     pub statement: String,
+    pub claim_type: String,
+    pub reasoning: Option<String>,
+    pub falsification: Option<String>,
     pub status: Option<String>,
+    pub article_id: Option<i64>,
+    pub observation_id: Option<i64>,
 }
 
-/// Claim → Evidence 关系
+/// Evidence linking a claim to an article.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimEvidence {
     pub claim_id: i64,
-    pub evidence_id: i64,
+    pub article_id: i64,
+    pub relation: String, // "supports" | "contradicts" | "weakens"
     pub strength: f64,
-    pub relation: EvidenceRelation,
+    pub created_at: i64,
+}
+
+/// ArticleEvidence — query DTO that JOINs claim_evidence with articles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArticleEvidence {
+    pub claim_id: i64,
+    pub article_id: i64,
+    pub article_title: String,
+    pub relation: String,
+    pub strength: f64,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

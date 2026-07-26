@@ -32,13 +32,13 @@ pub async fn detail_with_evidence(_req: Request, ctx: RouteContext<()>) -> Resul
         "claim": {
             "id": format!("CLM-{:06}", claim.id),
             "statement": claim.statement,
-            "confidence": claim.confidence,
+            "claim_type": claim.claim_type,
             "status": claim.status,
             "created_at": claim.created_at,
             "evidence": evidence.iter().map(|e| json!({
-                "evidence_id": e.evidence_id,
+                "article_id": e.article_id,
                 "strength": e.strength,
-                "relation": e.relation.as_str(),
+                "relation": e.relation,
             })).collect::<Vec<_>>(),
         }
     }))

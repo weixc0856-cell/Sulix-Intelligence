@@ -215,8 +215,12 @@ impl ClaimRepository for MemoryStore {
         self.claims.borrow_mut().push(crate::Claim {
             id,
             statement: c.statement.clone(),
-            confidence: 0.0,
+            claim_type: c.claim_type.clone(),
+            reasoning: c.reasoning.clone(),
+            falsification: c.falsification.clone(),
             status: c.status.clone().unwrap_or("active".into()),
+            article_id: c.article_id,
+            observation_id: c.observation_id,
             created_at: now,
             updated_at: now,
         });

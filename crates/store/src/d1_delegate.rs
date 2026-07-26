@@ -350,10 +350,9 @@ impl OutcomeQueryService for crate::D1Store {
 }
 
 #[async_trait(?Send)]
-#[async_trait(?Send)]
 impl ClaimQueryService for crate::D1Store {
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
-        crate::D1Store::list_claims(self, status, limit).await
+        crate::D1Store::list_claims(self, status, None, limit, 0).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         crate::D1Store::get_claim_evidence(self, claim_id).await
@@ -689,7 +688,7 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_claim(self, id).await
     }
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
-        crate::D1Store::list_claims(self, status, limit).await
+        crate::D1Store::list_claims(self, status, None, limit, 0).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         crate::D1Store::get_claim_evidence(self, claim_id).await

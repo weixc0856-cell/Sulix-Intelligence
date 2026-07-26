@@ -1,0 +1,19 @@
+[package]
+name = "claim-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+store.workspace = true
+model-runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+futures = { workspace = true }
