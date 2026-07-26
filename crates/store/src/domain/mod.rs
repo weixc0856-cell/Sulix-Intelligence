@@ -1,5 +1,6 @@
 pub mod article;
 pub mod artifact;
+pub mod claim;
 pub mod briefing;
 pub mod briefing_context;
 pub mod context_snapshot;

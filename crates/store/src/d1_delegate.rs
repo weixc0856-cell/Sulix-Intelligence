@@ -10,11 +10,11 @@ use std::collections::HashMap;
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, ContextSnapshot, DayCount,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ContextSnapshot, DayCount,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
-    NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
+    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
     NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
     RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
     SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
@@ -131,6 +131,16 @@ impl OutcomeRepository for crate::D1Store {
 impl EvaluationRepository for crate::D1Store {
     async fn save_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
         crate::D1Store::create_evaluation(self, e).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ClaimRepository for crate::D1Store {
+    async fn save_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
+        crate::D1Store::create_claim(self, c).await
+    }
+    async fn find_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
+        crate::D1Store::get_claim(self, id).await
     }
 }
 
@@ -293,6 +303,13 @@ impl DecisionQueryService for crate::D1Store {
 impl OutcomeQueryService for crate::D1Store {
     async fn list_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
         crate::D1Store::get_decision_outcomes(self, decision_id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ClaimQueryService for crate::D1Store {
+    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
+        crate::D1Store::list_claims(self, status, limit).await
     }
 }
 
@@ -585,6 +602,18 @@ impl StoreBackend for crate::D1Store {
     }
     async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError> {
         crate::D1Store::stale_generating_reflections(self, now).await
+    }
+
+    // ===== Claim (Sprint 5.3) =====
+
+    async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
+        crate::D1Store::create_claim(self, c).await
+    }
+    async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
+        crate::D1Store::get_claim(self, id).await
+    }
+    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
+        crate::D1Store::list_claims(self, status, limit).await
     }
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {

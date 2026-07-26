@@ -11,8 +11,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    traits::*, ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DiscoveryMethod,
-    EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot,
+    traits::*, ArtifactEntry, ArtifactRecord, Claim, ContextSnapshot, Decision, DecisionEvaluation, DiscoveryMethod,
+    EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewClaim, NewArtifactRecord, NewContextSnapshot,
     NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutboxEntry,
     OutcomeEvent, Reflection, RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, StoreError,
     UpdateReflection,
@@ -49,6 +49,8 @@ pub trait StoreBackend:
     + EvaluationRepository
     + EvaluationQueryService
     + BatchSignalQueryService
+    + ClaimRepository
+    + ClaimQueryService
 {
     // ---- Rules ----
 
@@ -274,6 +276,12 @@ pub trait StoreBackend:
     async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError>;
     async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError>;
     async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError>;
+
+    // ===== Claim (Sprint 5.3) =====
+
+    async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError>;
+    async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError>;
+    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError>;
 
     // ===== Memory Engine (Sprint 5.5) =====
 

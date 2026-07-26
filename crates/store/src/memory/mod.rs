@@ -87,6 +87,10 @@ pub struct MemoryStore {
 
     // Context Snapshot state
     snapshots: RefCell<HashMap<String, ContextSnapshot>>,
+
+    // Claim state
+    claims: RefCell<Vec<crate::Claim>>,
+    next_claim_id: RefCell<i64>,
 }
 
 struct EntityInternal {
@@ -165,6 +169,9 @@ impl MemoryStore {
             next_memory_id: RefCell::new(1),
 
             snapshots: RefCell::new(HashMap::new()),
+
+            claims: RefCell::new(Vec::new()),
+            next_claim_id: RefCell::new(1),
         }
     }
 

@@ -4,6 +4,7 @@
 //! a single aggregate root.  Read operations belong in [`super::query`].
 
 pub mod article_repo;
+pub mod claim_repo;
 pub mod decision_repo;
 pub mod entity_repo;
 pub mod evaluation_repo;
@@ -12,6 +13,7 @@ pub mod outcome_repo;
 pub mod signal_repo;
 
 pub use article_repo::ArticleRepository;
+pub use claim_repo::ClaimRepository;
 pub use decision_repo::DecisionRepository;
 pub use entity_repo::EntityRepository;
 pub use evaluation_repo::EvaluationRepository;

@@ -6,6 +6,7 @@
 //! [`super::repo`].
 
 pub mod article_query;
+pub mod claim_query;
 pub mod decision_query;
 pub mod entity_query;
 pub mod evaluation_query;
@@ -14,6 +15,7 @@ pub mod outcome_query;
 pub mod signal_query;
 
 pub use article_query::ArticleQueryService;
+pub use claim_query::ClaimQueryService;
 pub use decision_query::DecisionQueryService;
 pub use entity_query::EntityQueryService;
 pub use evaluation_query::EvaluationQueryService;

@@ -1,4 +1,5 @@
 pub(crate) mod artifact;
+pub(crate) mod claim;
 pub(crate) mod context_snapshot;
 pub(crate) mod decision;
 pub(crate) mod entity;
@@ -11,6 +12,7 @@ pub(crate) mod reflection;
 pub(crate) mod signal;
 
 pub use artifact::*;
+pub use claim::*;
 pub use context_snapshot::*;
 pub use decision::*;
 pub use entity::*;

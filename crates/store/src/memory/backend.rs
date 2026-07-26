@@ -13,11 +13,11 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, ContextSnapshot, DayCount,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ContextSnapshot, DayCount,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
-    NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
+    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
     NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
     RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
     SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
@@ -194,6 +194,38 @@ impl EvaluationRepository for MemoryStore {
             evaluator: e.evaluator.clone(), evaluated_at, created_at: now,
         });
         Ok(id)
+    }
+}
+
+#[async_trait(?Send)]
+impl ClaimRepository for MemoryStore {
+    async fn save_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_claim_id.borrow();
+        *self.next_claim_id.borrow_mut() = id + 1;
+        self.claims.borrow_mut().push(crate::Claim {
+            id,
+            statement: c.statement.clone(),
+            confidence: 0.0,
+            status: c.status.clone().unwrap_or("active".into()),
+            created_at: now,
+            updated_at: now,
+        });
+        Ok(id)
+    }
+    async fn find_claim(&self, id: i64) -> Result<Option<crate::Claim>, StoreError> {
+        Ok(self.claims.borrow().iter().find(|c| c.id == id).cloned())
+    }
+}
+
+#[async_trait(?Send)]
+impl ClaimQueryService for MemoryStore {
+    async fn list_claims(&self, status: Option<&str>, _limit: u32) -> Result<Vec<crate::Claim>, StoreError> {
+        let claims = self.claims.borrow();
+        match status {
+            Some(s) => Ok(claims.iter().filter(|c| c.status == s).cloned().collect()),
+            None => Ok(claims.clone()),
+        }
     }
 }
 
@@ -1005,6 +1037,18 @@ impl StoreBackend for MemoryStore {
 
     async fn stale_generating_reflections(&self, _now: i64) -> Result<Vec<Reflection>, StoreError> {
         Ok(Vec::new())
+    }
+
+    // ===== Claim (Sprint 5.3) =====
+
+    async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
+        self.save_claim(c).await
+    }
+    async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
+        self.find_claim(id).await
+    }
+    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
+        ClaimQueryService::list_claims(self, status, limit).await
     }
 
     // ===== Memory Engine (Sprint 5.5) =====
