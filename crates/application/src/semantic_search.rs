@@ -56,10 +56,7 @@ where
     /// and Vectorize calls bypass D1 and go through Workers AI / Vectorize
     /// bindings.  Those steps will be wired in when the service is constructed
     /// from Worker env bindings.  For now the method documents the full flow.
-    pub async fn execute(
-        &self,
-        _cmd: SemanticSearchCmd,
-    ) -> Result<SemanticSearchResult, String> {
+    pub async fn execute(&self, _cmd: SemanticSearchCmd) -> Result<SemanticSearchResult, String> {
         // Steps:
         // 1. embedder.embed(cmd.query) → Vec<f32>
         // 2. vectorize.query(vector, top_k, min_score) → Vec<SimilarMatch>
@@ -82,11 +79,9 @@ mod tests {
     fn test_semantic_search_returns_empty_for_no_query() {
         let store = MemoryStore::new();
         let service = SemanticSearchService::new(store);
-        let result = futures::executor::block_on(service.execute(SemanticSearchCmd {
-            query: String::new(),
-            limit: Some(5),
-        }))
-        .unwrap();
+        let result =
+            futures::executor::block_on(service.execute(SemanticSearchCmd { query: String::new(), limit: Some(5) }))
+                .unwrap();
         assert!(result.hits.is_empty());
     }
 }

@@ -13,14 +13,14 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
-    Decision,
-    DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, Observation,
-    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewObservation, NewMemory, NewOutbox,
-    NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
-    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
+    ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
+    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
+    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
+    NewReflection, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
+    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
+    SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
 };
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
@@ -173,9 +173,13 @@ impl OutcomeRepository for MemoryStore {
         *self.next_outcome_id.borrow_mut() = id + 1;
         let observed_at = e.observed_at.unwrap_or(now);
         self.outcomes.borrow_mut().push(OutcomeEvent {
-            id, decision_id: e.decision_id, outcome_type: e.outcome_type.clone(),
-            observation: e.observation.clone(), evidence_url: e.evidence_url.clone(),
-            observed_at, created_at: now,
+            id,
+            decision_id: e.decision_id,
+            outcome_type: e.outcome_type.clone(),
+            observation: e.observation.clone(),
+            evidence_url: e.evidence_url.clone(),
+            observed_at,
+            created_at: now,
         });
         Ok(id)
     }
@@ -189,9 +193,14 @@ impl EvaluationRepository for MemoryStore {
         *self.next_decision_id.borrow_mut() = id + 1;
         let evaluated_at = e.evaluated_at.unwrap_or(now);
         self.evaluations.borrow_mut().push(DecisionEvaluation {
-            id, decision_id: e.decision_id, evaluation: e.evaluation.clone(),
-            confidence: e.confidence, reasoning: e.reasoning.clone(),
-            evaluator: e.evaluator.clone(), evaluated_at, created_at: now,
+            id,
+            decision_id: e.decision_id,
+            evaluation: e.evaluation.clone(),
+            confidence: e.confidence,
+            reasoning: e.reasoning.clone(),
+            evaluator: e.evaluator.clone(),
+            evaluated_at,
+            created_at: now,
         });
         Ok(id)
     }
@@ -219,16 +228,62 @@ impl ClaimRepository for MemoryStore {
 }
 
 #[async_trait(?Send)]
+impl ConfidenceRepository for MemoryStore {
+    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_confidence_event_id.borrow();
+        *self.next_confidence_event_id.borrow_mut() = id + 1;
+
+        let prev = self
+            .confidence_events
+            .borrow()
+            .iter()
+            .rfind(|ev| ev.entity_type == e.entity_type && ev.entity_id == e.entity_id)
+            .map(|ev| ev.confidence);
+
+        self.confidence_events.borrow_mut().push(ConfidenceEvent {
+            id,
+            entity_type: e.entity_type.clone(),
+            entity_id: e.entity_id.clone(),
+            previous_confidence: prev,
+            confidence: e.confidence,
+            reason: e.reason.clone(),
+            trigger_event: e.trigger_event.clone(),
+            created_at: now,
+        });
+        Ok(id)
+    }
+    async fn list_confidence_history(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
+        let mut events: Vec<ConfidenceEvent> = self
+            .confidence_events
+            .borrow()
+            .iter()
+            .filter(|ev| ev.entity_type == entity_type && ev.entity_id == entity_id)
+            .cloned()
+            .collect();
+        events.sort_by_key(|ev| ev.created_at);
+        Ok(events)
+    }
+}
+
 #[async_trait(?Send)]
 impl ObservationRepository for MemoryStore {
-    async fn save_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
-        let now = 1000000;
+    async fn save_observation(&self, _o: &NewObservation) -> Result<i64, StoreError> {
+        let _now = 1000000;
         let id = *self.next_claim_id.borrow();
         *self.next_claim_id.borrow_mut() = id + 1;
         Ok(id)
     }
-    async fn find_observation(&self, _id: i64) -> Result<Option<Observation>, StoreError> { Ok(None) }
-    async fn find_observation_by_hash(&self, _hash: &str) -> Result<Option<Observation>, StoreError> { Ok(None) }
+    async fn find_observation(&self, _id: i64) -> Result<Option<Observation>, StoreError> {
+        Ok(None)
+    }
+    async fn find_observation_by_hash(&self, _hash: &str) -> Result<Option<Observation>, StoreError> {
+        Ok(None)
+    }
 }
 
 #[async_trait(?Send)]
@@ -467,7 +522,10 @@ impl BatchSignalQueryService for MemoryStore {
     async fn batch_evidence(&self, _thread_ids: &[i64]) -> Result<HashMap<i64, Vec<BriefArticle>>, StoreError> {
         Ok(HashMap::new())
     }
-    async fn batch_related_entities(&self, _thread_ids: &[i64]) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError> {
+    async fn batch_related_entities(
+        &self,
+        _thread_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError> {
         Ok(HashMap::new())
     }
 }
@@ -1074,6 +1132,16 @@ impl StoreBackend for MemoryStore {
     }
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
         ObservationRepository::find_observation_by_hash(self, hash).await
+    }
+    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
+        ConfidenceRepository::append_confidence(self, e).await
+    }
+    async fn list_confidence_history(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
+        ConfidenceRepository::list_confidence_history(self, entity_type, entity_id).await
     }
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         ClaimQueryService::get_claim_evidence(self, claim_id).await

@@ -125,7 +125,8 @@ where
         let decision_ids: Vec<i64> = decisions.iter().map(|d| d.id).collect();
 
         // Load outcomes for ALL decisions (batch approach)
-        let mut outcome_map: std::collections::HashMap<i64, Vec<store::OutcomeEvent>> = std::collections::HashMap::new();
+        let mut outcome_map: std::collections::HashMap<i64, Vec<store::OutcomeEvent>> =
+            std::collections::HashMap::new();
         for &did in &decision_ids {
             if let Ok(outs) = <S as store::OutcomeQueryService>::list_outcomes(&self.store, did).await {
                 outcome_map.insert(did, outs);
@@ -254,26 +255,47 @@ where
                         entity_id: decision.id,
                         node_type: GraphNodeType::Decision,
                         title: decision.title.clone(),
-                        data: GraphNodeData { confidence: Some(decision.confidence), status: Some(decision.status.clone()), source_count: None, article_count: None, url: Some(format!("/intelligence/decisions/{}", decision.id)) },
+                        data: GraphNodeData {
+                            confidence: Some(decision.confidence),
+                            status: Some(decision.status.clone()),
+                            source_count: None,
+                            article_count: None,
+                            url: Some(format!("/intelligence/decisions/{}", decision.id)),
+                        },
                     });
 
                     // Load outcomes
-                    if let Ok(outcomes) = <S as store::OutcomeQueryService>::list_outcomes(&self.store, entity_id).await {
+                    if let Ok(outcomes) = <S as store::OutcomeQueryService>::list_outcomes(&self.store, entity_id).await
+                    {
                         for o in &outcomes {
                             nodes.push(GraphNode {
                                 id: format!("OUT-{:06}", o.id),
                                 entity_id: o.id,
                                 node_type: GraphNodeType::Outcome,
                                 title: o.outcome_type.clone(),
-                                data: GraphNodeData { confidence: None, status: Some(o.observation.clone()), source_count: None, article_count: None, url: None },
+                                data: GraphNodeData {
+                                    confidence: None,
+                                    status: Some(o.observation.clone()),
+                                    source_count: None,
+                                    article_count: None,
+                                    url: None,
+                                },
                             });
-                            edges.push(GraphEdge { source: format!("DEC-{:06}", decision.id), target: format!("OUT-{:06}", o.id), edge_type: GraphEdgeType::ResultedIn });
+                            edges.push(GraphEdge {
+                                source: format!("DEC-{:06}", decision.id),
+                                target: format!("OUT-{:06}", o.id),
+                                edge_type: GraphEdgeType::ResultedIn,
+                            });
                         }
                     }
 
                     // Signal edge
                     if let Some(sid) = decision.signal_thread_id {
-                        edges.push(GraphEdge { source: format!("SIG-{:06}", sid), target: format!("DEC-{:06}", decision.id), edge_type: GraphEdgeType::Influenced });
+                        edges.push(GraphEdge {
+                            source: format!("SIG-{:06}", sid),
+                            target: format!("DEC-{:06}", decision.id),
+                            edge_type: GraphEdgeType::Influenced,
+                        });
                     }
                 }
             }

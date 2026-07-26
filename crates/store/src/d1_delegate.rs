@@ -10,18 +10,17 @@ use std::collections::HashMap;
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
-    NewObservation, Observation,
-    Decision,
-    DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
-    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
-    NewArtifact, NewArtifactRecord, NewClaim, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
-    NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
-    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
+    ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
+    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
+    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
+    NewReflection, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
+    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
+    SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
 };
 
-//  Repositories (save / find) 
+//  Repositories (save / find)
 
 #[async_trait(?Send)]
 impl FeedRepository for crate::D1Store {
@@ -146,6 +145,20 @@ impl ClaimRepository for crate::D1Store {
 }
 
 #[async_trait(?Send)]
+impl ConfidenceRepository for crate::D1Store {
+    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
+        crate::D1Store::append_confidence(self, e).await
+    }
+    async fn list_confidence_history(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
+        crate::D1Store::list_confidence_history(self, entity_type, entity_id).await
+    }
+}
+
+#[async_trait(?Send)]
 impl ObservationRepository for crate::D1Store {
     async fn save_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
         crate::D1Store::create_observation(self, o).await
@@ -158,7 +171,7 @@ impl ObservationRepository for crate::D1Store {
     }
 }
 
-//  Query Services (read model) 
+//  Query Services (read model)
 
 #[async_trait(?Send)]
 impl FeedQueryService for crate::D1Store {
@@ -345,12 +358,15 @@ impl BatchSignalQueryService for crate::D1Store {
     async fn batch_evidence(&self, thread_ids: &[i64]) -> Result<HashMap<i64, Vec<BriefArticle>>, StoreError> {
         crate::D1Store::batch_evidence(self, thread_ids).await
     }
-    async fn batch_related_entities(&self, thread_ids: &[i64]) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError> {
+    async fn batch_related_entities(
+        &self,
+        thread_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError> {
         crate::D1Store::batch_related_entities(self, thread_ids).await
     }
 }
 
-//  Legacy StoreBackend (remaining methods not yet migrated to subtraits) 
+//  Legacy StoreBackend (remaining methods not yet migrated to subtraits)
 
 #[async_trait(?Send)]
 impl StoreBackend for crate::D1Store {
@@ -644,6 +660,16 @@ impl StoreBackend for crate::D1Store {
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
         crate::D1Store::find_observation_by_hash(self, hash).await
     }
+    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
+        crate::D1Store::append_confidence(self, e).await
+    }
+    async fn list_confidence_history(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
+        crate::D1Store::list_confidence_history(self, entity_type, entity_id).await
+    }
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
         crate::D1Store::create_memory(self, entry).await
@@ -673,4 +699,3 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_context_snapshot(self, id).await
     }
 }
-

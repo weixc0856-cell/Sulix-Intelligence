@@ -272,7 +272,10 @@ pub async fn timeline(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let decision = match store.get_decision(id).await {
         Ok(Some(d)) => d,
         Ok(None) => return response::json_err(404, "decision not found"),
-        Err(e) => { console_log!("[Sulix:timeline] {e}"); return response::json_err_internal("timeline failed"); }
+        Err(e) => {
+            console_log!("[Sulix:timeline] {e}");
+            return response::json_err_internal("timeline failed");
+        }
     };
 
     let mut events: Vec<TimelineEvent> = Vec::new();

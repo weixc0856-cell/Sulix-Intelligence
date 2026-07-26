@@ -5,16 +5,18 @@
 
 pub mod article_repo;
 pub mod claim_repo;
-pub mod observation_repo;
+pub mod confidence_repo;
 pub mod decision_repo;
 pub mod entity_repo;
 pub mod evaluation_repo;
 pub mod feed_repo;
+pub mod observation_repo;
 pub mod outcome_repo;
 pub mod signal_repo;
 
 pub use article_repo::ArticleRepository;
 pub use claim_repo::ClaimRepository;
+pub use confidence_repo::ConfidenceRepository;
 pub use decision_repo::DecisionRepository;
 pub use entity_repo::EntityRepository;
 pub use evaluation_repo::EvaluationRepository;

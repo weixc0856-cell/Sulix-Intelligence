@@ -11,11 +11,11 @@
 use async_trait::async_trait;
 
 use crate::{
-    traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ContextSnapshot, Decision, DecisionEvaluation, DiscoveryMethod, NewObservation, Observation,
-    EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewClaim, NewArtifactRecord, NewContextSnapshot,
-    NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutboxEntry,
-    OutcomeEvent, Reflection, RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, StoreError,
-    UpdateReflection,
+    traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, ContextSnapshot, Decision,
+    DecisionEvaluation, DiscoveryMethod, EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact,
+    NewArtifactRecord, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory,
+    NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, Observation, OutboxEntry, OutcomeEvent, Reflection,
+    RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, StoreError, UpdateReflection,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -51,6 +51,7 @@ pub trait StoreBackend:
     + BatchSignalQueryService
     + ClaimRepository
     + ObservationRepository
+    + ConfidenceRepository
     + ClaimQueryService
 {
     // ---- Rules ----
@@ -289,6 +290,18 @@ pub trait StoreBackend:
     async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError>;
     async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError>;
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError>;
+
+    // ===== Confidence Event (Sprint 5.4B) =====
+
+    /// Append a confidence-change event. Returns the new event id.
+    async fn append_confidence(&self, event: &NewConfidenceEvent) -> Result<i64, StoreError>;
+
+    /// List confidence history for one entity, ascending by created_at.
+    async fn list_confidence_history(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Vec<ConfidenceEvent>, StoreError>;
 
     // ===== Memory Engine (Sprint 5.5) =====
 

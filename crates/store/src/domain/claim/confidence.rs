@@ -51,24 +51,16 @@ mod tests {
 
     #[test]
     fn strong_support_high_confidence() {
-        let ev = vec![ClaimEvidence {
-            claim_id: 1,
-            evidence_id: 1,
-            strength: 3.0,
-            relation: EvidenceRelation::Supports,
-        }];
+        let ev =
+            vec![ClaimEvidence { claim_id: 1, evidence_id: 1, strength: 3.0, relation: EvidenceRelation::Supports }];
         let c = calculate_confidence(&ev);
         assert!(c > 0.5, "expected >0.5, got {c}");
     }
 
     #[test]
     fn strong_contradiction_low_confidence() {
-        let ev = vec![ClaimEvidence {
-            claim_id: 1,
-            evidence_id: 1,
-            strength: 3.0,
-            relation: EvidenceRelation::Contradicts,
-        }];
+        let ev =
+            vec![ClaimEvidence { claim_id: 1, evidence_id: 1, strength: 3.0, relation: EvidenceRelation::Contradicts }];
         let c = calculate_confidence(&ev);
         assert!(c < 0.5, "expected <0.5, got {c}");
     }

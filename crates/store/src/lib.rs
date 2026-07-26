@@ -229,4 +229,27 @@ mod tests {
         store.fail_summary = true;
         assert!(futures::executor::block_on(store.set_ai_summary(1, "summary", "[]", "vec-1", 0.0)).is_err());
     }
+
+    // -- Confidence Event (Sprint 5.4B) --
+
+    #[test]
+    fn confidence_history_append_and_list() {
+        let store = memory::MemoryStore::new();
+        let e = NewConfidenceEvent {
+            entity_type: "decision".into(),
+            entity_id: "DEC-001".into(),
+            confidence: 0.85,
+            reason: Some("initial assessment".into()),
+            trigger_event: None,
+        };
+        let id = futures::executor::block_on(ConfidenceRepository::append_confidence(&store, &e)).unwrap();
+        assert_eq!(id, 1);
+
+        let history =
+            futures::executor::block_on(ConfidenceRepository::list_confidence_history(&store, "decision", "DEC-001"))
+                .unwrap();
+        assert_eq!(history.len(), 1);
+        assert!((history[0].confidence - 0.85).abs() < f64::EPSILON);
+        assert_eq!(history[0].previous_confidence, None);
+    }
 }

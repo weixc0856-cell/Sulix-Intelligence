@@ -41,11 +41,7 @@ pub struct RadarProjectionResult {
 
 impl RadarProjectionResult {
     pub fn empty() -> Self {
-        Self {
-            generated_at: 0,
-            signal_count: 0,
-            signals: Vec::new(),
-        }
+        Self { generated_at: 0, signal_count: 0, signals: Vec::new() }
     }
 }
 
@@ -133,11 +129,7 @@ where
             })
             .collect();
 
-        Ok(RadarProjectionResult {
-            generated_at: now,
-            signal_count: signals.len(),
-            signals,
-        })
+        Ok(RadarProjectionResult { generated_at: now, signal_count: signals.len(), signals })
     }
 }
 

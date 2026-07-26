@@ -9,7 +9,10 @@ use async_trait::async_trait;
 
 use std::collections::HashMap;
 
-use crate::{BriefArticle, RadarResponse, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalThreadFilter, StoreError, TodaySignal};
+use crate::{
+    BriefArticle, RadarResponse, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalThreadFilter, StoreError,
+    TodaySignal,
+};
 
 #[async_trait(?Send)]
 pub trait SignalQueryService {
@@ -40,5 +43,8 @@ pub trait BatchSignalQueryService {
 
     /// Batch-load related entities across multiple signal threads.
     /// Returns `HashMap<thread_id, Vec<RelatedEntityRef>>`.
-    async fn batch_related_entities(&self, thread_ids: &[i64]) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError>;
+    async fn batch_related_entities(
+        &self,
+        thread_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError>;
 }

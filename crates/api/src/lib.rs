@@ -96,6 +96,8 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/projections/decision-graph", routes::graph::decision_graph)
         .post_async("/api/projections/decision-graph/:id/expand", routes::graph::expand)
         .get_async("/api/claims/:id", routes::claim::detail_with_evidence)
+        // Confidence History (Sprint 5.4B)
+        .get_async("/api/confidence/:entity_type/:entity_id", routes::confidence::history)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)

@@ -16,8 +16,7 @@ impl crate::D1Store {
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| StoreError::D1("create_claim failed".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| StoreError::D1("create_claim failed".into()))
     }
 
     pub async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {

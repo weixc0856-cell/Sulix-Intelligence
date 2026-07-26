@@ -19,8 +19,7 @@ impl crate::D1Store {
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| StoreError::D1("create_observation failed".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| StoreError::D1("create_observation failed".into()))
     }
 
     pub async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
