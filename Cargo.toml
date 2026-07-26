@@ -45,6 +45,7 @@ wasm-bindgen = "0.2.126"
 wasm-bindgen-futures = "0.4"
 futures = "0.3"
 fastrand = "2"
+serde-wasm-bindgen = "0.6"
 
 fetcher = { path = "crates/fetcher" }
 store = { path = "crates/store" }
