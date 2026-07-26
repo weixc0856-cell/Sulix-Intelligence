@@ -213,16 +213,14 @@ pub(crate) async fn process_one_feed(
                                             }
                                         }
                                     }
-                                    Err(_) => {
+                                    Err(e) => {
                                         ctx.metrics.borrow_mut().errors += 1;
-                                        let excerpt = crate::utils::truncate_chars(&body, 500);
-                                        if let Err(e) =
-                                            ctx.store.set_raw_content_r2_key(article_id, Some(excerpt)).await
-                                        {
-                                            console_log!(
-                                                "  DB excerpt write failed for article {article_id} (LLM already failed): {e}"
-                                            );
-                                        }
+                                        console_log!("  AI summarization failed for article {article_id}: {e}");
+                                        // NOTE: raw_content_r2_key is intentionally NOT modified here.
+                                        // It was already set to the R2 key during full-text extraction.
+                                        // Writing a truncated excerpt into this column would corrupt
+                                        // the R2 key pointer and break article content serving.
+                                        // The excerpt (if needed) should go into an Observation.
                                     }
                                 }
                             }

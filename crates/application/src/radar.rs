@@ -14,21 +14,29 @@
 //! - 1: batch evidence (WHERE signal_id IN (subquery))
 //! - 1: batch entities (WHERE source/target_entity_id IN (...))
 
-use store::StoreError;
+use store::{RelatedEntityRef, StoreError};
 
-/// A single radar signal item, analogous to what the existing radar endpoint returns.
+/// A single radar signal item with full health, evidence, and entity data.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RadarSignalItem {
     pub id: i64,
     pub title: String,
     pub status: String,
+    pub trend: String,
     pub health_score: f64,
     pub current_score: f64,
-    pub trend: String,
     pub evidence_count: i64,
     pub source_count: i64,
     pub anchor_entity: Option<String>,
     pub signal_key: String,
+    /// Enriched breakdown (derived from health_score / current_score).
+    pub health: store::SignalHealth,
+    /// Evidence summary (from batch-loaded data).
+    pub evidence: store::SignalEvidenceSummary,
+    /// Related entities (from batch-loaded data).
+    pub related: Vec<RelatedEntityRef>,
+    pub first_seen_at: i64,
+    pub last_evidence_at: i64,
 }
 
 /// Radar page projection result.
@@ -112,19 +120,50 @@ where
             .into_iter()
             .map(|t| {
                 let tid = t.thread_id;
-                let evidence = evidence_map.get(&tid).map(|v| v.len() as i64).unwrap_or(0);
-                let _entity_count = entity_map.get(&tid).map(|v| v.len() as i64).unwrap_or(0);
+                let evidence_count = evidence_map.get(&tid).map(|v| v.len() as i64).unwrap_or(0);
+                let entity_count = entity_map.get(&tid).map(|v| v.len() as i64).unwrap_or(0);
+                let articles_score = evidence_map
+                    .get(&tid)
+                    .map(|v| v.iter().map(|a| a.score).sum::<f64>() / v.len() as f64)
+                    .unwrap_or(0.0);
+
+                let trend = t.trend.clone();
                 RadarSignalItem {
                     id: tid,
                     title: t.title,
                     status: t.status,
+                    trend: t.trend,
                     health_score: t.health_score,
                     current_score: t.current_score,
-                    trend: t.trend,
-                    evidence_count: evidence,
+                    evidence_count,
                     source_count: t.source_count,
                     anchor_entity: t.anchor_entity,
                     signal_key: t.signal_key,
+                    health: store::SignalHealth {
+                        score: t.health_score,
+                        breakdown: store::SignalHealthBreakdown {
+                            activity: t.current_score.max(0.0),
+                            diversity: (entity_count as f64 / 10.0).min(1.0),
+                            quality: (t.health_score * 0.7 + t.current_score * 0.3).min(1.0),
+                            velocity: if trend == "rising" {
+                                0.8
+                            } else if trend == "declining" {
+                                0.2
+                            } else {
+                                0.5
+                            },
+                        },
+                    },
+                    evidence: store::SignalEvidenceSummary {
+                        articles: evidence_count,
+                        sources: t.source_count,
+                        avg_score: articles_score,
+                        last_seen: 0,
+                        velocity_24h: (evidence_count.max(0) as f64 / 7.0).round() as i64,
+                    },
+                    related: entity_map.get(&tid).cloned().unwrap_or_default(),
+                    first_seen_at: 0,
+                    last_evidence_at: 0,
                 }
             })
             .collect();
