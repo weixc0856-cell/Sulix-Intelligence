@@ -2,7 +2,7 @@
 
 ## Context
 
-Sprint 5.4 完成了 Reflection Engine（Decision Learning Loop）。Sprint 5.5 实现 **Memory Consolidation Loop**——将 Reflection 提炼后的经验晋升为 Sulix 的长期记忆。
+Sprint 5.4 完成了 Reflection Engine（Decision Learning Loop）。Sprint 5.5 实现 **Memory Consolidation Loop**——将 Reflection 提炼后的经验晋升为 Sulix 的长期认知资产。
 
 ### Sulix Cognitive Loop
 
@@ -17,28 +17,30 @@ Act → Outcome
     ↓
 Reflect (Reflection Engine)    ← Sprint 5.4
     ↓
-Consolidate Memory (Memory Engine)  ← Sprint 5.5
+Consolidate Memory             ← Sprint 5.5
     ↓
 Improve Future Decisions (Agent)
 ```
 
 ### 定位
 
-Memory Engine 不是简单搬运 Reflection。它是认知循环中的"巩固阶段"：
+Memory 不是 Reflection 的 ETL 副本。它是 **Cognitive Knowledge Layer**——可追溯、可演化的持久信念（Belief Object + Evidence Lineage）。
 
 | Layer | 职责 | 产物 |
 |-------|------|------|
 | Archive | 保存事实 | R2 objects |
 | Reflection | 解释经验 | Lessons + Rules |
-| **Memory** | **提炼长期知识** | **可检索、可追溯的经验** |
+| **Memory** | **提炼长期认知信念** | **可追溯、可更新、可衰减的 Belief Object** |
 
 ### 核心原则
 
-1. **独立 cron worker** — `memory::process_pending` 作为 cron 链的最后一步
-2. **结构化语义记忆** — 不是 vector dump，是有 schema 的知识记录
-3. **可追溯** — 每条 Memory 必须有 `evidence_refs` 链回原始 Reflection/Decision/Outcome
-4. **评分晋升** — 不是所有 Reflection 都值得记忆，Promotion Gate + Scoring
-5. **Daily 频率** — Memory Consolidation 类似人类睡眠中的记忆巩固，每日一次而非每小时
+1. **独立 cron worker** — `memory::process_pending`，每日一次
+2. **结构化语义记忆** — 不是 vector dump，是有 schema 的 Belief Object
+3. **可追溯** — 每条 Memory 有完整 lineage（Reflection[] + Decision[] + Outcome[] + Signal[]）
+4. **评分晋升 + 衰减** — 不是所有经验都值得记忆；记忆会随时间衰减
+5. **Graveyard 不删除** — 失败的经验也是资产，标记 archived 而非 discard
+6. **Outbox 一致性** — 沿用 Event + Outbox 模式，保证 D1/R2 一致
+7. **Origin 溯源** — 区分 Explicit（用户明确）/ Derived（AI 推理）/ Observed（模式发现）/ Learned（强化）
 
 ---
 
@@ -51,11 +53,10 @@ crates/memory-engine/
 
 ├── Cargo.toml
 ├── src/
-
 │   ├── lib.rs              ← pub
-│   ├── candidate.rs        ← CandidateExtractor：从 EventStore 读取 ReflectionGenerated
-│   ├── evaluator.rs        ← MemoryEvaluator：评分 + Promotion Gate
-│   ├── promotion.rs        ← MemoryPromotion：写入 R2 + D1 index
+│   ├── candidate.rs        ← CandidateExtractor：从 event_archive_index 读取 ReflectionGenerated
+│   ├── evaluator.rs        ← MemoryEvaluator：评分 + Promotion Gate + 衰减
+│   ├── promotion.rs        ← MemoryPromotion：Outbox → D1 + R2 + EventStore
 │   └── worker.rs           ← Cron 入口：process_pending
 ```
 
@@ -71,16 +72,22 @@ ReflectionGenerated Event (in event_archive_index + R2)
             │           AND occurred_at > last_run (KV key: memory:last_run)
             │
             ├── 2. MemoryEvaluator
-            │       ├── quality_score >= 0.7 (硬门槛)
-            │       ├── outcome exists
-            │       ├── evidence exists
-            │       └── promotion_score = 0.3*confidence + 0.3*recurrence + 0.2*impact + 0.2*evidence
-            │           ├── >0.75 → promote
-            │           ├── 0.4-0.75 → review (pending)
-            │           └── <0.4 → discard
+            │       ├── Promotion Gate (hard fail-fast):
+            │       │   ├── quality_score >= 0.7?
+            │       │   ├── outcome exists?
+            │       │   ├── evidence exists?
+            │       │   └── (rules >= 1 OR lessons >= 1)?
+            │       │
+            │       └── Scoring (pass gate → score):
+            │               promotion_score = 0.25*confidence + 0.20*recurrence
+            │                                + 0.20*impact + 0.20*evidence + 0.15*stability
+            │               ├── >0.75 → promote (status=active)
+            │               ├── 0.4-0.75 → pending (human review)
+            │               └── <0.4 → archived (graveyard, not deleted)
             │
             └── 3. MemoryPromotion
-                    ├── D1: INSERT memory index
+                    ├── Outbox (event:memory → archive worker)
+                    ├── D1: INSERT memory_index (status=active)
                     ├── R2: write memory/insights/MEM-{id}.json
                     └── EventStore: append MemoryPromoted event
 ```
@@ -118,29 +125,106 @@ migrations/
 
 ## Section 2: Data Model
 
+### MemoryOrigin Enum
+
+```rust
+pub enum MemoryOrigin {
+    Explicit,     // user explicitly stated
+    Derived,      // AI inference from Reflection
+    Observed,     // behavioral pattern discovery
+    Learned,      // reinforced by multiple feedback cycles
+}
+```
+
+### MemoryType Enum
+
+```rust
+pub enum MemoryType {
+    StrategicPattern,
+    DomainKnowledge,
+    DecisionHeuristic,
+    PersonalPreference,
+    FailurePattern,
+}
+```
+
+### Memory Status State Machine
+
+```
+candidate → pending (review) → active → deprecated → archived
+  ↓            ↓                   ↓
+archived    archived            archived (stable)
+```
+
+- **Discard 不存在** — 所有经验至少进入 archive（graveyard）
+- **Archived** ≠ 删除，保留 lineage 用于分析
+
 ### D1 Index: `memory_index`
 
 ```sql
 CREATE TABLE IF NOT EXISTS memory_index (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    memory_type     TEXT NOT NULL,          -- strategic_pattern, domain_knowledge, decision_heuristic, personal_preference, failure_pattern
-    statement       TEXT NOT NULL,          -- "EV startups underestimate charging infrastructure"
-    confidence      REAL NOT NULL DEFAULT 0.0,
-    source_reflection_id TEXT,              -- "REF-000001"
-    source_decision_id   TEXT,              -- "DEC-000001"
-    evidence_refs   TEXT,                   -- JSON array: ["DEC-00123", "OUT-00456", "REF-00890"]
-    artifact_key    TEXT,                   -- memory/insights/MEM-{id}.json or memory/rules/MEM-{id}.json
-    status          TEXT NOT NULL DEFAULT 'active',  -- active | archived
-    promoted_at     INTEGER NOT NULL DEFAULT (unixepoch()),
-    last_used_at    INTEGER,
-    created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_type         TEXT NOT NULL,       -- strategic_pattern, domain_knowledge, ...
+    memory_origin       TEXT NOT NULL DEFAULT 'derived',  -- explicit | derived | observed | learned
+    statement           TEXT NOT NULL,
+    confidence          REAL NOT NULL DEFAULT 0.0,
+    stability_score     REAL,                -- 0.0-1.0, for calculating effective_confidence
+    confidence_updated_at INTEGER,           -- for time-based decay calculation
+    memory_sources      TEXT,                -- JSON array of {type, id}[]
+    artifact_key        TEXT,                -- memory/insights/MEM-{id}.json
+    status              TEXT NOT NULL DEFAULT 'candidate',  -- candidate | pending | active | deprecated | archived
+    usage_count         INTEGER DEFAULT 0,
+    validation_count    INTEGER DEFAULT 0,
+    promoted_at         INTEGER NOT NULL DEFAULT (unixepoch()),
+    deprecated_at       INTEGER,
+    last_used_at        INTEGER,
+    created_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+    UNIQUE(artifact_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_index(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memory_status ON memory_index(status);
+CREATE INDEX IF NOT EXISTS idx_memory_origin ON memory_index(memory_origin);
 ```
 
-### R2 Artifact Schema
+### Rust Types
+
+```rust
+pub struct Memory {
+    pub id: i64,
+    pub memory_type: String,
+    pub memory_origin: String,
+    pub statement: String,
+    pub confidence: f64,
+    pub stability_score: Option<f64>,
+    pub confidence_updated_at: Option<i64>,
+    pub memory_sources: Vec<MemorySourceRef>,
+    pub artifact_key: Option<String>,
+    pub status: String,
+    pub usage_count: i64,
+    pub validation_count: i64,
+    pub promoted_at: i64,
+    pub deprecated_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    pub created_at: i64,
+}
+
+pub struct MemorySourceRef {
+    pub source_type: String,   // reflection | decision | outcome | signal
+    pub source_id: String,     // "REF-000001"
+}
+
+pub struct PromotionScore {
+    pub confidence: f32,
+    pub recurrence: f32,
+    pub impact: f32,
+    pub evidence: f32,
+    pub stability: f32,
+    pub total: f32,
+}
+```
+
+### R2 Artifact Schema（Belief Object）
 
 `memory/insights/MEM-000001.json`:
 
@@ -150,61 +234,41 @@ CREATE INDEX IF NOT EXISTS idx_memory_status ON memory_index(status);
   "artifact_type": "memory",
   "memory_id": "MEM-000001",
   "memory_type": "strategic_pattern",
-  "statement": "Technology breakthroughs do not guarantee commercial adoption",
-  "confidence": 0.85,
-  "source_chain": {
-    "reflection_id": "REF-000001",
-    "decision_id": "DEC-000001",
-    "outcome_id": "OUT-000001",
+  "memory_origin": "derived",
+
+  "claim": {
+    "statement": "Technology breakthroughs do not guarantee commercial adoption",
+    "type": "heuristic"
+  },
+
+  "belief": {
+    "confidence": 0.85,
+    "stability": 0.7,
+    "effective_confidence": 0.82
+  },
+
+  "lineage": {
+    "decisions": ["DEC-000001"],
+    "outcomes": ["OUT-000001"],
+    "reflections": ["REF-000001"],
     "signals": ["SIG-001"]
   },
-  "evidence_refs": ["DEC-000001", "OUT-000001", "REF-000001"],
-  "promotion_score": 0.82,
-  "promotion_criteria": {
-    "quality_score": 0.85,
-    "has_outcome": true,
-    "has_evidence": true
+
+  "promotion": {
+    "score": 0.82,
+    "promotion_criteria": {
+      "quality_score": 0.85,
+      "has_outcome": true,
+      "has_evidence": true
+    }
   },
+
+  "usage": {
+    "times_used": 0,
+    "last_used": null
+  },
+
   "created_at": 1710000000
-}
-```
-
-### Rust Types
-
-```rust
-pub struct Memory {
-    pub id: i64,
-    pub memory_type: String,
-    pub statement: String,
-    pub confidence: f64,
-    pub source_reflection_id: Option<String>,
-    pub source_decision_id: Option<String>,
-    pub evidence_refs: Vec<String>,
-    pub artifact_key: Option<String>,
-    pub status: String,
-    pub promoted_at: i64,
-    pub last_used_at: Option<i64>,
-    pub created_at: i64,
-}
-
-pub struct PromotionScore {
-    pub confidence: f32,
-    pub recurrence: f32,
-    pub impact: f32,
-    pub evidence: f32,
-    pub total: f32,
-}
-```
-
-### MemoryType Enum
-
-```rust
-pub enum MemoryType {
-    StrategicPattern,      // recurring strategic signals
-    DomainKnowledge,       // domain-specific insights
-    DecisionHeuristic,     // rules of thumb for decisions
-    PersonalPreference,    // user's personal tendencies
-    FailurePattern,        // recurring failure modes
 }
 ```
 
@@ -216,27 +280,43 @@ pub enum MemoryType {
 
 ```
 promotion_score =
-  0.3 × confidence         (from Reflection quality_score)
-+ 0.3 × recurrence         (how often this pattern appears)
-+ 0.2 × impact             (severity of outcome)
-+ 0.2 × evidence           (how well-grounded)
+  0.25 × confidence         (from Reflection quality_score)
++ 0.20 × recurrence         (how often this pattern appears)
++ 0.20 × impact             (severity of outcome)
++ 0.20 × evidence           (how well-grounded)
++ 0.15 × stability          (temporal stability: days_seen / observation_window)
 ```
 
-| Score | Action |
+| Score | Status |
 |-------|--------|
-| >0.75 | Promote → R2 + D1 index |
-| 0.4-0.75 | Review (status=pending, human review) |
-| <0.4 | Discard (not worth remembering) |
+| >0.75 | active |
+| 0.4-0.75 | pending（human review） |
+| <0.4 | archived（graveyard） |
 
-### Promotion Gate（硬门槛）
-
-Fail-fast before scoring:
+### Promotion Gate（Hard fail-fast before scoring）
 
 ```
-quality_score >= 0.7?        → fail → discard
-outcome exists?              → fail → discard
-evidence exists?             → fail → discard
-(rules >= 1 OR lessons >= 1)? → fail → discard
+quality_score >= 0.7?        → archived
+outcome exists?              → archived
+evidence exists?             → archived
+(rules >= 1 OR lessons >= 1)? → archived
+```
+
+### Confidence Decay
+
+```rust
+fn effective_confidence(memory: &Memory, now: i64) -> f64 {
+    let days_since = (now - memory.confidence_updated_at.unwrap_or(memory.promoted_at)) / 86400;
+    let lambda = match memory.memory_type.as_str() {
+        "strategic_pattern" => 0.002,   // ~1 year halflife
+        "domain_knowledge" => 0.001,    // ~2 years
+        "decision_heuristic" => 0.003,  // ~8 months
+        "personal_preference" => 0.0005, // ~4 years
+        "failure_pattern" => 0.002,     // ~1 year
+        _ => 0.001,
+    };
+    memory.confidence * (-lambda * days_since as f64).exp()
+}
 ```
 
 ---
@@ -244,8 +324,6 @@ evidence exists?             → fail → discard
 ## Section 4: Cron Implementation
 
 ### 调度
-
-在 cron 链中加 `memory::process_pending`，运行于 `reflection` 之后：
 
 ```
 ingestion → gc → signal → briefing → archive → reflection → memory
@@ -255,11 +333,26 @@ ingestion → gc → signal → briefing → archive → reflection → memory
 
 ### Batch 策略
 
-一次最多处理 20 个 ReflectionGenerated 事件（EventStore 查询 LIMIT 20）
+```rust
+const MEMORY_BATCH_SIZE: u32 = 50;  // configurable via env MEMORY_BATCH_SIZE
+```
 
 ### 幂等
 
-`UNIQUE(source_reflection_id)` 防止同一 Reflection 被重复记忆。
+`UNIQUE(artifact_key)` 防止同一 Reflection 被重复记忆。
+
+### Outbox Consistency
+
+MemoryPromotion 不直接写 D1 + R2。沿用 Event + Outbox 模式：
+
+```
+MemoryPromotion
+    │
+    ├── D1: INSERT memory_index
+    ├── Outbox: event:memory (EventEnvelope → MemoryPromoted)
+    ├── Outbox: archive:memory (artifact JSON)
+    └── Archive worker → R2 + EventStore
+```
 
 ---
 
@@ -267,27 +360,31 @@ ingestion → gc → signal → briefing → archive → reflection → memory
 
 ### Sprint 5.5（当前）做
 
-- `memory_index` 表
+- `memory_index` 表（含 lineage, origin, stability, decay 字段）
 - `crates/memory-engine` crate（CandidateExtractor + MemoryEvaluator + MemoryPromotion）
 - StoreBackend memory CRUD
-- Cron worker（每日，独立）
+- Cron worker（每日，独立，batch=50）
 - `MemoryPromoted` 事件
-- R2 `memory/insights/MEM-{id}.json`
+- R2 `memory/insights/MEM-{id}.json`（Belief Object 格式）
+- Outbox 一致性（event:memory + archive:memory）
 
 ### Sprint 5.5 不做
 
 - Vector/Embedding Memory（后续 sprint）
-- Memory 查询 API（后续 sprint）
+- Memory 查询/检索 API（后续 sprint）
 - Event-driven consumer（后续 sprint）
 - Agent Memory Retrieval（Sprint 5.6+）
+- Confidence decay cron job（实现函数，但不调度）
 
 ---
 
 ## Section 6: Verification
 
 1. `cargo check --workspace` + `cargo test --workspace`
-2. **Candidate extraction test**: EventStore → filter ReflectionGenerated → extract candidates
-3. **Promotion gate test**: quality < 0.7 → discard; outcome missing → discard
-4. **Scoring test**: confidence=0.9, recurrence=0.5 → correct total
-5. **Durability test**: R2 write + D1 index consistent
-6. **Idempotency test**: same reflection processed twice → one memory entry
+2. **Candidate extraction test**: event_archive_index → filter aggregate_type='reflection' → candidates
+3. **Promotion gate test**: quality < 0.7 → archived; outcome missing → archived
+4. **Scoring test**: confidence=0.9, recurrence=0.5, stability=0.8 → total=0.9*0.25+0.5*0.2+0.8*0.15=0.445
+5. **Confidence decay test**: days_since=90, lambda=0.002 → factor=exp*(-0.18)=0.835
+6. **Durability test**: outbox → archive worker → D1 + R2 consistent
+7. **Idempotency test**: same reflection processed twice → one memory entry (UNIQUE)
+8. **Status lifecycle test**: candidate → active → deprecated → archived
