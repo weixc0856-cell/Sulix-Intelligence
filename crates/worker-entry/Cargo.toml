@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 worker.workspace = true
 api.workspace = true
 content-governance.workspace = true
+model-runtime.workspace = true
 store.workspace = true
 fetcher.workspace = true
 rules.workspace = true

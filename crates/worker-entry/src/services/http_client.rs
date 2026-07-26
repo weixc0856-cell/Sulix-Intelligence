@@ -1,4 +1,4 @@
-use ai_pipeline::{HttpClient, PipelineError};
+use ai_pipeline::PipelineError;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 use worker::*;
@@ -39,6 +39,12 @@ impl HttpClientError {
 impl From<HttpClientError> for PipelineError {
     fn from(e: HttpClientError) -> Self {
         PipelineError::Summarizer(e.summary())
+    }
+}
+
+impl From<HttpClientError> for model_runtime::ModelError {
+    fn from(e: HttpClientError) -> Self {
+        model_runtime::ModelError::ProviderError(e.summary())
     }
 }
 
@@ -114,7 +120,7 @@ impl WorkerHttpClient {
 }
 
 #[async_trait(?Send)]
-impl HttpClient for WorkerHttpClient {
+impl ai_pipeline::HttpClient for WorkerHttpClient {
     async fn post_json(
         &self,
         url: &str,
@@ -130,5 +136,26 @@ impl HttpClient for WorkerHttpClient {
         init.with_headers(wh);
         init.with_body(Some(serde_json::to_string(body).map_err(|e| HttpClientError::Network(e.to_string()))?.into()));
         Ok(Self::execute_with_retry(url, &init).await?)
+    }
+}
+
+#[async_trait(?Send)]
+impl model_runtime::HttpClient for WorkerHttpClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, model_runtime::ModelError> {
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        let wh = Headers::new();
+        for (k, v) in headers {
+            wh.set(k, v).map_err(|e| model_runtime::ModelError::ProviderError(e.to_string()))?;
+        }
+        init.with_body(Some(
+            serde_json::to_string(body).map_err(|e| model_runtime::ModelError::ProviderError(e.to_string()))?.into(),
+        ));
+        Self::execute_with_retry(url, &init).await.map_err(|e| model_runtime::ModelError::ProviderError(e.summary()))
     }
 }

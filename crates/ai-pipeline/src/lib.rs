@@ -58,6 +58,8 @@ pub trait Summarizer {
 
 /// Runs summarization for one article and writes the result back through
 /// `store`. `score` is the rules-engine output computed upstream.
+///
+/// Delegates to the embedded ModelProvider for the LLM call.
 pub async fn process_article(
     store: &impl StoreBackend,
     summarizer: &dyn Summarizer,
@@ -79,33 +81,39 @@ pub async fn process_article(
 // ---------------------------------------------------------------------------
 
 pub struct HttpSummarizer {
-    base_url: String,
-    api_key: String,
-    chat_model: String,
+    /// Model provider for LLM chat completions.
+    provider: Box<dyn model_runtime::ModelProvider>,
+    /// Optional embedding configuration.
     embedding_model: String,
+    embedding_base_url: String,
+    embedding_api_key: String,
+    /// HTTP client for embeddings only (chat goes through provider).
     client: Box<dyn HttpClient>,
 }
 
 impl HttpSummarizer {
+    /// Create a new HttpSummarizer backed by a ModelProvider.
+    /// The provider handles all chat completions; embedding_base_url/api_key/client
+    /// are only used for optional embedding calls.
     pub fn new(
-        base_url: String,
-        api_key: String,
-        chat_model: String,
+        provider: Box<dyn model_runtime::ModelProvider>,
         embedding_model: String,
+        embedding_base_url: String,
+        embedding_api_key: String,
         client: Box<dyn HttpClient>,
     ) -> Self {
-        Self { base_url, api_key, chat_model, embedding_model, client }
+        Self { provider, embedding_model, embedding_base_url, embedding_api_key, client }
     }
 
     fn auth_headers(&self) -> Vec<(String, String)> {
         vec![
             ("Content-Type".into(), "application/json".into()),
-            ("Authorization".into(), format!("Bearer {}", self.api_key)),
+            ("Authorization".into(), format!("Bearer {}", self.embedding_api_key)),
         ]
     }
 
     async fn post_json(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, PipelineError> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = format!("{}{}", self.embedding_base_url, path);
         self.client.post_json(&url, &self.auth_headers(), body).await
     }
 }
@@ -146,22 +154,20 @@ impl Summarizer for HttpSummarizer {
     async fn summarize(&self, title: &str, body: &str) -> Result<SummaryResult, PipelineError> {
         let prompt = build_summarize_prompt(title, body);
 
-        let chat_response = self
-            .post_json(
-                "/chat/completions",
-                &serde_json::json!({
-                    "model": self.chat_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"}
-                }),
-            )
-            .await?;
+        // Delegate chat completion to the ModelProvider
+        let request = model_runtime::ModelRequest {
+            task: model_runtime::ModelTask::Summarization,
+            system_prompt: prompt,
+            context: vec![],
+            output_schema: Some(model_runtime::summary_schema()),
+            parameters: model_runtime::GenerationParams { temperature: 0.3, max_tokens: 1024 },
+        };
 
-        let content = chat_response["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| PipelineError::Summarizer("missing message content".into()))?;
+        let response = self.provider.generate(request).await.map_err(|e| PipelineError::Summarizer(e.to_string()))?;
 
-        let mut extracted: ExtractionResult = serde_json::from_str(content)
+        let content = response.parsed.map(|v| v.to_string()).unwrap_or(response.text);
+
+        let mut extracted: ExtractionResult = serde_json::from_str(&content)
             .map_err(|e| PipelineError::Summarizer(format!("bad JSON from model: {e}")))?;
 
         // Fallback: if model returned "tags" instead of "topics", use tags
@@ -247,11 +253,12 @@ mod tests {
 
     #[test]
     fn auth_headers_contains_bearer() {
+        let provider = Box::new(model_runtime::NoopProvider::new());
         let s = HttpSummarizer::new(
+            provider,
+            "".into(),
             "https://api.example.com".into(),
             "test-key-123".into(),
-            "model-x".into(),
-            "".into(),
             Box::new(DummyHttpClient),
         );
         let headers = s.auth_headers();
