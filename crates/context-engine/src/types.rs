@@ -70,7 +70,7 @@ pub enum ContextItem {
     Memory(ScoredMemory),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoredDecision {
     pub id: String,
     pub title: String,
@@ -81,7 +81,7 @@ pub struct ScoredDecision {
     pub rank_components: RankComponents,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoredReflection {
     pub id: String,
     pub result: Option<String>,
@@ -90,7 +90,7 @@ pub struct ScoredReflection {
     pub rank_components: RankComponents,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoredMemory {
     pub id: String,
     pub statement: String,
@@ -100,7 +100,7 @@ pub struct ScoredMemory {
     pub rank_components: RankComponents,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RankComponents {
     pub query_alignment: f64,
     pub confidence: f64,
@@ -165,7 +165,7 @@ pub struct ContextRequest {
     pub options: Option<ContextRequestOptions>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContextRequestOptions {
     pub include_patterns: Option<bool>,
     pub max_results: Option<u32>,

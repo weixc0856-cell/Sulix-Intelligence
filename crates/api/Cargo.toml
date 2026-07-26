@@ -17,6 +17,7 @@ signal-engine.workspace = true
 object-store.workspace = true
 event-store.workspace = true
 reflection-engine.workspace = true
+context-engine.workspace = true
 
 [dev-dependencies]
 url.workspace = true

@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
-    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation,
-    NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity,
-    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
-    UpdateReflection,
+    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision,
+    NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult,
+    StoreError, UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -816,5 +816,30 @@ impl StoreBackend for MemoryStore {
     async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
         let count = self.memories.borrow().values().filter(|m| m.status == "candidate").count() as i64;
         Ok(count)
+    }
+
+    // ===== Context Engine (Sprint 5.6) =====
+
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        self.snapshots.borrow_mut().insert(
+            snap.id.clone(),
+            ContextSnapshot {
+                id: snap.id.clone(),
+                query: snap.query.clone(),
+                intent: snap.intent.clone(),
+                domain: snap.domain.clone(),
+                engine_version: "context-engine-v1".into(),
+                context_json: snap.context_json.clone(),
+                evidence_refs: snap.evidence_refs.clone(),
+                confidence: snap.confidence,
+                user_scope: snap.user_scope.clone(),
+                created_at: 1000000,
+            },
+        );
+        Ok(())
+    }
+
+    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError> {
+        Ok(self.snapshots.borrow().get(id).cloned())
     }
 }

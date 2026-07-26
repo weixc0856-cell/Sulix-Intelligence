@@ -6,12 +6,12 @@
 use async_trait::async_trait;
 
 use crate::{
-    ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation,
-    NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity,
-    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
-    UpdateReflection,
+    ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DecisionStats,
+    DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
+    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision,
+    NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult,
+    StoreError, UpdateReflection,
 };
 
 /// Storage backend for the feed pipeline.
@@ -319,4 +319,12 @@ pub trait StoreBackend {
 
     /// Count memories pending promotion.
     async fn count_candidate_memories(&self) -> Result<i64, StoreError>;
+
+    // ===== Context Engine (Sprint 5.6) =====
+
+    /// Save a new context snapshot.
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError>;
+
+    /// Retrieve a context snapshot by id.
+    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError>;
 }

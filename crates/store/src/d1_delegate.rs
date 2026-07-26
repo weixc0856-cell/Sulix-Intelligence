@@ -8,11 +8,12 @@ use async_trait::async_trait;
 
 use crate::backend::StoreBackend;
 use crate::{
-    ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
-    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, Memory, NewArticle,
-    NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent,
-    NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef, SignalBriefInput,
-    SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
+    ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
+    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision,
+    NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection,
+    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult,
+    StoreError, UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -327,5 +328,15 @@ impl StoreBackend for crate::D1Store {
 
     async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
         crate::D1Store::count_candidate_memories(self).await
+    }
+
+    // ===== Context Engine (Sprint 5.6) =====
+
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        crate::D1Store::save_context_snapshot(self, snap).await
+    }
+
+    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError> {
+        crate::D1Store::get_context_snapshot(self, id).await
     }
 }

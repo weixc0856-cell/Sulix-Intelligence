@@ -87,6 +87,8 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/articles/:id/adjacent", routes::article::article_adjacent)
         .get_async("/api/articles/:id", routes::article::article_detail)
         .get_async("/api/articles/:id/content", routes::article::article_content)
+        // Context Engine
+        .post_async("/api/internal/context", routes::context::internal_context)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)
