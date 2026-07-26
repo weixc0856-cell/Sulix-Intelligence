@@ -1,4 +1,4 @@
-use crate::{ArtifactEntry, ArtifactRecord, NewArtifact, NewArtifactRecord, StoreError};
+use crate::{ArtifactEntry, ArtifactRecord, ArtifactRef, NewArtifact, NewArtifactRecord, NewArtifactRef, StoreError};
 use worker::wasm_bindgen::JsValue;
 
 impl crate::D1Store {
@@ -109,5 +109,51 @@ impl crate::D1Store {
             .all()
             .await?
             .results()?)
+    }
+
+    // ── Sprint 6.1 Artifact Registry (unified R2 object registry) ──
+
+    pub async fn register_artifact_ref(&self, a: &NewArtifactRef) -> Result<i64, StoreError> {
+        let now = (js_sys::Date::now() / 1000.0) as i64;
+        let row = self
+            .db
+            .prepare(
+                "INSERT INTO artifacts (artifact_type, artifact_key, content_type, size_bytes, hash, metadata, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id",
+            )
+            .bind(&[
+                a.artifact_type.as_str().into(),
+                a.artifact_key.as_str().into(),
+                a.content_type.as_str().into(),
+                a.size_bytes.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+                a.hash.as_deref().map_or(JsValue::null(), |v| v.into()),
+                a.metadata.as_deref().map_or(JsValue::null(), |v| v.into()),
+                JsValue::from_f64(now as f64),
+            ])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| StoreError::D1("register_artifact_ref failed".into()))
+    }
+
+    pub async fn get_artifact_ref(&self, id: i64) -> Result<Option<ArtifactRef>, StoreError> {
+        self.db
+            .prepare("SELECT id, artifact_type, artifact_key, content_type, size_bytes, hash, version, metadata, created_at FROM artifacts WHERE id = ?1")
+            .bind(&[JsValue::from_f64(id as f64)])?
+            .first::<ArtifactRef>(None)
+            .await
+            .map_err(StoreError::from)
+    }
+
+    pub async fn find_artifact_ref(
+        &self,
+        artifact_type: &str,
+        artifact_key: &str,
+    ) -> Result<Option<ArtifactRef>, StoreError> {
+        self.db
+            .prepare("SELECT id, artifact_type, artifact_key, content_type, size_bytes, hash, version, metadata, created_at FROM artifacts WHERE artifact_type = ?1 AND artifact_key = ?2")
+            .bind(&[artifact_type.into(), artifact_key.into()])?
+            .first::<ArtifactRef>(None)
+            .await
+            .map_err(StoreError::from)
     }
 }

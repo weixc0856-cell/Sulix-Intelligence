@@ -1,5 +1,32 @@
 use serde::{Deserialize, Serialize};
 
+// ── Sprint 6.1: Artifact Registry (unified R2 object registry) ──
+
+/// A registered artifact — the single reference layer between D1 and R2.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactRef {
+    pub id: i64,
+    pub artifact_type: String,
+    pub artifact_key: String,
+    pub content_type: String,
+    pub size_bytes: Option<i64>,
+    pub hash: Option<String>,
+    pub version: i32,
+    pub metadata: Option<String>,
+    pub created_at: i64,
+}
+
+/// Input for registering a new artifact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewArtifactRef {
+    pub artifact_type: String,
+    pub artifact_key: String,
+    pub content_type: String,
+    pub size_bytes: Option<i64>,
+    pub hash: Option<String>,
+    pub metadata: Option<String>,
+}
+
 // ── Legacy artifact_registry (article_snapshot, Sprint 4.x) ──
 
 /// Input for creating a new artifact_registry entry.
