@@ -1,12 +1,12 @@
-use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
-use reflection_engine::generator::{ReflectionGenerator, ReflectionDraft, LessonDraft};
-use reflection_engine::context::ReflectionContext;
-use serde_json::json;
-use store::D1Store;
+use crate::shared::response;
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
 use object_store::R2Store;
+use reflection_engine::context::ReflectionContext;
+use reflection_engine::generator::{LessonDraft, ReflectionDraft, ReflectionGenerator};
+use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
+use serde_json::json;
+use store::D1Store;
 use worker::*;
-use crate::shared::response;
 
 struct NoopGenerator;
 
@@ -18,9 +18,12 @@ impl ReflectionGenerator for NoopGenerator {
             confidence_calibration: "accurate".into(),
             quality_score: 0.7,
             lessons: vec![LessonDraft {
-                category: "general".into(), domain: "default".into(),
+                category: "general".into(),
+                domain: "default".into(),
                 description: "This is a placeholder reflection until LLM integration is connected.".into(),
-                severity: "medium".into(), confidence: 0.7, evidence_basis: vec!["PLACEHOLDER".into()],
+                severity: "medium".into(),
+                confidence: 0.7,
+                evidence_basis: vec!["PLACEHOLDER".into()],
             }],
             rules: vec![],
         })
@@ -51,11 +54,7 @@ pub async fn reflect(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let now = (js_sys::Date::now() / 1000.0) as i64;
     let job_id = format!("job_reflect_DEC{decision_id:06}_{now}");
 
-    let job = ReflectionJob {
-        decision_id,
-        trigger: ReflectionTrigger::Api,
-        correlation_id: job_id.clone(),
-    };
+    let job = ReflectionJob { decision_id, trigger: ReflectionTrigger::Api, correlation_id: job_id.clone() };
 
     match engine.execute(&job).await {
         Ok(result) => response::json_ok(json!({

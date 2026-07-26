@@ -2,14 +2,21 @@
 name = "signal-engine"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
-store = { path = "../../store" }
-worker = { workspace = true }
+store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
-vectorize = { path = "../../vectorize" }
-embedding = { path = "../../embedding", optional = true }
-futures = "0.3"
-event-store = { path = "../../event-store" }
+vectorize = { workspace = true }
+embedding = { workspace = true, optional = true }
+futures = { workspace = true }
+event-store = { workspace = true }
+
+[features]
+default = []
+embedding = ["dep:embedding"]

@@ -54,11 +54,7 @@ impl crate::D1Store {
                  ORDER BY occurred_at DESC \
                  LIMIT ?3",
             )
-            .bind(&[
-                aggregate_type.into(),
-                aggregate_id.into(),
-                JsValue::from_f64(limit as f64),
-            ])?
+            .bind(&[aggregate_type.into(), aggregate_id.into(), JsValue::from_f64(limit as f64)])?
             .all()
             .await?
             .results()?)

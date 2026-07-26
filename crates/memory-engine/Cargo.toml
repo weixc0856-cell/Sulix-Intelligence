@@ -2,6 +2,10 @@
 name = "memory-engine"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 worker.workspace = true
@@ -14,4 +18,4 @@ thiserror.workspace = true
 js-sys.workspace = true
 
 [dev-dependencies]
-futures = "0.3"
+futures = { workspace = true }

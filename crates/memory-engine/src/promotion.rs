@@ -1,5 +1,5 @@
-use store::{NewMemory, NewOutbox, PromotionScore, StoreBackend};
 use crate::candidate::MemoryCandidate;
+use store::{NewMemory, NewOutbox, PromotionScore, StoreBackend};
 
 pub async fn promote<S: StoreBackend>(
     store: &S,
@@ -17,7 +17,9 @@ pub async fn promote<S: StoreBackend>(
             statement: statement.to_string(),
             confidence: score.total as f64,
             stability_score: Some(score.stability as f64),
-            memory_sources: Some(serde_json::json!([{ "source_type": "reflection", "source_id": &candidate.reflection_id }]).to_string()),
+            memory_sources: Some(
+                serde_json::json!([{ "source_type": "reflection", "source_id": &candidate.reflection_id }]).to_string(),
+            ),
             artifact_key: Some(artifact_key.clone()),
             status: "active".into(),
         })
@@ -30,11 +32,13 @@ pub async fn promote<S: StoreBackend>(
         "score": score.total,
         "artifact_key": artifact_key,
     });
-    let _ = store.insert_outbox(&NewOutbox {
-        object_type: "event:memory".into(),
-        object_key: format!("mem_{now}_{memory_id}"),
-        payload: event_payload.to_string(),
-    }).await;
+    let _ = store
+        .insert_outbox(&NewOutbox {
+            object_type: "event:memory".into(),
+            object_key: format!("mem_{now}_{memory_id}"),
+            payload: event_payload.to_string(),
+        })
+        .await;
 
     let archive_payload = serde_json::json!({
         "schema_version": 1, "artifact_type": "memory",
@@ -44,11 +48,13 @@ pub async fn promote<S: StoreBackend>(
         "lineage": { "reflections": [candidate.reflection_id], "decisions": [candidate.decision_id] },
         "promotion": { "score": score.total }, "created_at": now,
     });
-    let _ = store.insert_outbox(&NewOutbox {
-        object_type: "archive:memory".into(),
-        object_key: artifact_key,
-        payload: archive_payload.to_string(),
-    }).await;
+    let _ = store
+        .insert_outbox(&NewOutbox {
+            object_type: "archive:memory".into(),
+            object_key: artifact_key,
+            payload: archive_payload.to_string(),
+        })
+        .await;
 
     Ok(memory_id)
 }

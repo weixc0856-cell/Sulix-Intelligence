@@ -27,7 +27,9 @@ macro_rules! impl_ranking {
                 default_score(components)
             }
             fn rank(&self, mut items: Vec<ScoredDecision>) -> Vec<ScoredDecision> {
-                items.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+                items.sort_by(|a, b| {
+                    b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal)
+                });
                 items
             }
         }
@@ -36,7 +38,9 @@ macro_rules! impl_ranking {
                 default_score(components)
             }
             fn rank(&self, mut items: Vec<ScoredReflection>) -> Vec<ScoredReflection> {
-                items.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+                items.sort_by(|a, b| {
+                    b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal)
+                });
                 items
             }
         }
@@ -45,7 +49,9 @@ macro_rules! impl_ranking {
                 default_score(components)
             }
             fn rank(&self, mut items: Vec<ScoredMemory>) -> Vec<ScoredMemory> {
-                items.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+                items.sort_by(|a, b| {
+                    b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal)
+                });
                 items
             }
         }
@@ -78,10 +84,8 @@ mod tests {
 
     #[test]
     fn decision_ranking_sorts_by_score() {
-        let mut d1 = ScoredDecision::default();
-        d1.relevance_score = 0.9;
-        let mut d2 = ScoredDecision::default();
-        d2.relevance_score = 0.5;
+        let d1 = ScoredDecision { relevance_score: 0.9, ..Default::default() };
+        let d2 = ScoredDecision { relevance_score: 0.5, ..Default::default() };
         let ranked = DecisionRanking.rank(vec![d2, d1]);
         assert_eq!(ranked.len(), 2);
         assert!((ranked[0].relevance_score - 0.9).abs() < 0.01);

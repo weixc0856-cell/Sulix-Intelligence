@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'Cargo.toml'
+      - 'deny.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
+      - 'rustfmt.toml'
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Step 1: cargo-deny — 许可证合规 + 依赖重复检查
+      # (advisories 检查因 fxhash unmaintained 暂不启用，见 deny.toml)
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Check licenses and dependency graph
+        run: cargo deny check bans licenses sources
+
+      # Step 2: cargo fmt — 格式统一
+      - name: Format check
+        run: cargo fmt --check
+
+      # Step 3: clippy — 代码质量（遵守 workspace lints）
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # Step 4: 单元测试
+      - name: Run tests
+        run: cargo test --workspace --all-features

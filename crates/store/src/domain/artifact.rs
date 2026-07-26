@@ -76,8 +76,7 @@ impl crate::D1Store {
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| StoreError::D1("put_artifact failed: no id returned".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| StoreError::D1("put_artifact failed: no id returned".into()))
     }
 
     /// Retrieve an artifact record by type + date.

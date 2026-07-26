@@ -11,19 +11,17 @@ use crate::shared::response;
 
 /// GET /api/intelligence/radar — Intelligence Radar dashboard.
 ///
-/// Uses the unified SignalQueryService read model to return active
-/// signal threads with health scores and related entities.
+/// Uses the RadarProjectionService with batch queries (3 total D1 calls
+/// instead of the previous 1+3N pattern) to return active signal threads
+/// with health scores, evidence counts, and related entities.
 pub async fn radar(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    use signal_engine::query::SignalQueryService;
-
     let store = Store::new(ctx.env.d1("DB")?);
-    let now = (js_sys::Date::now() / 1000.0) as i64;
-    let qs = SignalQueryService::new(&store);
+    let projection = application::RadarProjectionService::new(store);
 
-    match qs.radar(now).await {
-        Ok(projection) => response::json_ok(json!(projection)),
+    match projection.build(20).await {
+        Ok(result) => response::json_ok(json!(result)),
         Err(e) => {
-            console_log!("[Sulix:radar] query failed: {e}");
+            console_log!("[Sulix:radar] projection failed: {e}");
             response::json_err_internal("radar query failed")
         }
     }

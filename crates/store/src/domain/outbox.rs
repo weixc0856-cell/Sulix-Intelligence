@@ -19,7 +19,11 @@ impl crate::D1Store {
                 "INSERT INTO object_outbox (object_type, object_key, payload) \
                  VALUES (?1, ?2, ?3) RETURNING id",
             )
-            .bind(&[entry.object_type.as_str().into(), entry.object_key.as_str().into(), entry.payload.as_str().into()])?
+            .bind(&[
+                entry.object_type.as_str().into(),
+                entry.object_key.as_str().into(),
+                entry.payload.as_str().into(),
+            ])?
             .first::<serde_json::Value>(None)
             .await?;
         row.and_then(|v| v["id"].as_i64())

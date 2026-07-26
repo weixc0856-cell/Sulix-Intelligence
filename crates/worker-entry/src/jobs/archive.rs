@@ -53,11 +53,7 @@ pub(crate) async fn archive_outbox(env: &worker::Env) {
 
         if success {
             if let Err(e) = store.mark_outbox_archived(entry.id).await {
-                console_log!(
-                    "[archive] mark_archived failed for outbox {} (key={}): {e}",
-                    entry.id,
-                    entry.object_key
-                );
+                console_log!("[archive] mark_archived failed for outbox {} (key={}): {e}", entry.id, entry.object_key);
             }
         } else {
             console_log!(

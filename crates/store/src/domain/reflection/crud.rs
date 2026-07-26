@@ -69,18 +69,11 @@ impl crate::D1Store {
         }
 
         parts.push("updated_at = ?".into());
-        vals.push(JsValue::from_f64((js_sys::Date::now() / 1000.0) as f64));
+        vals.push(JsValue::from_f64(js_sys::Date::now() / 1000.0));
 
         vals.push(JsValue::from_f64(req.id as f64));
 
-        self.db
-            .prepare(format!(
-                "UPDATE reflections SET {} WHERE id = ?",
-                parts.join(", ")
-            ))
-            .bind(&vals)?
-            .run()
-            .await?;
+        self.db.prepare(format!("UPDATE reflections SET {} WHERE id = ?", parts.join(", "))).bind(&vals)?.run().await?;
         Ok(())
     }
 

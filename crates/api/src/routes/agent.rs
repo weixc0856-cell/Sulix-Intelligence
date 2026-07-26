@@ -1,11 +1,11 @@
-use agent_engine::runtime::AgentRuntime;
+use crate::shared::response;
 use agent_engine::context::ContextProvider;
 use agent_engine::llm::noop::NoopLLM;
+use agent_engine::runtime::AgentRuntime;
 use agent_engine::types::{AgentRequest, ContextResult};
 use context_engine::builder::ContextBuilder;
 use store::D1Store;
 use worker::*;
-use crate::shared::response;
 
 struct CtxWrapper(ContextBuilder<D1Store>);
 
@@ -33,10 +33,7 @@ pub async fn run(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
         }
     };
 
-    let runtime = AgentRuntime::new(
-        Box::new(CtxWrapper(ContextBuilder::new(store))),
-        Box::new(NoopLLM),
-    );
+    let runtime = AgentRuntime::new(Box::new(CtxWrapper(ContextBuilder::new(store))), Box::new(NoopLLM));
 
     match runtime.execute(body).await {
         Ok(response) => response::json_ok(serde_json::to_value(response).unwrap_or_default()),

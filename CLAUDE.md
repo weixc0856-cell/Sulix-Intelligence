@@ -34,8 +34,17 @@ D:\Project\Sulix Intelligence (Rust workspace — backend)
 │   ├── search/              ← FTS5 search abstraction + WHERE builder (tested)
 │   ├── embedding/           ← Workers AI embedding (bge-large-en-v1.5)
 │   ├── vectorize/           ← Shared wasm binding (upsert/query/delete)
+│   ├── entity/              ← Entity canonicalizer + classifier (pure logic)
 │   ├── api/                 ← HTTP routes (worker::Router)
-│   └── worker-entry/        ← Workers entry (HTTP + Cron + Queue + Metrics)
+│   ├── worker-entry/        ← Workers entry (HTTP + Cron + Queue + Metrics)
+│   ├── object-store/        ← R2 abstraction (ObjectStore trait + R2Store)
+│   ├── event-store/         ← Event sourcing (EventStore trait + D1/R2 backends)
+│   ├── intelligence/
+│   │   ├── signal-engine/   ← Signal detection + lifecycle (core domain)
+│   │   └── reflection-engine/ ← Decision reflection loop
+│   ├── memory-engine/       ← Long-term memory promotion
+│   ├── context-engine/      ← Context snapshot assembly
+│   └── agent-engine/        ← Agent reasoning runtime
 ```
 
 D:\Project\intel-web (Astro — frontend)
@@ -64,6 +73,14 @@ store → worker (D1Database)
 ```
 
 ## Commands
+
+### Architecture Governance
+```bash
+cargo deny check bans licenses sources   # 许可证合规 + 依赖重复检查（暂不包含 advisories）
+cargo-deny advisories 因 fxhash unmaintained 暂未启用。要启用需先升级或替换 scraper crate。详见 deny.toml。
+cargo clippy --workspace -- -D warnings   # 代码质量（遵守 workspace.lints）
+cargo fmt --check                         # 格式统一
+```
 
 ### Backend (wasm32-unknown-unknown target required)
 ```bash

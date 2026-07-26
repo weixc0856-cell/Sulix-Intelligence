@@ -6,7 +6,7 @@
 //! Design principle: domain service never writes artifact storage directly.
 //! All durable projections flow through D1 state + outbox.
 
-use event_store::{AggregateRef, EventEnvelope, EventMetadata, EventStore, keys as event_keys};
+use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata, EventStore};
 use store::{NewOutbox, NewReflection, StoreBackend, UpdateReflection};
 
 use crate::context::ReflectionContextBuilder;
@@ -74,6 +74,7 @@ where
     }
 
     /// Execute a reflection job: load context → check completeness → LLM → validate → persist.
+    #[allow(clippy::let_underscore_future)]
     pub async fn execute(&self, job: &ReflectionJob) -> Result<ReflectionResult, String> {
         let now = Self::now();
         let correlation_id = job.correlation_id.clone();
@@ -86,31 +87,36 @@ where
             job_id: Some(Self::job_id(decision_id, now)),
             status: "generating".into(),
         };
-        let reflection_id = self.repository.create_reflection(&new_reflection).await
+        let reflection_id = self
+            .repository
+            .create_reflection(&new_reflection)
+            .await
             .map_err(|e| format!("create_reflection failed: {e}"))?;
 
         // Start lease
-        let _ = self.repository.update_reflection(&UpdateReflection {
-            id: reflection_id,
-            status: "generating".into(),
-            result: None,
-            quality_score: None,
-            artifact_key: None,
-            lessons_count: None,
-            rules_count: None,
-            retry_count: None,
-            last_error: None,
-            started_at: Some(now),
-            lease_until: Some(now + 900),
-        }).await;
+        let _ = self
+            .repository
+            .update_reflection(&UpdateReflection {
+                id: reflection_id,
+                status: "generating".into(),
+                result: None,
+                quality_score: None,
+                artifact_key: None,
+                lessons_count: None,
+                rules_count: None,
+                retry_count: None,
+                last_error: None,
+                started_at: Some(now),
+                lease_until: Some(now + 900),
+            })
+            .await;
 
         // 2. Build context
         let builder = ReflectionContextBuilder::new(&self.repository);
-        let context = builder.build(decision_id).await
-            .map_err(|e| {
-                let _ = self.mark_failed(reflection_id, &format!("context_error: {e}"));
-                format!("context build failed: {e}")
-            })?;
+        let context = builder.build(decision_id).await.map_err(|e| {
+            let _ = self.mark_failed(reflection_id, &format!("context_error: {e}"));
+            format!("context build failed: {e}")
+        })?;
 
         // 3. Completeness check
         if context.completeness_score < 0.4 {
@@ -120,11 +126,10 @@ where
         }
 
         // 4. Generate reflection (LLM)
-        let draft = self.generator.generate(&context).await
-            .map_err(|e| {
-                let _ = self.mark_failed(reflection_id, &format!("llm_error: {e}"));
-                format!("LLM generation failed: {e}")
-            })?;
+        let draft = self.generator.generate(&context).await.map_err(|e| {
+            let _ = self.mark_failed(reflection_id, &format!("llm_error: {e}"));
+            format!("LLM generation failed: {e}")
+        })?;
 
         // 5. Validate
         let v = validation::validate(&draft);
@@ -136,19 +141,22 @@ where
 
         // 6. Success — persist + emit events
         let artifact_key = format!("memory/reflections/REF-{reflection_id:06}.json");
-        let _ = self.repository.update_reflection(&UpdateReflection {
-            id: reflection_id,
-            status: "generated".into(),
-            result: Some(draft.result.clone()),
-            quality_score: Some(v.quality_score),
-            artifact_key: Some(artifact_key.clone()),
-            lessons_count: Some(draft.lessons.len() as i64),
-            rules_count: Some(draft.rules.len() as i64),
-            retry_count: None,
-            last_error: None,
-            started_at: None,
-            lease_until: None,
-        }).await;
+        let _ = self
+            .repository
+            .update_reflection(&UpdateReflection {
+                id: reflection_id,
+                status: "generated".into(),
+                result: Some(draft.result.clone()),
+                quality_score: Some(v.quality_score),
+                artifact_key: Some(artifact_key.clone()),
+                lessons_count: Some(draft.lessons.len() as i64),
+                rules_count: Some(draft.rules.len() as i64),
+                retry_count: None,
+                last_error: None,
+                started_at: None,
+                lease_until: None,
+            })
+            .await;
 
         // 7. Event outbox (ReflectionGenerated — lightweight)
         let event_payload = serde_json::json!({
@@ -159,80 +167,88 @@ where
             "lesson_count": draft.lessons.len(),
             "rule_count": draft.rules.len(),
         });
-        let _ = self.repository.insert_outbox(&NewOutbox {
-            object_type: "event:reflection".into(),
-            object_key: format!("memory/events/reflection/{}/{}", now, correlation_id),
-            payload: event_payload.to_string(),
-        }).await;
+        let _ = self
+            .repository
+            .insert_outbox(&NewOutbox {
+                object_type: "event:reflection".into(),
+                object_key: format!("memory/events/reflection/{}/{}", now, correlation_id),
+                payload: event_payload.to_string(),
+            })
+            .await;
 
         // 8. Archive outbox (artifact content — R2 worker will pick up)
-        let _ = self.repository.insert_outbox(&NewOutbox {
-            object_type: "archive:reflection".into(),
-            object_key: artifact_key,
-            payload: serde_json::to_string(&draft).unwrap_or_default(),
-        }).await;
+        let _ = self
+            .repository
+            .insert_outbox(&NewOutbox {
+                object_type: "archive:reflection".into(),
+                object_key: artifact_key,
+                payload: serde_json::to_string(&draft).unwrap_or_default(),
+            })
+            .await;
 
         // 9. EventStore append
-        let _ = self.event_store.append_event(&EventEnvelope {
-            schema_version: 1,
-            event_version: 1,
-            event_id: event_keys::format_id(now, reflection_id as u64),
-            correlation_id: correlation_id.clone(),
-            causation_id: String::new(),
-            aggregate: AggregateRef {
-                aggregate_type: "reflection".into(),
-                aggregate_id: format!("REF-{reflection_id:06}"),
-            },
-            event_type: "ReflectionGenerated".into(),
-            payload: event_payload,
-            metadata: EventMetadata {
-                actor: "system".into(),
-                source: "reflection_engine".into(),
-            },
-            occurred_at: now,
-            created_at: now,
-        }).await;
+        let _ = self
+            .event_store
+            .append_event(&EventEnvelope {
+                schema_version: 1,
+                event_version: 1,
+                event_id: event_keys::format_id(now, reflection_id as u64),
+                correlation_id: correlation_id.clone(),
+                causation_id: String::new(),
+                aggregate: AggregateRef {
+                    aggregate_type: "reflection".into(),
+                    aggregate_id: format!("REF-{reflection_id:06}"),
+                },
+                event_type: "ReflectionGenerated".into(),
+                payload: event_payload,
+                metadata: EventMetadata { actor: "system".into(), source: "reflection_engine".into() },
+                occurred_at: now,
+                created_at: now,
+            })
+            .await;
 
-        Ok(ReflectionResult {
-            reflection_id,
-            decision_id,
-            status: "generated".into(),
-        })
+        Ok(ReflectionResult { reflection_id, decision_id, status: "generated".into() })
     }
 
     /// Mark a reflection as failed with error message.
     async fn mark_failed(&self, id: i64, error: &str) {
         let ref_lookup = self.repository.get_reflection_by_decision(id).await.ok().flatten();
         let retry_count = ref_lookup.map(|r| r.retry_count + 1).unwrap_or(0);
-        let _ = self.repository.update_reflection(&UpdateReflection {
-            id,
-            status: "failed".into(),
-            result: None,
-            quality_score: None,
-            artifact_key: None,
-            lessons_count: None,
-            rules_count: None,
-            retry_count: Some(retry_count),
-            last_error: Some(error.to_string()),
-            started_at: None,
-            lease_until: None,
-        }).await;
+        let _ = self
+            .repository
+            .update_reflection(&UpdateReflection {
+                id,
+                status: "failed".into(),
+                result: None,
+                quality_score: None,
+                artifact_key: None,
+                lessons_count: None,
+                rules_count: None,
+                retry_count: Some(retry_count),
+                last_error: Some(error.to_string()),
+                started_at: None,
+                lease_until: None,
+            })
+            .await;
     }
 
     /// Mark failed and set retry_count (used for completeness failures).
     async fn mark_failed_with_retry(&self, id: i64, error: &str, retry_count: i64) {
-        let _ = self.repository.update_reflection(&UpdateReflection {
-            id,
-            status: "failed".into(),
-            result: None,
-            quality_score: None,
-            artifact_key: None,
-            lessons_count: None,
-            rules_count: None,
-            retry_count: Some(retry_count),
-            last_error: Some(error.to_string()),
-            started_at: None,
-            lease_until: None,
-        }).await;
+        let _ = self
+            .repository
+            .update_reflection(&UpdateReflection {
+                id,
+                status: "failed".into(),
+                result: None,
+                quality_score: None,
+                artifact_key: None,
+                lessons_count: None,
+                rules_count: None,
+                retry_count: Some(retry_count),
+                last_error: Some(error.to_string()),
+                started_at: None,
+                lease_until: None,
+            })
+            .await;
     }
 }

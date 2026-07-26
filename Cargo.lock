@@ -14,7 +14,6 @@ dependencies = [
  "serde_json",
  "store",
  "thiserror",
- "worker",
 ]
 
 [[package]]
@@ -51,6 +50,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "agent-engine",
+ "application",
  "async-trait",
  "context-engine",
  "embedding",
@@ -67,6 +67,18 @@ dependencies = [
  "url",
  "vectorize",
  "worker",
+]
+
+[[package]]
+name = "application"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "shared-kernel",
+ "store",
 ]
 
 [[package]]
@@ -162,7 +174,6 @@ dependencies = [
  "serde_json",
  "store",
  "thiserror",
- "worker",
 ]
 
 [[package]]
@@ -279,6 +290,12 @@ dependencies = [
  "wasm-bindgen",
  "worker",
 ]
+
+[[package]]
+name = "fastrand"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "feed-rs"
@@ -954,7 +971,6 @@ dependencies = [
  "serde_json",
  "store",
  "thiserror",
- "worker",
 ]
 
 [[package]]
@@ -1132,6 +1148,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared-kernel"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "fastrand",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1149,7 +1176,6 @@ dependencies = [
  "serde_json",
  "store",
  "vectorize",
- "worker",
 ]
 
 [[package]]

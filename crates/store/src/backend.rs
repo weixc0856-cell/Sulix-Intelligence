@@ -1,50 +1,63 @@
-//! `StoreBackend` trait — abstraction over D1 so the pipeline can be
-//! unit-tested with a [`MemoryStore`](crate::memory::MemoryStore).
+//! `StoreBackend` trait — supertrait composing all domain-repository and
+//! query-service traits.
+//!
+//! New code should prefer the smaller traits from [`traits`] so the
+//! dependency graph stays lean.  Legacy code that uses `T: StoreBackend`
+//! continues to compile without changes because `StoreBackend` is a
+//! supertrait of every smaller trait.
 //!
 //! MVP scope: only the methods used by the feed processing pipeline.
 
 use async_trait::async_trait;
 
 use crate::{
-    ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DecisionStats,
-    DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision,
-    NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection,
-    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult,
-    StoreError, UpdateReflection,
+    traits::*, ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DiscoveryMethod,
+    EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot,
+    NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutboxEntry,
+    OutcomeEvent, Reflection, RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, StoreError,
+    UpdateReflection,
 };
 
-/// Storage backend for the feed pipeline.
+/// Storage backend for the Sulix Intelligence platform.
 ///
-/// Every method maps 1:1 to a D1 query.  The production implementation
-/// ([`D1Store`](crate::D1Store)) wraps `worker::D1Database`; the test
-/// implementation ([`MemoryStore`](crate::memory::MemoryStore)) uses
-/// in-memory `HashMap`/`Vec` and supports failure injection.
+/// Composes all domain-repository and query-service traits so that existing
+/// `T: StoreBackend` generic code continues to compile as we migrate toward
+/// smaller, context-specific boundaries.
+///
+/// **Phase 1** — the following method groups remain on `StoreBackend`:
+/// - Article lifecycle (set_ai_summary, set_raw_content_r2_key, expire)
+/// - Rule management (active_rule_jsons)
+/// - Entity signal candidates (bridge to Intelligence context)
+/// - Signal instance & event append (pre-cursors to formal Event Sourcing)
+/// - Decision status + outcome + evaluation CRUD
+/// - Outbox / Event Index (infrastructure, will move to shared/events)
+/// - Reflection, Memory, Context, Artifact CRUD
 #[async_trait(?Send)]
-pub trait StoreBackend {
-    // ---- Feeds ----
-
-    /// Load one feed by id.
-    async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError>;
-
-    /// Record a fetch result (etag / last-modified) after a successful fetch.
-    async fn record_fetch_result(
-        &self,
-        feed_id: i64,
-        fetched_at: i64,
-        etag: Option<&str>,
-        last_modified: Option<&str>,
-    ) -> Result<(), StoreError>;
-
+pub trait StoreBackend:
+    FeedRepository
+    + FeedQueryService
+    + ArticleRepository
+    + ArticleQueryService
+    + EntityRepository
+    + EntityQueryService
+    + SignalRepository
+    + SignalQueryService
+    + DecisionRepository
+    + DecisionQueryService
+    + OutcomeRepository
+    + OutcomeQueryService
+    + EvaluationRepository
+    + EvaluationQueryService
+    + BatchSignalQueryService
+{
     // ---- Rules ----
 
     /// Return `rule_json` strings for every enabled rule matching `audience_tag`.
     async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError>;
 
-    // ---- Articles ----
+    // ---- Article lifecycle (analysis / content) ----
 
-    /// Insert a new article (INSERT OR IGNORE).  Returns the new row id,
-    /// or `None` when the article already exists (duplicate GUID).
+    /// Insert a new article (called by ingestion; maps to ArticleRepository::save_article).
     async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError>;
 
     /// Persist AI summarisation results.
@@ -63,12 +76,23 @@ pub trait StoreBackend {
     /// Delete articles older than `days` whose AI processing is complete.
     async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError>;
 
-    // ===== Intelligence / Entity methods =====
+    // ---- Feed lifecycle ----
 
-    /// Upsert an entity by normalized_name. Returns the entity id.
+    /// Record a fetch result (etag / last-modified) after a successful fetch.
+    async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError>;
+
+    // ---- Entity lifecycle (compat aliases for ingestion) ----
+
+    /// Upsert an entity (called by ingestion; maps to EntityRepository::save_entity).
     async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError>;
 
-    /// Link an article to an entity (many-to-many).
+    /// Link article to entity (called by ingestion; maps to EntityRepository::link_article).
     async fn link_article_entity(
         &self,
         article_id: i64,
@@ -77,7 +101,7 @@ pub trait StoreBackend {
         context: Option<&str>,
     ) -> Result<(), StoreError>;
 
-    /// Link two entities with a directed relation.
+    /// Link two entities (called by ingestion; maps to EntityRepository::link_relation).
     async fn link_entity_relation(
         &self,
         source: i64,
@@ -86,45 +110,7 @@ pub trait StoreBackend {
         confidence: f64,
     ) -> Result<(), StoreError>;
 
-    /// List all entities, paginated, ordered by article_count DESC.
-    async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError>;
-
-    /// Get a single entity by id with aggregate article_count.
-    async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError>;
-
-    /// Get related entities for a given entity through entity_relations.
-    async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError>;
-
-    /// Get all entities linked to a specific article.
-    async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError>;
-
-    /// Register an R2 artifact in the artifact_registry.
-    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError>;
-
-    /// List artifact_registry entries for a given entity.
-    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
-
-    /// Register a new artifact in the memory_artifacts index.
-    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError>;
-
-    /// Retrieve an artifact record by type + date.
-    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError>;
-
-    /// List artifacts of a given type, newest first.
-    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError>;
-
-    // ===== Entity Intelligence methods =====
-
-    /// List articles linked to an entity (Evidence).
-    async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError>;
-
-    /// Activity summary for an entity over the last N days.
-    async fn entity_activity_summary(
-        &self,
-        entity_id: i64,
-        now: i64,
-        days: i64,
-    ) -> Result<EntityActivitySummary, StoreError>;
+    // ---- Entity signal candidates (bridge to Intelligence context) ----
 
     /// Generate entity-anchored signal candidates with 5-factor scoring.
     async fn entity_signal_candidates(
@@ -134,16 +120,19 @@ pub trait StoreBackend {
         limit: u32,
     ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
 
-    /// Load recent articles that have Vectorize embeddings for ANN discovery.
-    async fn recent_embedded_articles(
+    /// Generate entity-anchored signal candidates with quality filters.
+    async fn entity_signal_candidates_filtered(
         &self,
         now: i64,
         days: i64,
         limit: u32,
-    ) -> Result<Vec<ArticleEmbeddingRef>, StoreError>;
+        min_entity_articles: u32,
+        min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
 
-    // ===== Signal Threads (V2) =====
+    // ==== Signal instance & event management (pre-Event-Sourcing) ====
 
+    /// Upsert a signal thread (called by signal-engine; maps to SignalRepository::save_signal).
     async fn upsert_signal_thread(
         &self,
         signal_key: &str,
@@ -154,33 +143,16 @@ pub trait StoreBackend {
         discovery_score: Option<f64>,
     ) -> Result<SignalUpsertResult, StoreError>;
 
+    /// Update signal lifecycle (active → decaying → resolved → archived).
     async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError>;
 
-    async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError>;
-
-    /// List signal threads with dynamic filtering.
-    async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError>;
-
+    /// Load full signal detail (thread info + timeline + evidence + entities).
     async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError>;
 
-    // ===== Signal Engine V2 methods =====
-
-    /// Generate entity-anchored signal candidates with quality filters.
-    /// - `min_entity_articles`: minimum articles linked to entity (anti-noise).
-    /// - `min_sources`: minimum distinct feed sources (requires corroboration).
-    async fn entity_signal_candidates_filtered(
-        &self,
-        now: i64,
-        days: i64,
-        limit: u32,
-        min_entity_articles: u32,
-        min_sources: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
-
-    /// Get the latest instance's (score, trend) for a thread, if any.
+    /// Get the latest instance's (score, trend) for dedup.
     async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, StoreError>;
 
-    /// Append a signal instance with enriched snapshot (avg_score, entity_id).
+    /// Append a daily signal instance snapshot.
     #[allow(clippy::too_many_arguments)]
     async fn append_signal_instance_v2(
         &self,
@@ -194,7 +166,7 @@ pub trait StoreBackend {
         entity_id: i64,
     ) -> Result<i64, StoreError>;
 
-    /// Insert a signal timeline event for a thread.
+    /// Insert a signal timeline event.
     async fn insert_signal_event(
         &self,
         thread_id: i64,
@@ -202,37 +174,28 @@ pub trait StoreBackend {
         payload: Option<&str>,
     ) -> Result<(), StoreError>;
 
-    /// Load signal timeline events for a thread.
+    /// Load signal timeline events.
     async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError>;
 
-    /// Load related entities for a signal thread via entity_relations.
+    /// Load related entities for a signal thread.
     async fn load_thread_related_entities(
         &self,
         thread_id: i64,
         limit: u32,
     ) -> Result<Vec<RelatedEntityRef>, StoreError>;
 
-    // ===== Decision Loop =====
+    // ==== Decision lifecycle (pre-Event-Sourcing) ====
 
-    /// Create a new decision record.
+    /// Create a new decision (called by api/services/decision.rs; maps to DecisionRepository::save_decision).
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError>;
 
-    /// Get a single decision by id.
+    /// Get a decision by id (called by reflection-engine; maps to DecisionRepository::find_decision).
     async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError>;
-
-    /// List decisions, optionally filtered by status.
-    async fn list_decisions(&self, status: Option<&str>, limit: u32) -> Result<Vec<Decision>, StoreError>;
 
     /// Update decision status.
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError>;
 
-    /// List decisions for a specific signal thread.
-    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError>;
-
-    /// Get aggregated decision statistics for the dashboard.
-    async fn decision_stats(&self) -> Result<DecisionStats, StoreError>;
-
-    // ===== Outcome Events =====
+    // ---- Outcome Events ----
 
     /// Record a factual outcome observation.
     async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError>;
@@ -240,7 +203,7 @@ pub trait StoreBackend {
     /// List outcome observations for a decision.
     async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError>;
 
-    // ===== Decision Evaluation =====
+    // ---- Decision Evaluation ----
 
     /// Record a judgment about whether a decision's hypothesis was correct.
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError>;
@@ -251,7 +214,7 @@ pub trait StoreBackend {
     /// Get the latest evaluation for a decision.
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
 
-    // ===== Object Outbox =====
+    // ==== Object Outbox (infrastructure) ====
 
     /// Enqueue a new outbox entry for deferred R2 archive write.
     async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError>;
@@ -265,7 +228,7 @@ pub trait StoreBackend {
     /// Mark an outbox entry as failed (retries exhausted).
     async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError>;
 
-    // ===== Event Archive Index =====
+    // ==== Event Archive Index (infrastructure) ====
 
     /// Insert a row into the event_archive_index table.
     async fn insert_event_index(
@@ -286,48 +249,47 @@ pub trait StoreBackend {
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError>;
 
+    // ==== Artifact Registry ====
+
+    /// Register an R2 artifact in the artifact_registry.
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError>;
+
+    /// List artifact_registry entries for a given entity.
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
+
+    /// Register a new artifact in the memory_artifacts index.
+    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError>;
+
+    /// Retrieve an artifact record by type + date.
+    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError>;
+
+    /// List artifacts of a given type, newest first.
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError>;
+
     // ===== Reflection Engine (Sprint 5.4) =====
 
-    /// Create a new reflection row. Returns the new id.
     async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError>;
-
-    /// Update reflection state (status, result, etc.).
     async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError>;
-
-    /// Get a reflection by decision_id.
     async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError>;
-
-    /// List eligible decisions for reflection (completed >7d, no existing reflection).
     async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError>;
-
-    /// List failed reflections eligible for retry (retry_count < 3).
     async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError>;
-
-    /// List stale generating reflections (lease_until < now).
     async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError>;
 
     // ===== Memory Engine (Sprint 5.5) =====
 
-    /// Create a new memory entry. Returns the new id.
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError>;
-
-    /// Get a memory entry by id.
     async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError>;
-
-    /// List memories, optionally filtered by type and status.
-    async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, limit: u32) -> Result<Vec<Memory>, StoreError>;
-
-    /// Update memory usage stats (increment usage_count, set last_used_at).
+    async fn list_memories(
+        &self,
+        memory_type: Option<&str>,
+        status: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<Memory>, StoreError>;
     async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError>;
-
-    /// Count memories pending promotion.
     async fn count_candidate_memories(&self) -> Result<i64, StoreError>;
 
     // ===== Context Engine (Sprint 5.6) =====
 
-    /// Save a new context snapshot.
     async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError>;
-
-    /// Retrieve a context snapshot by id.
     async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError>;
 }

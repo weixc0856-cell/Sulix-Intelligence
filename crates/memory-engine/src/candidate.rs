@@ -17,10 +17,8 @@ pub async fn extract_candidates<S: StoreBackend>(
     since: i64,
     limit: u32,
 ) -> Result<Vec<MemoryCandidate>, String> {
-    let rows: Vec<EventIndexEntry> = store
-        .find_event_keys("reflection", "", limit)
-        .await
-        .map_err(|e| format!("find_event_keys failed: {e}"))?;
+    let rows: Vec<EventIndexEntry> =
+        store.find_event_keys("reflection", "", limit).await.map_err(|e| format!("find_event_keys failed: {e}"))?;
 
     let candidates: Vec<MemoryCandidate> = rows
         .into_iter()

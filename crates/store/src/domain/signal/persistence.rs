@@ -14,7 +14,10 @@ struct FingerprintRow {
 
 impl crate::D1Store {
     /// Get the latest instance's (score, trend) for a thread for change detection.
-    pub async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, crate::StoreError> {
+    pub async fn get_latest_instance_fingerprint(
+        &self,
+        thread_id: i64,
+    ) -> Result<Option<(f64, String)>, crate::StoreError> {
         let row = self
             .db
             .prepare("SELECT score, trend FROM intelligence_signals WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 1")

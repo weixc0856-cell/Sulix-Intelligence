@@ -10,7 +10,7 @@
 //! This ensures the event is never lost even if the process crashes
 //! after the D1 commit but before the EventStore append.
 
-use event_store::{AggregateRef, EventEnvelope, EventMetadata, keys as event_keys};
+use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata};
 use store::{Decision, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, StoreBackend, StoreError};
 
 /// Structured input for creating a new decision.
@@ -50,11 +50,7 @@ impl<S: StoreBackend> DecisionService<S> {
             .store
             .insert_outbox(&NewOutbox {
                 object_type: event_type,
-                object_key: event_keys::event(
-                    &event.aggregate.aggregate_type,
-                    event.occurred_at,
-                    &event.event_id,
-                ),
+                object_key: event_keys::event(&event.aggregate.aggregate_type, event.occurred_at, &event.event_id),
                 payload,
             })
             .await;
@@ -81,10 +77,7 @@ impl<S: StoreBackend> DecisionService<S> {
             schema_version: 1,
             event_version: 1,
             event_id: event_keys::format_id(now, id as u64),
-            aggregate: AggregateRef {
-                aggregate_type: "decision".into(),
-                aggregate_id: agg_id,
-            },
+            aggregate: AggregateRef { aggregate_type: "decision".into(), aggregate_id: agg_id },
             event_type: "DecisionCreated".into(),
             payload: serde_json::json!({
                 "title": &new.title,
@@ -97,10 +90,10 @@ impl<S: StoreBackend> DecisionService<S> {
             causation_id: String::new(),
             occurred_at: now,
             created_at: now,
-        }).await;
+        })
+        .await;
 
-        self.store.get_decision(id).await?
-            .ok_or_else(|| StoreError::D1("decision not found after create".into()))
+        self.store.get_decision(id).await?.ok_or_else(|| StoreError::D1("decision not found after create".into()))
     }
 
     /// Change decision status and emit a DecisionStatusChanged event via outbox.
@@ -113,10 +106,7 @@ impl<S: StoreBackend> DecisionService<S> {
             schema_version: 1,
             event_version: 1,
             event_id: event_keys::format_id(now, id as u64),
-            aggregate: AggregateRef {
-                aggregate_type: "decision".into(),
-                aggregate_id: agg_id,
-            },
+            aggregate: AggregateRef { aggregate_type: "decision".into(), aggregate_id: agg_id },
             event_type: "DecisionStatusChanged".into(),
             payload: serde_json::json!({"status": status}),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
@@ -124,7 +114,8 @@ impl<S: StoreBackend> DecisionService<S> {
             causation_id: String::new(),
             occurred_at: now,
             created_at: now,
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -140,10 +131,7 @@ impl<S: StoreBackend> DecisionService<S> {
             schema_version: 1,
             event_version: 1,
             event_id: event_keys::format_id(now, outcome_id as u64),
-            aggregate: AggregateRef {
-                aggregate_type: "decision".into(),
-                aggregate_id: dec_agg,
-            },
+            aggregate: AggregateRef { aggregate_type: "decision".into(), aggregate_id: dec_agg },
             event_type: "DecisionStatusChanged".into(),
             payload: serde_json::json!({"status": "completed"}),
             metadata: EventMetadata { actor: "system".into(), source: "api".into() },
@@ -151,17 +139,15 @@ impl<S: StoreBackend> DecisionService<S> {
             causation_id: String::new(),
             occurred_at: now,
             created_at: now,
-        }).await;
+        })
+        .await;
 
         let out_agg = format!("OUT-{outcome_id:06}");
         self.emit_event(&EventEnvelope {
             schema_version: 1,
             event_version: 1,
             event_id: event_keys::format_id(now, outcome_id as u64),
-            aggregate: AggregateRef {
-                aggregate_type: "outcome".into(),
-                aggregate_id: out_agg,
-            },
+            aggregate: AggregateRef { aggregate_type: "outcome".into(), aggregate_id: out_agg },
             event_type: "OutcomeObserved".into(),
             payload: serde_json::json!({
                 "outcome_type": &outcome.outcome_type,
@@ -172,7 +158,8 @@ impl<S: StoreBackend> DecisionService<S> {
             causation_id: String::new(),
             occurred_at: now,
             created_at: now,
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -187,10 +174,7 @@ impl<S: StoreBackend> DecisionService<S> {
             schema_version: 1,
             event_version: 1,
             event_id: event_keys::format_id(now, decision_id as u64),
-            aggregate: AggregateRef {
-                aggregate_type: "decision".into(),
-                aggregate_id: agg_id,
-            },
+            aggregate: AggregateRef { aggregate_type: "decision".into(), aggregate_id: agg_id },
             event_type: "DecisionEvaluated".into(),
             payload: serde_json::json!({
                 "evaluation": eval.evaluation.to_string(),
@@ -202,7 +186,8 @@ impl<S: StoreBackend> DecisionService<S> {
             causation_id: String::new(),
             occurred_at: now,
             created_at: now,
-        }).await;
+        })
+        .await;
 
         Ok(())
     }

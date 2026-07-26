@@ -13,9 +13,7 @@ struct CronConfig {
 
 impl CronConfig {
     fn from_env(env: &Env) -> Self {
-        let v = |key: &str| -> bool {
-            env.var(key).ok().and_then(|v| v.to_string().parse().ok()).unwrap_or(false)
-        };
+        let v = |key: &str| -> bool { env.var(key).ok().and_then(|v| v.to_string().parse().ok()).unwrap_or(false) };
         Self {
             ingestion_enabled: v("CRON_INGESTION_ENABLED"),
             signal_enabled: v("CRON_SIGNAL_ENABLED"),

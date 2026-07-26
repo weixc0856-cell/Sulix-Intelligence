@@ -2,6 +2,10 @@
 name = "store"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 worker.workspace = true
@@ -12,4 +16,4 @@ js-sys.workspace = true
 async-trait.workspace = true
 
 [dev-dependencies]
-futures = "0.3"
+futures = { workspace = true }

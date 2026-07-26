@@ -68,12 +68,7 @@ pub fn validate(draft: &ReflectionDraft) -> ValidationResult {
 
     let quality_score = draft.quality_score.clamp(0.0, 1.0);
 
-    ValidationResult {
-        valid: errors.is_empty(),
-        quality_score,
-        errors,
-        warnings,
-    }
+    ValidationResult { valid: errors.is_empty(), quality_score, errors, warnings }
 }
 
 #[cfg(test)]

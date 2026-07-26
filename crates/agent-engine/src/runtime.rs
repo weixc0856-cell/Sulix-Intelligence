@@ -15,12 +15,7 @@ pub struct AgentRuntime {
 
 impl AgentRuntime {
     pub fn new(context: Box<dyn ContextProvider>, llm: Box<dyn LLMProvider>) -> Self {
-        Self {
-            context,
-            llm,
-            prompt_builder: PromptBuilder,
-            validator: Box::new(DefaultValidator),
-        }
+        Self { context, llm, prompt_builder: PromptBuilder, validator: Box::new(DefaultValidator) }
     }
 
     pub async fn execute(&self, request: AgentRequest) -> Result<AgentResponse, String> {
@@ -35,9 +30,7 @@ impl AgentRuntime {
 
         // 2. Prompt
         stages.push(AgentStage::PromptConstruction);
-        let prompt = self
-            .prompt_builder
-            .build(&ctx_result.context, &request.mode, &request.query);
+        let prompt = self.prompt_builder.build(&ctx_result.context, &request.mode, &request.query);
 
         // 3. LLM
         stages.push(AgentStage::LLMInference);
@@ -52,12 +45,7 @@ impl AgentRuntime {
             .map_err(|e| format!("LLM error: {e:?}"))?;
 
         // 4. Reasoning trace
-        let evidence_refs: Vec<String> = ctx_result
-            .context
-            .evidence
-            .iter()
-            .map(|e| e.source_id.clone())
-            .collect();
+        let evidence_refs: Vec<String> = ctx_result.context.evidence.iter().map(|e| e.source_id.clone()).collect();
         let reasoning = build_trace(evidence_refs.clone(), ctx_result.confidence);
 
         // 5. Build context summary
@@ -89,15 +77,9 @@ impl AgentRuntime {
         };
 
         // 6. Validate
-        let validation = self
-            .validator
-            .validate(&response, &policy.evidence_policy)
-            .await;
+        let validation = self.validator.validate(&response, &policy.evidence_policy).await;
         if !validation.valid {
-            return Err(format!(
-                "response validation: {}",
-                validation.errors.join("; ")
-            ));
+            return Err(format!("response validation: {}", validation.errors.join("; ")));
         }
 
         // 7. Mark completed (stages is owned by response.execution.stages)

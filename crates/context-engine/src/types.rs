@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Intent {
-    pub intent_type: String,     // decision_support | reflection | pattern_analysis
+    pub intent_type: String, // decision_support | reflection | pattern_analysis
     pub stage: CognitiveStage,
     pub desired_outcome: DesiredOutcome,
     pub domain: Option<String>,

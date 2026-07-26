@@ -7,52 +7,37 @@
 
 use async_trait::async_trait;
 
+use std::collections::HashMap;
+
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
+use crate::traits::*;
 use crate::{
-    ArtifactEntry, ArtifactRecord, ContextSnapshot, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
-    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision,
-    NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection,
-    RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult,
-    StoreError, UpdateReflection,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, ContextSnapshot, DayCount,
+    Decision,
+    DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
+    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
+    NewArtifact, NewArtifactRecord, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox,
+    NewOutcomeEvent, NewReflection, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
+    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
+    SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
 };
 
-#[async_trait(?Send)]
-impl StoreBackend for MemoryStore {
-    // ── Feed / Article / Rules ──
+// ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
 
-    async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
+#[async_trait(?Send)]
+impl FeedRepository for MemoryStore {
+    async fn save_feed(&self, _feed: &Feed) -> Result<i64, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn find_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
         Ok(self.feeds.get(&id).cloned())
     }
+}
 
-    async fn record_fetch_result(
-        &self,
-        feed_id: i64,
-        fetched_at: i64,
-        etag: Option<&str>,
-        last_modified: Option<&str>,
-    ) -> Result<(), StoreError> {
-        if self.fail_fetch_result {
-            return Err(StoreError::D1("injected fetch result failure".into()));
-        }
-        self.fetch_results.borrow_mut().push((
-            feed_id,
-            fetched_at,
-            etag.map(|s| s.to_string()),
-            last_modified.map(|s| s.to_string()),
-        ));
-        Ok(())
-    }
-
-    async fn active_rule_jsons(&self, _audience_tag: &str) -> Result<Vec<String>, StoreError> {
-        if self.fail_rules {
-            return Err(StoreError::D1("injected rules failure".into()));
-        }
-        Ok(self.rules.clone())
-    }
-
-    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
+#[async_trait(?Send)]
+impl ArticleRepository for MemoryStore {
+    async fn save_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
         if self.fail_insert {
             return Err(StoreError::D1("injected insert failure".into()));
         }
@@ -72,45 +57,20 @@ impl StoreBackend for MemoryStore {
         });
         Ok(Some(id))
     }
-
-    async fn set_ai_summary(
-        &self,
-        article_id: i64,
-        summary: &str,
-        _tags_json: &str,
-        _vector_id: &str,
-        _score: f64,
-    ) -> Result<(), StoreError> {
-        if self.fail_summary {
-            return Err(StoreError::D1("injected summary failure".into()));
-        }
-        self.summaries.borrow_mut().insert(article_id, summary.to_string());
-        Ok(())
+    async fn find_article(&self, _id: i64) -> Result<Option<Article>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
     }
+}
 
-    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
-        if self.fail_r2_key {
-            return Err(StoreError::D1("injected r2 key failure".into()));
-        }
-        self.r2_keys.borrow_mut().insert(article_id, r2_key.map(|s| s.to_string()));
-        Ok(())
-    }
-
-    async fn expire_old_articles(&self, _now: i64, _days: i64) -> Result<u64, StoreError> {
-        Ok(0)
-    }
-
-    // ── Entity ──
-
-    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
+#[async_trait(?Send)]
+impl EntityRepository for MemoryStore {
+    async fn save_entity(&self, name: &str, normalized_name: &str, entity_type: &str) -> Result<i64, StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let mut entities = self.entities.borrow_mut();
-        // Find existing by normalized_name — must clone id to satisfy borrow checker
-        let existing_id = entities.values().find(|e| e.normalized_name == normalized).map(|e| e.id);
+        let existing_id = entities.values().find(|e| e.normalized_name == normalized_name).map(|e| e.id);
         if let Some(eid) = existing_id {
             if let Some(e) = entities.get_mut(&eid) {
                 e.updated_at = now;
-                e.entity_type = entity_type.to_string();
             }
             return Ok(eid);
         }
@@ -121,7 +81,7 @@ impl StoreBackend for MemoryStore {
             EntityInternal {
                 id,
                 name: name.into(),
-                normalized_name: normalized.into(),
+                normalized_name: normalized_name.into(),
                 entity_type: entity_type.into(),
                 canonical_id: None,
                 description: None,
@@ -132,44 +92,199 @@ impl StoreBackend for MemoryStore {
         );
         Ok(id)
     }
-
-    async fn link_article_entity(
-        &self,
-        article_id: i64,
-        entity_id: i64,
-        _relevance: f64,
-        _context: Option<&str>,
-    ) -> Result<(), StoreError> {
+    async fn find_entity(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
+        let entities = self.entities.borrow();
+        let links = self.article_entity_links.borrow();
+        Ok(entities.get(&id).map(|e| EntityDetail {
+            id: e.id,
+            name: e.name.clone(),
+            normalized_name: e.normalized_name.clone(),
+            entity_type: e.entity_type.clone(),
+            canonical_id: e.canonical_id,
+            description: e.description.clone(),
+            metadata: e.metadata.clone(),
+            article_count: links.iter().filter(|(_, eid)| *eid == e.id).count() as i64,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+        }))
+    }
+    async fn link_article(&self, article_id: i64, entity_id: i64, _relevance: f64) -> Result<(), StoreError> {
         self.article_entity_links.borrow_mut().push((article_id, entity_id));
         Ok(())
     }
-
-    async fn link_entity_relation(
-        &self,
-        source: i64,
-        target: i64,
-        rtype: &str,
-        confidence: f64,
-    ) -> Result<(), StoreError> {
-        let now = (js_sys::Date::now() / 1000.0) as i64;
-        let mut edges = self.entity_relation_edges.borrow_mut();
-        let existing = edges.iter_mut().find(|e| e.source == source && e.target == target && e.rtype == rtype);
-        if let Some(e) = existing {
-            e.last_seen = now;
-            e.confidence = confidence;
-        } else {
-            edges.push(RelationEdge {
-                source,
-                target,
-                rtype: rtype.into(),
-                confidence,
-                first_seen: now,
-                last_seen: now,
-            });
-        }
+    async fn link_relation(&self, source: i64, target: i64, rtype: &str) -> Result<(), StoreError> {
+        self.entity_relation_edges.borrow_mut().push(RelationEdge {
+            source,
+            target,
+            rtype: rtype.into(),
+            confidence: 1.0,
+            first_seen: 1000000,
+            last_seen: 1000000,
+        });
         Ok(())
     }
+}
 
+#[async_trait(?Send)]
+impl SignalRepository for MemoryStore {
+    async fn save_signal(&self, _thread: &SignalThread) -> Result<i64, StoreError> {
+        Ok(1)
+    }
+    async fn find_signal(&self, _id: i64) -> Result<Option<SignalThread>, StoreError> {
+        Ok(None)
+    }
+    async fn find_signal_by_key(&self, _key: &str) -> Result<Option<SignalThread>, StoreError> {
+        Ok(None)
+    }
+}
+
+#[async_trait(?Send)]
+impl DecisionRepository for MemoryStore {
+    async fn save_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        self.decisions.borrow_mut().push(Decision {
+            id,
+            signal_thread_id: d.signal_thread_id,
+            actor_id: d.actor_id,
+            decision_type: d.decision_type.clone(),
+            title: d.title.clone(),
+            hypothesis: d.hypothesis.clone(),
+            rationale: d.rationale.clone(),
+            confidence: d.confidence,
+            status: "active".into(),
+            priority: d.priority.clone(),
+            created_at: now,
+            updated_at: now,
+        });
+        Ok(id)
+    }
+    async fn find_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
+        Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
+    }
+}
+
+#[async_trait(?Send)]
+impl OutcomeRepository for MemoryStore {
+    async fn save_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_outcome_id.borrow();
+        *self.next_outcome_id.borrow_mut() = id + 1;
+        let observed_at = e.observed_at.unwrap_or(now);
+        self.outcomes.borrow_mut().push(OutcomeEvent {
+            id, decision_id: e.decision_id, outcome_type: e.outcome_type.clone(),
+            observation: e.observation.clone(), evidence_url: e.evidence_url.clone(),
+            observed_at, created_at: now,
+        });
+        Ok(id)
+    }
+}
+
+#[async_trait(?Send)]
+impl EvaluationRepository for MemoryStore {
+    async fn save_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        let evaluated_at = e.evaluated_at.unwrap_or(now);
+        self.evaluations.borrow_mut().push(DecisionEvaluation {
+            id, decision_id: e.decision_id, evaluation: e.evaluation.clone(),
+            confidence: e.confidence, reasoning: e.reasoning.clone(),
+            evaluator: e.evaluator.clone(), evaluated_at, created_at: now,
+        });
+        Ok(id)
+    }
+}
+
+// ── Query Services ──
+
+#[async_trait(?Send)]
+impl FeedQueryService for MemoryStore {
+    async fn feeds_due_for_fetch(&self, _now: i64, _category: Option<&str>) -> Result<Vec<Feed>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn all_feeds(&self, _status_filter: Option<&str>) -> Result<Vec<Feed>, StoreError> {
+        Ok(self.feeds.values().cloned().collect())
+    }
+    async fn feed_stats(&self) -> Result<Vec<FeedStats>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn health_stats(&self) -> Result<HealthStats, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn pipeline_status(&self, _now: i64) -> Result<serde_json::Value, StoreError> {
+        Ok(serde_json::json!({}))
+    }
+    async fn score_distribution(&self) -> Result<ScoreDist, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn article_trend(&self, _days: i64) -> Result<Vec<DayCount>, StoreError> {
+        Ok(Vec::new())
+    }
+}
+
+#[async_trait(?Send)]
+impl ArticleQueryService for MemoryStore {
+    async fn latest_articles(&self, _limit: u32, _offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn article_count(&self) -> Result<i64, StoreError> {
+        Ok(self.articles.borrow().len() as i64)
+    }
+    async fn trending_articles(&self, _limit: u32, _offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn trending_count(&self) -> Result<i64, StoreError> {
+        Ok(0)
+    }
+    async fn article_by_id(&self, _id: i64) -> Result<Option<Article>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn articles_by_ids(&self, _ids: &[i64]) -> Result<Vec<Article>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn article_detail(&self, _id: i64) -> Result<Option<ArticleDetail>, StoreError> {
+        Ok(None)
+    }
+    async fn adjacent_articles(&self, _id: i64) -> Result<(Option<Article>, Option<Article>), StoreError> {
+        Ok((None, None))
+    }
+    async fn articles_by_tag(&self, _tag: &str, _limit: u32, _offset: u32) -> Result<Vec<PendingArticle>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn articles_by_category(
+        &self,
+        _category: &str,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<Vec<PendingArticle>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn related_articles(&self, _article_id: i64, _limit: u32) -> Result<Vec<PendingArticle>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn get_raw_content_key(&self, _article_id: i64) -> Result<Option<String>, StoreError> {
+        Ok(None)
+    }
+    async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn tags_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn recent_embedded_articles(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+    ) -> Result<Vec<ArticleEmbeddingRef>, StoreError> {
+        Ok(Vec::new())
+    }
+}
+
+#[async_trait(?Send)]
+impl EntityQueryService for MemoryStore {
     async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<EntitySummary>, StoreError> {
         let entities = self.entities.borrow();
         let links = self.article_entity_links.borrow();
@@ -190,7 +305,6 @@ impl StoreBackend for MemoryStore {
         let end = (start + limit as usize).min(result.len());
         Ok(if start < result.len() { result[start..end].to_vec() } else { vec![] })
     }
-
     async fn entity_detail(&self, id: i64) -> Result<Option<EntityDetail>, StoreError> {
         let entities = self.entities.borrow();
         let links = self.article_entity_links.borrow();
@@ -207,7 +321,6 @@ impl StoreBackend for MemoryStore {
             updated_at: e.updated_at,
         }))
     }
-
     async fn entity_relations(&self, entity_id: i64, limit: u32) -> Result<Vec<RelatedEntity>, StoreError> {
         let entities = self.entities.borrow();
         let edges = self.entity_relation_edges.borrow();
@@ -228,30 +341,9 @@ impl StoreBackend for MemoryStore {
             })
             .collect();
         related.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
-        let limit = limit as usize;
-        related.truncate(limit);
+        related.truncate(limit as usize);
         Ok(related)
     }
-
-    async fn article_entities(&self, article_id: i64) -> Result<Vec<EntityRef>, StoreError> {
-        let entities = self.entities.borrow();
-        let links = self.article_entity_links.borrow();
-        Ok(links
-            .iter()
-            .filter(|(aid, _)| *aid == article_id)
-            .filter_map(|(_, eid)| {
-                entities.get(eid).map(|e| EntityRef {
-                    id: e.id,
-                    name: e.name.clone(),
-                    normalized_name: e.normalized_name.clone(),
-                    entity_type: e.entity_type.clone(),
-                    relevance: 1.0,
-                    context: None,
-                })
-            })
-            .collect())
-    }
-
     async fn entity_articles(&self, entity_id: i64, limit: u32, offset: u32) -> Result<Vec<EntityArticle>, StoreError> {
         let links = self.article_entity_links.borrow();
         let mut ids: Vec<i64> = links
@@ -282,7 +374,6 @@ impl StoreBackend for MemoryStore {
             vec![]
         })
     }
-
     async fn entity_activity_summary(
         &self,
         entity_id: i64,
@@ -302,6 +393,237 @@ impl StoreBackend for MemoryStore {
             trend: "stable".into(),
         })
     }
+}
+
+#[async_trait(?Send)]
+impl SignalQueryService for MemoryStore {
+    async fn radar(&self, _filter: &SignalThreadFilter) -> Result<RadarResponse, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn signal_detail(&self, _id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        Ok(None)
+    }
+    async fn list_signal_threads(&self, _filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
+        Ok(Vec::new())
+    }
+    async fn signals_today(&self) -> Result<Vec<TodaySignal>, StoreError> {
+        Ok(Vec::new())
+    }
+}
+
+#[async_trait(?Send)]
+impl BatchSignalQueryService for MemoryStore {
+    async fn batch_evidence(&self, _thread_ids: &[i64]) -> Result<HashMap<i64, Vec<BriefArticle>>, StoreError> {
+        Ok(HashMap::new())
+    }
+    async fn batch_related_entities(&self, _thread_ids: &[i64]) -> Result<HashMap<i64, Vec<RelatedEntityRef>>, StoreError> {
+        Ok(HashMap::new())
+    }
+}
+
+#[async_trait(?Send)]
+impl DecisionQueryService for MemoryStore {
+    async fn list_decisions(&self, status: Option<&str>, _limit: u32) -> Result<Vec<Decision>, StoreError> {
+        let decisions = self.decisions.borrow();
+        match status {
+            Some(s) => Ok(decisions.iter().filter(|d| d.status == s).cloned().collect()),
+            None => Ok(decisions.clone()),
+        }
+    }
+    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
+        Ok(self.decisions.borrow().iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect())
+    }
+    async fn decision_stats(&self) -> Result<DecisionStats, StoreError> {
+        let decisions = self.decisions.borrow();
+        let evals = self.evaluations.borrow();
+        Ok(DecisionStats {
+            total_decisions: decisions.len() as i64,
+            active: decisions.iter().filter(|d| d.status == "active").count() as i64,
+            completed: decisions.iter().filter(|d| d.status == "completed").count() as i64,
+            superseded: decisions.iter().filter(|d| d.status == "superseded").count() as i64,
+            by_type: vec![],
+            by_priority: vec![],
+            evaluation_summary: crate::EvalSummary {
+                total_evaluated: evals.len() as i64,
+                confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Confirmed)).count()
+                    as i64,
+                partially_confirmed: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::PartiallyConfirmed))
+                    .count() as i64,
+                contradicted: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Contradicted))
+                    .count() as i64,
+                inconclusive: evals
+                    .iter()
+                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Inconclusive))
+                    .count() as i64,
+                accuracy_rate: 0.0,
+            },
+            top_signals: vec![],
+        })
+    }
+    async fn list_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
+        Ok(self.outcomes.borrow().iter().filter(|o| o.decision_id == decision_id).cloned().collect())
+    }
+    async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
+        Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
+    }
+    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
+        let result: Vec<DecisionEvaluation> =
+            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
+        Ok(result.into_iter().last())
+    }
+}
+
+#[async_trait(?Send)]
+impl OutcomeQueryService for MemoryStore {
+    async fn list_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
+        Ok(self.outcomes.borrow().iter().filter(|o| o.decision_id == decision_id).cloned().collect())
+    }
+}
+
+#[async_trait(?Send)]
+impl EvaluationQueryService for MemoryStore {
+    async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
+        Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
+    }
+    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
+        let result: Vec<DecisionEvaluation> =
+            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
+        Ok(result.into_iter().last())
+    }
+}
+
+// ── Legacy StoreBackend (remaining methods) ──
+
+#[async_trait(?Send)]
+impl StoreBackend for MemoryStore {
+    async fn upsert_signal_thread(
+        &self,
+        _signal_key: &str,
+        _anchor_entity_id: Option<i64>,
+        _title: &str,
+        _status: &str,
+        _discovery_method: &DiscoveryMethod,
+        _discovery_score: Option<f64>,
+    ) -> Result<SignalUpsertResult, StoreError> {
+        Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
+    }
+
+    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        self.decisions.borrow_mut().push(Decision {
+            id,
+            signal_thread_id: d.signal_thread_id,
+            actor_id: d.actor_id,
+            decision_type: d.decision_type.clone(),
+            title: d.title.clone(),
+            hypothesis: d.hypothesis.clone(),
+            rationale: d.rationale.clone(),
+            confidence: d.confidence,
+            status: "active".into(),
+            priority: d.priority.clone(),
+            created_at: now,
+            updated_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
+        Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
+    }
+
+    // ── Rules ──
+
+    async fn active_rule_jsons(&self, _audience_tag: &str) -> Result<Vec<String>, StoreError> {
+        if self.fail_rules {
+            return Err(StoreError::D1("injected rules failure".into()));
+        }
+        Ok(self.rules.clone())
+    }
+
+    // ── Feed lifecycle ──
+
+    async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError> {
+        if self.fail_fetch_result {
+            return Err(StoreError::D1("injected fetch result failure".into()));
+        }
+        self.fetch_results.borrow_mut().push((
+            feed_id,
+            fetched_at,
+            etag.map(|s| s.to_string()),
+            last_modified.map(|s| s.to_string()),
+        ));
+        Ok(())
+    }
+
+    async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        _tags_json: &str,
+        _vector_id: &str,
+        _score: f64,
+    ) -> Result<(), StoreError> {
+        if self.fail_summary {
+            return Err(StoreError::D1("injected summary failure".into()));
+        }
+        self.summaries.borrow_mut().insert(article_id, summary.to_string());
+        Ok(())
+    }
+
+    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
+        if self.fail_r2_key {
+            return Err(StoreError::D1("injected r2 key failure".into()));
+        }
+        self.r2_keys.borrow_mut().insert(article_id, r2_key.map(|s| s.to_string()));
+        Ok(())
+    }
+
+    async fn expire_old_articles(&self, _now: i64, _days: i64) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
+        self.save_article(article).await
+    }
+
+    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
+        self.save_entity(name, normalized, entity_type).await
+    }
+    async fn link_article_entity(
+        &self,
+        article_id: i64,
+        entity_id: i64,
+        _relevance: f64,
+        _context: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.link_article(article_id, entity_id, _relevance).await
+    }
+    async fn link_entity_relation(
+        &self,
+        source: i64,
+        target: i64,
+        rtype: &str,
+        _confidence: f64,
+    ) -> Result<(), StoreError> {
+        self.link_relation(source, target, rtype).await
+    }
+
+    // ── Entity SIgnal Candidates (bridge to Intelligence) ──
 
     async fn entity_signal_candidates(
         &self,
@@ -321,43 +643,18 @@ impl StoreBackend for MemoryStore {
     ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
         Ok(Vec::new())
     }
-    async fn recent_embedded_articles(
-        &self,
-        _now: i64,
-        _days: i64,
-        _limit: u32,
-    ) -> Result<Vec<crate::ArticleEmbeddingRef>, StoreError> {
-        Ok(Vec::new())
-    }
 
     // ── Signal Threads ──
 
-    async fn upsert_signal_thread(
-        &self,
-        _signal_key: &str,
-        _anchor_entity_id: Option<i64>,
-        _title: &str,
-        _status: &str,
-        _discovery_method: &DiscoveryMethod,
-        _discovery_score: Option<f64>,
-    ) -> Result<SignalUpsertResult, StoreError> {
-        Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
-    }
     async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
         Ok(())
-    }
-    async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
-        Ok(Vec::new())
-    }
-    async fn list_signal_threads(&self, _filter: &SignalThreadFilter) -> Result<Vec<SignalBriefInput>, StoreError> {
-        Ok(Vec::new())
     }
     async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
         Ok(None)
     }
 
     async fn get_latest_instance_fingerprint(&self, _thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
-        Ok(None)  // MemoryStore: no persisted instances to compare
+        Ok(None) // MemoryStore: no persisted instances to compare
     }
     async fn append_signal_instance_v2(
         &self,
@@ -448,78 +745,14 @@ impl StoreBackend for MemoryStore {
         Ok(result)
     }
 
-    // ── Decision ──
+    // ── Decision lifecycle (pre-Event-Sourcing) ──
 
-    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_decision_id.borrow();
-        *self.next_decision_id.borrow_mut() = id + 1;
-        self.decisions.borrow_mut().push(Decision {
-            id,
-            signal_thread_id: d.signal_thread_id,
-            actor_id: d.actor_id,
-            decision_type: d.decision_type.clone(),
-            title: d.title.clone(),
-            hypothesis: d.hypothesis.clone(),
-            rationale: d.rationale.clone(),
-            confidence: d.confidence,
-            status: "active".into(),
-            priority: d.priority.clone(),
-            created_at: now,
-            updated_at: now,
-        });
-        Ok(id)
-    }
-    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
-        Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
-    }
-    async fn list_decisions(&self, status: Option<&str>, _limit: u32) -> Result<Vec<Decision>, StoreError> {
-        let decisions = self.decisions.borrow();
-        match status {
-            Some(s) => Ok(decisions.iter().filter(|d| d.status == s).cloned().collect()),
-            None => Ok(decisions.clone()),
-        }
-    }
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
         if let Some(d) = self.decisions.borrow_mut().iter_mut().find(|d| d.id == id) {
             d.status = status.to_string();
             d.updated_at = 1000000;
         }
         Ok(())
-    }
-    async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, StoreError> {
-        Ok(self.decisions.borrow().iter().filter(|d| d.signal_thread_id == Some(signal_thread_id)).cloned().collect())
-    }
-    async fn decision_stats(&self) -> Result<DecisionStats, StoreError> {
-        let decisions = self.decisions.borrow();
-        let evals = self.evaluations.borrow();
-        Ok(DecisionStats {
-            total_decisions: decisions.len() as i64,
-            active: decisions.iter().filter(|d| d.status == "active").count() as i64,
-            completed: decisions.iter().filter(|d| d.status == "completed").count() as i64,
-            superseded: decisions.iter().filter(|d| d.status == "superseded").count() as i64,
-            by_type: vec![],
-            by_priority: vec![],
-            evaluation_summary: EvalSummary {
-                total_evaluated: evals.len() as i64,
-                confirmed: evals.iter().filter(|e| matches!(e.evaluation, crate::EvaluationResult::Confirmed)).count()
-                    as i64,
-                partially_confirmed: evals
-                    .iter()
-                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::PartiallyConfirmed))
-                    .count() as i64,
-                contradicted: evals
-                    .iter()
-                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Contradicted))
-                    .count() as i64,
-                inconclusive: evals
-                    .iter()
-                    .filter(|e| matches!(e.evaluation, crate::EvaluationResult::Inconclusive))
-                    .count() as i64,
-                accuracy_rate: 0.0,
-            },
-            top_signals: vec![],
-        })
     }
 
     // ── Outcome ──
@@ -591,12 +824,8 @@ impl StoreBackend for MemoryStore {
     }
     async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
         let outbox = self.outbox.borrow();
-        let pending: Vec<OutboxEntry> = outbox
-            .iter()
-            .filter(|e| e.status == "pending")
-            .take(limit as usize)
-            .cloned()
-            .collect();
+        let pending: Vec<OutboxEntry> =
+            outbox.iter().filter(|e| e.status == "pending").take(limit as usize).cloned().collect();
         Ok(pending)
     }
     async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
@@ -641,13 +870,8 @@ impl StoreBackend for MemoryStore {
             .cloned())
     }
     async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
-        let mut results: Vec<ArtifactRecord> = self
-            .memory_artifacts
-            .borrow()
-            .iter()
-            .filter(|a| a.artifact_type == artifact_type)
-            .cloned()
-            .collect();
+        let mut results: Vec<ArtifactRecord> =
+            self.memory_artifacts.borrow().iter().filter(|a| a.artifact_type == artifact_type).cloned().collect();
         results.reverse();
         results.truncate(limit as usize);
         Ok(results)
@@ -703,26 +927,29 @@ impl StoreBackend for MemoryStore {
         let now = 1000000;
         let id = *self.next_reflection_id.borrow();
         *self.next_reflection_id.borrow_mut() = id + 1;
-        self.reflections.borrow_mut().insert(req.decision_id, Reflection {
-            id,
-            decision_id: req.decision_id,
-            outcome_id: req.outcome_id,
-            job_id: req.job_id.clone(),
-            status: req.status.clone(),
-            artifact_key: None,
-            result: None,
-            quality_score: None,
-            generator_version: Some("reflection-v1".into()),
-            lessons_count: 0,
-            rules_count: 0,
-            generated_by: "system".into(),
-            retry_count: 0,
-            last_error: None,
-            started_at: None,
-            lease_until: None,
-            created_at: now,
-            updated_at: now,
-        });
+        self.reflections.borrow_mut().insert(
+            req.decision_id,
+            Reflection {
+                id,
+                decision_id: req.decision_id,
+                outcome_id: req.outcome_id,
+                job_id: req.job_id.clone(),
+                status: req.status.clone(),
+                artifact_key: None,
+                result: None,
+                quality_score: None,
+                generator_version: Some("reflection-v1".into()),
+                lessons_count: 0,
+                rules_count: 0,
+                generated_by: "system".into(),
+                retry_count: 0,
+                last_error: None,
+                started_at: None,
+                lease_until: None,
+                created_at: now,
+                updated_at: now,
+            },
+        );
         Ok(id)
     }
 
@@ -731,15 +958,33 @@ impl StoreBackend for MemoryStore {
         let r = map.values_mut().find(|r| r.id == req.id);
         if let Some(r) = r {
             r.status = req.status.clone();
-            if let Some(v) = &req.result { r.result = Some(v.clone()); }
-            if let Some(v) = req.quality_score { r.quality_score = Some(v); }
-            if let Some(v) = &req.artifact_key { r.artifact_key = Some(v.clone()); }
-            if let Some(v) = req.lessons_count { r.lessons_count = v; }
-            if let Some(v) = req.rules_count { r.rules_count = v; }
-            if let Some(v) = req.retry_count { r.retry_count = v; }
-            if let Some(v) = &req.last_error { r.last_error = Some(v.clone()); }
-            if let Some(v) = req.started_at { r.started_at = Some(v); }
-            if let Some(v) = req.lease_until { r.lease_until = Some(v); }
+            if let Some(v) = &req.result {
+                r.result = Some(v.clone());
+            }
+            if let Some(v) = req.quality_score {
+                r.quality_score = Some(v);
+            }
+            if let Some(v) = &req.artifact_key {
+                r.artifact_key = Some(v.clone());
+            }
+            if let Some(v) = req.lessons_count {
+                r.lessons_count = v;
+            }
+            if let Some(v) = req.rules_count {
+                r.rules_count = v;
+            }
+            if let Some(v) = req.retry_count {
+                r.retry_count = v;
+            }
+            if let Some(v) = &req.last_error {
+                r.last_error = Some(v.clone());
+            }
+            if let Some(v) = req.started_at {
+                r.started_at = Some(v);
+            }
+            if let Some(v) = req.lease_until {
+                r.lease_until = Some(v);
+            }
             r.updated_at = 1000000;
         }
         Ok(())
@@ -768,24 +1013,27 @@ impl StoreBackend for MemoryStore {
         let now = 1000000;
         let id = *self.next_memory_id.borrow();
         *self.next_memory_id.borrow_mut() = id + 1;
-        self.memories.borrow_mut().insert(id, Memory {
+        self.memories.borrow_mut().insert(
             id,
-            memory_type: entry.memory_type.clone(),
-            memory_origin: entry.memory_origin.clone(),
-            statement: entry.statement.clone(),
-            confidence: entry.confidence,
-            stability_score: entry.stability_score,
-            confidence_updated_at: None,
-            memory_sources: entry.memory_sources.clone(),
-            artifact_key: entry.artifact_key.clone(),
-            status: entry.status.clone(),
-            usage_count: 0,
-            validation_count: 0,
-            promoted_at: now,
-            deprecated_at: None,
-            last_used_at: None,
-            created_at: now,
-        });
+            Memory {
+                id,
+                memory_type: entry.memory_type.clone(),
+                memory_origin: entry.memory_origin.clone(),
+                statement: entry.statement.clone(),
+                confidence: entry.confidence,
+                stability_score: entry.stability_score,
+                confidence_updated_at: None,
+                memory_sources: entry.memory_sources.clone(),
+                artifact_key: entry.artifact_key.clone(),
+                status: entry.status.clone(),
+                usage_count: 0,
+                validation_count: 0,
+                promoted_at: now,
+                deprecated_at: None,
+                last_used_at: None,
+                created_at: now,
+            },
+        );
         Ok(id)
     }
 
@@ -793,13 +1041,18 @@ impl StoreBackend for MemoryStore {
         Ok(self.memories.borrow().get(&id).cloned())
     }
 
-    async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, _limit: u32) -> Result<Vec<Memory>, StoreError> {
+    async fn list_memories(
+        &self,
+        memory_type: Option<&str>,
+        status: Option<&str>,
+        _limit: u32,
+    ) -> Result<Vec<Memory>, StoreError> {
         let memories = self.memories.borrow();
         let result: Vec<Memory> = memories
             .values()
             .filter(|m| {
-                let type_match = memory_type.map_or(true, |t| m.memory_type == t);
-                let status_match = status.map_or(true, |s| m.status == s);
+                let type_match = memory_type.is_none_or(|t| m.memory_type == t);
+                let status_match = status.is_none_or(|s| m.status == s);
                 type_match && status_match
             })
             .cloned()

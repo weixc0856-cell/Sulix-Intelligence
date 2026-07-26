@@ -82,7 +82,7 @@ impl<S: StoreBackend> ContextBuilder<S> {
         let (object_key, object_size) = if let Some(os) = object_store {
             let key = format!("memory/context/{}.json", snapshot_id);
             let bytes = context_json.as_bytes();
-            if let Ok(_) = os.write_object(&key, bytes).await {
+            if os.write_object(&key, bytes).await.is_ok() {
                 (Some(key), Some(bytes.len() as i64))
             } else {
                 (None, None)
@@ -91,18 +91,21 @@ impl<S: StoreBackend> ContextBuilder<S> {
             (None, None)
         };
 
-        let _ = self.store.save_context_snapshot(&NewContextSnapshot {
-            id: snapshot_id.clone(),
-            query: query.into(),
-            intent: serde_json::to_string(&intent).unwrap_or_default(),
-            domain: intent.domain.clone(),
-            context_json,  // kept for backward compat; R2 stores canonical version
-            object_key,
-            object_size,
-            evidence_refs: Some(serde_json::to_string(&evidence_refs).unwrap_or_default()),
-            confidence: context.confidence.overall,
-            user_scope,
-        }).await;
+        let _ = self
+            .store
+            .save_context_snapshot(&NewContextSnapshot {
+                id: snapshot_id.clone(),
+                query: query.into(),
+                intent: serde_json::to_string(&intent).unwrap_or_default(),
+                domain: intent.domain.clone(),
+                context_json, // kept for backward compat; R2 stores canonical version
+                object_key,
+                object_size,
+                evidence_refs: Some(serde_json::to_string(&evidence_refs).unwrap_or_default()),
+                confidence: context.confidence.overall,
+                user_scope,
+            })
+            .await;
 
         Ok(context)
     }

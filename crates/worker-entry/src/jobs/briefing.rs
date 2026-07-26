@@ -107,7 +107,8 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         // Generate, persist, cache
         let obj_ref = object_store.as_ref().map(|r| r as &dyn ObjectStore);
         if let Err(e) =
-            generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded, obj_ref).await
+            generate_and_persist(&store, &cache, candidates, &summarizer, &date, now, total_signals_loaded, obj_ref)
+                .await
         {
             console_log!("[Sulix:briefing] fallback generation failed: {e}");
         }
@@ -169,6 +170,7 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
 /// Generate a briefing, persist to D1 and R2, cache to KV, and log provenance.
 ///
 /// Shared between the V2 (signal thread) and fallback (legacy signals_today) paths.
+#[allow(clippy::too_many_arguments)]
 async fn generate_and_persist(
     store: &store::Store,
     cache: &Option<worker::kv::KvStore>,

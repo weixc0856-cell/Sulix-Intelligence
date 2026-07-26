@@ -79,11 +79,7 @@ impl<'a, S: StoreBackend> ReflectionContextBuilder<'a, S> {
 
         let (decision_snap, thesis_snap) = match decision {
             Some(d) => (
-                DecisionSnapshot {
-                    id: d.id,
-                    title: d.title.clone(),
-                    decision_type: d.decision_type.clone(),
-                },
+                DecisionSnapshot { id: d.id, title: d.title.clone(), decision_type: d.decision_type.clone() },
                 ThesisSnapshot {
                     hypothesis: d.hypothesis.unwrap_or_default(),
                     assumptions: Vec::new(),

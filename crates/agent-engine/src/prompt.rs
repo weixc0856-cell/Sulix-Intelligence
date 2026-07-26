@@ -1,5 +1,5 @@
-use crate::types::{AgentMode, BuiltPrompt};
 use crate::policy::ReasoningPolicy;
+use crate::types::{AgentMode, BuiltPrompt};
 
 const DECISION_ADVISOR_SYSTEM: &str = r#"You are Sulix Intelligence Agent — a personal decision intelligence assistant.
 You have access to the user's personal decision history, reflections, and learned patterns.
@@ -19,10 +19,6 @@ impl PromptBuilder {
         let system = format!("{}\n\nPrompt version: {}", DECISION_ADVISOR_SYSTEM, policy.prompt_version);
         let context_json = serde_json::to_string_pretty(_context).unwrap_or_default();
         let user = format!("CONTEXT:\n{}\n\nUSER QUERY:\n{}", context_json, query);
-        BuiltPrompt {
-            system,
-            user,
-            version: policy.prompt_version.into(),
-        }
+        BuiltPrompt { system, user, version: policy.prompt_version.into() }
     }
 }

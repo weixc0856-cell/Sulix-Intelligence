@@ -1,6 +1,6 @@
-use async_trait::async_trait;
-use crate::types::AgentResponse;
 use crate::policy::EvidencePolicy;
+use crate::types::AgentResponse;
+use async_trait::async_trait;
 
 pub struct ValidationResult {
     pub valid: bool,
@@ -9,49 +9,31 @@ pub struct ValidationResult {
 
 #[async_trait(?Send)]
 pub trait ResponseValidator {
-    async fn validate(
-        &self,
-        response: &AgentResponse,
-        evidence_policy: &EvidencePolicy,
-    ) -> ValidationResult;
+    async fn validate(&self, response: &AgentResponse, evidence_policy: &EvidencePolicy) -> ValidationResult;
 }
 
 pub struct DefaultValidator;
 
 #[async_trait(?Send)]
 impl ResponseValidator for DefaultValidator {
-    async fn validate(
-        &self,
-        response: &AgentResponse,
-        evidence_policy: &EvidencePolicy,
-    ) -> ValidationResult {
+    async fn validate(&self, response: &AgentResponse, evidence_policy: &EvidencePolicy) -> ValidationResult {
         let mut errors = Vec::new();
-        match evidence_policy {
-            EvidencePolicy::Required => {
-                if response.reasoning.evidence_refs.is_empty() {
-                    errors.push("evidence required but evidence_refs is empty".into());
-                }
+        if let EvidencePolicy::Required = evidence_policy {
+            if response.reasoning.evidence_refs.is_empty() {
+                errors.push("evidence required but evidence_refs is empty".into());
             }
-            _ => {}
         }
         if response.reasoning.confidence < 0.4 {
-            errors.push(
-                "confidence below threshold — add insufficient evidence disclaimer".into(),
-            );
+            errors.push("confidence below threshold — add insufficient evidence disclaimer".into());
         }
-        ValidationResult {
-            valid: errors.is_empty(),
-            errors,
-        }
+        ValidationResult { valid: errors.is_empty(), errors }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        AgentMode, AgentResponse, ContextSummary, ExecutionMetadata, ReasoningTrace,
-    };
+    use crate::types::{AgentMode, AgentResponse, ContextSummary, ExecutionMetadata, ReasoningTrace};
 
     fn make_response(evidence: Vec<String>, confidence: f64) -> AgentResponse {
         AgentResponse {
@@ -101,9 +83,7 @@ mod tests {
     #[test]
     fn low_confidence_fails() {
         let r = make_response(vec!["DEC-001".into()], 0.3);
-        let v = futures::executor::block_on(
-            DefaultValidator.validate(&r, &EvidencePolicy::Preferred),
-        );
+        let v = futures::executor::block_on(DefaultValidator.validate(&r, &EvidencePolicy::Preferred));
         assert!(!v.valid);
     }
 }

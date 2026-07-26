@@ -6,7 +6,10 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{ArtifactRecord, ContextSnapshot, EventIndexEntry, Feed, Memory, NewArticle, OutcomeEvent, OutboxEntry, Reflection, SignalEvent};
+use crate::{
+    ArtifactRecord, ContextSnapshot, EventIndexEntry, Feed, Memory, NewArticle, OutboxEntry, OutcomeEvent, Reflection,
+    SignalEvent,
+};
 
 mod backend;
 
@@ -75,7 +78,7 @@ pub struct MemoryStore {
     next_event_archive_id: RefCell<i64>,
 
     // Reflection Engine state
-    reflections: RefCell<HashMap<i64, Reflection>>,  // keyed by decision_id
+    reflections: RefCell<HashMap<i64, Reflection>>, // keyed by decision_id
     next_reflection_id: RefCell<i64>,
 
     // Memory Engine state

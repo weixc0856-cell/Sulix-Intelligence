@@ -2,6 +2,10 @@
 name = "api"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 worker.workspace = true
@@ -14,6 +18,7 @@ js-sys.workspace = true
 embedding.workspace = true
 vectorize.workspace = true
 signal-engine.workspace = true
+application.workspace = true
 object-store.workspace = true
 event-store.workspace = true
 async-trait.workspace = true

@@ -40,7 +40,12 @@ async fn read_briefing_from_r2(env: &Env, date: &str) -> Option<serde_json::Valu
     let bytes = store.read_object(&key).await.ok()??;
     let envelope: BriefingArtifactEnvelope = serde_json::from_slice(&bytes).ok()?;
     if envelope.schema_version != 1 || envelope.artifact_type != "daily_briefing" {
-        console_log!("[briefing] r2_envelope_invalid date={} version={} type={}", date, envelope.schema_version, envelope.artifact_type);
+        console_log!(
+            "[briefing] r2_envelope_invalid date={} version={} type={}",
+            date,
+            envelope.schema_version,
+            envelope.artifact_type
+        );
         return None;
     }
     Some(envelope.content)

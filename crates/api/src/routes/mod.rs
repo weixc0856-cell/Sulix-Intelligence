@@ -3,6 +3,7 @@ pub(crate) mod article;
 pub(crate) mod context;
 pub(crate) mod decision;
 pub(crate) mod feed;
+pub(crate) mod graph;
 pub(crate) mod reflection;
 pub(crate) mod rules;
 pub(crate) mod signal;

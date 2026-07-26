@@ -47,7 +47,10 @@ impl crate::D1Store {
             .and_then(|v| v["id"].as_i64())
             .ok_or_else(|| crate::StoreError::D1("upsert_signal_thread failed".into()))?;
         let is_insert = row.and_then(|v| v["is_insert"].as_i64()).unwrap_or(0) != 0;
-        Ok(SignalUpsertResult { id, mutation: if is_insert { SignalMutation::Created } else { SignalMutation::Updated } })
+        Ok(SignalUpsertResult {
+            id,
+            mutation: if is_insert { SignalMutation::Created } else { SignalMutation::Updated },
+        })
     }
 
     /// Append a signal instance to a thread.
@@ -285,5 +288,111 @@ impl crate::D1Store {
             });
         }
         Ok(results)
+    }
+
+    // ── Batch queries (eliminate N+1 for Radar / Projection) ──
+
+    /// Batch-load evidence across multiple threads in a single query.
+    /// Returns `HashMap<thread_id, Vec<BriefArticle>>` — each Vec truncated to 10.
+    pub async fn batch_evidence(
+        &self,
+        thread_ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, Vec<crate::BriefArticle>>, crate::StoreError> {
+        if thread_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders = crate::in_placeholders(thread_ids.len());
+        let binds: Vec<JsValue> = thread_ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
+
+        let sql = format!(
+            "SELECT sig.signal_thread_id AS thread_id, \
+                    se.article_id AS id, a.title, a.url, f.title AS feed_name, a.score \
+             FROM signal_evidence se \
+             JOIN articles a ON a.id = se.article_id \
+             LEFT JOIN feeds f ON f.id = a.feed_id \
+             JOIN intelligence_signals sig ON sig.id = se.signal_id \
+             WHERE sig.signal_thread_id IN ({placeholders}) \
+             ORDER BY sig.signal_thread_id, a.score DESC"
+        );
+
+        #[derive(Deserialize)]
+        struct EvBatchRow {
+            thread_id: i64,
+            id: i64,
+            title: String,
+            url: Option<String>,
+            feed_name: Option<String>,
+            score: f64,
+        }
+
+        let rows: Vec<EvBatchRow> = self.db.prepare(&sql).bind(&binds)?.all().await?.results()?;
+        let mut map: std::collections::HashMap<i64, Vec<crate::BriefArticle>> = std::collections::HashMap::new();
+        for row in rows {
+            map.entry(row.thread_id).or_default().push(crate::BriefArticle {
+                id: row.id,
+                title: row.title,
+                url: row.url,
+                feed_name: row.feed_name,
+                score: row.score,
+            });
+        }
+        // Per-thread cap: match the original LIMIT 10 behaviour
+        for articles in map.values_mut() {
+            articles.truncate(10);
+        }
+        Ok(map)
+    }
+
+    /// Batch-load related entities across multiple threads in a single query.
+    /// Returns `HashMap<thread_id, Vec<RelatedEntityRef>>` — each Vec truncated to 5.
+    pub async fn batch_related_entities(
+        &self,
+        thread_ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, Vec<crate::RelatedEntityRef>>, crate::StoreError> {
+        if thread_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let placeholders = crate::in_placeholders(thread_ids.len());
+        let binds: Vec<JsValue> = thread_ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
+
+        let sql = format!(
+            "SELECT st.id AS thread_id, e.id, e.name, e.entity_type, 'mentioned_together' AS relation_type \
+             FROM signal_threads st \
+             JOIN entity_relations er ON er.source_entity_id = st.anchor_entity_id \
+                OR er.target_entity_id = st.anchor_entity_id \
+             JOIN entities e ON e.id = CASE \
+                WHEN er.source_entity_id = st.anchor_entity_id THEN er.target_entity_id \
+                ELSE er.source_entity_id \
+             END \
+             WHERE st.id IN ({placeholders}) \
+             ORDER BY st.id, er.confidence DESC"
+        );
+
+        #[derive(Deserialize)]
+        struct RelBatchRow {
+            thread_id: i64,
+            id: i64,
+            name: String,
+            entity_type: String,
+            relation_type: String,
+        }
+
+        let rows: Vec<RelBatchRow> = self.db.prepare(&sql).bind(&binds)?.all().await?.results()?;
+        let mut map: std::collections::HashMap<i64, Vec<crate::RelatedEntityRef>> = std::collections::HashMap::new();
+        for row in rows {
+            map.entry(row.thread_id).or_default().push(crate::RelatedEntityRef {
+                id: row.id,
+                name: row.name,
+                entity_type: row.entity_type,
+                relation_type: row.relation_type,
+                relation: None,
+                confidence: None,
+            });
+        }
+        // Per-thread cap: match the original LIMIT 5 behaviour
+        for entities in map.values_mut() {
+            entities.truncate(5);
+        }
+        Ok(map)
     }
 }

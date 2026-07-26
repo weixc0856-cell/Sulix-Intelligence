@@ -14,14 +14,16 @@ impl PatternDetector for DefaultPatternDetector {
         for d in decisions {
             *type_counts.entry(d.decision_type.as_str()).or_insert(0) += 1;
         }
-        type_counts.into_iter().filter(|(_, count)| *count >= 2).map(|(dtype, count)| {
-            PatternContext {
+        type_counts
+            .into_iter()
+            .filter(|(_, count)| *count >= 2)
+            .map(|(dtype, count)| PatternContext {
                 pattern_type: "recurring_theme".into(),
                 description: format!("You have made {} decisions in '{}'", count, dtype),
                 frequency: count,
                 evidence_refs: decisions.iter().filter(|d| d.decision_type == dtype).map(|d| d.id.clone()).collect(),
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
 
@@ -32,9 +34,19 @@ mod tests {
 
     fn make_decision(id: &str, dtype: &str) -> ScoredDecision {
         ScoredDecision {
-            id: id.into(), title: "".into(), decision_type: dtype.into(), status: "active".into(),
-            confidence: 0.5, relevance_score: 0.0,
-            rank_components: RankComponents { query_alignment: 0.0, confidence: 0.5, recency: 0.0, usage_frequency: 0.0, user_specificity: 1.0 },
+            id: id.into(),
+            title: "".into(),
+            decision_type: dtype.into(),
+            status: "active".into(),
+            confidence: 0.5,
+            relevance_score: 0.0,
+            rank_components: RankComponents {
+                query_alignment: 0.0,
+                confidence: 0.5,
+                recency: 0.0,
+                usage_frequency: 0.0,
+                user_specificity: 1.0,
+            },
         }
     }
 

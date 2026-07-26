@@ -55,9 +55,6 @@ impl ObjectStore for R2Store {
     }
 
     async fn delete_object(&self, key: &str) -> Result<(), ObjectStoreError> {
-        self.bucket
-            .delete(key)
-            .await
-            .map_err(|e| ObjectStoreError::R2(format!("r2 delete failed for {key}: {e}")))
+        self.bucket.delete(key).await.map_err(|e| ObjectStoreError::R2(format!("r2 delete failed for {key}: {e}")))
     }
 }

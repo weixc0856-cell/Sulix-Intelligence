@@ -10,7 +10,7 @@ pub struct Memory {
     pub confidence: f64,
     pub stability_score: Option<f64>,
     pub confidence_updated_at: Option<i64>,
-    pub memory_sources: Option<String>,         // JSON array, deserialized to Vec<MemorySourceRef>
+    pub memory_sources: Option<String>, // JSON array, deserialized to Vec<MemorySourceRef>
     pub artifact_key: Option<String>,
     pub status: String,
     pub usage_count: i64,

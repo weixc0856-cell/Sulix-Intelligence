@@ -1,6 +1,6 @@
 use crate::types::{
-    AgentContext, ContextConfidence, ContextEvidence, Intent, PatternContext,
-    ScoredDecision, ScoredMemory, ScoredReflection,
+    AgentContext, ContextConfidence, ContextEvidence, Intent, PatternContext, ScoredDecision, ScoredMemory,
+    ScoredReflection,
 };
 
 const ENGINE_VERSION: &str = "context-engine-v1";

@@ -6,18 +6,13 @@ pub fn plan(intent: &Intent) -> RetrievalPlan {
     let domain = intent.domain.as_deref();
     let stage = &intent.stage;
 
-    let decision_query = Some(DecisionQuery {
-        domain: domain.map(String::from),
-        status: Some("active".into()),
-        limit: 10,
-    });
+    let decision_query =
+        Some(DecisionQuery { domain: domain.map(String::from), status: Some("active".into()), limit: 10 });
 
     let reflection_query = match stage {
-        CognitiveStage::Review => Some(ReflectionQuery {
-            status: Some("generated".into()),
-            min_quality: Some(0.5),
-            limit: 10,
-        }),
+        CognitiveStage::Review => {
+            Some(ReflectionQuery { status: Some("generated".into()), min_quality: Some(0.5), limit: 10 })
+        }
         _ => Some(ReflectionQuery { status: Some("generated".into()), min_quality: None, limit: 5 }),
     };
 
@@ -50,7 +45,7 @@ mod tests {
         };
         let plan = plan(&intent);
         assert_eq!(plan.decision_query.as_ref().unwrap().domain.as_deref(), Some("investment"));
-        assert!(plan.pattern_enabled == false);
+        assert!(!plan.pattern_enabled);
     }
 
     #[test]

@@ -4,17 +4,21 @@ use crate::types::{CognitiveStage, DesiredOutcome, Intent};
 /// Future: LLM-based parser with same interface.
 pub fn parse(query: &str) -> Intent {
     let q = query.to_lowercase();
-    let (stage, desired_outcome) = if q.contains("should i") || q.contains("invest") || q.contains("buy") || q.contains("enter") {
-        (CognitiveStage::Explore, DesiredOutcome::Recommendation)
-    } else if q.contains("why did") || q.contains("why does") || q.contains("why is") || q.contains("fail") {
-        (CognitiveStage::Review, DesiredOutcome::Explanation)
-    } else if q.contains("what did i learn") || q.contains("lesson") || q.contains("reflect") {
-        (CognitiveStage::Review, DesiredOutcome::Explanation)
-    } else if q.contains("tell me about") || q.contains("what is") || q.contains("explain") {
-        (CognitiveStage::Learn, DesiredOutcome::Explanation)
-    } else {
-        (CognitiveStage::Learn, DesiredOutcome::Explanation)
-    };
+    let (stage, desired_outcome) =
+        if q.contains("should i") || q.contains("invest") || q.contains("buy") || q.contains("enter") {
+            (CognitiveStage::Explore, DesiredOutcome::Recommendation)
+        } else if q.contains("why did")
+            || q.contains("why does")
+            || q.contains("why is")
+            || q.contains("fail")
+            || q.contains("what did i learn")
+            || q.contains("lesson")
+            || q.contains("reflect")
+        {
+            (CognitiveStage::Review, DesiredOutcome::Explanation)
+        } else {
+            (CognitiveStage::Learn, DesiredOutcome::Explanation)
+        };
 
     let intent_type = match stage {
         CognitiveStage::Explore | CognitiveStage::Decide => "decision_support",

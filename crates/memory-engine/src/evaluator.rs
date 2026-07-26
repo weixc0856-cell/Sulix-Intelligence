@@ -8,23 +8,34 @@ pub enum EvaluationResult {
 }
 
 pub fn check_gate(quality_score: f64, has_outcome: bool, has_evidence: bool, has_lessons_or_rules: bool) -> Option<()> {
-    if quality_score < 0.7 { return None; }
-    if !has_outcome { return None; }
-    if !has_evidence { return None; }
-    if !has_lessons_or_rules { return None; }
+    if quality_score < 0.7 {
+        return None;
+    }
+    if !has_outcome {
+        return None;
+    }
+    if !has_evidence {
+        return None;
+    }
+    if !has_lessons_or_rules {
+        return None;
+    }
     Some(())
 }
 
-pub fn calculate_score(
-    confidence: f32, recurrence: f32, impact: f32, evidence: f32, stability: f32,
-) -> PromotionScore {
+pub fn calculate_score(confidence: f32, recurrence: f32, impact: f32, evidence: f32, stability: f32) -> PromotionScore {
     let total = 0.25 * confidence + 0.20 * recurrence + 0.20 * impact + 0.20 * evidence + 0.15 * stability;
     PromotionScore { confidence, recurrence, impact, evidence, stability, total }
 }
 
 pub fn evaluate(
-    quality_score: f64, has_outcome: bool, has_evidence: bool, has_lessons_or_rules: bool,
-    recurrence: f32, impact: f32, stability: f32,
+    quality_score: f64,
+    has_outcome: bool,
+    has_evidence: bool,
+    has_lessons_or_rules: bool,
+    recurrence: f32,
+    impact: f32,
+    stability: f32,
 ) -> EvaluationResult {
     match check_gate(quality_score, has_outcome, has_evidence, has_lessons_or_rules) {
         Some(()) => {
@@ -42,7 +53,9 @@ pub fn evaluate(
 }
 
 pub fn effective_confidence(confidence: f64, days_since: i64, lambda: f64) -> f64 {
-    if days_since <= 0 { return confidence; }
+    if days_since <= 0 {
+        return confidence;
+    }
     confidence * (-lambda * days_since as f64).exp()
 }
 
@@ -51,15 +64,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn promotion_gate_passes() { assert!(check_gate(0.8, true, true, true).is_some()); }
+    fn promotion_gate_passes() {
+        assert!(check_gate(0.8, true, true, true).is_some());
+    }
     #[test]
-    fn promotion_gate_fails_low_quality() { assert!(check_gate(0.5, true, true, true).is_none()); }
+    fn promotion_gate_fails_low_quality() {
+        assert!(check_gate(0.5, true, true, true).is_none());
+    }
     #[test]
-    fn promotion_gate_fails_no_outcome() { assert!(check_gate(0.8, false, true, true).is_none()); }
+    fn promotion_gate_fails_no_outcome() {
+        assert!(check_gate(0.8, false, true, true).is_none());
+    }
     #[test]
     fn score_calculation() {
         let s = calculate_score(0.9, 0.5, 0.6, 0.7, 0.8);
-        let expected = 0.25*0.9 + 0.20*0.5 + 0.20*0.6 + 0.20*0.7 + 0.15*0.8;
+        let expected = 0.25 * 0.9 + 0.20 * 0.5 + 0.20 * 0.6 + 0.20 * 0.7 + 0.15 * 0.8;
         assert!((s.total - expected as f32).abs() < 0.01);
     }
     #[test]

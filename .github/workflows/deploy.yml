@@ -1,35 +1,25 @@
 name: Deploy backend Worker
 
 on:
-  pull_request:
-    branches: [master]
   push:
     branches: [master]
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - name: Run tests
-        run: cargo test --workspace --all-features
-
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: clippy
+
       - uses: Swatinem/rust-cache@v2
+
+      - name: Quick check (wasm-compatible)
+        run: cargo check --workspace --all-targets --all-features
+
       - name: Cache worker-build binary
         uses: actions/cache@v4
         with:
@@ -37,11 +27,14 @@ jobs:
             ~/.cargo/bin/worker-build
             ~/.cargo/bin/wasm-bindgen-cli
           key: worker-build-${{ runner.os }}
+
       - name: Install worker-build
         run: which worker-build || cargo install worker-build
+
       - name: Build Worker
         run: worker-build --release
         working-directory: crates/worker-entry
+
       - name: Deploy to Cloudflare Workers
         working-directory: crates/worker-entry
         env:

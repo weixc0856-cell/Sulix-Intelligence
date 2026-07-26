@@ -83,10 +83,7 @@ impl SignalEngine {
             }
 
             // Sprint 5.10: skip instance append if score/trend unchanged
-            let should_append = match store
-                .get_latest_instance_fingerprint(thread_id)
-                .await
-            {
+            let should_append = match store.get_latest_instance_fingerprint(thread_id).await {
                 Ok(Some((s, t))) => (s - candidate.score).abs() > 0.01 || t != candidate.trend,
                 _ => true,
             };
@@ -130,10 +127,7 @@ impl SignalEngine {
                     },
                     event_type: "SignalScoreChanged".into(),
                     payload: payload.clone(),
-                    metadata: event_store::EventMetadata {
-                        actor: "system".into(),
-                        source: "cron".into(),
-                    },
+                    metadata: event_store::EventMetadata { actor: "system".into(), source: "cron".into() },
                     correlation_id: String::new(),
                     causation_id: String::new(),
                     occurred_at: now,
@@ -155,10 +149,7 @@ impl SignalEngine {
                         },
                         event_type: "SignalCreated".into(),
                         payload: serde_json::json!({"signal_key": candidate.signal_key}),
-                        metadata: event_store::EventMetadata {
-                            actor: "system".into(),
-                            source: "cron".into(),
-                        },
+                        metadata: event_store::EventMetadata { actor: "system".into(), source: "cron".into() },
                         correlation_id: String::new(),
                         causation_id: String::new(),
                         occurred_at: now,
@@ -220,7 +211,14 @@ mod tests {
 
         let source = crate::source::EntitySignalSource;
         let sources = [&source as &dyn crate::source::SignalSource];
-        let report = futures::executor::block_on(crate::SignalEngine::run(&store, None::<&dyn event_store::EventStore>, None, &sources, now)).unwrap();
+        let report = futures::executor::block_on(crate::SignalEngine::run(
+            &store,
+            None::<&dyn event_store::EventStore>,
+            None,
+            &sources,
+            now,
+        ))
+        .unwrap();
         assert!(report.threads_created >= 2, "should create at least 2 threads");
         assert!(report.instances_appended >= 2, "should append at least 2 instances");
 

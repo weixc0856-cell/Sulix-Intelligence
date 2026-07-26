@@ -6,7 +6,7 @@ pub struct EventIndexEntry {
     pub id: i64,
     pub event_id: String,
     pub aggregate_type: String,
-    pub aggregate_id: String,     // "DEC-000123", "SIG-042", ...
+    pub aggregate_id: String, // "DEC-000123", "SIG-042", ...
     pub event_type: String,
     pub object_key: String,
     pub occurred_at: i64,

@@ -1,8 +1,8 @@
-use store::StoreBackend;
-use worker::console_log;
 use crate::candidate::extract_candidates;
 use crate::evaluator::{evaluate, EvaluationResult};
 use crate::promotion::promote;
+use store::StoreBackend;
+use worker::console_log;
 
 pub const DEFAULT_BATCH_SIZE: u32 = 50;
 pub const KV_LAST_RUN: &str = "memory:last_run";
@@ -10,13 +10,18 @@ pub const KV_LAST_RUN: &str = "memory:last_run";
 pub async fn process_pending<S: StoreBackend>(store: &S, cache: &worker::kv::KvStore, now: i64) {
     if let Ok(Some(val)) = cache.get(KV_LAST_RUN).text().await {
         if let Ok(ts) = val.trim().parse::<i64>() {
-            if now - ts < 86400 { return; }
+            if now - ts < 86400 {
+                return;
+            }
         }
     }
 
     let candidates = match extract_candidates(store, now - 86400 * 7, DEFAULT_BATCH_SIZE).await {
         Ok(c) => c,
-        Err(e) => { console_log!("[memory] extract_candidates failed: {e}"); return; }
+        Err(e) => {
+            console_log!("[memory] extract_candidates failed: {e}");
+            return;
+        }
     };
 
     if candidates.is_empty() {

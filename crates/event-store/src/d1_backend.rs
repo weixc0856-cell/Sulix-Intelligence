@@ -26,8 +26,8 @@ impl<S: StoreBackend> D1EventBackend<S> {
 #[async_trait(?Send)]
 impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
     async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
-        let payload_str = serde_json::to_string(&event.payload)
-            .map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
+        let payload_str =
+            serde_json::to_string(&event.payload).map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
 
         let numeric_id: i64 = event
             .aggregate
@@ -38,9 +38,7 @@ impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
             .parse()
             .unwrap_or(0);
 
-        self.store
-            .insert_signal_event(numeric_id, &event.event_type, Some(&payload_str))
-            .await?;
+        self.store.insert_signal_event(numeric_id, &event.event_type, Some(&payload_str)).await?;
 
         Ok(event.event_id.clone())
     }
@@ -71,10 +69,7 @@ impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
                     aggregate_id: format!("SIG-{}", r.thread_id),
                 },
                 event_type: r.event_type,
-                payload: r
-                    .payload
-                    .and_then(|p| serde_json::from_str(&p).ok())
-                    .unwrap_or(serde_json::Value::Null),
+                payload: r.payload.and_then(|p| serde_json::from_str(&p).ok()).unwrap_or(serde_json::Value::Null),
                 metadata: crate::EventMetadata { actor: "system".into(), source: "legacy".into() },
                 correlation_id: String::new(),
                 causation_id: String::new(),

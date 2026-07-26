@@ -22,15 +22,14 @@ impl crate::D1Store {
                 entry.memory_origin.as_str().into(),
                 entry.statement.as_str().into(),
                 JsValue::from_f64(entry.confidence),
-                entry.stability_score.map_or(JsValue::null(), |v| JsValue::from_f64(v)),
+                entry.stability_score.map_or(JsValue::null(), JsValue::from_f64),
                 entry.memory_sources.as_deref().map_or(JsValue::null(), |v| v.into()),
                 entry.artifact_key.as_deref().map_or(JsValue::null(), |v| v.into()),
                 entry.status.as_str().into(),
             ])?
             .first::<serde_json::Value>(None)
             .await?;
-        row.and_then(|v| v["id"].as_i64())
-            .ok_or_else(|| StoreError::D1("create_memory failed: no id returned".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| StoreError::D1("create_memory failed: no id returned".into()))
     }
 
     /// Get a memory entry by id.
@@ -49,7 +48,12 @@ impl crate::D1Store {
     }
 
     /// List memories, optionally filtered by type and status.
-    pub async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, limit: u32) -> Result<Vec<Memory>, StoreError> {
+    pub async fn list_memories(
+        &self,
+        memory_type: Option<&str>,
+        status: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<Memory>, StoreError> {
         let mut sql = String::from(
             "SELECT id, memory_type, memory_origin, statement, confidence, stability_score, \
                     confidence_updated_at, memory_sources, artifact_key, status, usage_count, \
@@ -76,21 +80,13 @@ impl crate::D1Store {
         sql.push_str(" ORDER BY created_at DESC LIMIT ?");
         params.push(JsValue::from_f64(limit as f64));
 
-        Ok(self
-            .db
-            .prepare(sql)
-            .bind(&params)?
-            .all()
-            .await?
-            .results()?)
+        Ok(self.db.prepare(sql).bind(&params)?.all().await?.results()?)
     }
 
     /// Update memory usage stats (increment usage_count, set last_used_at).
     pub async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError> {
         self.db
-            .prepare(
-                "UPDATE memory_index SET usage_count = usage_count + 1, last_used_at = ?1 WHERE id = ?2",
-            )
+            .prepare("UPDATE memory_index SET usage_count = usage_count + 1, last_used_at = ?1 WHERE id = ?2")
             .bind(&[JsValue::from_f64(now as f64), JsValue::from_f64(id as f64)])?
             .run()
             .await?;
@@ -105,7 +101,6 @@ impl crate::D1Store {
             .bind(&[])?
             .first::<serde_json::Value>(None)
             .await?;
-        row.and_then(|v| v["cnt"].as_i64())
-            .ok_or_else(|| StoreError::D1("count_candidate_memories failed".into()))
+        row.and_then(|v| v["cnt"].as_i64()).ok_or_else(|| StoreError::D1("count_candidate_memories failed".into()))
     }
 }

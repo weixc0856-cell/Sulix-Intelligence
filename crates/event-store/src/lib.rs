@@ -45,11 +45,21 @@ pub struct AggregateRef {
 pub struct AggregateId;
 
 impl AggregateId {
-    pub fn decision(id: i64) -> String { format!("DEC-{id:06}") }
-    pub fn signal(id: i64) -> String { format!("SIG-{id:06}") }
-    pub fn outcome(id: i64) -> String { format!("OUT-{id:06}") }
-    pub fn reflection(id: i64) -> String { format!("REF-{id:06}") }
-    pub fn memory(id: i64) -> String { format!("MEM-{id:06}") }
+    pub fn decision(id: i64) -> String {
+        format!("DEC-{id:06}")
+    }
+    pub fn signal(id: i64) -> String {
+        format!("SIG-{id:06}")
+    }
+    pub fn outcome(id: i64) -> String {
+        format!("OUT-{id:06}")
+    }
+    pub fn reflection(id: i64) -> String {
+        format!("REF-{id:06}")
+    }
+    pub fn memory(id: i64) -> String {
+        format!("MEM-{id:06}")
+    }
 }
 
 /// Provenance metadata for an event — who caused it and how.
@@ -62,7 +72,9 @@ pub struct EventMetadata {
 }
 
 /// Default event_version for deserializing legacy events.
-fn default_event_version() -> i32 { 1 }
+fn default_event_version() -> i32 {
+    1
+}
 
 /// An immutable event in the Memory Event Stream.
 ///
@@ -74,15 +86,15 @@ pub struct EventEnvelope {
     pub schema_version: i32,
     pub event_id: EventId,
     #[serde(default = "default_event_version")]
-    pub event_version: i32,            // per-event-type version for schema evolution
+    pub event_version: i32, // per-event-type version for schema evolution
     pub aggregate: AggregateRef,
     pub event_type: String,
     pub payload: serde_json::Value,
     pub metadata: EventMetadata,
     #[serde(default)]
-    pub correlation_id: String,        // traces a business transaction across aggregates
+    pub correlation_id: String, // traces a business transaction across aggregates
     #[serde(default)]
-    pub causation_id: String,          // id of the event that caused this one
+    pub causation_id: String, // id of the event that caused this one
     pub occurred_at: i64,
     pub created_at: i64,
 }
@@ -134,7 +146,12 @@ impl<T: EventStore + ?Sized> EventStore for Box<T> {
     async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
         (**self).append_event(event).await
     }
-    async fn load_events(&self, aggregate_type: &str, aggregate_id: &str, limit: u32) -> Result<Vec<EventEnvelope>, EventStoreError> {
+    async fn load_events(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: &str,
+        limit: u32,
+    ) -> Result<Vec<EventEnvelope>, EventStoreError> {
         (**self).load_events(aggregate_type, aggregate_id, limit).await
     }
 }

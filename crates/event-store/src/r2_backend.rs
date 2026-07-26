@@ -8,7 +8,7 @@ use object_store::ObjectStore;
 use store::StoreBackend;
 use worker::console_log;
 
-use crate::{EventEnvelope, EventId, EventStore, EventStoreError, keys};
+use crate::{keys, EventEnvelope, EventId, EventStore, EventStoreError};
 
 /// Production EventStore backed by D1 (index + outbox) and R2 (payload archive).
 pub struct EventR2Backend<S: StoreBackend> {
@@ -29,8 +29,7 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
         let object_key = keys::event(&event.aggregate.aggregate_type, event.occurred_at, &event_id);
 
         // 1. D1 outbox INSERT (durable first — outbox-first pattern)
-        let payload =
-            serde_json::to_string(&event).map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
+        let payload = serde_json::to_string(&event).map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
         self.store
             .insert_outbox(&store::NewOutbox {
                 object_type: format!("event:{}", event.aggregate.aggregate_type),
@@ -61,10 +60,7 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
         limit: u32,
     ) -> Result<Vec<EventEnvelope>, EventStoreError> {
         // 1. D1 index: get object keys
-        let index_rows = self
-            .store
-            .find_event_keys(aggregate_type, aggregate_id, limit)
-            .await?;
+        let index_rows = self.store.find_event_keys(aggregate_type, aggregate_id, limit).await?;
 
         if index_rows.is_empty() {
             return Ok(Vec::new());
@@ -90,7 +86,7 @@ impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
         }
 
         // 3. Sort by occurred_at DESC
-        events.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at));
+        events.sort_by_key(|b| std::cmp::Reverse(b.occurred_at));
         events.truncate(limit as usize);
         Ok(events)
     }
