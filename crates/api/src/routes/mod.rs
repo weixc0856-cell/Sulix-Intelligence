@@ -1,4 +1,5 @@
-﻿pub(crate) mod agent;
+pub(crate) mod agent;
+pub(crate) mod claim;
 pub(crate) mod article;
 pub(crate) mod context;
 pub(crate) mod decision;

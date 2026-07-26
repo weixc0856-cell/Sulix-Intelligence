@@ -13,7 +13,7 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ContextSnapshot, DayCount,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
@@ -220,6 +220,9 @@ impl ClaimRepository for MemoryStore {
 
 #[async_trait(?Send)]
 impl ClaimQueryService for MemoryStore {
+    async fn get_claim_evidence(&self, _claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
+        Ok(Vec::new())
+    }
     async fn list_claims(&self, status: Option<&str>, _limit: u32) -> Result<Vec<crate::Claim>, StoreError> {
         let claims = self.claims.borrow();
         match status {
@@ -1049,6 +1052,9 @@ impl StoreBackend for MemoryStore {
     }
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
         ClaimQueryService::list_claims(self, status, limit).await
+    }
+    async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
+        ClaimQueryService::get_claim_evidence(self, claim_id).await
     }
 
     // ===== Memory Engine (Sprint 5.5) =====

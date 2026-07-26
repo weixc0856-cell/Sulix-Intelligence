@@ -1,7 +1,7 @@
-//! Anti-corruption layer: implements every domain trait + the legacy
+﻿//! Anti-corruption layer: implements every domain trait + the legacy
 //! `StoreBackend` for [`D1Store`](crate::D1Store).
 //!
-//! Each method delegates 1:1 to a `D1Store` method — no additional logic.
+//! Each method delegates 1:1 to a `D1Store` method ?no additional logic.
 
 use async_trait::async_trait;
 
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ContextSnapshot, DayCount,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence, ContextSnapshot, DayCount,
     Decision,
     DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
@@ -20,7 +20,7 @@ use crate::{
     SignalThreadFilter, SignalUpsertResult, StoreError, TodaySignal, UpdateReflection,
 };
 
-// ── Repositories (save / find) ──
+//  Repositories (save / find) 
 
 #[async_trait(?Send)]
 impl FeedRepository for crate::D1Store {
@@ -144,7 +144,7 @@ impl ClaimRepository for crate::D1Store {
     }
 }
 
-// ── Query Services (read model) ──
+//  Query Services (read model) 
 
 #[async_trait(?Send)]
 impl FeedQueryService for crate::D1Store {
@@ -311,6 +311,9 @@ impl ClaimQueryService for crate::D1Store {
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
         crate::D1Store::list_claims(self, status, limit).await
     }
+    async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
+        crate::D1Store::get_claim_evidence(self, claim_id).await
+    }
 }
 
 #[async_trait(?Send)]
@@ -333,7 +336,7 @@ impl BatchSignalQueryService for crate::D1Store {
     }
 }
 
-// ── Legacy StoreBackend (remaining methods not yet migrated to subtraits) ──
+//  Legacy StoreBackend (remaining methods not yet migrated to subtraits) 
 
 #[async_trait(?Send)]
 impl StoreBackend for crate::D1Store {
@@ -615,6 +618,9 @@ impl StoreBackend for crate::D1Store {
     async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
         crate::D1Store::list_claims(self, status, limit).await
     }
+    async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
+        crate::D1Store::get_claim_evidence(self, claim_id).await
+    }
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
         crate::D1Store::create_memory(self, entry).await
@@ -644,3 +650,4 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_context_snapshot(self, id).await
     }
 }
+
