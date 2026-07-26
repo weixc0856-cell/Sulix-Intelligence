@@ -16,7 +16,9 @@ vectorize.workspace = true
 signal-engine.workspace = true
 object-store.workspace = true
 event-store.workspace = true
+async-trait.workspace = true
 reflection-engine.workspace = true
+agent-engine.workspace = true
 context-engine.workspace = true
 
 [dev-dependencies]

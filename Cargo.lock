@@ -50,6 +50,8 @@ dependencies = [
 name = "api"
 version = "0.1.0"
 dependencies = [
+ "agent-engine",
+ "async-trait",
  "context-engine",
  "embedding",
  "event-store",
