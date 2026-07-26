@@ -94,6 +94,7 @@ pub fn router() -> Router<'static, ()> {
         .post_async("/api/internal/agent/run", routes::agent::run)
         // Decision Graph Projection
         .get_async("/api/projections/decision-graph", routes::graph::decision_graph)
+        .post_async("/api/projections/decision-graph/:id/expand", routes::graph::expand)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)

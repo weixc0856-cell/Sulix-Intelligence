@@ -28,3 +28,31 @@ pub async fn decision_graph(req: Request, ctx: RouteContext<()>) -> Result<Respo
         }
     }
 }
+
+/// POST /api/projections/decision-graph/{id}/expand
+///
+/// Expand a node to reveal its neighbors. Returns additional nodes and edges.
+pub async fn expand(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    use application::ExpandRequest;
+
+    let store = Store::new(ctx.env.d1("DB")?);
+    let service = application::GraphProjectionService::new(store);
+
+    let node_id = match ctx.param("id") {
+        Some(id) => id.to_string(),
+        None => return response::json_err(400, "missing node id"),
+    };
+
+    let expand_req: ExpandRequest = match req.json().await {
+        Ok(r) => r,
+        Err(_) => ExpandRequest { depth: Some(1), include: None },
+    };
+
+    match service.expand(&node_id, expand_req).await {
+        Ok(result) => response::json_ok(json!(result)),
+        Err(e) => {
+            console_log!("[Sulix:graph] expand failed: {e}");
+            response::json_err_internal("graph expand failed")
+        }
+    }
+}

@@ -13,6 +13,6 @@ pub mod graph;
 pub mod radar;
 pub mod semantic_search;
 
-pub use graph::GraphProjectionService;
+pub use graph::{ExpandRequest, ExpandResponse, GraphProjectionService};
 pub use radar::RadarProjectionService;
 pub use semantic_search::SemanticSearchService;
