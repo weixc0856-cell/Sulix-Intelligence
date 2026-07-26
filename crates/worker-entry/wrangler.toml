@@ -1,12 +1,12 @@
-﻿name = "sulix-feed-worker"
+name = "sulix-feed-worker"
 main = "build/index.js"
-compatibility_date = "2026-07-22"
+compatibility_date = "2026-07-26"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
 AI_BASE_URL = "https://api.deepseek.com/v1"
 AI_CHAT_MODEL = "deepseek-v4-flash"
-AI_EMBEDDING_MODEL = ""
+AI_EMBEDDING_MODEL = "bge-large-en-v1.5"
 
 [triggers]
 crons = ["*/30 * * * *"]
