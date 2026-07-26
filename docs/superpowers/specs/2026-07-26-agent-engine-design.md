@@ -39,12 +39,15 @@ crates/agent-engine/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs
-│   ├── types.rs              ← AgentRequest, AgentResponse, AgentMode
+│   ├── types.rs              ← AgentRequest, AgentResponse, ReasoningTrace
 │   ├── runtime.rs            ← AgentRuntime (orchestrator)
-│   ├── prompt.rs             ← PromptBuilder (context → LLM prompt)
-│   ├── policy.rs             ← AgentPolicy (mode → behavior config)
+│   ├── context.rs            ← ContextProvider trait (abstracts ContextEngine)
+│   ├── prompt.rs             ← PromptBuilder + PromptTemplate (versioned)
+│   ├── policy.rs             ← ReasoningPolicy per mode
+│   ├── reasoning.rs          ← ReasoningTrace builder
+│   ├── validator.rs          ← ResponseValidator trait
 │   └── llm/
-│       ├── provider.rs       ← LLMProvider trait
+│       ├── provider.rs       ← LLMProvider trait + ModelCapability
 │       ├── deepseek.rs       ← DeepSeek provider
 │       ├── openrouter.rs     ← OpenRouter provider
 │       └── noop.rs           ← Noop provider (testing)
@@ -80,14 +83,17 @@ AgentResponse JSON
 
 ## Section 2: Data Model
 
-### Types
+### Core Types
 
 ```rust
+/// Request correlation only. Not persisted.
+pub type SessionId = String;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRequest {
     pub query: String,
     pub mode: AgentMode,
-    pub session_id: Option<String>,
+    pub session_id: Option<SessionId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,12 +105,28 @@ pub enum AgentMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentResponse {
     pub answer: String,
-    pub confidence: f64,
-    pub evidence_refs: Vec<String>,
+    pub reasoning: ReasoningTrace,
     pub context_id: String,
     pub mode: AgentMode,
-    pub session_id: Option<String>,
+    pub model: String,
+    pub prompt_version: String,
+    pub session_id: Option<SessionId>,
     pub generated_at: i64,
+}
+
+/// Structured reasoning trace — allows users to understand WHY the answer was given.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningTrace {
+    pub confidence: f64,
+    pub evidence_refs: Vec<String>,
+    pub assumptions: Vec<String>,
+    pub uncertainty: Vec<String>,
+}
+
+/// AgentRuntime depends on ContextProvider (abstract), not ContextBuilder<D1Store>.
+#[async_trait(?Send)]
+pub trait ContextProvider {
+    async fn build_context(&self, query: &str) -> Result<AgentContext, String>;
 }
 ```
 
@@ -113,7 +135,15 @@ pub struct AgentResponse {
 ```rust
 #[async_trait(?Send)]
 pub trait LLMProvider {
+    fn capability(&self) -> ModelCapability;
     async fn complete(&self, request: LLMRequest) -> Result<LLMResponse, String>;
+}
+
+pub struct ModelCapability {
+    pub model_name: String,
+    pub context_window: u32,
+    pub supports_json: bool,
+    pub supports_streaming: bool,
 }
 
 pub struct LLMRequest {
@@ -132,19 +162,24 @@ pub struct LLMUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
 }
-```
 
-### Agent Runtime
-
-```rust
-pub struct AgentRuntime {
-    context_engine: ContextBuilder<D1Store>,
-    llm: Box<dyn LLMProvider>,
-    prompt_builder: PromptBuilder,
+/// Prompt template with version tracking.
+pub struct PromptTemplate {
+    pub version: String,           // "decision_advisor.v1"
+    pub system_prompt: String,
 }
 
-impl AgentRuntime {
-    pub async fn execute(&self, request: AgentRequest) -> Result<AgentResponse, String>;
+/// ReasoningPolicy — configures agent behavior per mode.
+pub struct ReasoningPolicy {
+    pub context_budget: u32,
+    pub evidence_requirement: EvidencePolicy,
+    pub confidence_threshold: f64,
+}
+
+pub enum EvidencePolicy {
+    Required,
+    Preferred,
+    Optional,
 }
 ```
 
@@ -155,13 +190,9 @@ impl AgentRuntime {
 ### Prompt 结构
 
 ```
-SYSTEM:
+SYSTEM PROMPT (decision_advisor.v1):
 You are Sulix Intelligence Agent — a personal decision intelligence assistant.
-
-You have access to the user's personal decision history, reflections, 
-and learned patterns. Your goal is to provide grounded, evidence-based 
-responses.
-
+You have access to the user's personal decision history, reflections, and learned patterns.
 Rules:
 - Always cite specific past decisions/reflections/memories as evidence
 - Distinguish between facts and assumptions
@@ -170,10 +201,7 @@ Rules:
 - Be concise but specific
 
 CONTEXT:
-[relevant decisions]
-[relevant reflections]
-[relevant memories]
-[detected patterns]
+{serialized AgentContext}
 
 USER QUERY:
 {query}
@@ -235,10 +263,16 @@ Request:
 Response:
 {
   "answer": "基于你的决策历史，你有 3 次与 AI 相关的投资决策...",
-  "confidence": 0.82,
-  "evidence_refs": ["DEC-001", "MEM-003", "REF-002"],
+  "reasoning": {
+    "confidence": 0.82,
+    "evidence_refs": ["DEC-001", "MEM-003", "REF-002"],
+    "assumptions": ["假设当前市场趋势持续"],
+    "uncertainty": ["缺少长期市场数据"]
+  },
   "context_id": "CTX-1710000000",
   "mode": "decision_advisor",
+  "model": "deepseek-chat",
+  "prompt_version": "decision_advisor.v1",
   "session_id": null,
   "generated_at": 1710000000
 }
@@ -250,12 +284,15 @@ Response:
 
 ### 做
 
-- `crates/agent-engine/` — AgentRuntime, LLMProvider trait, PromptBuilder, AgentPolicy
-- `LLMProvider` trait + NoopProvider 实现 + DeepSeek/OpenRouter 生产实现
+- `crates/agent-engine/` — AgentRuntime, ContextProvider trait, LLMProvider trait, PromptBuilder (+ PromptTemplate version), ReasoningPolicy, ReasoningTrace, ResponseValidator
+- `LLMProvider` trait + ModelCapability + Noop/DeepSeek/OpenRouter providers
+- `ContextProvider` trait（抽象 ContextEngine，不直接依赖 D1Store）
+- `ReasoningTrace` — confidence, evidence_refs, assumptions, uncertainty
+- `ResponseValidator` — 检查 evidence 要求、confidence 阈值
 - `POST /api/internal/agent/run` 端点
-- `decision_advisor` 模式
-- Context Engine 集成（调用 ContextBuilder::build()）
-- Evidence 追溯（context_id + evidence_refs）
+- `decision_advisor` 模式（`decision_advisor.v1` prompt）
+- Context Engine 集成（通过 ContextProvider trait）
+- Evidence 追溯（context_id + evidence_refs + prompt_version）
 - `session_id` 轻量标识（不持久化）
 
 ### 不做
@@ -273,7 +310,10 @@ Response:
 
 1. `cargo check --workspace` + `cargo test --workspace`
 2. **Context injection test**: AgentRequest → PromptBuilder 生成的 prompt 包含 decisions/reflections/memories
-3. **Provider swap test**: Noop → DeepSeek → OpenRouter 接口不变
-4. **Evidence trace test**: Response 包含 context_id + evidence_refs
-5. **Mode dispatch test**: decision_advisor → policy 正确配置
-6. **API integration test**: curl 发送请求 → 接收结构化响应
+3. **Provider swap test**: Noop → DeepSeek → OpenRouter 接口不变，capability 正确
+4. **Evidence trace test**: Response 包含 context_id + evidence_refs + prompt_version
+5. **ReasoningTrace test**: response.reasoning 包含 confidence + evidence_refs + assumptions + uncertainty
+6. **Mode dispatch test**: decision_advisor → ReasoningPolicy 正确配置
+7. **ResponseValidator test**: no evidence → fails Required; has evidence → passes
+8. **ContextProvider abstraction test**: mock provider → AgentRuntime 正常工作
+9. **API integration test**: curl 发送请求 → 接收结构化 AgentResponse
