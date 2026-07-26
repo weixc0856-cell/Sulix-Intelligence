@@ -9,10 +9,10 @@ use async_trait::async_trait;
 use crate::backend::StoreBackend;
 use crate::{
     ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle,
-    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, NewArticle, NewArtifact,
-    NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent,
-    OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent,
-    SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
+    EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, Memory, NewArticle,
+    NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewMemory, NewOutbox, NewOutcomeEvent,
+    NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef, SignalBriefInput,
+    SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -305,5 +305,27 @@ impl StoreBackend for crate::D1Store {
     }
     async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError> {
         crate::D1Store::stale_generating_reflections(self, now).await
+    }
+
+    // ===== Memory Engine (Sprint 5.5) =====
+
+    async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
+        crate::D1Store::create_memory(self, entry).await
+    }
+
+    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError> {
+        crate::D1Store::get_memory(self, id).await
+    }
+
+    async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, limit: u32) -> Result<Vec<Memory>, StoreError> {
+        crate::D1Store::list_memories(self, memory_type, status, limit).await
+    }
+
+    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError> {
+        crate::D1Store::touch_memory(self, id, now).await
+    }
+
+    async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
+        crate::D1Store::count_candidate_memories(self).await
     }
 }

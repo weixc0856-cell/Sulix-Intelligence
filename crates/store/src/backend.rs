@@ -8,9 +8,10 @@ use async_trait::async_trait;
 use crate::{
     ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary,
-    EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
-    NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
+    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation,
+    NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity,
+    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    UpdateReflection,
 };
 
 /// Storage backend for the feed pipeline.
@@ -301,4 +302,21 @@ pub trait StoreBackend {
 
     /// List stale generating reflections (lease_until < now).
     async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError>;
+
+    // ===== Memory Engine (Sprint 5.5) =====
+
+    /// Create a new memory entry. Returns the new id.
+    async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError>;
+
+    /// Get a memory entry by id.
+    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError>;
+
+    /// List memories, optionally filtered by type and status.
+    async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, limit: u32) -> Result<Vec<Memory>, StoreError>;
+
+    /// Update memory usage stats (increment usage_count, set last_used_at).
+    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError>;
+
+    /// Count memories pending promotion.
+    async fn count_candidate_memories(&self) -> Result<i64, StoreError>;
 }

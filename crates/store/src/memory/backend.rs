@@ -12,9 +12,10 @@ use crate::backend::StoreBackend;
 use crate::{
     ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntityRef, EntitySignalCandidate, EntitySummary, EvalSummary,
-    EventIndexEntry, Feed, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation, NewOutbox,
-    NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity, RelatedEntityRef,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError, UpdateReflection,
+    EventIndexEntry, Feed, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewDecision, NewDecisionEvaluation,
+    NewMemory, NewOutbox, NewOutcomeEvent, NewReflection, OutcomeEvent, OutboxEntry, Reflection, RelatedEntity,
+    RelatedEntityRef, SignalBriefInput, SignalDetail, SignalEvent, SignalThreadFilter, SignalUpsertResult, StoreError,
+    UpdateReflection,
 };
 
 #[async_trait(?Send)]
@@ -756,5 +757,64 @@ impl StoreBackend for MemoryStore {
 
     async fn stale_generating_reflections(&self, _now: i64) -> Result<Vec<Reflection>, StoreError> {
         Ok(Vec::new())
+    }
+
+    // ===== Memory Engine (Sprint 5.5) =====
+
+    async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_memory_id.borrow();
+        *self.next_memory_id.borrow_mut() = id + 1;
+        self.memories.borrow_mut().insert(id, Memory {
+            id,
+            memory_type: entry.memory_type.clone(),
+            memory_origin: entry.memory_origin.clone(),
+            statement: entry.statement.clone(),
+            confidence: entry.confidence,
+            stability_score: entry.stability_score,
+            confidence_updated_at: None,
+            memory_sources: entry.memory_sources.clone(),
+            artifact_key: entry.artifact_key.clone(),
+            status: entry.status.clone(),
+            usage_count: 0,
+            validation_count: 0,
+            promoted_at: now,
+            deprecated_at: None,
+            last_used_at: None,
+            created_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError> {
+        Ok(self.memories.borrow().get(&id).cloned())
+    }
+
+    async fn list_memories(&self, memory_type: Option<&str>, status: Option<&str>, _limit: u32) -> Result<Vec<Memory>, StoreError> {
+        let memories = self.memories.borrow();
+        let result: Vec<Memory> = memories
+            .values()
+            .filter(|m| {
+                let type_match = memory_type.map_or(true, |t| m.memory_type == t);
+                let status_match = status.map_or(true, |s| m.status == s);
+                type_match && status_match
+            })
+            .cloned()
+            .collect();
+        // Note: limit not applied for MemoryStore simplicity
+        Ok(result)
+    }
+
+    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError> {
+        if let Some(m) = self.memories.borrow_mut().get_mut(&id) {
+            m.usage_count += 1;
+            m.last_used_at = Some(now);
+        }
+        Ok(())
+    }
+
+    async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
+        let count = self.memories.borrow().values().filter(|m| m.status == "candidate").count() as i64;
+        Ok(count)
     }
 }

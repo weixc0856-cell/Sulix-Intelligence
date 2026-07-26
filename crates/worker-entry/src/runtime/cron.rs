@@ -1,6 +1,6 @@
 use worker::*;
 
-use crate::jobs::{archive, briefing, gc, ingestion, reflection, signal};
+use crate::jobs::{archive, briefing, gc, ingestion, memory, reflection, signal};
 
 pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     console_error_panic_hook::set_once();
@@ -27,4 +27,7 @@ pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleConte
 
     // Decision Reflection — process eligible and failed reflections.
     reflection::process_pending_reflections(&env, now).await;
+
+    // Memory Engine — consolidate candidate reflections into promoted memories.
+    memory::process_pending(&env, now).await;
 }

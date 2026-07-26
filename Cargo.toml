@@ -15,6 +15,7 @@ members = [
     "crates/object-store",
     "crates/event-store",
     "crates/intelligence/reflection-engine",
+    "crates/memory-engine",
 ]
 
 [workspace.package]
@@ -51,6 +52,7 @@ signal-engine = { path = "crates/intelligence/signal-engine" }
 object-store = { path = "crates/object-store" }
 event-store = { path = "crates/event-store" }
 reflection-engine = { path = "crates/intelligence/reflection-engine" }
+memory-engine = { path = "crates/memory-engine" }
 
 [profile.release]
 panic = "unwind"

@@ -26,6 +26,7 @@ entity.workspace = true
 object-store.workspace = true
 event-store.workspace = true
 reflection-engine.workspace = true
+memory-engine.workspace = true
 
 
 [package.metadata.release]
