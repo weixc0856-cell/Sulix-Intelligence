@@ -1,0 +1,15 @@
+[package]
+name = "content-governance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+store.workspace = true
+
+[dev-dependencies]
+futures = { workspace = true }

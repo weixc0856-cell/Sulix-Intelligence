@@ -20,6 +20,7 @@ members = [
     "crates/agent-engine",
     "crates/shared-kernel",
     "crates/application",
+    "crates/content-governance",
 ]
 
 [workspace.package]
@@ -65,6 +66,7 @@ context-engine = { path = "crates/context-engine" }
 agent-engine = { path = "crates/agent-engine" }
 shared-kernel = { path = "crates/shared-kernel" }
 application = { path = "crates/application" }
+content-governance = { path = "crates/content-governance" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

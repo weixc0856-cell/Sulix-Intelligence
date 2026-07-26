@@ -96,6 +96,17 @@ pub(crate) async fn article_content(_req: Request, ctx: RouteContext<()>) -> Res
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
     };
+
+    // Resolve source and check policy before serving content
+    if let Ok(Some(article)) = store.article_by_id(id).await {
+        if let Ok(Some(source)) = store.find_source_by_feed(article.feed_id).await {
+            let decision = content_governance::evaluate_policy(&source);
+            if decision.serving == content_governance::ServingPermission::Denied {
+                return response::json_err(403, "Content access denied by source policy");
+            }
+        }
+    }
+
     match store.get_raw_content_key(id).await {
         Ok(Some(k)) => {
             let bucket = match ctx.env.bucket("RAW_CONTENT") {
