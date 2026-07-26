@@ -77,7 +77,6 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
- "shared-kernel",
  "store",
 ]
 
