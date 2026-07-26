@@ -54,6 +54,7 @@ pub trait StoreBackend:
     + ConfidenceRepository
     + SourceRepository
     + SourceQueryService
+    + ObservationQueryService
     + ClaimQueryService
 {
     // ---- Rules ----
@@ -292,6 +293,13 @@ pub trait StoreBackend:
     async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError>;
     async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError>;
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError>;
+    async fn list_observations(
+        &self,
+        source_type: Option<&str>,
+        source_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Observation>, StoreError>;
 
     // ===== Confidence Event (Sprint 5.4B) =====
 

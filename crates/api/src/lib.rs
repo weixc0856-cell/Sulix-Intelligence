@@ -104,6 +104,10 @@ pub fn router() -> Router<'static, ()> {
         .post_async("/api/sources", routes::source::sources_create)
         .put_async("/api/sources/:id", routes::source::sources_update)
         .delete_async("/api/sources/:id", routes::source::sources_delete)
+        // Observations (Sprint 5.6)
+        .get_async("/api/observations", routes::observation::list)
+        .get_async("/api/observations/:id", routes::observation::get)
+        .get_async("/api/observations/:id/lineage", routes::observation::lineage)
         // Rules CRUD
         .get_async("/api/rules", routes::rules::rules_list)
         .post_async("/api/rules", routes::rules::rules_create)

@@ -374,6 +374,19 @@ impl SourceQueryService for crate::D1Store {
 }
 
 #[async_trait(?Send)]
+impl ObservationQueryService for crate::D1Store {
+    async fn list_observations(
+        &self,
+        source_type: Option<&str>,
+        source_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Observation>, StoreError> {
+        crate::D1Store::list_observations(self, source_type, source_id, limit, offset).await
+    }
+}
+
+#[async_trait(?Send)]
 impl EvaluationQueryService for crate::D1Store {
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
         crate::D1Store::get_decision_evaluations(self, decision_id).await
@@ -689,6 +702,15 @@ impl StoreBackend for crate::D1Store {
     }
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
         crate::D1Store::find_observation_by_hash(self, hash).await
+    }
+    async fn list_observations(
+        &self,
+        source_type: Option<&str>,
+        source_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Observation>, StoreError> {
+        crate::D1Store::list_observations(self, source_type, source_id, limit, offset).await
     }
     async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
         crate::D1Store::append_confidence(self, e).await

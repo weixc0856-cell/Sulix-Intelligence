@@ -11,6 +11,7 @@ pub mod decision_query;
 pub mod entity_query;
 pub mod evaluation_query;
 pub mod feed_query;
+pub mod observation_query;
 pub mod outcome_query;
 pub mod signal_query;
 
@@ -20,6 +21,7 @@ pub use decision_query::DecisionQueryService;
 pub use entity_query::EntityQueryService;
 pub use evaluation_query::EvaluationQueryService;
 pub use feed_query::FeedQueryService;
+pub use observation_query::ObservationQueryService;
 pub use outcome_query::OutcomeQueryService;
 pub use signal_query::{BatchSignalQueryService, SignalQueryService};
 pub mod source_query;

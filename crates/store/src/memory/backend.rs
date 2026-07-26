@@ -363,6 +363,19 @@ impl SourceQueryService for MemoryStore {
     }
 }
 
+#[async_trait(?Send)]
+impl ObservationQueryService for MemoryStore {
+    async fn list_observations(
+        &self,
+        _source_type: Option<&str>,
+        _source_id: Option<&str>,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<Vec<Observation>, StoreError> {
+        Ok(Vec::new())
+    }
+}
+
 // ── Query Services ──
 
 #[async_trait(?Send)]
@@ -1195,6 +1208,15 @@ impl StoreBackend for MemoryStore {
     }
     async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
         ObservationRepository::find_observation_by_hash(self, hash).await
+    }
+    async fn list_observations(
+        &self,
+        source_type: Option<&str>,
+        source_id: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Observation>, StoreError> {
+        ObservationQueryService::list_observations(self, source_type, source_id, limit, offset).await
     }
     async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
         ConfidenceRepository::append_confidence(self, e).await
