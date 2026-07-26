@@ -114,6 +114,58 @@ pub(crate) async fn tags(_req: Request, ctx: RouteContext<()>) -> Result<Respons
     }
 }
 
+pub(crate) async fn trust(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+
+    // Health stats (total articles, feeds)
+    let health = store.health_stats().await.ok();
+
+    // Decision stats (evaluations, accuracy)
+    let decision_stats = store.decision_stats().await.ok();
+
+    // Source reliability (all sources with trust scores)
+    let sources = store.list_sources(None, None, 100, 0).await.unwrap_or_default();
+
+    // Source reliability ranking: filter to sources with trust scores
+    let source_reliability: Vec<serde_json::Value> = sources
+        .iter()
+        .filter(|s| s.trust_score.is_some())
+        .map(|s| {
+            json!({
+                "name": s.name.as_deref().unwrap_or("Unknown"),
+                "tier": s.tier,
+                "trust_score": s.trust_score.unwrap_or(0.0),
+                "verified": s.verified,
+                "policy": s.policy,
+            })
+        })
+        .collect();
+
+    // Aggregate total counts
+    let total_signals = 0u64; // signal_engine handles this separately
+    let total_sources = sources.len();
+
+    // Compute accuracy rate from decision stats
+    let accuracy_rate = decision_stats.as_ref().and_then(|ds| {
+        let total = ds.evaluation_summary.total_evaluated;
+        if total > 0 {
+            Some(ds.evaluation_summary.confirmed as f64 / total as f64)
+        } else {
+            None
+        }
+    });
+
+    response::json_ok(json!({
+        "signals_analyzed": health.as_ref().map(|h| h.article_count).unwrap_or(0),
+        "active_sources": total_sources,
+        "total_decisions": decision_stats.as_ref().map(|ds| ds.total_decisions).unwrap_or(0),
+        "total_evaluations": decision_stats.as_ref().map(|ds| ds.evaluation_summary.total_evaluated).unwrap_or(0),
+        "accuracy_rate": accuracy_rate,
+        "source_reliability": source_reliability,
+        "evaluation_summary": decision_stats.map(|ds| ds.evaluation_summary),
+    }))
+}
+
 pub(crate) async fn intelligence_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     let now = (js_sys::Date::now() / 1000.0) as i64;

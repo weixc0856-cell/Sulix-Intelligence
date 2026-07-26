@@ -46,6 +46,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/categories", routes::system::categories)
         .get_async("/api/tags", routes::system::tags)
         .get_async("/api/intelligence/signals", routes::system::intelligence_signals)
+        .get_async("/api/intelligence/trust", routes::system::trust)
         .get_async("/api/intelligence/radar", routes::signal::radar)
         .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
         .get_async("/api/intelligence/signals/:id/provenance", routes::signal::signal_provenance)
