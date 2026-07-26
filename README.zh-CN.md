@@ -18,140 +18,167 @@ Cron 触发器（每 30 分钟）→ FETCH_QUEUE → 队列消费者
 HTTP (Worker Router) ←─ service binding ─→ Astro 前端 (Worker)
 ```
 
-### Crate 依赖图
+## 认知管线
 
 ```
-worker-entry → api → store → worker (D1, Queues, Router)
-            → fetcher → worker, feed-rs
-            → rules（纯逻辑 — 无 worker 依赖）
-            → ai-pipeline → store（通过 StoreBackend trait）, Summarizer trait
-            → vectorize（共享 wasm 绑定）
-api → store, search, rules, embedding, vectorize
-store → worker (D1Database)
+来源注册 → 内容策略 → 观察记录
+     ↓
+信号检测 → 信号聚类 → 评分
+     ↓
+主张提取
+     ↓
+决策引擎 → 结果追踪 → 反思学习
+     ↓
+置信度引擎（因子可解释）
+     ↓
+记忆引擎 → 上下文引擎
 ```
 
 ## Crate 一览
 
 | Crate | 用途 |
 |---|---|
-| `store` | D1 访问层（feeds、articles、CRUD、健康检查）+ `StoreBackend` trait + `MemoryStore` 测试实现 |
-| `vectorize` | 共享 `#[wasm_bindgen]` 绑定 — Cloudflare Vectorize（upsert + query + delete） |
-| `fetcher` | RSS/Atom 抓取 + SSRF 防护 + 全文提取（按源开启）+ AbortSignal 超时 |
-| `rules` | 评分引擎（关键词匹配、来源过滤、AND/OR）— 纯逻辑，单元测试覆盖 |
-| `ai-pipeline` | `Summarizer` / `HttpClient` trait + `HttpSummarizer`（兼容 OpenAI 协议）+ 标签归一化 |
+| `store` | D1 访问层 + 22 个领域 trait + `StoreBackend` + `MemoryStore` 测试实现 |
+| `intelligence/signal-engine` | 信号发现、聚类、评分、雷达投影、批量证据查询 |
+| `intelligence/reflection-engine` | 决策反思生命周期 — 从结果生成结构化经验 |
+| `memory-engine` | 长时记忆提升 — 评估、评分、归档记忆制品 |
+| `context-engine` | 意图感知的上下文快照组装，用于 Agent 查询 |
+| `agent-engine` | Agent 推理运行时 + 证据验证 |
+| `content-governance` | 纯逻辑策略评估 — 按源层级控制存储/服务/嵌入/AI |
+| `fetcher` | RSS/Atom 抓取 + SSRF 防护 + 全文提取（按源开启） |
+| `rules` | 评分引擎（关键词匹配、来源过滤、AND/OR）— 纯逻辑 |
+| `ai-pipeline` | LLM 摘要 + 标签归一化 |
 | `search` | D1 FTS5 关键词搜索 + 可选标签/分类过滤 |
 | `embedding` | Workers AI 嵌入向量（bge-large-en-v1.5） |
-| `api` | HTTP 路由 — 健康检查、仪表盘、标签、feeds CRUD、文章、策略、管线状态 |
-| `worker-entry` | `#[event(fetch/scheduled/queue)]` — Workers 入口 + 管线指标收集 |
+| `vectorize` | Cloudflare Vectorize 共享 wasm 绑定 |
+| `api` | 73+ HTTP 路由 — 信号、决策、主张、置信度、来源、观察、合规、图谱 |
+| `event-store` | 事件溯源 — outbox-first 写入 → 异步归档至 R2 |
+| `object-store` | 对象存储 trait + R2Store 实现 |
+| `application` | 雷达投影、决策图谱、语义搜索 |
+| `worker-entry` | Workers 入口：HTTP + Cron + Queue + 指标收集 |
 
 ## 关键设计决策
 
 - **Cloudflare Workers**（非 VPS）— 单人运维成本可控，免费套餐，原生 D1/Queues/R2
-- **D1 + FTS5**（非 Postgres/Meilisearch）— CF 生态内唯一的结构化存储方案，通过触发器维护全文索引
-- **Cloudflare Queues**（非同步 cron 循环）— 每源隔离，内置重试，不存在超时风险
-- **Astro 服务端渲染 + service binding**（非静态站点）— 每次请求获取最新数据，无需重建即可展示新文章
-- **worker::Router**（非 Axum）— `worker::Env`/`D1Database` 不支持 `Send`/`Sync`；`worker::Router` 专为此场景设计
-- **StoreBackend trait** — `D1Store`（生产环境）与 `MemoryStore`（测试环境）通过 trait 互换；管线对后端实现无感
-- **SSRF 防护** — 抓取器拦截 IP 字面量与本地回环别名 URL；DNS 重绑定为已知局限
-
-## 管线流程
-
-```
-crates/fetcher/          — RSS/Atom 抓取 → 全文提取（可选）→ Article
-    ↓
-crates/store/            — D1 去重 + 持久化
-    ↓
-crates/rules/            — 规则评分（关键词、来源、AND/OR）
-    ↓
-crates/ai-pipeline/      — LLM 摘要 + 标签归一化
-    ↓
-crates/embedding/ + crates/vectorize/ — 生成向量 → 存入 Vectorize 索引
-    ↓
-KV 管线指标               — 每周期执行时间、文章数、LLM 调用次数
-```
+- **D1 + FTS5** — CF 生态内唯一的结构化存储方案，触发器维护全文索引
+- **Cloudflare Queues** — 每源隔离，内置重试，无超时风险
+- **CQRS + 事件溯源** — 写（Repository trait）与读（QueryService trait）分离；事件仅追加、不可变
+- **因子置信度** — 置信度 = 证据 × 来源可信 × 新鲜度 × 校准的几何平均，完全可解释
+- **来源治理** — 每个 feed 对应一条 source 记录（层级、策略、许可、信任分），内容策略在摄取和服务两阶段强制执行
+- **溯源链** — 每个智能制品携带 Source → Observation → Signal → Claim → Decision → Memory 的完整溯源
+- **StoreBackend trait** — `D1Store`（生产）与 `MemoryStore`（测试）通过 trait 互换
 
 ## 快速开始
 
 ```bash
-# 后端（需要 wasm32-unknown-unknown 目标）
+# 需要 wasm32-unknown-unknown 目标
 cargo check --workspace
-cargo test --workspace              # 100+ 单元测试
+cargo test --workspace              # 148+ 单元测试
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
-cargo install worker-build          # 首次安装
+cargo install worker-build
 cd crates/worker-entry
 worker-build --release
 npx wrangler deploy -c wrangler.toml
+npx wrangler d1 migrations apply sulix-feed-db --remote
 ```
 
 ## API 端点
 
+### 系统
 | 端点 | 说明 |
 |---|---|
 | `GET /api/health` | 源/文章/Cron 统计 |
 | `GET /api/dashboard` | 健康检查 + 每源统计 |
 | `GET /api/pipeline/status` | 管线健康 + 执行耗时 |
-| `GET /api/tags` | 聚合标签云（含计数） |
-| `GET/POST /api/feeds` | 列出 / 创建订阅源 |
-| `GET/PUT/DELETE /api/feeds/:id` | 读取 / 更新 / 软删除 |
-| `GET /api/articles/latest` | 最新文章（?tag=, ?limit=） |
-| `GET /api/articles/trending` | 高分文章（score > 0） |
-| `GET /api/articles/search?q=` | FTS5 关键词 + 语义搜索 |
-| `GET /api/articles/:id` | 文章详情 |
-| `GET /api/articles/:id/content` | 文章全文（来自 R2） |
-| `GET /api/articles/:id/related` | 按共享标签推荐相关文章 |
-| `GET /api/articles/:id/adjacent` | 上一篇 / 下一篇 |
-| `GET/POST/PUT/DELETE /api/rules` | 过滤/评分规则 CRUD |
-| `POST /api/strategies/preview` | 预览策略影响 |
-| `POST /api/admin/rebuild-embeddings` | 批量重建嵌入向量 |
+| `GET /api/stats` | 分数分布 + 文章趋势 |
+| `GET /api/tags` | 聚合标签云 |
+| `GET /api/categories` | 分类列表 |
+| `GET /api/intelligence/trust` | 信任中心 — 准确率、来源可信度 |
 
-## CI/CD
+### 文章与订阅源
+| 端点 | 说明 |
+|---|---|
+| `GET /api/articles/latest` | 最新文章 |
+| `GET /api/articles/trending` | 高分文章 |
+| `GET /api/articles/search` | FTS5 关键词 + 语义搜索 |
+| `GET /api/articles/batch` | 批量获取 |
+| `GET /api/articles/:id` | 文章详情（含溯源信息） |
+| `GET /api/articles/:id/content` | 文章全文（受策略管控） |
+| `GET/POST/PUT/DELETE /api/feeds` | 订阅源 CRUD |
 
-推送至 `master` 分支 → GitHub Actions：
-1. `cargo clippy --workspace -D warnings`
-2. `cargo test --workspace`
-3. `worker-build --release`
-4. `wrangler deploy`
-5. 冒烟测试（健康检查 + 语义搜索）
+### 情报
+| 端点 | 说明 |
+|---|---|
+| `GET /api/intelligence/signals` | 今日信号摘要 |
+| `GET /api/intelligence/radar` | 雷达仪表盘 |
+| `GET /api/intelligence/signals/:id` | 信号详情 |
+| `GET /api/intelligence/signals/:id/provenance` | 信号溯源链 |
+| `GET /api/intelligence/briefing/today` | 每日情报简报 |
+| `GET /api/intelligence/entities` | 实体图谱 |
+| `GET /api/intelligence/entities/:id/*` | 实体详情、文章、信号、关系 |
 
-所需 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
+### 决策智能
+| 端点 | 说明 |
+|---|---|
+| `GET/POST /api/intelligence/decisions` | 决策列表/创建 |
+| `GET /api/intelligence/decisions/stats` | 决策准确率 |
+| `GET /api/intelligence/decisions/:id` | 决策详情 |
+| `GET /api/intelligence/decisions/:id/explanation` | 为什么系统相信这个判断 |
+| `GET /api/intelligence/decisions/:id/timeline` | 决策时间线 |
+| `GET /api/projections/decision-graph` | 认知图谱 |
 
-## 前端
+### 主张与置信度
+| 端点 | 说明 |
+|---|---|
+| `GET /api/claims/:id` | 主张详情（含证据） |
+| `GET /api/confidence/:type/:id` | 置信度演化时间线 |
 
-[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 前端，以 Cloudflare Worker 形式部署，通过 service binding 连接后端 API。功能包括语义搜索、深色模式、标签云、热门文章、订阅源管理、信号策略与书签。
-
-前端仓库：[weixc0856-cell/Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
+### 治理
+| 端点 | 说明 |
+|---|---|
+| `GET/POST/PUT/DELETE /api/sources` | 来源注册表 CRUD |
+| `GET /api/observations` | 观察记录列表 |
+| `GET /api/observations/:id/lineage` | 完整溯源链 |
+| `POST /api/compliance/takedown` | 提交下架请求 |
 
 ## 项目结构
 
 ```
-D:\Project\Sulix Intelligence（Rust 工作区 — 后端）
-├── Cargo.toml               ← 工作区根配置（9 个成员 crate）
-├── migrations/
-│   └── 0001_init.sql        ← D1 数据库模式（feeds, articles, filter_rules）
-├── crates/
-│   ├── store/               ← D1 访问层 + StoreBackend trait + MemoryStore
-│   ├── fetcher/             ← RSS/Atom 抓取 + SSRF 防护 + AbortSignal 超时
-│   ├── rules/               ← 过滤/评分引擎（纯逻辑，单元测试覆盖）
-│   ├── ai-pipeline/         ← AI 摘要 trait + HttpSummarizer + 标签归一化
-│   ├── search/              ← FTS5 搜索抽象 + WHERE 条件构建器（已测试）
-│   ├── embedding/           ← Workers AI 嵌入向量（bge-large-en-v1.5）
-│   ├── vectorize/           ← Vectorize 共享 wasm 绑定（upsert/query/delete）
-│   ├── api/                 ← HTTP 路由（worker::Router）
-│   └── worker-entry/        ← Workers 入口（HTTP + Cron + Queue + 指标）
-
-D:\Project\intel-web（Astro — 前端）
-├── astro.config.mjs         ← @astrojs/cloudflare, server 模式
-├── tailwind.config.mjs      ← "Informed Modernity" 设计系统
-├── wrangler.toml             ← Worker 配置，指向 API Worker 的 service binding
-└── src/
-    ├── pages/               ← 17 个路由页面 + API 代理
-    ├── components/          ← 15 个 Astro 组件
-    ├── layouts/             ← Base → Marketing / Reader 布局层级
-    ├── lib/api/             ← 按领域拆分的 API 客户端
-    └── styles/              ← Tailwind + 自定义实用类
+crates/
+├── store/              D1 访问层 + 领域 trait
+├── fetcher/            RSS 抓取 + SSRF
+├── rules/              评分引擎
+├── ai-pipeline/        LLM 摘要
+├── search/             FTS5 搜索
+├── embedding/          嵌入向量
+├── vectorize/          Vectorize 绑定
+├── content-governance/ 内容策略（纯逻辑）
+├── api/                73+ HTTP 路由
+├── intelligence/
+│   ├── signal-engine/  信号引擎
+│   └── reflection-engine/ 反思引擎
+├── memory-engine/      记忆引擎
+├── context-engine/     上下文引擎
+├── agent-engine/       Agent 推理
+├── event-store/       事件溯源
+├── object-store/       R2 对象存储
+├── application/       雷达/图谱/搜索
+└── worker-entry/      Workers 入口
 ```
+
+## CI/CD
+
+推送 `master` → GitHub Actions：
+1. `cargo clippy --workspace -D warnings`
+2. `cargo test --workspace`
+3. `worker-build --release`
+4. `npx wrangler deploy`
+
+## 前端
+
+[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 前端，以 Cloudflare Worker 部署。功能包括情报雷达、信号调查、决策追踪、信任中心、来源溯源、语义搜索、深色模式、订阅源管理和认知图谱。
 
 ## 许可证
 

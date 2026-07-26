@@ -8,6 +8,8 @@ AI_BASE_URL = "https://api.deepseek.com/v1"
 AI_CHAT_MODEL = "deepseek-v4-flash"
 AI_EMBEDDING_MODEL = "bge-large-en-v1.5"
 
+migrations_dir = "../../migrations"
+
 [triggers]
 crons = ["*/30 * * * *"]
 
