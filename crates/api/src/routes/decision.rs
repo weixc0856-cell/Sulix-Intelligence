@@ -250,3 +250,76 @@ pub async fn list_outcomes(_req: Request, ctx: RouteContext<()>) -> Result<Respo
         }
     }
 }
+
+// ── Decision Timeline ──
+
+#[derive(serde::Serialize)]
+struct TimelineEvent {
+    pub timestamp: i64,
+    pub event_type: String,
+    pub title: String,
+    pub description: String,
+}
+
+/// GET /api/intelligence/decisions/:id/timeline
+pub async fn timeline(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let store = Store::new(ctx.env.d1("DB")?);
+    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
+        Some(v) => v,
+        None => return response::json_err(400, "invalid decision id"),
+    };
+
+    let decision = match store.get_decision(id).await {
+        Ok(Some(d)) => d,
+        Ok(None) => return response::json_err(404, "decision not found"),
+        Err(e) => { console_log!("[Sulix:timeline] {e}"); return response::json_err_internal("timeline failed"); }
+    };
+
+    let mut events: Vec<TimelineEvent> = Vec::new();
+
+    events.push(TimelineEvent {
+        timestamp: decision.created_at,
+        event_type: "decision.created".into(),
+        title: "Decision registered".into(),
+        description: format!("Status: {}, Confidence: {:.0}%", decision.status, decision.confidence * 100.0),
+    });
+
+    if let Ok(outcomes) = store.get_decision_outcomes(id).await {
+        for o in &outcomes {
+            events.push(TimelineEvent {
+                timestamp: o.observed_at,
+                event_type: "outcome.observed".into(),
+                title: format!("Outcome: {}", o.outcome_type),
+                description: o.observation.clone(),
+            });
+        }
+    }
+
+    if let Ok(evals) = store.get_decision_evaluations(id).await {
+        for e in &evals {
+            events.push(TimelineEvent {
+                timestamp: e.evaluated_at,
+                event_type: "decision.evaluated".into(),
+                title: format!("Judgment: {}", e.evaluation.to_string()),
+                description: e.reasoning.clone().unwrap_or_default(),
+            });
+        }
+    }
+
+    if let Ok(Some(r)) = store.get_reflection_by_decision(id).await {
+        if let Some(started) = r.started_at {
+            events.push(TimelineEvent {
+                timestamp: started,
+                event_type: "reflection.generated".into(),
+                title: "AI Reflection".into(),
+                description: r.result.unwrap_or_default(),
+            });
+        }
+    }
+
+    events.sort_by_key(|e| e.timestamp);
+
+    let learning = store.get_reflection_by_decision(id).await.ok().flatten().and_then(|r| r.result);
+
+    response::json_ok(serde_json::json!({ "success": true, "events": events, "learning": learning }))
+}
