@@ -9,6 +9,8 @@ workspace = true
 
 [dependencies]
 store = { workspace = true }
+decision-engine = { workspace = true }
+shared-kernel = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

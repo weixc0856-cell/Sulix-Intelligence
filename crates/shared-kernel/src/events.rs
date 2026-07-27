@@ -143,6 +143,119 @@ impl IntegrationEvent {
         self.causation_id = Some(causation_id);
         self
     }
+
+    /// Build an `IntegrationEvent` from a domain `IntelligenceEvent`.
+    ///
+    /// This is the canonical path for cross-context event emission — domain
+    /// aggregates produce `IntelligenceEvent` variants, and the application
+    /// layer calls this method to wrap them for outbox delivery.
+    pub fn from_intelligence(
+        event: &IntelligenceEvent,
+        aggregate_id: &str,
+        payload: &impl Serialize,
+        occurred_at: i64,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            event_id: event_id(),
+            source_context: event.aggregate_type().to_string(),
+            aggregate_type: event.aggregate_type().to_string(),
+            aggregate_id: aggregate_id.to_string(),
+            event_type: event.event_type().to_string(),
+            payload: serde_json::to_value(payload)?,
+            occurred_at,
+            correlation_id: None,
+            causation_id: None,
+        })
+    }
+}
+
+// ────────────────────────────────────────────
+//  Unified Intelligence Event (Sprint 6.2A)
+// ────────────────────────────────────────────
+
+/// Canonical domain event for the entire intelligence pipeline.
+///
+/// Every bounded context produces variants of this enum. The application
+/// layer wraps them in `IntegrationEvent` and publishes via `OutboxPublisher`.
+/// Downstream consumers match on variants to trigger cross-context handlers
+/// (Reflection, Memory, Notification, etc.).
+///
+/// This is the event contract for the Intelligence OS. New domain capabilities
+/// add a variant here, not a new event system.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "event_type")]
+pub enum IntelligenceEvent {
+    // ── Observation Context ──
+    #[serde(rename = "observation.created")]
+    ObservationCreated { observation_id: String, source_type: String, title: String },
+
+    // ── Intelligence Context ──
+    #[serde(rename = "claim.created")]
+    ClaimCreated { claim_id: String, article_id: i64, claim_type: String, statement: String },
+
+    #[serde(rename = "claim.evaluated")]
+    ClaimEvaluated { claim_id: String, confidence: f64 },
+
+    #[serde(rename = "signal.detected")]
+    SignalDetected { thread_id: String, signal_key: String, title: String, score: f64 },
+
+    #[serde(rename = "signal.score_changed")]
+    SignalScoreChanged { thread_id: String, old_score: f64, new_score: f64 },
+
+    // ── Decision Context ──
+    #[serde(rename = "decision.proposed")]
+    DecisionProposed { decision_id: String, title: String, confidence: f64, decision_type: String },
+
+    #[serde(rename = "decision.approved")]
+    DecisionApproved { decision_id: String, approved_by: String },
+
+    #[serde(rename = "decision.completed")]
+    DecisionCompleted { decision_id: String, outcome_count: usize },
+
+    #[serde(rename = "decision.invalidated")]
+    DecisionInvalidated { decision_id: String, reason: String },
+
+    // ── Outcome Context ──
+    #[serde(rename = "outcome.recorded")]
+    OutcomeRecorded { decision_id: String, metric: String, verdict: String },
+
+    // ── Reflection Context ──
+    #[serde(rename = "reflection.generated")]
+    ReflectionGenerated { reflection_id: String, decision_id: String, quality_score: f64, lesson_count: usize },
+}
+
+impl IntelligenceEvent {
+    /// Human-readable event type string (matches the serialised `event_type` tag).
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            Self::ObservationCreated { .. } => "observation.created",
+            Self::ClaimCreated { .. } => "claim.created",
+            Self::ClaimEvaluated { .. } => "claim.evaluated",
+            Self::SignalDetected { .. } => "signal.detected",
+            Self::SignalScoreChanged { .. } => "signal.score_changed",
+            Self::DecisionProposed { .. } => "decision.proposed",
+            Self::DecisionApproved { .. } => "decision.approved",
+            Self::DecisionCompleted { .. } => "decision.completed",
+            Self::DecisionInvalidated { .. } => "decision.invalidated",
+            Self::OutcomeRecorded { .. } => "outcome.recorded",
+            Self::ReflectionGenerated { .. } => "reflection.generated",
+        }
+    }
+
+    /// Aggregate-type segment for event routing and R2 key construction.
+    pub fn aggregate_type(&self) -> &'static str {
+        match self {
+            Self::ObservationCreated { .. } => "observation",
+            Self::ClaimCreated { .. } | Self::ClaimEvaluated { .. } => "claim",
+            Self::SignalDetected { .. } | Self::SignalScoreChanged { .. } => "signal",
+            Self::DecisionProposed { .. }
+            | Self::DecisionApproved { .. }
+            | Self::DecisionCompleted { .. }
+            | Self::DecisionInvalidated { .. } => "decision",
+            Self::OutcomeRecorded { .. } => "outcome",
+            Self::ReflectionGenerated { .. } => "reflection",
+        }
+    }
 }
 
 // ────────────────────────────────────────────

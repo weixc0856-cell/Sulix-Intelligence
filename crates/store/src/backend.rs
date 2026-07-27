@@ -1,12 +1,23 @@
 //! `StoreBackend` trait — supertrait composing all domain-repository and
 //! query-service traits.
 //!
+//! ╔══════════════════════════════════════════════════════════════════╗
+//! ║  DEPRECATED — Sprint 6.2 Phase 0                               ║
+//! ║                                                                  ║
+//! ║  No new methods may be added to this trait.                      ║
+//! ║                                                                  ║
+//! ║  New domain capabilities MUST define their own repository        ║
+//! ║  interface in the owning domain crate (e.g. decision-domain,     ║
+//! ║  claim-domain). See Sprint 6.2 plan.                             ║
+//! ║                                                                  ║
+//! ║  Existing methods remain for backward compat. They will be       ║
+//! ║  removed in Sprint 6.2D when StoreBackend is deleted.             ║
+//! ╚══════════════════════════════════════════════════════════════════╝
+//!
 //! New code should prefer the smaller traits from [`traits`] so the
 //! dependency graph stays lean.  Legacy code that uses `T: StoreBackend`
 //! continues to compile without changes because `StoreBackend` is a
 //! supertrait of every smaller trait.
-//!
-//! MVP scope: only the methods used by the feed processing pipeline.
 
 use async_trait::async_trait;
 

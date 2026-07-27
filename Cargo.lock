@@ -79,9 +79,11 @@ name = "application"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "decision-engine",
  "futures",
  "serde",
  "serde_json",
+ "shared-kernel",
  "store",
 ]
 
@@ -237,10 +239,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
- "model-runtime",
  "serde",
  "serde_json",
- "store",
+ "shared-kernel",
+ "thiserror",
 ]
 
 [[package]]
