@@ -10,6 +10,7 @@
 
 pub mod deepseek;
 pub mod factory;
+pub mod gateway;
 pub mod noop;
 pub mod provider;
 pub mod retry;
