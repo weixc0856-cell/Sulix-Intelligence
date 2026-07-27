@@ -48,3 +48,43 @@ pub enum EvidenceRelation {
     Contradicts,
     Weakens,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claim_serde_roundtrip() {
+        let claim = Claim {
+            id: 1,
+            statement: "AI adoption accelerates".into(),
+            claim_type: ClaimType::Trend,
+            confidence: Some(0.82),
+            status: "active".into(),
+            article_id: Some(42),
+            created_at: 1000,
+        };
+        let json = serde_json::to_string(&claim).unwrap();
+        let parsed: Claim = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.statement, "AI adoption accelerates");
+        assert_eq!(parsed.claim_type, ClaimType::Trend);
+        assert_eq!(parsed.confidence, Some(0.82));
+    }
+
+    #[test]
+    fn claim_types_serde() {
+        for ct in &[ClaimType::Fact, ClaimType::Trend, ClaimType::Prediction, ClaimType::Causal, ClaimType::Opinion] {
+            let json = serde_json::to_string(ct).unwrap();
+            let parsed: ClaimType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*ct, parsed);
+        }
+    }
+
+    #[test]
+    fn evidence_relation_serde() {
+        let json = serde_json::to_string(&EvidenceRelation::Supports).unwrap();
+        assert_eq!(json, "\"supports\"");
+        let parsed: EvidenceRelation = serde_json::from_str("\"contradicts\"").unwrap();
+        assert_eq!(parsed, EvidenceRelation::Contradicts);
+    }
+}

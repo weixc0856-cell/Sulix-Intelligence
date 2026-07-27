@@ -43,3 +43,38 @@ pub struct NewSignalThread {
     pub score: f64,
     pub anchor_entity_id: Option<i64>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signal_status_serde() {
+        let json = serde_json::to_string(&SignalStatus::Active).unwrap();
+        assert_eq!(json, "\"active\"");
+        let parsed: SignalStatus = serde_json::from_str("\"archived\"").unwrap();
+        assert_eq!(parsed, SignalStatus::Archived);
+    }
+
+    #[test]
+    fn signal_status_from_string() {
+        assert_eq!(serde_json::from_str::<SignalStatus>("\"decaying\"").unwrap(), SignalStatus::Decaying);
+        assert_eq!(serde_json::from_str::<SignalStatus>("\"resolved\"").unwrap(), SignalStatus::Resolved);
+    }
+
+    #[test]
+    fn signal_instance_serde() {
+        let inst = SignalInstance {
+            id: 1,
+            thread_id: 42,
+            score: 0.75,
+            impact: "medium".into(),
+            trend: "rising".into(),
+            recorded_at: 1000,
+        };
+        let json = serde_json::to_string(&inst).unwrap();
+        let parsed: SignalInstance = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.thread_id, 42);
+        assert!((parsed.score - 0.75).abs() < f64::EPSILON);
+    }
+}

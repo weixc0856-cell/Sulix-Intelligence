@@ -160,6 +160,110 @@ pub struct FrameworkImpact {
     pub delta: f64,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── FrameworkCategory ──
+
+    #[test]
+    fn category_labels_are_human_readable() {
+        assert_eq!(FrameworkCategory::MathematicalModels.label(), "Mathematics");
+        assert_eq!(FrameworkCategory::FinancialIntelligence.label(), "Finance");
+        assert_eq!(FrameworkCategory::HumanBehavior.label(), "Human Behavior");
+        assert_eq!(FrameworkCategory::StrategicModels.label(), "Strategy");
+        assert_eq!(FrameworkCategory::SystemsThinking.label(), "Systems Thinking");
+        assert_eq!(FrameworkCategory::ScientificThinking.label(), "Scientific Thinking");
+    }
+
+    // ── TriggerRule matching ──
+
+    fn make_rule() -> TriggerRule {
+        TriggerRule {
+            signal_type: Some("entity_signal".into()),
+            entity_type: Some("company".into()),
+            question_type: Some("growth".into()),
+            keywords: vec!["compound".into(), "exponential".into()],
+        }
+    }
+
+    #[test]
+    fn trigger_matches_by_signal_type() {
+        let rule = make_rule();
+        assert!(rule.matches(Some("entity_signal"), None, None, &[]));
+    }
+
+    #[test]
+    fn trigger_matches_by_entity_type() {
+        let rule = make_rule();
+        assert!(rule.matches(None, Some("company"), None, &[]));
+    }
+
+    #[test]
+    fn trigger_matches_by_question_type() {
+        let rule = make_rule();
+        assert!(rule.matches(None, None, Some("growth"), &[]));
+    }
+
+    #[test]
+    fn trigger_matches_by_keyword() {
+        let rule = make_rule();
+        assert!(rule.matches(None, None, None, &["compound"]));
+    }
+
+    #[test]
+    fn trigger_matches_keyword_case_insensitive() {
+        let rule = make_rule();
+        assert!(rule.matches(None, None, None, &["COMPOUND"]));
+    }
+
+    #[test]
+    fn trigger_no_match_when_nothing_fits() {
+        let rule = make_rule();
+        assert!(!rule.matches(Some("observation"), Some("weather"), Some("climate"), &["rain"]));
+    }
+
+    #[test]
+    fn trigger_with_no_rules_matches_nothing() {
+        let rule = TriggerRule { signal_type: None, entity_type: None, question_type: None, keywords: vec![] };
+        assert!(!rule.matches(Some("anything"), None, None, &[]));
+    }
+
+    // ── FrameworkImpact ──
+
+    #[test]
+    fn impact_delta_is_confidence_after_minus_before() {
+        let impact = FrameworkImpact::new("test-fw".into(), 1, 0.7, 0.85);
+        assert!((impact.delta - 0.15).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn impact_delta_can_be_negative() {
+        let impact = FrameworkImpact::new("test-fw".into(), 1, 0.8, 0.65);
+        assert!((impact.delta - (-0.15)).abs() < f64::EPSILON);
+    }
+
+    // ── NewFramework → ReasoningFramework conversion ──
+
+    #[test]
+    fn new_framework_converts_with_default_calibration() {
+        let new = NewFramework {
+            id: "test-fw".into(),
+            name: "Test Framework".into(),
+            category: FrameworkCategory::StrategicModels,
+            description: "A test framework".into(),
+            trigger_rules: vec![],
+            reasoning_template: "Test template".into(),
+            evidence_requirements: vec![],
+        };
+        let fw: ReasoningFramework = new.into();
+        assert_eq!(fw.id, "test-fw");
+        assert_eq!(fw.calibration_score, 0.0);
+        assert_eq!(fw.usage_count, 0);
+        assert_eq!(fw.confidence_delta_avg, 0.0);
+    }
+}
+
 impl FrameworkImpact {
     pub fn new(framework_id: String, claim_id: i64, confidence_before: f64, confidence_after: f64) -> Self {
         Self {
