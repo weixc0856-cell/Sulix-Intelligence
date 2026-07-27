@@ -63,11 +63,23 @@ pub trait ObjectStore {
     async fn delete_object(&self, key: &str) -> Result<(), ObjectStoreError>;
 }
 
-/// Key prefix conventions for the Sulix Intelligence Memory Archive.
+/// Key prefix conventions for the Sulix Intelligence Object Archive.
 ///
-/// All objects live under `memory/` to namespace them separately from
-/// ingestion artifacts (e.g. `articles/{id}`).
+/// ## Namespaces
+///
+/// | Prefix | Content | Example |
+/// |--------|---------|---------|
+/// | `memory/` | Legacy memory archive (decisions, signals, briefings) | `memory/decisions/1/memo.md` |
+/// | `artifacts/` | Sprint 6.2B+ AI artifacts via ArtifactRegistry | `artifacts/decision_memo/DEC-000001/1710000000.json` |
+///
+/// ## Convention
+///
+/// Every key should be self-describing — the path encodes content type,
+/// owner identity, and timestamp so objects can be discovered by listing
+/// without an external index.
 pub mod keys {
+    // ── Legacy memory archive (Sprint 5.x–6.1) ─────────────────────
+
     /// Key for a decision artifact (reasoning, evaluation snapshot, etc).
     pub fn decision(decision_id: i64, filename: &str) -> String {
         format!("memory/decisions/{decision_id}/{filename}")
@@ -96,6 +108,47 @@ pub mod keys {
     /// Key for a daily briefing.
     pub fn briefing(date: &str) -> String {
         format!("memory/briefings/{date}.json")
+    }
+
+    // ── Artifact Registry keys (Sprint 6.2B+) ──────────────────────
+
+    /// Build a key for an ArtifactRegistry-stored object.
+    ///
+    /// Format: `artifacts/{artifact_type}/{owner_id}/{timestamp}.{suffix}`
+    ///
+    /// The suffix is derived from `content_type`:
+    /// - `application/json` → `.json`
+    /// - `text/markdown` → `.md`
+    /// - `application/octet-stream` → `.bin`
+    pub fn artifact(artifact_type: &str, owner_id: &str, timestamp: i64, content_type: &str) -> String {
+        let suffix = match content_type {
+            "application/json" => "json",
+            "text/markdown" => "md",
+            "text/plain" => "txt",
+            "application/octet-stream" => "bin",
+            _ => "dat",
+        };
+        format!("artifacts/{artifact_type}/{owner_id}/{timestamp}.{suffix}")
+    }
+
+    /// Key for a decision memo.
+    pub fn decision_memo(decision_id: &str, timestamp: i64) -> String {
+        format!("artifacts/decision_memo/{decision_id}/{timestamp}.md")
+    }
+
+    /// Key for a reflection result artifact.
+    pub fn reflection_result(reflection_id: &str, timestamp: i64) -> String {
+        format!("artifacts/reflection_result/{reflection_id}/{timestamp}.json")
+    }
+
+    /// Key for a claim analysis (reasoning + falsification trace).
+    pub fn claim_analysis(claim_id: i64, timestamp: i64) -> String {
+        format!("artifacts/claim_analysis/CLM-{claim_id:06}/{timestamp}.json")
+    }
+
+    /// Key for a raw LLM reasoning trace.
+    pub fn reasoning_run(run_id: &str) -> String {
+        format!("artifacts/reasoning_trace/{run_id}.json")
     }
 }
 
