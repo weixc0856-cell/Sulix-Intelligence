@@ -56,29 +56,31 @@ impl TriggerRule {
         question_type: Option<&str>,
         keywords: &[&str],
     ) -> bool {
-        // Direct type matches (high precision)
+        // AND-within-rule: ALL non-None fields must match
         if let Some(st) = &self.signal_type {
-            if signal_type.map_or(false, |s| s == st) {
-                return true;
+            if !signal_type.map_or(false, |s| s == st) {
+                return false;
             }
         }
         if let Some(et) = &self.entity_type {
-            if entity_type.map_or(false, |e| e == et) {
-                return true;
+            if !entity_type.map_or(false, |e| e == et) {
+                return false;
             }
         }
         if let Some(qt) = &self.question_type {
-            if question_type.map_or(false, |q| q == qt) {
-                return true;
+            if !question_type.map_or(false, |q| q == qt) {
+                return false;
             }
         }
-        // Keyword fallback
-        if !self.keywords.is_empty() {
-            if keywords.iter().any(|k| self.keywords.iter().any(|kw| kw.eq_ignore_ascii_case(k))) {
-                return true;
+        // Keywords: if both rule and input have keywords, at least one must match
+        if !self.keywords.is_empty() && !keywords.is_empty() {
+            if !keywords.iter().any(|k| self.keywords.iter().any(|kw| kw.eq_ignore_ascii_case(k))) {
+                return false;
             }
         }
-        false
+        // If at least one field is set and all set fields match → true
+        self.signal_type.is_some() || self.entity_type.is_some()
+            || self.question_type.is_some() || !self.keywords.is_empty()
     }
 }
 
@@ -176,9 +178,10 @@ mod tests {
         assert_eq!(FrameworkCategory::ScientificThinking.label(), "Scientific Thinking");
     }
 
-    // ── TriggerRule matching ──
+    // ── TriggerRule matching (AND-within-rule, OR-across-rules) ──
 
-    fn make_rule() -> TriggerRule {
+    /// A rule with all fields set (signal + entity + question + keywords)
+    fn make_full_rule() -> TriggerRule {
         TriggerRule {
             signal_type: Some("entity_signal".into()),
             entity_type: Some("company".into()),
@@ -187,44 +190,70 @@ mod tests {
         }
     }
 
-    #[test]
-    fn trigger_matches_by_signal_type() {
-        let rule = make_rule();
-        assert!(rule.matches(Some("entity_signal"), None, None, &[]));
+    fn make_single_entity_rule() -> TriggerRule {
+        TriggerRule { signal_type: None, entity_type: Some("company".into()), question_type: None, keywords: vec![] }
     }
 
     #[test]
-    fn trigger_matches_by_entity_type() {
-        let rule = make_rule();
+    fn single_field_rule_matches_when_field_matches() {
+        let rule = make_single_entity_rule();
         assert!(rule.matches(None, Some("company"), None, &[]));
     }
 
     #[test]
-    fn trigger_matches_by_question_type() {
-        let rule = make_rule();
-        assert!(rule.matches(None, None, Some("growth"), &[]));
+    fn single_field_rule_rejects_when_field_doesnt_match() {
+        let rule = make_single_entity_rule();
+        assert!(!rule.matches(None, Some("technology"), None, &[]));
     }
 
     #[test]
-    fn trigger_matches_by_keyword() {
-        let rule = make_rule();
-        assert!(rule.matches(None, None, None, &["compound"]));
+    fn multi_field_requires_all_to_match() {
+        let rule = make_full_rule();
+        // All type fields match, keywords also match
+        assert!(rule.matches(Some("entity_signal"), Some("company"), Some("growth"), &["compound"]));
     }
 
     #[test]
-    fn trigger_matches_keyword_case_insensitive() {
-        let rule = make_rule();
-        assert!(rule.matches(None, None, None, &["COMPOUND"]));
+    fn multi_field_skips_keyword_check_when_no_input_keywords() {
+        let rule = make_full_rule();
+        // Type fields all match, empty keywords input → skip keyword check
+        assert!(rule.matches(Some("entity_signal"), Some("company"), Some("growth"), &[]));
     }
 
     #[test]
-    fn trigger_no_match_when_nothing_fits() {
-        let rule = make_rule();
-        assert!(!rule.matches(Some("observation"), Some("weather"), Some("climate"), &["rain"]));
+    fn multi_field_skips_keyword_check_when_no_rule_keywords() {
+        let rule = TriggerRule {
+            signal_type: Some("entity_signal".into()),
+            entity_type: Some("company".into()),
+            question_type: None,
+            keywords: vec![],
+        };
+        // Type fields match, empty rule keywords → skip keyword check
+        assert!(rule.matches(Some("entity_signal"), Some("company"), None, &["anything"]));
     }
 
     #[test]
-    fn trigger_with_no_rules_matches_nothing() {
+    fn multi_field_rejects_when_one_field_mismatches() {
+        let rule = make_full_rule();
+        // signal_type matches, entity_type matches, but question_type doesn't
+        assert!(!rule.matches(Some("entity_signal"), Some("company"), Some("valuation"), &["compound"]));
+    }
+
+    #[test]
+    fn multi_field_rejects_when_keyword_mismatches() {
+        let rule = make_full_rule();
+        assert!(!rule.matches(Some("entity_signal"), Some("company"), Some("growth"), &["linear"]));
+    }
+
+    #[test]
+    fn rule_with_only_keywords_matches_by_keyword() {
+        let rule = TriggerRule { signal_type: None, entity_type: None, question_type: None, keywords: vec!["ai".into(), "ml".into()] };
+        assert!(rule.matches(None, None, None, &["AI"]));
+        assert!(!rule.matches(None, None, None, &["blockchain"]));
+    }
+
+    #[test]
+    fn rule_with_no_fields_set_matches_nothing() {
         let rule = TriggerRule { signal_type: None, entity_type: None, question_type: None, keywords: vec![] };
         assert!(!rule.matches(Some("anything"), None, None, &[]));
     }
