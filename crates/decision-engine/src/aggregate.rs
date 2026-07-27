@@ -69,6 +69,46 @@ pub struct DecisionAggregate {
 impl DecisionAggregate {
     // ── Factory ────────────────────────────────────────────────────
 
+    /// Reconstruct an aggregate from persisted state.
+    ///
+    /// Unlike `propose()`, this does NOT validate business rules or emit
+    /// domain events — it trusts the data came from a valid prior state.
+    /// Used by repository implementations to hydrate aggregates from D1 rows.
+    pub fn reconstruct(
+        id: DecisionId,
+        title: String,
+        hypothesis: Option<String>,
+        confidence: f64,
+        status: DecisionStatus,
+        rationale: Option<String>,
+        decision_type: String,
+        priority: String,
+        signal_thread_id: Option<i64>,
+        actor_id: Option<i64>,
+        expected_outcomes: Vec<ExpectedOutcome>,
+        observed_outcomes: Vec<ObservedOutcome>,
+        created_at: i64,
+        updated_at: i64,
+    ) -> Self {
+        Self {
+            id,
+            title,
+            hypothesis,
+            confidence,
+            status,
+            rationale,
+            decision_type,
+            priority,
+            signal_thread_id,
+            actor_id,
+            expected_outcomes,
+            observed_outcomes,
+            created_at,
+            updated_at,
+            events: Vec::new(),
+        }
+    }
+
     /// Propose a new decision.
     ///
     /// Validates invariants, sets status to `Proposed`, and records a
@@ -182,8 +222,36 @@ impl DecisionAggregate {
         &self.status
     }
 
+    pub fn hypothesis(&self) -> Option<&str> {
+        self.hypothesis.as_deref()
+    }
+
+    pub fn rationale(&self) -> Option<&str> {
+        self.rationale.as_deref()
+    }
+
+    pub fn decision_type(&self) -> &str {
+        &self.decision_type
+    }
+
+    pub fn priority(&self) -> &str {
+        &self.priority
+    }
+
+    pub fn signal_thread_id(&self) -> Option<i64> {
+        self.signal_thread_id
+    }
+
+    pub fn actor_id(&self) -> Option<i64> {
+        self.actor_id
+    }
+
     pub fn observed_outcomes(&self) -> &[ObservedOutcome] {
         &self.observed_outcomes
+    }
+
+    pub fn expected_outcomes(&self) -> &[ExpectedOutcome] {
+        &self.expected_outcomes
     }
 
     pub fn created_at(&self) -> i64 {

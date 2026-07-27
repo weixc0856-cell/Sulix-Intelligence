@@ -12,6 +12,7 @@ pub mod artifact_registry;
 pub mod error;
 pub mod events;
 pub mod ids;
+pub mod lineage_query;
 pub mod time;
 
 pub use error::DomainError;

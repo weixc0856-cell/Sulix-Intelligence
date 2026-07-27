@@ -17,6 +17,7 @@ pub mod memory;
 pub mod metrics;
 pub mod observation;
 pub mod outbox;
+pub mod provenance;
 pub mod reflection;
 pub mod signal;
 pub mod source;

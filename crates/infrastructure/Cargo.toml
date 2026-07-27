@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 shared-kernel = { workspace = true }
+decision-engine = { workspace = true }
 object-store = { workspace = true }
 store = { workspace = true }
 content-governance = { workspace = true }

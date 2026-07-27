@@ -690,6 +690,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "content-governance",
+ "decision-engine",
  "futures",
  "object-store",
  "serde",

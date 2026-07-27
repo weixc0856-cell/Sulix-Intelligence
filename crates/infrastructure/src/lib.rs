@@ -11,4 +11,6 @@
 //! - [`storage_policy`] — Source governance ↔ artifact retention policy
 
 pub mod artifact_registry;
+pub mod decision_repository;
+pub mod provenance;
 pub mod storage_policy;
