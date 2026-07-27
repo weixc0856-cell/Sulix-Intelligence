@@ -1,6 +1,7 @@
 //! Shared utilities for the worker-entry crate.
 
 /// Truncate a &str reference to `max_chars` characters at UTF-8 safe boundaries.
+#[allow(dead_code)]
 pub fn truncate_chars(input: &str, max_chars: usize) -> &str {
     input.char_indices().nth(max_chars).map(|(idx, _)| &input[..idx]).unwrap_or(input)
 }

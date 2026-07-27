@@ -246,6 +246,7 @@ where
             return Ok(ExpandResponse { nodes, edges, cursor: None });
         }
 
+        #[allow(clippy::single_match)]
         match parts[0] {
             "DEC" => {
                 // Load the decision

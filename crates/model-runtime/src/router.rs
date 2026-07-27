@@ -29,6 +29,7 @@ pub enum Capability {
 struct ProviderEntry {
     provider: Arc<dyn ModelProvider>,
     capabilities: Vec<Capability>,
+    #[allow(dead_code)]
     priority: u32, // lower = preferred
 }
 

@@ -262,7 +262,7 @@ struct TimelineEvent {
 }
 
 /// GET /api/intelligence/decisions/:id/timeline
-pub async fn timeline(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn timeline(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let store = Store::new(ctx.env.d1("DB")?);
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
@@ -303,7 +303,7 @@ pub async fn timeline(req: Request, ctx: RouteContext<()>) -> Result<Response> {
             events.push(TimelineEvent {
                 timestamp: e.evaluated_at,
                 event_type: "decision.evaluated".into(),
-                title: format!("Judgment: {}", e.evaluation.to_string()),
+                title: format!("Judgment: {}", e.evaluation),
                 description: e.reasoning.clone().unwrap_or_default(),
             });
         }

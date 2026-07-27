@@ -179,7 +179,7 @@ impl crate::D1Store {
             .prepare("UPDATE decision_records SET memo_json = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(&[
                 memo_json.into(),
-                JsValue::from_f64((js_sys::Date::now() / 1000.0) as f64),
+                JsValue::from_f64(js_sys::Date::now() / 1000.0),
                 JsValue::from_f64(id as f64),
             ])?
             .run()

@@ -23,6 +23,15 @@ use crate::status::DecisionStatus;
 /// 3. `Completed` requires at least one observed outcome.
 /// 4. Events are accumulated and drained — each event is emitted exactly
 ///    once by the application service.
+///
+/// ## Dead-code note
+///
+/// Several fields (`hypothesis`, `rationale`, etc.) are stored for
+/// persistence but not yet exposed via read accessors. They are not dead
+/// — the `DecisionRepository::save` implementation maps them to D1
+/// columns. `#[allow(dead_code)]` prevents false positives until the
+/// full repository cycle (save → find → hydrate) is wired in Phase 6.2C.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct DecisionAggregate {
     /// Domain ID (`DEC-{id:06}`).

@@ -32,6 +32,7 @@ pub(crate) fn json_err_internal(msg: &str) -> Result<Response> {
 }
 
 /// Add source attribution metadata as response headers.
+#[allow(dead_code)]
 pub fn add_source_headers(resp: &mut Response, source: &Source) {
     if let Some(ref attr) = source.attribution {
         let _ = resp.headers_mut().set("X-Source-Attribution", attr);

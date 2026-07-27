@@ -8,6 +8,7 @@
 //! - `thiserror` — error derive
 //! - `fastrand` — event ID generation (lightweight, no system deps)
 
+pub mod artifact_registry;
 pub mod error;
 pub mod events;
 pub mod ids;

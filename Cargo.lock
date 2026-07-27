@@ -683,6 +683,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "infrastructure"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "object-store",
+ "serde",
+ "serde_json",
+ "shared-kernel",
+ "store",
+ "thiserror",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

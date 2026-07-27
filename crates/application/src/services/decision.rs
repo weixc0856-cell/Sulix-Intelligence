@@ -11,6 +11,7 @@ use decision_engine::{DecisionAggregate, DecisionError, ProposeDecision};
 
 /// Application service for the Decision aggregate.
 pub struct DecisionService<S> {
+    #[allow(dead_code)]
     store: S,
 }
 

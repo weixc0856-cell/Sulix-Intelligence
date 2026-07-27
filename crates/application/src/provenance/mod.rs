@@ -46,10 +46,10 @@ where
 }
 
 async fn query_relations<S: store::StoreBackend>(
-    store: &S,
+    _store: &S,
     direction: &str,
-    artifact_type: &str,
-    artifact_id: &str,
+    _artifact_type: &str,
+    _artifact_id: &str,
 ) -> Result<Vec<ProvenanceNode>, store::StoreError> {
     let (select_col, type_col, id_col) = if direction == "from" {
         ("to_artifact_type, to_artifact_id, relationship", "from_artifact_type", "from_artifact_id")
