@@ -7,6 +7,9 @@ compatibility_flags = ["nodejs_compat"]
 AI_BASE_URL = "https://api.deepseek.com/v1"
 AI_CHAT_MODEL = "deepseek-v4-flash"
 AI_EMBEDDING_MODEL = "bge-large-en-v1.5"
+CRON_INGESTION_ENABLED = "true"
+CRON_SIGNAL_ENABLED = "true"
+# CRON_REFLECTION_ENABLED and CRON_MEMORY_ENABLED phased in after signal stable
 
 migrations_dir = "../../migrations"
 

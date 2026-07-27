@@ -1,6 +1,6 @@
 use worker::*;
 
-use crate::jobs::{archive, briefing, gc, ingestion, memory, reflection, signal};
+use crate::jobs::{archive, backfill, briefing, gc, ingestion, memory, reflection, signal};
 
 /// Feature flags for cron jobs. All default to false (disabled).
 /// Enable individually via env vars (e.g. CRON_INGESTION_ENABLED=true).
@@ -40,6 +40,10 @@ pub(crate) async fn handle(_event: ScheduledEvent, env: Env, _ctx: ScheduleConte
     if let Err(e) = gc::gc_r2_objects(&env, now).await {
         console_log!("gc_r2_objects failed: {e}");
     }
+
+    // AI Backfill — process pending articles without AI summaries
+    // Self-limiting (MAX_PER_CYCLE=50) and cursor-tracked, so no feature flag needed.
+    backfill::process_backfill(&env, now).await;
 
     // Signal Engine (feature-flagged)
     if cfg.signal_enabled {
