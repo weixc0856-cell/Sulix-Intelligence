@@ -1,7 +1,20 @@
 //! Prompt construction for claim extraction.
 
 /// Build the system prompt for claim extraction.
-pub fn build_claim_extraction_prompt(title: &str, body: &str) -> String {
+///
+/// `frameworks_context` is an optional list of reasoning frameworks to
+/// apply during analysis. When provided, the LLM will attempt to map
+/// each claim to applicable frameworks.
+pub fn build_claim_extraction_prompt(title: &str, body: &str, frameworks_context: Option<&str>) -> String {
+    let frameworks_section = match frameworks_context {
+        Some(ctx) if !ctx.is_empty() => format!(
+            "\n\nApplicable Reasoning Frameworks:\n{ctx}\n\
+             For each claim, identify which frameworks apply and how:\n\
+             \"frameworks_applied\": [{{\"framework_id\": \"...\", \"relevance\": 0.8, \"reasoning\": \"...\"}}]"
+        ),
+        _ => String::new(),
+    };
+
     format!(
         r#"Extract atomic, falsifiable claims from the following article.
 
@@ -17,14 +30,15 @@ Claim types:
 - trend: directional change over time
 - prediction: future outcome or forecast
 - causal: X causes or influences Y
-- opinion: value judgment or interpretation
+- opinion: value judgment or interpretation{}
 
 Output ONLY valid JSON:
-{{"claims": [{{"claim_type": "fact|trend|prediction|causal|opinion", "statement": "...", "reasoning": "...", "falsification": "...", "evidence_article_ids": [1,2], "counter_arguments": [], "uncertainty": "low|medium|high"}}]}}
+{{"claims": [{{"claim_type": "fact|trend|prediction|causal|opinion", "statement": "...", "reasoning": "...", "falsification": "...", "evidence_article_ids": [1,2], "counter_arguments": [], "frameworks_applied": [{{"framework_id": "...", "relevance": 0.8, "reasoning": "..."}}], "uncertainty": "low|medium|high"}}]}}
 
 Title: {title}
 
 Body: {body}"#,
+        frameworks_section,
         title = title,
         body = body,
     )
@@ -36,9 +50,17 @@ mod tests {
 
     #[test]
     fn prompt_contains_input() {
-        let prompt = build_claim_extraction_prompt("Test Title", "Test body content");
+        let prompt = build_claim_extraction_prompt("Test Title", "Test body content", None);
         assert!(prompt.contains("Test Title"));
         assert!(prompt.contains("Test body content"));
         assert!(prompt.contains("claim_type"));
+    }
+
+    #[test]
+    fn prompt_with_frameworks_includes_them() {
+        let ctx = "- Compound Growth: small continuous growth leads to exponential results";
+        let prompt = build_claim_extraction_prompt("Test Title", "Test body", Some(ctx));
+        assert!(prompt.contains("frameworks_applied"));
+        assert!(prompt.contains("Compound Growth"));
     }
 }

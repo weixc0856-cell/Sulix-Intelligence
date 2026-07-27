@@ -44,7 +44,7 @@ mod tests {
             falsification: "".into(),
             evidence_refs: vec![EvidenceRef { article_id: 1, relevance: 0.9 }; 5],
             counter_arguments: vec![],
-            uncertainty: Uncertainty::Low,
+            frameworks_applied: vec![],            uncertainty: Uncertainty::Low,
         };
         let result = evaluate_claim_confidence(&candidate, 0.85, 1.0);
         assert!(result.score > 0.5, "score should be high: {:.3}", result.score);
@@ -59,7 +59,7 @@ mod tests {
             falsification: "".into(),
             evidence_refs: vec![],
             counter_arguments: vec![],
-            uncertainty: Uncertainty::High,
+            frameworks_applied: vec![],            uncertainty: Uncertainty::High,
         };
         let result = evaluate_claim_confidence(&candidate, 0.3, 0.2);
         assert!(result.score < 0.3, "score should be low: {:.3}", result.score);

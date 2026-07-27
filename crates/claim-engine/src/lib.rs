@@ -23,6 +23,6 @@ pub mod parser;
 pub mod prompt;
 
 pub use confidence::evaluate_claim_confidence;
-pub use domain::{ClaimCandidate, ClaimType, EvidenceRef, Uncertainty};
+pub use domain::{ClaimCandidate, ClaimType, EvidenceRef, FrameworkRef, Uncertainty};
 pub use extractor::ClaimExtractor;
 pub use llm::LlmClaimExtractor;

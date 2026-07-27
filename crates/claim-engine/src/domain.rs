@@ -34,6 +34,14 @@ pub struct EvidenceRef {
     pub relevance: f64,
 }
 
+/// A reference to a reasoning framework applied to a claim.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameworkRef {
+    pub framework_id: String,
+    pub relevance: f64,
+    pub reasoning: String,
+}
+
 /// A candidate claim extracted from an article by the LLM.
 /// No confidence field — confidence is computed by ConfidenceEngine v2.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +58,8 @@ pub struct ClaimCandidate {
     pub evidence_refs: Vec<EvidenceRef>,
     /// Counter-arguments to this claim.
     pub counter_arguments: Vec<String>,
+    /// Reasoning frameworks applied to this claim.
+    pub frameworks_applied: Vec<FrameworkRef>,
     /// LLM's assessment of uncertainty (NOT confidence score).
     pub uncertainty: Uncertainty,
 }
@@ -71,6 +81,8 @@ pub(crate) struct LlmClaimItem {
     pub evidence_article_ids: Vec<i64>,
     #[serde(default)]
     pub counter_arguments: Vec<String>,
+    #[serde(default)]
+    pub frameworks_applied: Vec<FrameworkRef>,
     #[serde(default)]
     pub uncertainty: String,
 }

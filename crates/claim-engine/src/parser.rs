@@ -24,6 +24,7 @@ pub fn parse_claims_from_response(response: &str) -> Result<Vec<ClaimCandidate>,
             falsification: item.falsification,
             evidence_refs,
             counter_arguments: item.counter_arguments,
+            frameworks_applied: item.frameworks_applied,
             uncertainty,
         });
     }
