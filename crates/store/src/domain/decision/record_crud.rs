@@ -182,4 +182,22 @@ impl crate::D1Store {
             .await?;
         Ok(())
     }
+
+    /// Get reasoning framework traces for all claims linked to a decision.
+    pub async fn get_decision_framework_traces(&self, decision_id: i64) -> Result<Vec<serde_json::Value>, StoreError> {
+        self.db
+            .prepare(
+                "SELECT DISTINCT crf.framework_id, rf.name, rf.category, crf.relevance, crf.reasoning \
+                 FROM decision_record_claims drc \
+                 JOIN claim_reasoning_frameworks crf ON crf.claim_id = drc.claim_id \
+                 JOIN reasoning_frameworks rf ON rf.id = crf.framework_id \
+                 WHERE drc.decision_id = ?1 \
+                 ORDER BY crf.relevance DESC",
+            )
+            .bind(&[JsValue::from_f64(decision_id as f64)])?
+            .all()
+            .await?
+            .results()
+            .map_err(StoreError::from)
+    }
 }

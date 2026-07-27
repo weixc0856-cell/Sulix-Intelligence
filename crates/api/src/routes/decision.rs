@@ -343,6 +343,15 @@ struct ConfidenceDriver {
 }
 
 #[derive(serde::Serialize)]
+struct FrameworkTrace {
+    id: String,
+    name: String,
+    category: String,
+    relevance: f64,
+    reasoning: String,
+}
+
+#[derive(serde::Serialize)]
 struct ExplanationResponse {
     decision_id: String,
     decision_title: String,
@@ -353,6 +362,7 @@ struct ExplanationResponse {
     confidence_drivers: Vec<ConfidenceDriver>,
     uncertainties: Vec<String>,
     outcome_summary: Option<String>,
+    frameworks_applied: Vec<FrameworkTrace>,
 }
 
 /// GET /api/intelligence/decisions/:id/explanation
@@ -450,6 +460,21 @@ pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Respons
         uncertainties.push("Outcome not yet observed — prediction pending".into());
     }
 
+    // Load reasoning framework traces
+    let frameworks_applied: Vec<FrameworkTrace> = store
+        .get_decision_framework_traces(id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| FrameworkTrace {
+            id: row["framework_id"].as_str().unwrap_or("").to_string(),
+            name: row["name"].as_str().unwrap_or("").to_string(),
+            category: row["category"].as_str().unwrap_or("").to_string(),
+            relevance: row["relevance"].as_f64().unwrap_or(0.0),
+            reasoning: row["reasoning"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
+
     let response = ExplanationResponse {
         decision_id: format!("DEC-{:06}", id),
         decision_title: decision.title,
@@ -460,6 +485,7 @@ pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Respons
         confidence_drivers,
         uncertainties,
         outcome_summary,
+        frameworks_applied,
     };
 
     response::json_ok(json!(response))
