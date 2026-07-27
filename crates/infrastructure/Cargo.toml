@@ -11,6 +11,7 @@ workspace = true
 shared-kernel = { workspace = true }
 object-store = { workspace = true }
 store = { workspace = true }
+content-governance = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

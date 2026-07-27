@@ -1,4 +1,5 @@
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
+use infrastructure::artifact_registry::D1ArtifactRegistry;
 use object_store::R2Store;
 use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
@@ -7,27 +8,41 @@ use worker::*;
 
 use crate::runtime::intelligence::IntelligenceRuntime;
 
+type ReflectionEngineType =
+    ReflectionEngine<D1Store, Box<dyn EventStore>, RealReflectionGenerator, D1ArtifactRegistry<D1Store, R2Store>>;
+
 const MAX_PER_CYCLE: u32 = 3;
 
-pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
-    let store = match env.d1("DB") {
-        Ok(db) => D1Store::new(db),
-        Err(e) => {
-            console_log!("[reflection] D1 binding failed: {e}");
-            return;
-        }
-    };
-
+fn build_engine(env: &Env) -> Result<ReflectionEngineType, String> {
+    let store = D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding: {e}"))?);
+    let r2_bucket = env.bucket("RAW_CONTENT").map_err(|e| format!("R2 binding: {e}"))?;
+    let r2_store = R2Store::new(r2_bucket);
     let event_store: Box<dyn EventStore> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
-        (Some(db), Some(bucket)) => Box::new(EventR2Backend::new(D1Store::new(db), R2Store::new(bucket))),
+        (Some(db), Some(_bucket)) => Box::new(EventR2Backend::new(
+            D1Store::new(db),
+            R2Store::new(env.bucket("RAW_CONTENT").map_err(|e| format!("R2 binding 2: {e}"))?),
+        )),
         _ => Box::new(NoopEventStore::new()),
     };
+    let artifact_registry =
+        D1ArtifactRegistry::new(D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding 2: {e}"))?), r2_store);
 
     let provider = IntelligenceRuntime::new(env)
         .map(|r| r.provider)
         .unwrap_or_else(|_| Box::new(model_runtime::NoopProvider::new()));
     let generator = RealReflectionGenerator::new(provider);
-    let engine = ReflectionEngine::new(store, event_store, generator);
+
+    Ok(ReflectionEngine::new(store, event_store, generator, artifact_registry))
+}
+
+pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
+    let engine = match build_engine(env) {
+        Ok(e) => e,
+        Err(e) => {
+            console_log!("[reflection] engine build failed: {e}");
+            return;
+        }
+    };
 
     // 1. Stale recovery
     if let Ok(stale) = engine.repository().stale_generating_reflections(now).await {

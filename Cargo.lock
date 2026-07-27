@@ -59,6 +59,7 @@ dependencies = [
  "decision-engine",
  "embedding",
  "event-store",
+ "infrastructure",
  "js-sys",
  "model-runtime",
  "object-store",
@@ -81,6 +82,7 @@ dependencies = [
  "async-trait",
  "decision-engine",
  "futures",
+ "infrastructure",
  "serde",
  "serde_json",
  "shared-kernel",
@@ -687,6 +689,7 @@ name = "infrastructure"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "content-governance",
  "futures",
  "object-store",
  "serde",
@@ -1043,6 +1046,7 @@ dependencies = [
  "model-runtime",
  "serde",
  "serde_json",
+ "shared-kernel",
  "store",
  "thiserror",
 ]
@@ -1658,6 +1662,7 @@ dependencies = [
  "event-store",
  "feed-rs",
  "fetcher",
+ "infrastructure",
  "js-sys",
  "memory-engine",
  "model-runtime",

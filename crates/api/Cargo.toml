@@ -28,6 +28,7 @@ agent-engine.workspace = true
 decision-engine.workspace = true
 context-engine.workspace = true
 model-runtime.workspace = true
+infrastructure.workspace = true
 
 [dev-dependencies]
 url.workspace = true

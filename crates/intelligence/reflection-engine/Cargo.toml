@@ -8,6 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+shared-kernel.workspace = true
 store.workspace = true
 event-store.workspace = true
 serde.workspace = true

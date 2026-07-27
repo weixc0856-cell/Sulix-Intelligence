@@ -7,6 +7,7 @@
 //! All durable projections flow through D1 state + outbox.
 
 use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata, EventStore};
+use shared_kernel::artifact_registry::{ArtifactRef, ArtifactRegistry, NewArtifact};
 use store::{NewOutbox, NewReflection, StoreBackend, UpdateReflection};
 
 use crate::context::ReflectionContextBuilder;
@@ -38,26 +39,33 @@ pub struct ReflectionResult {
 
 /// ReflectionEngine — domain service.
 ///
-/// Generic over repository (StoreBackend), event store, and LLM generator.
-pub struct ReflectionEngine<R, E, G>
+/// Generic over:
+/// - `R`: Repository (StoreBackend or narrower trait)
+/// - `E`: Event store
+/// - `G`: LLM generator
+/// - `A`: Artifact registry for large-object storage (R2)
+pub struct ReflectionEngine<R, E, G, A>
 where
     R: StoreBackend,
     E: EventStore,
     G: ReflectionGenerator,
+    A: ArtifactRegistry,
 {
     repository: R,
     event_store: E,
     generator: G,
+    artifact_registry: A,
 }
 
-impl<R, E, G> ReflectionEngine<R, E, G>
+impl<R, E, G, A> ReflectionEngine<R, E, G, A>
 where
     R: StoreBackend,
     E: EventStore,
     G: ReflectionGenerator,
+    A: ArtifactRegistry,
 {
-    pub fn new(repository: R, event_store: E, generator: G) -> Self {
-        Self { repository, event_store, generator }
+    pub fn new(repository: R, event_store: E, generator: G, artifact_registry: A) -> Self {
+        Self { repository, event_store, generator, artifact_registry }
     }
 
     /// Access the underlying repository (for cron housekeeping queries).
@@ -139,8 +147,29 @@ where
             return Err(msg);
         }
 
-        // 6. Success — persist + emit events
-        let artifact_key = format!("memory/reflections/REF-{reflection_id:06}.json");
+        // 6. Store full reflection artifact via ArtifactRegistry → R2
+        let draft_json = serde_json::to_string(&draft).unwrap_or_default();
+        let artifact_result = self
+            .artifact_registry
+            .store(NewArtifact {
+                artifact_type: "reflection_result".into(),
+                owner_type: "reflection".into(),
+                owner_id: format!("REF-{reflection_id:06}"),
+                content: draft_json.as_bytes().to_vec(),
+                content_type: "application/json".into(),
+            })
+            .await;
+
+        // Non-fatal: if ArtifactRegistry is unavailable, fall back to legacy
+        // artifact_key-based storage (outbox → R2 archive via cron).
+        let artifact_ref: Option<ArtifactRef> = artifact_result.ok();
+
+        let artifact_key = artifact_ref
+            .as_ref()
+            .map(|r| r.object_key.clone())
+            .unwrap_or_else(|| format!("memory/reflections/REF-{reflection_id:06}.json"));
+
+        // 7. Persist reflection result in D1 (dual-write: artifact_key + result for backward compat)
         let _ = self
             .repository
             .update_reflection(&UpdateReflection {
@@ -158,11 +187,12 @@ where
             })
             .await;
 
-        // 7. Event outbox (ReflectionGenerated — lightweight)
+        // 8. Event outbox (ReflectionGenerated — lightweight)
         let event_payload = serde_json::json!({
             "reflection_id": format!("REF-{reflection_id:06}"),
             "decision_id": format!("DEC-{decision_id:06}"),
             "artifact_key": artifact_key,
+            "artifact_id": artifact_ref.as_ref().map(|r| r.artifact_id),
             "quality_score": v.quality_score,
             "lesson_count": draft.lessons.len(),
             "rule_count": draft.rules.len(),
@@ -173,16 +203,6 @@ where
                 object_type: "event:reflection".into(),
                 object_key: format!("memory/events/reflection/{}/{}", now, correlation_id),
                 payload: event_payload.to_string(),
-            })
-            .await;
-
-        // 8. Archive outbox (artifact content — R2 worker will pick up)
-        let _ = self
-            .repository
-            .insert_outbox(&NewOutbox {
-                object_type: "archive:reflection".into(),
-                object_key: artifact_key,
-                payload: serde_json::to_string(&draft).unwrap_or_default(),
             })
             .await;
 

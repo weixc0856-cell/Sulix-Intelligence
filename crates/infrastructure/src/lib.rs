@@ -8,5 +8,7 @@
 //! ## Modules
 //!
 //! - [`artifact_registry`] — ArtifactRegistry impl (InMemory for tests, D1 for production)
+//! - [`storage_policy`] — Source governance ↔ artifact retention policy
 
 pub mod artifact_registry;
+pub mod storage_policy;
