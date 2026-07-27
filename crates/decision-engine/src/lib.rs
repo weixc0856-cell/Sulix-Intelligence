@@ -47,5 +47,5 @@ pub use status::DecisionStatus;
 // ── Public API (legacy backward compat) ────────────────────────
 
 pub use domain::{DecisionMemo, DecisionProposal, MemoSection, OutcomeStatus};
-pub use memo::generate_memo;
+pub use memo::{generate_memo, FrameworkMemoSection};
 pub use proposal::build_proposal;

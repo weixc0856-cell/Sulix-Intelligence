@@ -583,8 +583,22 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<()>) -> Result<Respo
             return response::json_ok(json!({ "memo": memo }));
         }
     }
+    // Load framework traces for memo sections 5+8
+    let frameworks: Vec<decision_engine::FrameworkMemoSection> = store
+        .get_decision_framework_traces(id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| decision_engine::FrameworkMemoSection {
+            name: row["name"].as_str().unwrap_or("").to_string(),
+            category: row["category"].as_str().unwrap_or("").to_string(),
+            reasoning: row["reasoning"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
+    let fw_opt: Option<&[decision_engine::FrameworkMemoSection]> = if frameworks.is_empty() { None } else { Some(&frameworks) };
+
     let memo =
-        decision_engine::generate_memo(id, &record.title, &record.context, &record.rationale, record.confidence, None);
+        decision_engine::generate_memo(id, &record.title, &record.context, &record.rationale, record.confidence, None, fw_opt);
     let memo_json = serde_json::to_string(&memo).unwrap_or_default();
     let _ = store.set_decision_memo(id, &memo_json).await;
     response::json_ok(json!({ "memo": memo }))
