@@ -26,6 +26,7 @@ members = [
     "crates/decision-engine",
     "crates/events",
     "crates/infrastructure",
+    "crates/intelligence-domain",
 ]
 
 [workspace.package]
@@ -77,6 +78,7 @@ claim-engine = { path = "crates/claim-engine" }
 decision-engine = { path = "crates/decision-engine" }
 events = { path = "crates/events" }
 infrastructure = { path = "crates/infrastructure" }
+intelligence-domain = { path = "crates/intelligence-domain" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

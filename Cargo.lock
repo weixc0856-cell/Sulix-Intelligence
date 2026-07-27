@@ -701,6 +701,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "intelligence-domain"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "shared-kernel",
+ "thiserror",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

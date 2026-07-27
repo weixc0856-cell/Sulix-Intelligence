@@ -1,6 +1,19 @@
 //! Signal Engine — materialise entity-driven signal candidates into
 //! persistent signal threads with structured instances and events.
 //!
+//! ╔══════════════════════════════════════════════════════════════════╗
+//! ║  DEPRECATED — Sprint 6.2D                                      ║
+//! ║                                                                  ║
+//! ║  Domain types have moved to `intelligence-domain` crate.        ║
+//! ║  This crate is retained for backward compat:                    ║
+//! ║  - SignalEngine::run() orchestration                            ║
+//! ║  - SignalSource trait + discovery sources                       ║
+//! ║  - Scoring/discovery pipeline                                   ║
+//! ║                                                                  ║
+//! ║  New code should use `intelligence_domain::*` for domain types. ║
+//! ║  TODO (Sprint 6.2E+): migrate consumers then remove this crate. ║
+//! ╚══════════════════════════════════════════════════════════════════╝
+//!
 //! ## Architecture
 //!
 //! Iterates over [`SignalSource`] providers, gathers candidates,
