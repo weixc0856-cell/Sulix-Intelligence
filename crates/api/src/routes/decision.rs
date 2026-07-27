@@ -595,10 +595,18 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<()>) -> Result<Respo
             reasoning: row["reasoning"].as_str().unwrap_or("").to_string(),
         })
         .collect();
-    let fw_opt: Option<&[decision_engine::FrameworkMemoSection]> = if frameworks.is_empty() { None } else { Some(&frameworks) };
+    let fw_opt: Option<&[decision_engine::FrameworkMemoSection]> =
+        if frameworks.is_empty() { None } else { Some(&frameworks) };
 
-    let memo =
-        decision_engine::generate_memo(id, &record.title, &record.context, &record.rationale, record.confidence, None, fw_opt);
+    let memo = decision_engine::generate_memo(
+        id,
+        &record.title,
+        &record.context,
+        &record.rationale,
+        record.confidence,
+        None,
+        fw_opt,
+    );
     let memo_json = serde_json::to_string(&memo).unwrap_or_default();
     let _ = store.set_decision_memo(id, &memo_json).await;
     response::json_ok(json!({ "memo": memo }))

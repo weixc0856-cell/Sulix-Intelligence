@@ -168,12 +168,13 @@ impl DecisionAggregate {
     /// status are separate concerns.
     pub fn attach_outcome(&mut self, cmd: RecordOutcome) {
         let verdict = format!("{:?}", cmd.outcome.outcome_type).to_lowercase();
+        let metric = cmd.outcome.metric.clone();
         self.observed_outcomes.push(cmd.outcome);
         self.updated_at =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
         self.events.push(DecisionDomainEvent::OutcomeAttached {
             decision_id: self.id.0.clone(),
-            metric: self.observed_outcomes.last().unwrap().metric.clone(),
+            metric,
             verdict,
         });
     }

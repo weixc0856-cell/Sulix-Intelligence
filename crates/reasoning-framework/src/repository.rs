@@ -27,5 +27,11 @@ pub trait FrameworkRepository {
     async fn seed(&self, frameworks: &[ReasoningFramework]) -> Result<(), FrameworkError>;
 
     /// Update calibration data after an outcome is recorded.
-    async fn update_calibration(&self, framework_id: &str, calibration_score: f64, usage_count: u64, delta_avg: f64) -> Result<(), FrameworkError>;
+    async fn update_calibration(
+        &self,
+        framework_id: &str,
+        calibration_score: f64,
+        usage_count: u64,
+        delta_avg: f64,
+    ) -> Result<(), FrameworkError>;
 }

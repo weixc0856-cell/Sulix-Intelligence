@@ -51,16 +51,28 @@ pub fn generate_memo(
         version: "1".into(),
         generated_at: now,
         sections: vec![
-            section(1, "Executive Summary", &format!("Decision {}: {}. Confidence: {:.0}%.", decision_id, title, confidence * 100.0)),
+            section(
+                1,
+                "Executive Summary",
+                &format!("Decision {}: {}. Confidence: {:.0}%.", decision_id, title, confidence * 100.0),
+            ),
             section(2, "Decision Context", context_text),
             section(3, "Situation Analysis", "Derived from associated signal intelligence."),
             section(4, "Evidence Review", rationale_text),
             section(5, "Frameworks Applied", &assumptions_text),
-            section(6, "Strategic Options", "Option A: Proceed as planned.\nOption B: Monitor and wait.\nOption C: Gather additional evidence."),
+            section(
+                6,
+                "Strategic Options",
+                "Option A: Proceed as planned.\nOption B: Monitor and wait.\nOption C: Gather additional evidence.",
+            ),
             section(7, "Recommendation", &format!("Proceed with: {}", title)),
             section(8, "Countervailing Risks", &risk_text),
             section(9, "Expected Outcomes", "Define measurable metrics (users, revenue, adoption rate)."),
-            section(10, "Confidence Assessment", &format!("Confidence: {:.0}%. Based on available evidence and source quality.", confidence * 100.0)),
+            section(
+                10,
+                "Confidence Assessment",
+                &format!("Confidence: {:.0}%. Based on available evidence and source quality.", confidence * 100.0),
+            ),
             section(11, "Action Plan", "Define milestones with target dates."),
             section(12, "Review Date", &format!("Schedule review within 30 days. Generated at {} UTC.", now)),
         ],
@@ -92,8 +104,16 @@ mod tests {
     #[test]
     fn memo_includes_frameworks_when_provided() {
         let frameworks = vec![
-            FrameworkMemoSection { name: "Compound Growth".into(), category: "Finance".into(), reasoning: "Growth rate is 20% MoM".into() },
-            FrameworkMemoSection { name: "Network Effects".into(), category: "Strategy".into(), reasoning: "Platform dynamics favor winner".into() },
+            FrameworkMemoSection {
+                name: "Compound Growth".into(),
+                category: "Finance".into(),
+                reasoning: "Growth rate is 20% MoM".into(),
+            },
+            FrameworkMemoSection {
+                name: "Network Effects".into(),
+                category: "Strategy".into(),
+                reasoning: "Platform dynamics favor winner".into(),
+            },
         ];
         let memo = generate_memo(1, "Test", &None, &None, 0.8, None, Some(&frameworks));
         let section5 = &memo.sections[4];

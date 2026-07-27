@@ -37,14 +37,12 @@ impl<R: FrameworkRepository> CalibrationEngine<R> {
             if let Some(framework) = fw {
                 let new_usage = framework.usage_count + 1;
                 let outcome_score = if outcome_achieved { 1.0 } else { 0.0 };
-                let new_calibration = (framework.calibration_score * framework.usage_count as f64 + outcome_score)
-                    / new_usage as f64;
-                let new_delta_avg = (framework.confidence_delta_avg * framework.usage_count as f64 + impact.delta)
-                    / new_usage as f64;
+                let new_calibration =
+                    (framework.calibration_score * framework.usage_count as f64 + outcome_score) / new_usage as f64;
+                let new_delta_avg =
+                    (framework.confidence_delta_avg * framework.usage_count as f64 + impact.delta) / new_usage as f64;
 
-                self.repo
-                    .update_calibration(&impact.framework_id, new_calibration, new_usage, new_delta_avg)
-                    .await?;
+                self.repo.update_calibration(&impact.framework_id, new_calibration, new_usage, new_delta_avg).await?;
             }
         }
         Ok(())
@@ -53,14 +51,9 @@ impl<R: FrameworkRepository> CalibrationEngine<R> {
     /// Get frameworks sorted by calibration score (most accurate first).
     pub async fn top_frameworks(&self, min_usage: u64) -> Result<Vec<String>, FrameworkError> {
         let all = self.repo.list_all().await?;
-        let mut sorted: Vec<_> = all.into_iter()
-            .filter(|fw| fw.usage_count >= min_usage)
-            .collect();
-        sorted.sort_by(|a, b| {
-            b.calibration_score
-                .partial_cmp(&a.calibration_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let mut sorted: Vec<_> = all.into_iter().filter(|fw| fw.usage_count >= min_usage).collect();
+        sorted
+            .sort_by(|a, b| b.calibration_score.partial_cmp(&a.calibration_score).unwrap_or(std::cmp::Ordering::Equal));
         Ok(sorted.into_iter().map(|fw| fw.id).collect())
     }
 }
@@ -89,8 +82,12 @@ mod tests {
         async fn list_all(&self) -> Result<Vec<ReasoningFramework>, FrameworkError> {
             Ok(self.frameworks.borrow().clone())
         }
-        async fn search(&self, _query: &str) -> Result<Vec<ReasoningFramework>, FrameworkError> { Ok(Vec::new()) }
-        async fn seed(&self, _fw: &[ReasoningFramework]) -> Result<(), FrameworkError> { Ok(()) }
+        async fn search(&self, _query: &str) -> Result<Vec<ReasoningFramework>, FrameworkError> {
+            Ok(Vec::new())
+        }
+        async fn seed(&self, _fw: &[ReasoningFramework]) -> Result<(), FrameworkError> {
+            Ok(())
+        }
         async fn update_calibration(&self, id: &str, score: f64, count: u64, delta: f64) -> Result<(), FrameworkError> {
             self.updates.borrow_mut().push((id.to_string(), score, count, delta));
             Ok(())
@@ -107,10 +104,7 @@ mod tests {
             reasoning_template: "".into(),
             evidence_requirements: vec![],
         });
-        TrackingRepo {
-            frameworks: RefCell::new(vec![fw]),
-            updates: RefCell::new(Vec::new()),
-        }
+        TrackingRepo { frameworks: RefCell::new(vec![fw]), updates: RefCell::new(Vec::new()) }
     }
 
     #[test]

@@ -36,9 +36,7 @@ impl<R: FrameworkRepository> ReasoningSelector<R> {
         let matched: Vec<ReasoningFramework> = all
             .into_iter()
             .filter(|fw| {
-                fw.trigger_rules
-                    .iter()
-                    .any(|rule| rule.matches(signal_type, entity_type, question_type, keywords))
+                fw.trigger_rules.iter().any(|rule| rule.matches(signal_type, entity_type, question_type, keywords))
             })
             .collect();
 
@@ -74,16 +72,28 @@ mod tests {
 
     #[async_trait(?Send)]
     impl FrameworkRepository for MemRepo {
-        async fn find(&self, _id: &str) -> Result<Option<ReasoningFramework>, FrameworkError> { Ok(None) }
+        async fn find(&self, _id: &str) -> Result<Option<ReasoningFramework>, FrameworkError> {
+            Ok(None)
+        }
         async fn list_by_category(&self, _cat: FrameworkCategory) -> Result<Vec<ReasoningFramework>, FrameworkError> {
             Ok(self.frameworks.clone())
         }
         async fn list_all(&self) -> Result<Vec<ReasoningFramework>, FrameworkError> {
             Ok(self.frameworks.clone())
         }
-        async fn search(&self, _query: &str) -> Result<Vec<ReasoningFramework>, FrameworkError> { Ok(Vec::new()) }
-        async fn seed(&self, _fw: &[ReasoningFramework]) -> Result<(), FrameworkError> { Ok(()) }
-        async fn update_calibration(&self, _id: &str, _score: f64, _count: u64, _delta: f64) -> Result<(), FrameworkError> {
+        async fn search(&self, _query: &str) -> Result<Vec<ReasoningFramework>, FrameworkError> {
+            Ok(Vec::new())
+        }
+        async fn seed(&self, _fw: &[ReasoningFramework]) -> Result<(), FrameworkError> {
+            Ok(())
+        }
+        async fn update_calibration(
+            &self,
+            _id: &str,
+            _score: f64,
+            _count: u64,
+            _delta: f64,
+        ) -> Result<(), FrameworkError> {
             Ok(())
         }
     }
@@ -110,9 +120,8 @@ mod tests {
     fn selector_matches_by_entity_type() {
         let repo = make_repo();
         let selector = ReasoningSelector::new(repo);
-        let result = futures::executor::block_on(selector.select(
-            Some("entity_signal"), Some("company"), Some("growth"), &[],
-        ));
+        let result =
+            futures::executor::block_on(selector.select(Some("entity_signal"), Some("company"), Some("growth"), &[]));
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
     }
@@ -121,9 +130,8 @@ mod tests {
     fn selector_no_match() {
         let repo = make_repo();
         let selector = ReasoningSelector::new(repo);
-        let result = futures::executor::block_on(selector.select(
-            Some("observation"), Some("weather"), Some("climate"), &[],
-        ));
+        let result =
+            futures::executor::block_on(selector.select(Some("observation"), Some("weather"), Some("climate"), &[]));
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 0);
     }

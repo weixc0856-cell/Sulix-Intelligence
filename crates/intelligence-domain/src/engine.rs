@@ -125,11 +125,27 @@ mod tests {
     struct MemSignalRepo;
     #[async_trait(?Send)]
     impl SignalRepository for MemSignalRepo {
-        async fn upsert_thread(&self, _thread: &NewSignalThread) -> Result<i64, IntelligenceError> { Ok(1) }
-        async fn find_thread(&self, _id: i64) -> Result<Option<SignalThread>, IntelligenceError> { Ok(None) }
-        async fn append_instance(&self, _thread_id: i64, _score: f64, _impact: &str, _trend: &str) -> Result<i64, IntelligenceError> { Ok(1) }
-        async fn update_lifecycle(&self, _now: i64) -> Result<(), IntelligenceError> { Ok(()) }
-        async fn list_active(&self, _limit: u32) -> Result<Vec<SignalThread>, IntelligenceError> { Ok(Vec::new()) }
+        async fn upsert_thread(&self, _thread: &NewSignalThread) -> Result<i64, IntelligenceError> {
+            Ok(1)
+        }
+        async fn find_thread(&self, _id: i64) -> Result<Option<SignalThread>, IntelligenceError> {
+            Ok(None)
+        }
+        async fn append_instance(
+            &self,
+            _thread_id: i64,
+            _score: f64,
+            _impact: &str,
+            _trend: &str,
+        ) -> Result<i64, IntelligenceError> {
+            Ok(1)
+        }
+        async fn update_lifecycle(&self, _now: i64) -> Result<(), IntelligenceError> {
+            Ok(())
+        }
+        async fn list_active(&self, _limit: u32) -> Result<Vec<SignalThread>, IntelligenceError> {
+            Ok(Vec::new())
+        }
     }
 
     #[test]

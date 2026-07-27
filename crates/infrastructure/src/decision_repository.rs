@@ -59,8 +59,8 @@ impl<S: StoreBackend> D1DecisionRepository<S> {
             d.priority,
             d.signal_thread_id,
             d.actor_id,
-            vec![],  // expected_outcomes not in legacy decisions table
-            vec![],  // observed_outcomes not in legacy decisions table
+            vec![], // expected_outcomes not in legacy decisions table
+            vec![], // observed_outcomes not in legacy decisions table
             d.created_at,
             d.updated_at,
         )
@@ -84,10 +84,7 @@ impl<S: StoreBackend> D1DecisionRepository<S> {
 impl<S: StoreBackend> DecisionRepository for D1DecisionRepository<S> {
     async fn save(&self, decision: &DecisionAggregate) -> Result<(), DecisionError> {
         let new = Self::into_new(decision);
-        self.store
-            .create_decision(&new)
-            .await
-            .map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
+        self.store.create_decision(&new).await.map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
 
         if let Ok(d1_id) = Self::d1_id(&decision.id().0) {
             let status = Self::status_to_d1(decision.status());

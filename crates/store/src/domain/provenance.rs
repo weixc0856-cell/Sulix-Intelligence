@@ -27,11 +27,17 @@ impl crate::D1Store {
         artifact_id: &str,
     ) -> Result<Vec<LineageRow>, StoreError> {
         let (select_clause, type_col, id_col) = if direction == "from" {
-            ("from_artifact_type, from_artifact_id, to_artifact_type, to_artifact_id, relationship",
-             "from_artifact_type", "from_artifact_id")
+            (
+                "from_artifact_type, from_artifact_id, to_artifact_type, to_artifact_id, relationship",
+                "from_artifact_type",
+                "from_artifact_id",
+            )
         } else {
-            ("from_artifact_type, from_artifact_id, to_artifact_type, to_artifact_id, relationship",
-             "to_artifact_type", "to_artifact_id")
+            (
+                "from_artifact_type, from_artifact_id, to_artifact_type, to_artifact_id, relationship",
+                "to_artifact_type",
+                "to_artifact_id",
+            )
         };
 
         let sql = format!(

@@ -20,7 +20,13 @@ impl LlmClaimExtractor {
 
 #[async_trait(?Send)]
 impl ClaimExtractor for LlmClaimExtractor {
-    async fn extract(&self, title: &str, body: &str, _article_id: i64, frameworks_context: Option<&str>) -> Result<Vec<ClaimCandidate>, String> {
+    async fn extract(
+        &self,
+        title: &str,
+        body: &str,
+        _article_id: i64,
+        frameworks_context: Option<&str>,
+    ) -> Result<Vec<ClaimCandidate>, String> {
         let prompt = build_claim_extraction_prompt(title, body, frameworks_context);
 
         let request = model_runtime::ModelRequest {

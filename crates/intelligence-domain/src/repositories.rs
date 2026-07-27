@@ -33,7 +33,13 @@ pub trait ClaimRepository {
 pub trait SignalRepository {
     async fn upsert_thread(&self, thread: &NewSignalThread) -> Result<i64, IntelligenceError>;
     async fn find_thread(&self, id: i64) -> Result<Option<SignalThread>, IntelligenceError>;
-    async fn append_instance(&self, thread_id: i64, score: f64, impact: &str, trend: &str) -> Result<i64, IntelligenceError>;
+    async fn append_instance(
+        &self,
+        thread_id: i64,
+        score: f64,
+        impact: &str,
+        trend: &str,
+    ) -> Result<i64, IntelligenceError>;
     async fn update_lifecycle(&self, now: i64) -> Result<(), IntelligenceError>;
     async fn list_active(&self, limit: u32) -> Result<Vec<SignalThread>, IntelligenceError>;
 }

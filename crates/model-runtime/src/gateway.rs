@@ -130,7 +130,8 @@ impl ModelProvider for ModelGateway {
 
     async fn generate(&self, request: ModelRequest) -> Result<ModelResponse, ModelError> {
         let _caps = self.policy.task_capabilities(request.task);
-        let provider = self.select_provider().ok_or_else(|| ModelError::ProviderError("no providers registered".into()))?;
+        let provider =
+            self.select_provider().ok_or_else(|| ModelError::ProviderError("no providers registered".into()))?;
         provider.generate(request).await
     }
 }

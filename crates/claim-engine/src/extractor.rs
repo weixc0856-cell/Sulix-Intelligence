@@ -11,5 +11,11 @@ pub trait ClaimExtractor {
     ///
     /// `frameworks_context` is an optional string listing applicable reasoning
     /// frameworks to apply during analysis.
-    async fn extract(&self, title: &str, body: &str, article_id: i64, frameworks_context: Option<&str>) -> Result<Vec<ClaimCandidate>, String>;
+    async fn extract(
+        &self,
+        title: &str,
+        body: &str,
+        article_id: i64,
+        frameworks_context: Option<&str>,
+    ) -> Result<Vec<ClaimCandidate>, String>;
 }

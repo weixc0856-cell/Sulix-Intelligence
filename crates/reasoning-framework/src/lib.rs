@@ -35,7 +35,9 @@ mod selector;
 
 pub use calibration::CalibrationEngine;
 pub use error::FrameworkError;
-pub use framework::{ClaimFrameworkRef, FrameworkCategory, FrameworkImpact, NewFramework, ReasoningFramework, TriggerRule};
+pub use framework::{
+    ClaimFrameworkRef, FrameworkCategory, FrameworkImpact, NewFramework, ReasoningFramework, TriggerRule,
+};
 pub use repository::FrameworkRepository;
 pub use seed::initial_frameworks;
 pub use selector::ReasoningSelector;

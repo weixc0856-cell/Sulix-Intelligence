@@ -38,11 +38,7 @@ impl LineageQuery for D1LineageQuery {
                     (row.from_artifact_type, row.from_artifact_id)
                 };
 
-                LineageEntry {
-                    target_type,
-                    target_id,
-                    relationship: row.relationship,
-                }
+                LineageEntry { target_type, target_id, relationship: row.relationship }
             })
             .collect();
 

@@ -49,16 +49,28 @@ pub struct TriggerRule {
 }
 
 impl TriggerRule {
-    pub fn matches(&self, signal_type: Option<&str>, entity_type: Option<&str>, question_type: Option<&str>, keywords: &[&str]) -> bool {
+    pub fn matches(
+        &self,
+        signal_type: Option<&str>,
+        entity_type: Option<&str>,
+        question_type: Option<&str>,
+        keywords: &[&str],
+    ) -> bool {
         // Direct type matches (high precision)
         if let Some(st) = &self.signal_type {
-            if signal_type.map_or(false, |s| s == st) { return true; }
+            if signal_type.map_or(false, |s| s == st) {
+                return true;
+            }
         }
         if let Some(et) = &self.entity_type {
-            if entity_type.map_or(false, |e| e == et) { return true; }
+            if entity_type.map_or(false, |e| e == et) {
+                return true;
+            }
         }
         if let Some(qt) = &self.question_type {
-            if question_type.map_or(false, |q| q == qt) { return true; }
+            if question_type.map_or(false, |q| q == qt) {
+                return true;
+            }
         }
         // Keyword fallback
         if !self.keywords.is_empty() {
@@ -150,6 +162,12 @@ pub struct FrameworkImpact {
 
 impl FrameworkImpact {
     pub fn new(framework_id: String, claim_id: i64, confidence_before: f64, confidence_after: f64) -> Self {
-        Self { framework_id, claim_id, confidence_before, confidence_after, delta: confidence_after - confidence_before }
+        Self {
+            framework_id,
+            claim_id,
+            confidence_before,
+            confidence_after,
+            delta: confidence_after - confidence_before,
+        }
     }
 }
