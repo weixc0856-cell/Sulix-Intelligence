@@ -24,6 +24,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
+          targets: wasm32-unknown-unknown
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
@@ -50,8 +51,19 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # Step 3.5: wasm 兼容检查 — 部署目标被编译为 wasm32-unknown-unknown，
+      # 之前只能在 push 后 deploy 时暴露编译错误；现在 PR 合入前即可见。
+      # 注意：故意不用 --all-targets。deploy 的 worker-build 只编译 lib/bin，
+      # 不含测试目标；且信号引擎有 `#[cfg(all(test, target_arch = "wasm32"))]`
+      # 的遗留测试模块（plain #[test] 在 wasm32 上既无法运行也不编译），
+      # 检查 test 目标只会产生与部署无关的噪音。
+      - name: Wasm check
+        run: cargo check --workspace --all-features --target wasm32-unknown-unknown
+
       # Step 4: 单元测试
       # 覆盖率门禁在独立的 .github/workflows/coverage.yml（14-crate 集合，--fail-under-lines 70），
       # 见 docs/testing.md。此处只管测试全绿。
+      # --no-fail-fast：跑完所有 crate 再失败，输出里每个 test binary 都以 crate 命名，
+      # 失败时可定位到具体 crate。
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --no-fail-fast
