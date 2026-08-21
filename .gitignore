@@ -33,6 +33,8 @@ output/
 
 # ---- 开发过程文件（计划、设计稿、会议记录）----
 # /docs/  /*           # docs/ now version-controlled for architecture docs
+!docs/
+!docs/**
 
 # ---- 代码分析产物 ----
 /.codegraph/
