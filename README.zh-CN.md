@@ -18,6 +18,20 @@ Cron 触发器（每 30 分钟）→ FETCH_QUEUE → 队列消费者
 HTTP (Worker Router) ←─ service binding ─→ Astro 前端 (Worker)
 ```
 
+代码库正在向 **Ports & Adapters** 迁移（严格单向依赖）：
+
+```
+delivery (api + worker-entry)
+      ↓ 只依赖 application + 领域类型 + worker
+application（用例服务，泛型注入端口）
+      ↓
+domain（intelligence-domain / decision-engine / reasoning-framework / shared-kernel）
+      ↑ 端口（Repository traits 定义在领域层）
+infrastructure（D1 适配器，实现领域 trait）──→ store（仅作为 D1 数据访问库）
+```
+
+`store` 正在从 5800 行的上帝对象拆除为纯 D1 数据访问层。迁移状态与 P2–P7 / T6–T9 路线图见 `docs/superpowers/plans/`（详见 [迁移状态](#迁移状态)）。
+
 ## 认知管线
 
 ```
@@ -38,42 +52,53 @@ HTTP (Worker Router) ←─ service binding ─→ Astro 前端 (Worker)
 
 | Crate | 用途 |
 |---|---|
-| `store` | D1 访问层 + 22 个领域 trait + `StoreBackend` + `MemoryStore` 测试实现 |
+| `api` | 73+ HTTP 路由（delivery 层）— 信号、决策、主张、置信度、来源、观察、合规、图谱、订阅源 CRUD、文章、策略 |
+| `worker-entry` | Workers 入口：HTTP + Cron + Queue + 指标收集 |
+| `application` | 用例服务（端口注入）— 雷达投影、决策图谱、语义搜索 |
+| `intelligence-domain` | 情报域类型 + `Observation/Claim/Signal` 仓库端口 |
+| `decision-engine` | 决策聚合、状态机 + `DecisionRepository` 端口 |
+| `reasoning-framework` | 推理解释的 framework/applied-trace 类型 |
+| `claim-engine` | 从信号提取主张 |
+| `shared-kernel` | 跨情报 crate 的共享值对象/ID/事件 |
+| `infrastructure` | 实现领域仓库 trait 的 D1 适配器（`decision/signal/claim/reflection/memory_repository.rs`） |
+| `store` | D1 数据访问层（原上帝对象；正在收缩，`StoreBackend` `#[deprecated]` 带硬 TTL） |
 | `intelligence/signal-engine` | 信号发现、聚类、评分、雷达投影、批量证据查询 |
 | `intelligence/reflection-engine` | 决策反思生命周期 — 从结果生成结构化经验 |
 | `memory-engine` | 长时记忆提升 — 评估、评分、归档记忆制品 |
 | `context-engine` | 意图感知的上下文快照组装，用于 Agent 查询 |
 | `agent-engine` | Agent 推理运行时 + 证据验证 |
+| `model-runtime` | LLM 抽象（`Summarizer`/`HttpClient` trait + 测试用 `MockProvider`） |
 | `content-governance` | 纯逻辑策略评估 — 按源层级控制存储/服务/嵌入/AI |
 | `fetcher` | RSS/Atom 抓取 + SSRF 防护 + 全文提取（按源开启） |
 | `rules` | 评分引擎（关键词匹配、来源过滤、AND/OR）— 纯逻辑 |
-| `ai-pipeline` | LLM 摘要 + 标签归一化 |
 | `search` | D1 FTS5 关键词搜索 + 可选标签/分类过滤 |
+| `entity` | 实体值对象 + 仓库 |
 | `embedding` | Workers AI 嵌入向量（bge-large-en-v1.5） |
 | `vectorize` | Cloudflare Vectorize 共享 wasm 绑定 |
-| `api` | 73+ HTTP 路由 — 信号、决策、主张、置信度、来源、观察、合规、图谱 |
+| `events` | 事件契约（outbox 事件定义） |
 | `event-store` | 事件溯源 — outbox-first 写入 → 异步归档至 R2 |
 | `object-store` | 对象存储 trait + R2Store 实现 |
-| `application` | 雷达投影、决策图谱、语义搜索 |
-| `worker-entry` | Workers 入口：HTTP + Cron + Queue + 指标收集 |
+| `ai-pipeline` | LLM 摘要 + 标签归一化 |
 
 ## 关键设计决策
 
 - **Cloudflare Workers**（非 VPS）— 单人运维成本可控，免费套餐，原生 D1/Queues/R2
 - **D1 + FTS5** — CF 生态内唯一的结构化存储方案，触发器维护全文索引
 - **Cloudflare Queues** — 每源隔离，内置重试，无超时风险
+- **Astro server mode + service binding** — 每请求取最新数据，无需为新增文章重建
 - **CQRS + 事件溯源** — 写（Repository trait）与读（QueryService trait）分离；事件仅追加、不可变
 - **因子置信度** — 置信度 = 证据 × 来源可信 × 新鲜度 × 校准的几何平均，完全可解释
 - **来源治理** — 每个 feed 对应一条 source 记录（层级、策略、许可、信任分），内容策略在摄取和服务两阶段强制执行
 - **溯源链** — 每个智能制品携带 Source → Observation → Signal → Claim → Decision → Memory 的完整溯源
-- **StoreBackend trait** — `D1Store`（生产）与 `MemoryStore`（测试）通过 trait 互换
+- **worker::Router**（非 Axum）— `worker::Env`/`D1Database` 不满足 `Send`/`Sync`，`worker::Router` 为此场景设计
+- **StoreBackend trait** — `D1Store`（生产）与 `MemoryStore`（测试）通过 trait 互换；管线对任何后端泛型（正拆除为按域端口）
 
 ## 快速开始
 
 ```bash
 # 需要 wasm32-unknown-unknown 目标
 cargo check --workspace
-cargo test --workspace              # 148+ 单元测试
+cargo test --workspace              # 318+ 单元测试
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
@@ -116,18 +141,25 @@ npx wrangler d1 migrations apply sulix-feed-db --remote
 | `GET /api/intelligence/signals/:id` | 信号详情 |
 | `GET /api/intelligence/signals/:id/provenance` | 信号溯源链 |
 | `GET /api/intelligence/briefing/today` | 每日情报简报 |
+| `GET /api/intelligence/briefings` | 简报历史 |
 | `GET /api/intelligence/entities` | 实体图谱 |
-| `GET /api/intelligence/entities/:id/*` | 实体详情、文章、信号、关系 |
+| `GET /api/intelligence/entities/:id/*` | 实体详情、文章、信号、关系、活跃度 |
 
 ### 决策智能
 | 端点 | 说明 |
 |---|---|
-| `GET/POST /api/intelligence/decisions` | 决策列表/创建 |
+| `GET /api/intelligence/decisions` | 决策列表（?status=） |
+| `POST /api/intelligence/signals/:id/decisions` | 为信号创建决策 |
 | `GET /api/intelligence/decisions/stats` | 决策准确率 |
 | `GET /api/intelligence/decisions/:id` | 决策详情 |
+| `POST /api/intelligence/decisions/:id/status` | 更新决策状态 |
+| `POST /api/intelligence/decisions/:id/reflect` | 触发 AI 反思 |
+| `POST /api/intelligence/decisions/:id/outcomes` | 记录结果 |
+| `POST /api/intelligence/decisions/:id/evaluations` | 记录评估 |
+| `GET /api/intelligence/decisions/:id/timeline` | 合并决策时间线 |
 | `GET /api/intelligence/decisions/:id/explanation` | 为什么系统相信这个判断 |
-| `GET /api/intelligence/decisions/:id/timeline` | 决策时间线 |
-| `GET /api/projections/decision-graph` | 认知图谱 |
+| `GET /api/projections/decision-graph` | 认知图谱投影 |
+| `POST /api/projections/decision-graph/:id/expand` | 展开图谱节点 |
 
 ### 主张与置信度
 | 端点 | 说明 |
@@ -142,43 +174,43 @@ npx wrangler d1 migrations apply sulix-feed-db --remote
 | `GET /api/observations` | 观察记录列表 |
 | `GET /api/observations/:id/lineage` | 完整溯源链 |
 | `POST /api/compliance/takedown` | 提交下架请求 |
+| `GET /api/compliance/takedowns` | 下架请求列表（管理） |
 
-## 项目结构
+### 内部
+| 端点 | 说明 |
+|---|---|
+| `POST /api/internal/agent/run` | Agent 推理引擎 |
+| `POST /api/internal/context` | 上下文快照组装 |
+| `POST /api/strategies/preview` | 预览信号策略影响 |
+| `GET/POST/PUT/DELETE /api/rules` | 过滤/评分规则 CRUD |
 
-```
-crates/
-├── store/              D1 访问层 + 领域 trait
-├── fetcher/            RSS 抓取 + SSRF
-├── rules/              评分引擎
-├── ai-pipeline/        LLM 摘要
-├── search/             FTS5 搜索
-├── embedding/          嵌入向量
-├── vectorize/          Vectorize 绑定
-├── content-governance/ 内容策略（纯逻辑）
-├── api/                73+ HTTP 路由
-├── intelligence/
-│   ├── signal-engine/  信号引擎
-│   └── reflection-engine/ 反思引擎
-├── memory-engine/      记忆引擎
-├── context-engine/     上下文引擎
-├── agent-engine/       Agent 推理
-├── event-store/       事件溯源
-├── object-store/       R2 对象存储
-├── application/       雷达/图谱/搜索
-└── worker-entry/      Workers 入口
-```
+这些端点的前端侧权威契约（DTO、分页、null-safety）位于前端仓库 `docs/api-contract.md`（§11/§12 Explicit API Contract）。后端在 P2–P5 期间按其 audit 自身 DTO。
 
 ## CI/CD
 
-推送 `master` → GitHub Actions：
-1. `cargo clippy --workspace -D warnings`
-2. `cargo test --workspace`
-3. `worker-build --release`
-4. `npx wrangler deploy`
+推送 `master` → GitHub Actions。三道独立门禁：
+
+1. **`lint.yml`**（PR）：`cargo-deny` bans（store/vectorize/embedding/event-store/object-store 禁止作为 infra/delivery 之外的新增依赖）→ 分层依赖脚本 → `cargo fmt --check` → `cargo clippy -- -D warnings` → **wasm32 检查**（`cargo check --target wasm32-unknown-unknown`）→ `cargo test --workspace`
+2. **`coverage.yml`**（PR）：`cargo-llvm-cov` 覆盖 14-crate 纯逻辑 + 应用层集合，**`--fail-under-lines 70` 硬门禁**（当前 73.84%），上传 lcov 报告
+3. **`deploy.yml`**（push 至 master）：wasm 检查 → `worker-build --release` → `npx wrangler deploy` → 冒烟测试（health + semantic search）
+
+Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+
+## 迁移状态
+
+Sprint 6.5 去耦（Store 上帝对象拆除）**进行中**。状态截至 2026-08-21：
+
+**已完成：** P1（依赖 bans + 分层依赖门禁）· T1（基线修复：fmt/clippy 绿）· T2（infrastructure 适配器测试）· T3（shared-kernel/events 契约测试）· T4（llvm-cov + 70% 门禁）· T5（PR wasm 门禁）· T10（基线追踪）
+
+**待办：** P2（Intelligence/Reflection/Memory 域仓库端口）→ P3（适配器迁移至 `infrastructure`）→ P4（收缩 `StoreBackend`，deprecated 薄兼容层带硬 TTL）→ P5（application 成为唯一用例入口）→ P6（删除旧 crate + `StoreBackend`）→ P7（架构护栏 `check-architecture.sh`）；测试 T6（应用层用例测试）、T7（去耦每 commit 硬约束）、T8（跨域集成：observe→claim→signal→decision→reflection）、T9（delivery 层测试）
+
+计划文档：`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md`（P1–P7）与 `docs/superpowers/plans/2026-08-21-testing-plan.md`（T1–T10）。
 
 ## 前端
 
-[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 前端，以 Cloudflare Worker 部署。功能包括情报雷达、信号调查、决策追踪、信任中心、来源溯源、语义搜索、深色模式、订阅源管理和认知图谱。
+[intel.getsulix.com](https://intel.getsulix.com) — Astro 5 前端，以 Cloudflare Worker + service binding 部署。功能包括情报雷达、信号调查、决策追踪、信任中心、来源溯源、语义搜索、深色模式、订阅源管理和认知图谱。
+
+仓库：[weixc0856-cell/Intel-Web](https://github.com/weixc0856-cell/Intel-Web)
 
 ## 许可证
 
