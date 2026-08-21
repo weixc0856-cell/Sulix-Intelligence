@@ -140,5 +140,79 @@ where
     }
 }
 
-// Tests for D1ArtifactRegistry require wasm32 target (js_sys::Date in MemoryStore).
-// Run with: cargo test --target wasm32-unknown-unknown -p infrastructure
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use object_store::BlobStore;
+    use shared_kernel::artifact_registry::{NewArtifact, RegistryError};
+    use store::memory::MemoryStore;
+
+    type Registry = D1ArtifactRegistry<MemoryStore, BlobStore>;
+
+    fn make_registry() -> Registry {
+        Registry::new(MemoryStore::new(), BlobStore::new())
+    }
+
+    fn sample_artifact() -> NewArtifact {
+        NewArtifact {
+            artifact_type: "decision_memo".into(),
+            owner_type: "decision".into(),
+            owner_id: "DEC-000001".into(),
+            content: b"hypothesis memo".to_vec(),
+            content_type: "text/markdown".into(),
+        }
+    }
+
+    #[test]
+    fn store_writes_registry_and_returns_artifact_ref() {
+        let registry = make_registry();
+        let reference = futures::executor::block_on(registry.store(sample_artifact())).unwrap();
+
+        assert_eq!(reference.artifact_id, 1);
+        assert_eq!(reference.artifact_type, "decision_memo");
+        assert_eq!(reference.storage, "r2");
+        assert!(
+            reference.object_key.starts_with("artifacts/decision_memo/DEC-000001/"),
+            "object_key: {}",
+            reference.object_key
+        );
+        assert_eq!(reference.size_bytes, 15); // "hypothesis memo".len()
+    }
+
+    #[test]
+    fn read_returns_not_found_for_unknown_artifact() {
+        let registry = make_registry();
+        let err = futures::executor::block_on(registry.read(999)).unwrap_err();
+        assert!(matches!(err, RegistryError::NotFound(_)));
+    }
+
+    // KNOWN DEFECT (decoupling P3, adapter rework): `store()` writes the row with
+    // `entity_id = 0`, but `read()` queries `list_artifacts_by_entity(artifact_id, 1)`.
+    // With ids starting at 1 the two never align, so a store→read round-trip returns
+    // NotFound even in production D1 (both artifact_registry table and MemoryStore).
+    // Un-ignore once a by-id lookup port on artifact_registry exists and read() uses it.
+    #[test]
+    #[ignore = "KNOWN DEFECT: read() looks up artifact_id as entity_id; store() writes entity_id=0. Fix in decoupling P3."]
+    fn read_round_trips_stored_content() {
+        let registry = make_registry();
+        let reference = futures::executor::block_on(registry.store(sample_artifact())).unwrap();
+        let bytes = futures::executor::block_on(registry.read(reference.artifact_id)).unwrap();
+        assert_eq!(bytes, Some(b"hypothesis memo".to_vec()));
+    }
+
+    // KNOWN DEFECT (decoupling P3): `find_by_owner()` calls StoreBackend::list_artifacts,
+    // which reads the memory_artifacts table — a DIFFERENT table from the
+    // artifact_registry row that `store()` writes (MemoryStore mirrors this split).
+    // It also ignores owner_type/owner_id entirely. Un-ignore once find_by_owner
+    // reads the artifact_registry table and filters by the owner in metadata.
+    #[test]
+    #[ignore = "KNOWN DEFECT: find_by_owner() queries memory_artifacts, not artifact_registry. Fix in decoupling P3."]
+    fn find_by_owner_returns_stored_artifact() {
+        let registry = make_registry();
+        let reference = futures::executor::block_on(registry.store(sample_artifact())).unwrap();
+        let found =
+            futures::executor::block_on(registry.find_by_owner("decision_memo", "decision", "DEC-000001")).unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().artifact_id, reference.artifact_id);
+    }
+}

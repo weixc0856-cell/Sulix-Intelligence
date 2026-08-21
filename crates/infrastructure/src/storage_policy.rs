@@ -76,3 +76,79 @@ pub fn can_store(category: &ArtifactCategory, source_policy: Option<&PolicyDecis
         ArtifactCategory::ReasoningTrace => true,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use content_governance::{PolicyDecision, StoragePermission};
+
+    fn policy(storage: StoragePermission, retention_days: u32) -> PolicyDecision {
+        PolicyDecision { storage, retention_days, ..PolicyDecision::default() }
+    }
+
+    #[test]
+    fn from_type_maps_known_types_and_defaults_unknown() {
+        assert_eq!(ArtifactCategory::from_type("article_content"), ArtifactCategory::ArticleContent);
+        assert_eq!(ArtifactCategory::from_type("ai_summary"), ArtifactCategory::AiSummary);
+        assert_eq!(ArtifactCategory::from_type("claim_analysis"), ArtifactCategory::ClaimAnalysis);
+        assert_eq!(ArtifactCategory::from_type("decision_memo"), ArtifactCategory::DecisionMemo);
+        assert_eq!(ArtifactCategory::from_type("reflection_result"), ArtifactCategory::ReflectionResult);
+        assert_eq!(ArtifactCategory::from_type("reasoning_trace"), ArtifactCategory::ReasoningTrace);
+        // Unknown types degrade to short-retention default.
+        assert_eq!(ArtifactCategory::from_type("mystery_type"), ArtifactCategory::ReasoningTrace);
+    }
+
+    #[test]
+    fn retention_days_without_policy_uses_category_defaults() {
+        assert_eq!(retention_days(&ArtifactCategory::ArticleContent, None), 7);
+        assert_eq!(retention_days(&ArtifactCategory::AiSummary, None), 7);
+        assert_eq!(retention_days(&ArtifactCategory::ClaimAnalysis, None), 7);
+        assert_eq!(retention_days(&ArtifactCategory::DecisionMemo, None), 365);
+        assert_eq!(retention_days(&ArtifactCategory::ReflectionResult, None), 90);
+        assert_eq!(retention_days(&ArtifactCategory::ReasoningTrace, None), 30);
+    }
+
+    #[test]
+    fn retention_days_follows_source_policy_where_governed() {
+        let src = policy(StoragePermission::Allowed, 14);
+        assert_eq!(retention_days(&ArtifactCategory::ArticleContent, Some(&src)), 14);
+        assert_eq!(retention_days(&ArtifactCategory::AiSummary, Some(&src)), 14);
+        assert_eq!(retention_days(&ArtifactCategory::ClaimAnalysis, Some(&src)), 14);
+    }
+
+    #[test]
+    fn decision_memo_respects_policy_but_never_below_ninety() {
+        assert_eq!(retention_days(&ArtifactCategory::DecisionMemo, Some(&policy(StoragePermission::Allowed, 14))), 90);
+        assert_eq!(
+            retention_days(&ArtifactCategory::DecisionMemo, Some(&policy(StoragePermission::Allowed, 400))),
+            400
+        );
+    }
+
+    #[test]
+    fn derived_categories_ignore_policy() {
+        let src = policy(StoragePermission::Allowed, 14);
+        assert_eq!(retention_days(&ArtifactCategory::ReflectionResult, Some(&src)), 90);
+        assert_eq!(retention_days(&ArtifactCategory::ReasoningTrace, Some(&src)), 30);
+    }
+
+    #[test]
+    fn can_store_respects_source_permission_for_source_governed_types() {
+        assert!(can_store(&ArtifactCategory::ArticleContent, Some(&policy(StoragePermission::Allowed, 7))));
+        assert!(!can_store(&ArtifactCategory::ArticleContent, Some(&policy(StoragePermission::Denied, 7))));
+        assert!(!can_store(&ArtifactCategory::ArticleContent, None));
+        assert!(can_store(&ArtifactCategory::AiSummary, Some(&policy(StoragePermission::Allowed, 7))));
+        assert!(!can_store(&ArtifactCategory::AiSummary, None));
+        assert!(can_store(&ArtifactCategory::ClaimAnalysis, Some(&policy(StoragePermission::Allowed, 7))));
+        assert!(!can_store(&ArtifactCategory::ClaimAnalysis, None));
+    }
+
+    #[test]
+    fn can_store_always_true_for_user_generated_and_debug_artifacts() {
+        assert!(can_store(&ArtifactCategory::DecisionMemo, None));
+        assert!(can_store(&ArtifactCategory::ReflectionResult, None));
+        assert!(can_store(&ArtifactCategory::ReasoningTrace, None));
+        assert!(can_store(&ArtifactCategory::DecisionMemo, Some(&policy(StoragePermission::Denied, 7))));
+        assert!(can_store(&ArtifactCategory::ReasoningTrace, Some(&policy(StoragePermission::Denied, 7))));
+    }
+}
