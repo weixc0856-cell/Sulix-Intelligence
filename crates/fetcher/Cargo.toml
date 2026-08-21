@@ -10,6 +10,11 @@ workspace = true
 [dependencies]
 worker.workspace = true
 feed-rs.workspace = true
+# uuid 直接依赖是 **load-bearing**（非源码直接使用）：feed-rs 以 `uuid v4`
+# 传递依赖 uuid，而 workspace 根声明了 `uuid { features = ["js"] }`（wasm 随机源）。
+# 移除本直接依赖会让 feature unification 丢失 `js` 后端，导致 wasm32 构建失败
+# （uuid: "specify a source of randomness ... js"）。T1 曾误删，T5 wasm 门禁暴露回归。
+uuid.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 url.workspace = true
