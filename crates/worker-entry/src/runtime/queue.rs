@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use worker::*;
 
 pub(crate) use crate::jobs::ingestion::FetchJob;
@@ -40,8 +41,19 @@ pub(crate) async fn handle(batch: MessageBatch<FetchJob>, env: Env, _ctx: Contex
     };
     for msg in batch.messages()?.iter() {
         let job = msg.body();
+        // Pre-load already-ingested guids so process_one_feed can skip them
+        // without a per-entry query (keeps large feeds under the per-invocation
+        // D1 subrequest cap).
+        let existing_guids: HashSet<String> = match store.guids_for_feed(job.feed_id).await {
+            Ok(g) => g.into_iter().collect(),
+            Err(e) => {
+                console_log!("  failed to load existing guids for feed {}: {e}; retrying", job.feed_id);
+                msg.retry();
+                continue;
+            }
+        };
         console_log!("  queue processing feed {}: {}", job.feed_id, job.feed_url);
-        if let Err(e) = process_one_feed(&feed_ctx, &env, job).await {
+        if let Err(e) = process_one_feed(&feed_ctx, &env, job, &existing_guids).await {
             console_log!("  feed {} failed: {e}", job.feed_id);
             msg.retry();
         } else {

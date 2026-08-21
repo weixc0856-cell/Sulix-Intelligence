@@ -32,6 +32,25 @@ impl crate::D1Store {
             .results::<BackfillArticle>()
             .map_err(crate::StoreError::from)
     }
+    /// Every `guid` currently stored for a feed.
+    ///
+    /// Ingestion uses this to skip already-ingested entries up front instead
+    /// of issuing one `INSERT OR IGNORE` per entry. Each D1 query counts as a
+    /// subrequest to a Cloudflare service (hard-capped at 1000 per invocation
+    /// on the Workers Free plan), so a large feed re-fetched wholesale used to
+    /// burn ~1 query per historical entry and hit the cap before finishing.
+    pub async fn guids_for_feed(&self, feed_id: i64) -> Result<Vec<String>, crate::StoreError> {
+        let rows = self
+            .db
+            .prepare("SELECT guid FROM articles WHERE feed_id = ?1")
+            .bind(&[JsValue::from_f64(feed_id as f64)])?
+            .all()
+            .await?
+            .results::<serde_json::Value>()
+            .map_err(crate::StoreError::from)?;
+        Ok(rows.into_iter().filter_map(|v| v["guid"].as_str().map(String::from)).collect())
+    }
+
     pub async fn insert_article(&self, article: &crate::NewArticle) -> Result<Option<i64>, crate::StoreError> {
         let row = self
             .db

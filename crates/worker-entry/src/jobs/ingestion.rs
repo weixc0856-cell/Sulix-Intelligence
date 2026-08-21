@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use worker::*;
 
 use crate::extract_body;
@@ -46,15 +47,35 @@ pub(crate) struct FetchJob {
     pub(crate) extraction_level: String,
 }
 
+/// Cap of newly-inserted articles per feed per invocation.
+///
+/// Every D1 query counts as a subrequest to a Cloudflare service, which is
+/// hard-capped at 1000 per invocation on the Workers Free plan (not
+/// configurable — `[limits] subrequests` can only lower it there). A new
+/// article costs ~2 D1 queries today (insert + set_ai_summary) and up to ~22
+/// once LLM entity extraction runs. Capping keeps a large feed's first
+/// ingestion (e.g. OpenAI ~999 entries) from blowing the cap in one shot; the
+/// feed stays "due" when capped and drains across subsequent cron cycles.
+const MAX_NEW_PER_CYCLE: usize = 30;
+
 // ---------------------------------------------------------------------------
 // Feed processing pipeline
 // ---------------------------------------------------------------------------
 
 /// Process a single feed: fetch -> insert -> score -> AI summarise.
+///
+/// `existing_guids` is the set of guids already stored for this feed, loaded
+/// once by the caller via `Store::guids_for_feed`. Entries in it are skipped
+/// without a per-entry query — otherwise a large feed's re-fetch would burn
+/// ~1 D1 query per historical entry and exceed the per-invocation subrequest
+/// cap (~1000 on Free). New inserts are additionally capped at
+/// [`MAX_NEW_PER_CYCLE`]; when the cap is hit the fetch result is NOT
+/// recorded, so the feed stays due and drains across subsequent cycles.
 pub(crate) async fn process_one_feed(
     ctx: &FeedContext<'_, impl StoreBackend>,
     _env: &Env,
     job: &FetchJob,
+    existing_guids: &HashSet<String>,
 ) -> Result<(), Error> {
     let do_ai = ctx.summarizer.is_some();
     match fetch_feed(&job.feed_url, job.prior_etag.as_deref(), job.prior_last_modified.as_deref()).await {
@@ -68,7 +89,15 @@ pub(crate) async fn process_one_feed(
         }
         Ok(FetchOutcome::Updated(fetched)) => {
             ctx.metrics.borrow_mut().articles_fetched += 1;
+            let mut new_count: usize = 0;
+            let mut capped = false;
             for entry in fetched.feed.entries {
+                // Skip entries already stored for this feed. Doing so here (in
+                // one in-memory check, no query) is what keeps large feeds from
+                // exhausting the per-invocation D1 query cap on re-fetch.
+                if existing_guids.contains(&entry.id) {
+                    continue;
+                }
                 let feed_summary = extract_body(&entry);
                 let mut body = feed_summary.clone();
                 let article = NewArticle {
@@ -216,6 +245,27 @@ pub(crate) async fn process_one_feed(
                                     Err(e) => {
                                         ctx.metrics.borrow_mut().errors += 1;
                                         console_log!("  AI summarization failed for article {article_id}: {e}");
+                                        // Persist the rules-engine score even when the LLM call fails,
+                                        // so rule-scored articles still surface in /api/articles/trending
+                                        // (score > 0). Previously the score was dropped entirely here,
+                                        // making Trending appear frozen while ingestion kept running.
+                                        if article_score != 0.0 {
+                                            if let Err(db_err) = ctx
+                                                .store
+                                                .set_ai_summary(
+                                                    article_id,
+                                                    "",
+                                                    "[]",
+                                                    &format!("article-{article_id}"),
+                                                    article_score,
+                                                )
+                                                .await
+                                            {
+                                                console_log!(
+                                                    "  DB score update failed for article {article_id}: {db_err}"
+                                                );
+                                            }
+                                        }
                                         // NOTE: raw_content_r2_key is intentionally NOT modified here.
                                         // It was already set to the R2 key during full-text extraction.
                                         // Writing a truncated excerpt into this column would corrupt
@@ -233,6 +283,11 @@ pub(crate) async fn process_one_feed(
                                 console_log!("  DB score update failed for article {article_id}: {e}");
                             }
                         }
+                        new_count += 1;
+                        if new_count >= MAX_NEW_PER_CYCLE {
+                            capped = true;
+                            break;
+                        }
                     }
                     Ok(None) => {
                         ctx.metrics.borrow_mut().articles_dup += 1;
@@ -243,15 +298,31 @@ pub(crate) async fn process_one_feed(
                     }
                 }
             }
-            let start = js_sys::Date::now();
-            if let Err(e) = ctx
-                .store
-                .record_fetch_result(job.feed_id, ctx.now, fetched.etag.as_deref(), fetched.last_modified.as_deref())
-                .await
-            {
-                console_log!("  failed to persist fetch result for feed {} (url={}): {e}", job.feed_id, job.feed_url);
+            if capped {
+                console_log!(
+                    "  feed {} reached cap ({MAX_NEW_PER_CYCLE} new/cycle) — keeping feed due for next drain",
+                    job.feed_id
+                );
+            } else {
+                let start = js_sys::Date::now();
+                if let Err(e) = ctx
+                    .store
+                    .record_fetch_result(
+                        job.feed_id,
+                        ctx.now,
+                        fetched.etag.as_deref(),
+                        fetched.last_modified.as_deref(),
+                    )
+                    .await
+                {
+                    console_log!(
+                        "  failed to persist fetch result for feed {} (url={}): {e}",
+                        job.feed_id,
+                        job.feed_url
+                    );
+                }
+                ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
             }
-            ctx.metrics.borrow_mut().record_ms("store", PipelineMetrics::since(start));
         }
         Err(e) => {
             console_log!("    fetch_feed failed: {e}");
@@ -305,6 +376,16 @@ pub(crate) async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i6
 
     let mut results = Vec::with_capacity(feeds.len());
     for feed in feeds {
+        // Load the set of already-ingested guids up front so process_one_feed
+        // can skip them without a per-entry query (keeps large feeds under the
+        // per-invocation D1 subrequest cap).
+        let existing_guids: HashSet<String> = match store.guids_for_feed(feed.id).await {
+            Ok(g) => g.into_iter().collect(),
+            Err(e) => {
+                console_log!("  failed to load existing guids for feed {}: {e}; skipping", feed.id);
+                continue;
+            }
+        };
         let job = FetchJob {
             feed_id: feed.id,
             feed_url: feed.url.clone(),
@@ -312,7 +393,7 @@ pub(crate) async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i6
             prior_last_modified: feed.last_modified.clone(),
             extraction_level: feed.extraction_level.clone(),
         };
-        match process_one_feed(&ctx, env, &job).await {
+        match process_one_feed(&ctx, env, &job, &existing_guids).await {
             Ok(()) => results.push(FeedProcessResult { feed_id: feed.id, articles_processed: 0 }),
             Err(e) => console_log!("  feed {} pipeline error: {e}", feed.id),
         }
