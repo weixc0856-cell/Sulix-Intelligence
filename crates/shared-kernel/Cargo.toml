@@ -13,3 +13,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 fastrand = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
