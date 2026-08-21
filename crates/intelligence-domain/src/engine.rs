@@ -18,7 +18,11 @@ where
     S: SignalRepository,
 {
     observations: R,
+    // `claims`/`signals` are stored for the analyze() pipeline, not yet wired.
+    // Phase 6 removes intelligence-domain entirely; revisit when ports land.
+    #[allow(dead_code)]
     claims: C,
+    #[allow(dead_code)]
     signals: S,
 }
 

@@ -39,5 +39,5 @@ pub use framework::{
     ClaimFrameworkRef, FrameworkCategory, FrameworkImpact, NewFramework, ReasoningFramework, TriggerRule,
 };
 pub use repository::FrameworkRepository;
-pub use seed::initial_frameworks;
+pub use seed::{initial_frameworks, seed_count};
 pub use selector::ReasoningSelector;

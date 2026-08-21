@@ -117,29 +117,43 @@ mod tests {
     fn all_event_types_have_entity_id() {
         let events: Vec<IntelligenceEvent> = vec![
             IntelligenceEvent::ObservationCreated {
-                observation_id: "OBS-1".into(), source_type: "RssFeed".into(), title: "T".into(),
+                observation_id: "OBS-1".into(),
+                source_type: "RssFeed".into(),
+                title: "T".into(),
             },
             IntelligenceEvent::ClaimCreated {
-                claim_id: "CLM-1".into(), article_id: 1, claim_type: "fact".into(), statement: "S".into(),
+                claim_id: "CLM-1".into(),
+                article_id: 1,
+                claim_type: "fact".into(),
+                statement: "S".into(),
             },
             IntelligenceEvent::ClaimEvaluated { claim_id: "CLM-1".into(), confidence: 0.8 },
             IntelligenceEvent::SignalDetected {
-                thread_id: "SIG-1".into(), signal_key: "k".into(), title: "T".into(), score: 0.5,
+                thread_id: "SIG-1".into(),
+                signal_key: "k".into(),
+                title: "T".into(),
+                score: 0.5,
             },
-            IntelligenceEvent::SignalScoreChanged {
-                thread_id: "SIG-1".into(), old_score: 0.5, new_score: 0.6,
-            },
+            IntelligenceEvent::SignalScoreChanged { thread_id: "SIG-1".into(), old_score: 0.5, new_score: 0.6 },
             IntelligenceEvent::DecisionProposed {
-                decision_id: "DEC-1".into(), title: "T".into(), confidence: 0.8, decision_type: "e".into(),
+                decision_id: "DEC-1".into(),
+                title: "T".into(),
+                confidence: 0.8,
+                decision_type: "e".into(),
             },
             IntelligenceEvent::DecisionApproved { decision_id: "DEC-1".into(), approved_by: "user".into() },
             IntelligenceEvent::DecisionCompleted { decision_id: "DEC-1".into(), outcome_count: 2 },
             IntelligenceEvent::DecisionInvalidated { decision_id: "DEC-1".into(), reason: "superseded".into() },
             IntelligenceEvent::OutcomeRecorded {
-                decision_id: "DEC-1".into(), metric: "accuracy".into(), verdict: "achieved".into(),
+                decision_id: "DEC-1".into(),
+                metric: "accuracy".into(),
+                verdict: "achieved".into(),
             },
             IntelligenceEvent::ReflectionGenerated {
-                reflection_id: "REF-1".into(), decision_id: "DEC-1".into(), quality_score: 0.8, lesson_count: 2,
+                reflection_id: "REF-1".into(),
+                decision_id: "DEC-1".into(),
+                quality_score: 0.8,
+                lesson_count: 2,
             },
         ];
         for event in &events {

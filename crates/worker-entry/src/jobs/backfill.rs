@@ -48,7 +48,7 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
     for article in &rows {
         let article_id = article.id;
 
-        if article.vector_id.as_ref().map_or(false, |v| !v.is_empty()) {
+        if article.vector_id.as_ref().is_some_and(|v| !v.is_empty()) {
             continue;
         }
 
@@ -57,12 +57,10 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
             Some(key) if !key.is_empty() => {
                 if let Some(ref bucket) = r2_bucket {
                     match bucket.get(key).execute().await {
-                        Ok(Some(obj)) => {
-                            match obj.body() {
-                                Some(body_content) => body_content.bytes().await.unwrap_or_default(),
-                                None => Vec::new(),
-                            }
-                        }
+                        Ok(Some(obj)) => match obj.body() {
+                            Some(body_content) => body_content.bytes().await.unwrap_or_default(),
+                            None => Vec::new(),
+                        },
                         _ => Vec::new(),
                     }
                 } else {
@@ -74,7 +72,7 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
         let body_str: String = String::from_utf8_lossy(&body).into();
 
         if let Some(ref s) = summarizer {
-            match process_article(&store, s, article_id, &article.title, &*body_str, article.score).await {
+            match process_article(&store, s, article_id, &article.title, &body_str, article.score).await {
                 Ok(result) => {
                     if !result.embedding.is_empty() {
                         if let Some(ref idx) = vectorize {
@@ -93,7 +91,9 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
                         }
                         for i in 0..entity_ids.len().min(5) {
                             for j in (i + 1)..entity_ids.len().min(5) {
-                                let _ = store.link_entity_relation(entity_ids[i], entity_ids[j], "mentioned_together", 1.0).await;
+                                let _ = store
+                                    .link_entity_relation(entity_ids[i], entity_ids[j], "mentioned_together", 1.0)
+                                    .await;
                             }
                         }
                     }

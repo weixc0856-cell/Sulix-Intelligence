@@ -37,7 +37,9 @@ pub mod proposal;
 // ── Public API (new) ───────────────────────────────────────────
 
 pub use aggregate::DecisionAggregate;
-pub use commands::{ApproveDecision, ExecuteDecision, InvalidateDecision, ProposeDecision, RecordOutcome};
+pub use commands::{
+    ApproveDecision, ExecuteDecision, InvalidateDecision, ProposeDecision, ReconstructDecision, RecordOutcome,
+};
 pub use error::DecisionError;
 pub use events::DecisionDomainEvent;
 pub use outcome::{ExpectedOutcome, ObservedOutcome, OutcomeVerdict};

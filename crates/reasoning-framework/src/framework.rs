@@ -58,29 +58,32 @@ impl TriggerRule {
     ) -> bool {
         // AND-within-rule: ALL non-None fields must match
         if let Some(st) = &self.signal_type {
-            if !signal_type.map_or(false, |s| s == st) {
+            if !signal_type.is_some_and(|s| s == st) {
                 return false;
             }
         }
         if let Some(et) = &self.entity_type {
-            if !entity_type.map_or(false, |e| e == et) {
+            if !entity_type.is_some_and(|e| e == et) {
                 return false;
             }
         }
         if let Some(qt) = &self.question_type {
-            if !question_type.map_or(false, |q| q == qt) {
+            if !question_type.is_some_and(|q| q == qt) {
                 return false;
             }
         }
         // Keywords: if both rule and input have keywords, at least one must match
-        if !self.keywords.is_empty() && !keywords.is_empty() {
-            if !keywords.iter().any(|k| self.keywords.iter().any(|kw| kw.eq_ignore_ascii_case(k))) {
-                return false;
-            }
+        if !self.keywords.is_empty()
+            && !keywords.is_empty()
+            && !keywords.iter().any(|k| self.keywords.iter().any(|kw| kw.eq_ignore_ascii_case(k)))
+        {
+            return false;
         }
         // If at least one field is set and all set fields match → true
-        self.signal_type.is_some() || self.entity_type.is_some()
-            || self.question_type.is_some() || !self.keywords.is_empty()
+        self.signal_type.is_some()
+            || self.entity_type.is_some()
+            || self.question_type.is_some()
+            || !self.keywords.is_empty()
     }
 }
 
@@ -160,6 +163,18 @@ pub struct FrameworkImpact {
     pub confidence_before: f64,
     pub confidence_after: f64,
     pub delta: f64,
+}
+
+impl FrameworkImpact {
+    pub fn new(framework_id: String, claim_id: i64, confidence_before: f64, confidence_after: f64) -> Self {
+        Self {
+            framework_id,
+            claim_id,
+            confidence_before,
+            confidence_after,
+            delta: confidence_after - confidence_before,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -247,7 +262,12 @@ mod tests {
 
     #[test]
     fn rule_with_only_keywords_matches_by_keyword() {
-        let rule = TriggerRule { signal_type: None, entity_type: None, question_type: None, keywords: vec!["ai".into(), "ml".into()] };
+        let rule = TriggerRule {
+            signal_type: None,
+            entity_type: None,
+            question_type: None,
+            keywords: vec!["ai".into(), "ml".into()],
+        };
         assert!(rule.matches(None, None, None, &["AI"]));
         assert!(!rule.matches(None, None, None, &["blockchain"]));
     }
@@ -290,17 +310,5 @@ mod tests {
         assert_eq!(fw.calibration_score, 0.0);
         assert_eq!(fw.usage_count, 0);
         assert_eq!(fw.confidence_delta_avg, 0.0);
-    }
-}
-
-impl FrameworkImpact {
-    pub fn new(framework_id: String, claim_id: i64, confidence_before: f64, confidence_after: f64) -> Self {
-        Self {
-            framework_id,
-            claim_id,
-            confidence_before,
-            confidence_after,
-            delta: confidence_after - confidence_before,
-        }
     }
 }

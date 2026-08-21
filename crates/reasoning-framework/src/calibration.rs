@@ -9,8 +9,6 @@ use crate::framework::FrameworkImpact;
 use crate::repository::FrameworkRepository;
 
 /// CalibrationEngine updates framework scores after outcomes are recorded.
-
-/// CalibrationEngine updates framework scores after outcomes are recorded.
 pub struct CalibrationEngine<R: FrameworkRepository> {
     repo: R,
 }

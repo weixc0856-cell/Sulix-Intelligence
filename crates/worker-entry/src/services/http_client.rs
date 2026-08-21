@@ -60,10 +60,7 @@ impl WorkerHttpClient {
             let global = js_sys::global();
             // Non-panicking setTimeout lookup — fallback to no-op if unavailable
             let set_timeout: js_sys::Function = js_sys::Reflect::get(&global, &"setTimeout".into())
-                .map(|v| {
-                    if v.is_undefined() { js_sys::Function::new_no_args("") }
-                    else { v.into() }
-                })
+                .map(|v| if v.is_undefined() { js_sys::Function::new_no_args("") } else { v.into() })
                 .unwrap_or_else(|_| js_sys::Function::new_no_args(""));
             let cb_js: JsValue = cb.as_ref().into();
             let delay_js = JsValue::from_f64(ms as f64);

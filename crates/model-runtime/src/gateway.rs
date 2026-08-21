@@ -57,9 +57,8 @@ pub struct ProviderConfig {
     pub capabilities: Vec<String>,
 }
 
-impl RoutingPolicy {
-    /// Create a default routing policy.
-    pub fn default() -> Self {
+impl Default for RoutingPolicy {
+    fn default() -> Self {
         let mut task_defaults = HashMap::new();
         task_defaults.insert("summarization".into(), vec!["fast_generation".into(), "structured_output".into()]);
         task_defaults.insert("claim_extraction".into(), vec!["reasoning".into(), "structured_output".into()]);
@@ -80,7 +79,9 @@ impl RoutingPolicy {
 
         Self { task_defaults, provider_configs }
     }
+}
 
+impl RoutingPolicy {
     /// Get required capabilities for a task.
     pub fn task_capabilities(&self, task: ModelTask) -> Vec<String> {
         let key = match task {
@@ -112,8 +113,8 @@ impl ModelGateway {
     }
 
     /// Get the first available provider (simplified routing).
-    fn select_provider(&self) -> Option<&Box<dyn ModelProvider>> {
-        self.providers.first()
+    fn select_provider(&self) -> Option<&dyn ModelProvider> {
+        self.providers.first().map(|p| p.as_ref())
     }
 }
 

@@ -8,7 +8,9 @@
 
 use shared_kernel::ids::DecisionId;
 
-use crate::commands::{ApproveDecision, ExecuteDecision, InvalidateDecision, ProposeDecision, RecordOutcome};
+use crate::commands::{
+    ApproveDecision, ExecuteDecision, InvalidateDecision, ProposeDecision, ReconstructDecision, RecordOutcome,
+};
 use crate::error::DecisionError;
 use crate::events::DecisionDomainEvent;
 use crate::outcome::{ExpectedOutcome, ObservedOutcome};
@@ -74,37 +76,22 @@ impl DecisionAggregate {
     /// Unlike `propose()`, this does NOT validate business rules or emit
     /// domain events — it trusts the data came from a valid prior state.
     /// Used by repository implementations to hydrate aggregates from D1 rows.
-    pub fn reconstruct(
-        id: DecisionId,
-        title: String,
-        hypothesis: Option<String>,
-        confidence: f64,
-        status: DecisionStatus,
-        rationale: Option<String>,
-        decision_type: String,
-        priority: String,
-        signal_thread_id: Option<i64>,
-        actor_id: Option<i64>,
-        expected_outcomes: Vec<ExpectedOutcome>,
-        observed_outcomes: Vec<ObservedOutcome>,
-        created_at: i64,
-        updated_at: i64,
-    ) -> Self {
+    pub fn reconstruct(cmd: ReconstructDecision) -> Self {
         Self {
-            id,
-            title,
-            hypothesis,
-            confidence,
-            status,
-            rationale,
-            decision_type,
-            priority,
-            signal_thread_id,
-            actor_id,
-            expected_outcomes,
-            observed_outcomes,
-            created_at,
-            updated_at,
+            id: cmd.id,
+            title: cmd.title,
+            hypothesis: cmd.hypothesis,
+            confidence: cmd.confidence,
+            status: cmd.status,
+            rationale: cmd.rationale,
+            decision_type: cmd.decision_type,
+            priority: cmd.priority,
+            signal_thread_id: cmd.signal_thread_id,
+            actor_id: cmd.actor_id,
+            expected_outcomes: cmd.expected_outcomes,
+            observed_outcomes: cmd.observed_outcomes,
+            created_at: cmd.created_at,
+            updated_at: cmd.updated_at,
             events: Vec::new(),
         }
     }
@@ -172,11 +159,7 @@ impl DecisionAggregate {
         self.observed_outcomes.push(cmd.outcome);
         self.updated_at =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-        self.events.push(DecisionDomainEvent::OutcomeAttached {
-            decision_id: self.id.0.clone(),
-            metric,
-            verdict,
-        });
+        self.events.push(DecisionDomainEvent::OutcomeAttached { decision_id: self.id.0.clone(), metric, verdict });
     }
 
     /// Complete the decision.

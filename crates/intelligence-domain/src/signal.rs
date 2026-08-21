@@ -26,6 +26,7 @@ pub enum SignalStatus {
 
 /// A signal instance — a daily score snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SignalInstance {
     pub id: i64,
     pub thread_id: i64,

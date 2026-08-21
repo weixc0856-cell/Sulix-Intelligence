@@ -3,7 +3,7 @@
 //! Lives in infrastructure (not decision-engine) to keep domain pure.
 
 use async_trait::async_trait;
-use decision_engine::{DecisionAggregate, DecisionError, DecisionRepository, DecisionStatus};
+use decision_engine::{DecisionAggregate, DecisionError, DecisionRepository, DecisionStatus, ReconstructDecision};
 use shared_kernel::ids::DecisionId;
 use store::StoreBackend;
 
@@ -48,22 +48,22 @@ impl<S: StoreBackend> D1DecisionRepository<S> {
 
     fn from_store(d: store::Decision) -> DecisionAggregate {
         let status = Self::status_from_d1(&d.status);
-        DecisionAggregate::reconstruct(
-            DecisionId::new(d.id),
-            d.title,
-            d.hypothesis,
-            d.confidence,
+        DecisionAggregate::reconstruct(ReconstructDecision {
+            id: DecisionId::new(d.id),
+            title: d.title,
+            hypothesis: d.hypothesis,
+            confidence: d.confidence,
             status,
-            d.rationale,
-            d.decision_type,
-            d.priority,
-            d.signal_thread_id,
-            d.actor_id,
-            vec![], // expected_outcomes not in legacy decisions table
-            vec![], // observed_outcomes not in legacy decisions table
-            d.created_at,
-            d.updated_at,
-        )
+            rationale: d.rationale,
+            decision_type: d.decision_type,
+            priority: d.priority,
+            signal_thread_id: d.signal_thread_id,
+            actor_id: d.actor_id,
+            expected_outcomes: vec![], // expected_outcomes not in legacy decisions table
+            observed_outcomes: vec![], // observed_outcomes not in legacy decisions table
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+        })
     }
 
     fn into_new(decision: &DecisionAggregate) -> store::NewDecision {

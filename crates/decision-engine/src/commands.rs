@@ -8,7 +8,10 @@
 //! They can be constructed by API handlers, Queue consumers, or Agent
 //! runtimes with equal ease.
 
+use shared_kernel::ids::DecisionId;
+
 use crate::outcome::{ExpectedOutcome, ObservedOutcome};
+use crate::status::DecisionStatus;
 
 /// Propose a new decision.
 #[derive(Debug, Clone)]
@@ -24,6 +27,30 @@ pub struct ProposeDecision {
     pub signal_thread_id: Option<i64>,
     pub actor_id: Option<i64>,
     pub expected_outcomes: Vec<ExpectedOutcome>,
+}
+
+/// Reconstruct an aggregate from persisted state.
+///
+/// Unlike the other commands, this is a **hydration input**, not an intent:
+/// it trusts the data came from a valid prior state, performs no business
+/// validation, and emits no domain events. Repository implementations use
+/// it to hydrate aggregates from D1 rows.
+#[derive(Debug, Clone)]
+pub struct ReconstructDecision {
+    pub id: DecisionId,
+    pub title: String,
+    pub hypothesis: Option<String>,
+    pub confidence: f64,
+    pub status: DecisionStatus,
+    pub rationale: Option<String>,
+    pub decision_type: String,
+    pub priority: String,
+    pub signal_thread_id: Option<i64>,
+    pub actor_id: Option<i64>,
+    pub expected_outcomes: Vec<ExpectedOutcome>,
+    pub observed_outcomes: Vec<ObservedOutcome>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// Approve a proposed decision.

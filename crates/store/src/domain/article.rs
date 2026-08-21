@@ -15,17 +15,18 @@ pub struct BackfillArticle {
 impl crate::D1Store {
     /// Query articles without AI summaries for backfill processing.
     /// Self-limiting via LIMIT, resumable via cursor (minimum id).
-    pub async fn get_backfill_candidates(&self, cursor: i64, limit: u32) -> Result<Vec<BackfillArticle>, crate::StoreError> {
+    pub async fn get_backfill_candidates(
+        &self,
+        cursor: i64,
+        limit: u32,
+    ) -> Result<Vec<BackfillArticle>, crate::StoreError> {
         self.db
             .prepare(
                 "SELECT id, title, score, raw_content_r2_key, vector_id \
                  FROM articles WHERE id > ?1 AND ai_summary = '' \
                  ORDER BY id ASC LIMIT ?2",
             )
-            .bind(&[
-                JsValue::from_f64(cursor as f64),
-                JsValue::from_f64(limit as f64),
-            ])?
+            .bind(&[JsValue::from_f64(cursor as f64), JsValue::from_f64(limit as f64)])?
             .all()
             .await?
             .results::<BackfillArticle>()
