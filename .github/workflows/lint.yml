@@ -9,6 +9,7 @@ on:
       - 'crates/**/*.rs'
       - 'crates/**/Cargo.toml'
       - 'rustfmt.toml'
+      - 'scripts/check-layered-deps.sh'
 
 # Cancel in-progress runs for the same PR
 concurrency:
@@ -36,6 +37,10 @@ jobs:
 
       - name: Check licenses and dependency graph
         run: cargo deny check bans licenses sources
+
+      # Step 1.5: 分层依赖守卫 — 受控 crate 禁止新增对基础设施 crate 的依赖（decoupling P1）
+      - name: Check layered dependencies
+        run: bash scripts/check-layered-deps.sh
 
       # Step 2: cargo fmt — 格式统一
       - name: Format check

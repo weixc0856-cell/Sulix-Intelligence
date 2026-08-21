@@ -27,6 +27,10 @@ confidence-threshold = 0.8
 ignore = true
 
 [bans]
+# 分层依赖封禁（decoupling P1）不在本表：cargo-deny bans 是全局作用域，
+# 无法按"消费者 crate"限制。边缘级封禁由 scripts/check-layered-deps.sh 用
+# cargo metadata 断言（受控 crate 禁止新增 store/vectorize/embedding/
+# event-store/object-store，现状耦合在脚本 GRANDFATHERED 表豁免至 Sprint 5）。
 multiple-versions = "warn"
 wildcards = "allow"
 highlight = "all"

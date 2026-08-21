@@ -76,11 +76,25 @@ store → worker (D1Database)
 
 ### Architecture Governance
 ```bash
-cargo deny check bans licenses sources   # 许可证合规 + 依赖重复检查（暂不包含 advisories）
+cargo deny check bans licenses sources       # 许可证合规 + 依赖重复检查（暂不包含 advisories）
 cargo-deny advisories 因 fxhash unmaintained 暂未启用。要启用需先升级或替换 scraper crate。详见 deny.toml。
-cargo clippy --workspace -- -D warnings   # 代码质量（遵守 workspace.lints）
-cargo fmt --check                         # 格式统一
+bash scripts/check-layered-deps.sh           # 分层依赖守卫：受控 crate 禁止新增 store/vectorize/embedding/event-store/object-store 依赖
+cargo clippy --workspace -- -D warnings      # 代码质量（遵守 workspace.lints）
+cargo fmt --check                            # 格式统一
 ```
+
+#### 分层依赖白名单（decoupling P1）
+
+`scripts/check-layered-deps.sh` 用 `cargo metadata --no-deps` 读取每个受控 crate 的声明依赖，
+断言其不含 banned 基础设施 crate（`store`/`vectorize`/`embedding`/`event-store`/`object-store`）——
+现状耦合在脚本的 `GRANDFATHERED` 表中豁免（到期：Sprint 5 归零），**新增**耦合直接 CI 失败。
+
+受控 crate（中间层，不得依赖基础设施）：`signal-engine`、`reflection-engine`、`memory-engine`、
+`ai-pipeline`、`context-engine`、`agent-engine`、`claim-engine`。
+
+去耦推进时（decoupling P3/P4/P5）：每迁走一个耦合，删除对应 `GRANDFATHERED` 行——守卫随之收紧，
+Sprint 5 目标为空表。`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。
+架构总纲见 `docs/architecture/final-architecture-v2.md`。
 
 ### Backend (wasm32-unknown-unknown target required)
 ```bash
