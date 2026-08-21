@@ -51,5 +51,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       # Step 4: 单元测试
+      # 覆盖率门禁在独立的 .github/workflows/coverage.yml（14-crate 集合，--fail-under-lines 70），
+      # 见 docs/testing.md。此处只管测试全绿。
       - name: Run tests
         run: cargo test --workspace --all-features

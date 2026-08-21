@@ -1,0 +1,63 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'Cargo.toml'
+      - 'deny.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
+      - 'rustfmt.toml'
+      - 'scripts/check-layered-deps.sh'
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Step 1: cargo-llvm-cov — 覆盖率测量
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      # Step 2: 覆盖率门禁 — 纯逻辑 + 应用层 crate 集合必须 ≥ 70% 行覆盖
+      # 集合见 docs/testing.md「覆盖率门禁集合」。基础设施/宿主适配层（store,
+      # event-store, vectorize 等）不在集合内 — 它们主要经 host 集成测试覆盖，
+      # wasm 入口允许豁免（SignalEngine::run 等）。
+      # --all-features 与 lint.yml 的 clippy/test 保持同一 feature 表面。
+      - name: Coverage gate
+        run: |
+          cargo llvm-cov -p shared-kernel -p rules -p search -p entity -p content-governance \
+            -p decision-engine -p reasoning-framework -p intelligence-domain -p application \
+            -p model-runtime -p claim-engine -p signal-engine -p infrastructure -p events \
+            --summary-only --fail-under-lines 70 --all-features
+
+      # Step 3: lcov 报告上传（PR 中可查看逐文件覆盖）
+      - name: Generate lcov report
+        if: always()
+        run: |
+          cargo llvm-cov -p shared-kernel -p rules -p search -p entity -p content-governance \
+            -p decision-engine -p reasoning-framework -p intelligence-domain -p application \
+            -p model-runtime -p claim-engine -p signal-engine -p infrastructure -p events \
+            --lcov --output-path lcov.info --all-features
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: lcov.info
