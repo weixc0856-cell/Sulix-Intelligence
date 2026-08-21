@@ -892,7 +892,10 @@ impl StoreBackend for MemoryStore {
     // ── Artifact / Briefing ──
 
     async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
-        let now = (js_sys::Date::now() / 1000.0) as i64;
+        // Host-safe timestamp (unix seconds) — the D1 impl uses js_sys::Date,
+        // but MemoryStore is the host test-double and must not panic on native.
+        let now =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
         let id = *self.next_artifact_id.borrow();
         *self.next_artifact_id.borrow_mut() = id + 1;
         self.artifacts.borrow_mut().push(ArtifactData {
