@@ -25,6 +25,7 @@ event-store.workspace = true
 async-trait.workspace = true
 reflection-engine.workspace = true
 decision-engine.workspace = true
+shared-kernel.workspace = true
 model-runtime.workspace = true
 infrastructure.workspace = true
 

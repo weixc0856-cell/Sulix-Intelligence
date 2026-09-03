@@ -64,6 +64,7 @@ dependencies = [
  "search",
  "serde",
  "serde_json",
+ "shared-kernel",
  "signal-engine",
  "store",
  "url",
@@ -689,6 +690,7 @@ dependencies = [
  "content-governance",
  "context-engine",
  "decision-engine",
+ "event-store",
  "futures",
  "memory-engine",
  "object-store",
@@ -1063,7 +1065,6 @@ name = "reflection-engine"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "event-store",
  "futures",
  "js-sys",
  "model-runtime",
@@ -1696,6 +1697,7 @@ dependencies = [
  "rules",
  "serde",
  "serde_json",
+ "shared-kernel",
  "signal-engine",
  "store",
  "vectorize",

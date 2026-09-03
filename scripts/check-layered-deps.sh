@@ -30,7 +30,6 @@ GRANDFATHERED=(
   signal-engine:store
   signal-engine:vectorize
   signal-engine:event-store
-  reflection-engine:event-store
   claim-engine:store
 )
 

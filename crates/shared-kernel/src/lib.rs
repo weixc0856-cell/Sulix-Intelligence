@@ -10,6 +10,7 @@
 
 pub mod artifact_registry;
 pub mod error;
+pub mod event_log;
 pub mod events;
 pub mod ids;
 pub mod lineage_query;
