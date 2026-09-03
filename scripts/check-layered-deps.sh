@@ -29,13 +29,11 @@ CONTROLLED=(signal-engine reflection-engine memory-engine ai-pipeline context-en
 GRANDFATHERED=(
   signal-engine:store
   signal-engine:vectorize
-  signal-engine:embedding
   signal-engine:event-store
   reflection-engine:event-store
   ai-pipeline:store
   context-engine:store
   context-engine:object-store
-  agent-engine:store
   claim-engine:store
 )
 

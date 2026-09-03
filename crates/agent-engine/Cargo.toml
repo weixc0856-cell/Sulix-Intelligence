@@ -8,7 +8,6 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-store.workspace = true
 context-engine.workspace = true
 serde.workspace = true
 serde_json.workspace = true
