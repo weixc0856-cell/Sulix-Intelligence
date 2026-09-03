@@ -13,4 +13,7 @@ CREATE TABLE decision_outcomes (
     created_at          INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
-CREATE INDEX idx_outcomes_decision ON decision_outcomes(decision_id);
+-- Renamed from idx_outcomes_decision: 0014 already owns that name on
+-- outcome_events, and SQLite index names are database-global — a duplicate
+-- non-IF-NOT-EXISTS CREATE broke clean fresh-database applies.
+CREATE INDEX idx_decision_outcomes_decision ON decision_outcomes(decision_id);

@@ -23,5 +23,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_type_owner ON artifacts(owner_type, owner_id);
+-- idx_artifacts_type_owner (ON owner_type, owner_id) REMOVED: the columns it
+-- indexes belong to this file's superseded artifacts schema. 0044 created the
+-- live `artifacts` table (artifact_key/content_type/hash/version) that store
+-- code reads/writes, and owner_type/owner_id never exist on it — the CREATE
+-- INDEX errored with "no such column" on a clean fresh-database apply.
 CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type);

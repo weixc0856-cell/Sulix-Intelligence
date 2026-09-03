@@ -36,6 +36,9 @@ output/
 !docs/
 !docs/**
 
+# ---- 本地运维/重置 runbook 快照（不 commit，见 docs/ops/）----
+/docs/ops/
+
 # ---- 代码分析产物 ----
 /.codegraph/
 /findings.json

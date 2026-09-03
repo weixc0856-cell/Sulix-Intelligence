@@ -9,7 +9,8 @@
 ALTER TABLE decision_events RENAME TO legacy_decision_events;
 
 -- outcome_events: add columns that the Rust code queries.
-ALTER TABLE outcome_events ADD COLUMN evidence_url TEXT;
+-- evidence_url was already added in 0015 (duplicate ALTER here broke clean
+-- fresh-database applies with "duplicate column name"); only observed_at is new.
 ALTER TABLE outcome_events ADD COLUMN observed_at INTEGER;
 
 -- event_archive_index: ensure TEXT aggregate_id column accepts string IDs.
