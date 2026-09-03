@@ -68,6 +68,7 @@ pub struct Source {
     pub attribution: Option<String>,
     pub trust_score: Option<f64>,
     pub retention_days: Option<i64>,
+    #[serde(deserialize_with = "crate::models::deserialize_bool_from_any")]
     pub verified: bool,
     pub notes: Option<String>,
     pub created_at: i64,
@@ -85,6 +86,7 @@ pub struct SourceSummary {
     pub license: String,
     pub attribution: Option<String>,
     pub trust_score: Option<f64>,
+    #[serde(deserialize_with = "crate::models::deserialize_bool_from_any")]
     pub verified: bool,
 }
 

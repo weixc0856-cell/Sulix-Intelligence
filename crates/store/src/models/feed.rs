@@ -145,6 +145,7 @@ pub struct SignalStrategy {
     pub audience_tag: String,
     #[serde(default)]
     pub score_delta: f64,
+    #[serde(deserialize_with = "crate::models::deserialize_bool_from_any")]
     pub enabled: bool,
     pub created_at: i64,
     #[serde(default)]
