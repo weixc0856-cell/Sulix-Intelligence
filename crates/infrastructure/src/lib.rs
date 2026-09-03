@@ -9,6 +9,7 @@
 //!
 //! - [`artifact_registry`] — ArtifactRegistry impl (InMemory for tests, D1 for production)
 //! - [`storage_policy`] — Source governance ↔ artifact retention policy
+//! - [`signal_repository`] — signal-engine persistence + discovery adapters
 
 pub mod article_persistence;
 pub mod artifact_registry;
@@ -20,4 +21,5 @@ pub mod provenance;
 pub mod reflection_repository;
 pub mod semantic_query;
 pub mod signal_event_log;
+pub mod signal_repository;
 pub mod storage_policy;

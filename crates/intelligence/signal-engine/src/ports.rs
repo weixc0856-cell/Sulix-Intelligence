@@ -12,6 +12,7 @@
 use async_trait::async_trait;
 
 use crate::error::SignalError;
+use crate::models::{DiscoveryMethod, EmbeddedArticle, EntityCandidate, SignalUpsertResult};
 
 /// An event appended to the signal event log.
 #[derive(Debug, Clone)]
@@ -59,4 +60,68 @@ pub trait SemanticQuery {
         top_k: u32,
         min_score: f64,
     ) -> Result<Vec<SimilarArticle>, SignalError>;
+}
+
+/// Signal write orchestration boundary — the `run()` write path.
+///
+/// Wraps the store's thread upsert / instance append / lifecycle calls so the
+/// engine no longer reaches `StoreBackend` directly.
+#[async_trait(?Send)]
+pub trait SignalPersistence {
+    /// Upsert a signal thread by its `signal_key`; reports whether it was
+    /// created or merely updated.
+    async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+        discovery_method: &DiscoveryMethod,
+        discovery_score: Option<f64>,
+    ) -> Result<SignalUpsertResult, SignalError>;
+
+    /// Get the latest instance's `(score, trend)` for change dedup.
+    async fn latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, SignalError>;
+
+    /// Append a signal instance snapshot.
+    #[allow(clippy::too_many_arguments)]
+    async fn append_signal_instance(
+        &self,
+        thread_id: i64,
+        score: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        avg_score: f64,
+        entity_id: i64,
+    ) -> Result<i64, SignalError>;
+
+    /// Update signal lifecycle (active → decaying → resolved → archived).
+    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), SignalError>;
+}
+
+/// Candidate-discovery boundary — the source read path.
+///
+/// Wraps the store's entity-candidate + recent-embedded-article queries so the
+/// discovery sources no longer reach `StoreBackend` directly.
+#[async_trait(?Send)]
+pub trait SignalDiscovery {
+    /// Entity-anchored signal candidates with quality filters.
+    async fn entity_signal_candidates(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+        min_entity_articles: u32,
+        min_sources: u32,
+    ) -> Result<Vec<EntityCandidate>, SignalError>;
+
+    /// Recent articles that carry a Vectorize embedding (ANN anchor set).
+    async fn recent_embedded_articles(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+    ) -> Result<Vec<EmbeddedArticle>, SignalError>;
 }

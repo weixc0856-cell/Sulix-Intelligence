@@ -30,7 +30,7 @@ pub fn cluster_to_candidate(cluster: &ArticleCluster, edges: &[SimilarityEdge]) 
         anchor_entity_id: None,
         title: format!("cluster:{}", article_ids.first().copied().unwrap_or(0)),
         status: "active".into(),
-        discovery_method: store::DiscoveryMethod::Semantic,
+        discovery_method: crate::models::DiscoveryMethod::Semantic,
         discovery_score: Some(v2_score),
         score: v2_score,
         trend: "rising".into(),

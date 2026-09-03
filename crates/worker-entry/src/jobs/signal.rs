@@ -11,10 +11,11 @@
 use event_store::EventR2Backend;
 use infrastructure::semantic_query::VectorizeSemanticQuery;
 use infrastructure::signal_event_log::EventStoreSignalLog;
+use infrastructure::signal_repository::{D1SignalDiscovery, D1SignalPersistence};
 use object_store::R2Store;
 use worker::*;
 
-use signal_engine::ports::{SemanticQuery, SignalEventLog};
+use signal_engine::ports::{SemanticQuery, SignalDiscovery, SignalEventLog, SignalPersistence};
 use signal_engine::source::{EntitySignalSource, SemanticDiscoverySource, SignalSource};
 use signal_engine::SignalEngine;
 use store::D1Store;
@@ -60,6 +61,12 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     };
     let store = D1Store::new(db);
 
+    // Write + discovery adapters share one store instance by reference
+    let persistence = D1SignalPersistence::new(&store);
+    let discovery = D1SignalDiscovery::new(&store);
+    let persistence_ref: &dyn SignalPersistence = &persistence;
+    let discovery_ref: &dyn SignalDiscovery = &discovery;
+
     let entity_source = EntitySignalSource;
     let semantic_source = SemanticDiscoverySource;
 
@@ -80,7 +87,7 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     };
     let event_log_ref: Option<&dyn SignalEventLog> = event_log.as_ref().map(|l| l as &dyn SignalEventLog);
 
-    match SignalEngine::run(&store, event_log_ref, semantic_ref, &sources, now).await {
+    match SignalEngine::run(persistence_ref, event_log_ref, discovery_ref, semantic_ref, &sources, now).await {
         Ok(report) => {
             console_log!(
                 "signal engine: {} threads, {} instances, {} events, {} lifecycle transitions",

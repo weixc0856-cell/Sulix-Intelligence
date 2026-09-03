@@ -6,16 +6,16 @@
 //! - [`EntitySignalSource`] — entity-driven signal candidates
 //! - [`SemanticDiscoverySource`] — ANN + clustering + V2 scoring (needs Vectorize)
 
-use store::{BriefArticle, DiscoveryMethod, RelatedEntityRef, StoreBackend};
-
 use crate::discovery::clustering::{cluster_by_similarity, SimilarityEdge};
 use crate::discovery::converter::cluster_to_candidate;
-use crate::ports::SemanticQuery;
+use crate::models::{BriefArticle, DiscoveryMethod, RelatedEntityRef};
+use crate::ports::{SemanticQuery, SignalDiscovery};
 
 /// Runtime context provided to every [`SignalSource`].
 #[derive(Clone)]
 pub struct DiscoveryContext<'a> {
-    pub store: &'a dyn StoreBackend,
+    /// Candidate-discovery boundary (entity candidates / embedded articles).
+    pub discovery: &'a dyn SignalDiscovery,
     pub semantic: Option<&'a dyn SemanticQuery>,
     pub now: i64,
 }
@@ -56,8 +56,8 @@ impl SignalSource for EntitySignalSource {
     ) -> futures::future::LocalBoxFuture<'a, Result<Vec<SignalCandidate>, String>> {
         Box::pin(async move {
             let rows = ctx
-                .store
-                .entity_signal_candidates_filtered(ctx.now, 7, 50, 3, 2)
+                .discovery
+                .entity_signal_candidates(ctx.now, 7, 50, 3, 2)
                 .await
                 .map_err(|e| format!("entity_candidates failed: {e}"))?;
 
@@ -88,17 +88,7 @@ impl SignalSource for EntitySignalSource {
                         article_count: c.article_count,
                         source_count: c.source_count,
                         avg_score: c.avg_score,
-                        evidence: c
-                            .evidence
-                            .into_iter()
-                            .map(|e| BriefArticle {
-                                id: e.id,
-                                title: e.title,
-                                url: e.url,
-                                feed_name: e.feed_name,
-                                score: e.score,
-                            })
-                            .collect(),
+                        evidence: c.evidence,
                         related_entities: related,
                     }
                 })
@@ -126,7 +116,7 @@ impl SignalSource for SemanticDiscoverySource {
 
             // 1. Load recent articles with embeddings
             let articles = ctx
-                .store
+                .discovery
                 .recent_embedded_articles(ctx.now, 7, 200)
                 .await
                 .map_err(|e| format!("recent_embedded_articles failed: {e}"))?;
