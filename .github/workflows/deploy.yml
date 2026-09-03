@@ -10,15 +10,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Toolchain pinned by rust-toolchain.toml — keep both in sync.
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.97.0"
           targets: wasm32-unknown-unknown
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Quick check (wasm-compatible)
-        run: cargo check --workspace --all-targets --all-features
+      # The deploy artifact runs on wasm32-unknown-unknown, so gate on that
+      # target (not the native default). Full PR gates live in lint.yml.
+      - name: WASM check (deployment gate)
+        run: cargo check --workspace --all-features --target wasm32-unknown-unknown
 
       - name: Cache worker-build binary
         uses: actions/cache@v4
@@ -28,13 +32,14 @@ jobs:
             ~/.cargo/bin/wasm-bindgen-cli
           key: worker-build-${{ runner.os }}
 
+      # Pin an exact worker-build version (0.x ^ranges are not safe ranges) —
+      # keep in sync with the version verified locally and with [build] in
+      # crates/worker-entry/wrangler.toml.
       - name: Install worker-build
-        run: which worker-build || cargo install worker-build
+        run: which worker-build || cargo install worker-build@0.8.5
 
-      - name: Build Worker
-        run: worker-build --release
-        working-directory: crates/worker-entry
-
+      # `wrangler deploy` runs the [build] command (worker-build --release),
+      # the single build entry point shared with local `wrangler dev`.
       - name: Deploy to Cloudflare Workers
         working-directory: crates/worker-entry
         env:

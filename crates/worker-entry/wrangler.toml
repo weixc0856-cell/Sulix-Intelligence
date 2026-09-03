@@ -3,6 +3,14 @@ main = "build/index.js"
 compatibility_date = "2026-07-26"
 compatibility_flags = ["nodejs_compat"]
 
+# Wrangler is the single entry point for building the Worker bundle: both
+# `wrangler dev` (local) and `wrangler deploy` (CI) run worker-build here.
+# Toolchain installation (worker-build binary) is NOT this command's job — it
+# is handled by rust-toolchain.toml + the CI dependency cache. Keep the
+# worker-build version in sync with .github/workflows/deploy.yml.
+[build]
+command = "worker-build --release"
+
 [vars]
 AI_BASE_URL = "https://api.deepseek.com/v1"
 AI_CHAT_MODEL = "deepseek-v4-flash"
