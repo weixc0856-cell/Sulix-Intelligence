@@ -49,6 +49,11 @@ output/
 # ---- Cloudflare 本地开发 ----
 .wrangler/
 
+# ---- Cloudflare Worker build 产物（worker-build 输出）----
+# 之前仅靠 crates/worker-entry/build/.gitignore（未跟踪）自忽略，
+# 全新 clone 后不生效；改为仓库级忽略（W09）。
+crates/worker-entry/build/
+
 # ---- Cloudflare Agent（已迁移至独立仓库 D:\Project\CF_Agent）----
 /agents/
 /agents
