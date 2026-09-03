@@ -10,12 +10,13 @@ use store::{BriefArticle, DiscoveryMethod, RelatedEntityRef, StoreBackend};
 
 use crate::discovery::clustering::{cluster_by_similarity, SimilarityEdge};
 use crate::discovery::converter::cluster_to_candidate;
+use crate::ports::SemanticQuery;
 
 /// Runtime context provided to every [`SignalSource`].
 #[derive(Clone)]
 pub struct DiscoveryContext<'a> {
     pub store: &'a dyn StoreBackend,
-    pub vectorize: Option<&'a vectorize::VectorizeIndex>,
+    pub semantic: Option<&'a dyn SemanticQuery>,
     pub now: i64,
 }
 
@@ -108,8 +109,8 @@ impl SignalSource for EntitySignalSource {
 
 /// Semantic discovery signal source — ANN similarity + clustering + V2 scoring.
 ///
-/// Requires a Vectorize binding to be present in [`DiscoveryContext`].
-/// When Vectorize is unavailable, returns empty (no candidates).
+/// Requires a [`SemanticQuery`] (Vectorize-backed in production) to be present
+/// in [`DiscoveryContext`]. When it is unavailable, returns empty (no candidates).
 pub struct SemanticDiscoverySource;
 
 impl SignalSource for SemanticDiscoverySource {
@@ -118,8 +119,8 @@ impl SignalSource for SemanticDiscoverySource {
         ctx: DiscoveryContext<'a>,
     ) -> futures::future::LocalBoxFuture<'a, Result<Vec<SignalCandidate>, String>> {
         Box::pin(async move {
-            let vz = match ctx.vectorize {
-                Some(v) => v,
+            let semantic = match ctx.semantic {
+                Some(s) => s,
                 None => return Ok(Vec::new()),
             };
 
@@ -134,17 +135,18 @@ impl SignalSource for SemanticDiscoverySource {
                 return Ok(Vec::new());
             }
 
-            // 2. Build similarity edges via Vectorize ANN
+            // 2. Build similarity edges via semantic ANN
             let mut edges: Vec<SimilarityEdge> = Vec::new();
             let mut seen: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
 
             for a in &articles {
-                let matches = vectorize::query_similar_by_id(vz, &a.vector_id, 20, 0.75)
+                let matches = semantic
+                    .find_similar(&a.vector_id, 20, 0.75)
                     .await
-                    .map_err(|e| format!("vectorize query for {}: {e}", a.vector_id))?;
+                    .map_err(|e| format!("semantic query for {}: {e}", a.vector_id))?;
 
                 for m in &matches {
-                    if let Ok(neighbor_id) = m.id.parse::<i64>() {
+                    if let Ok(neighbor_id) = m.vector_id.parse::<i64>() {
                         if neighbor_id != a.article_id {
                             let key = if a.article_id < neighbor_id {
                                 (a.article_id, neighbor_id)

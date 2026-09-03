@@ -9,13 +9,14 @@
 //! a fresh round of signal instances + events even when nothing changed.
 
 use event_store::{EventR2Backend, EventStore};
+use infrastructure::semantic_query::VectorizeSemanticQuery;
 use object_store::R2Store;
 use worker::*;
 
+use signal_engine::ports::SemanticQuery;
 use signal_engine::source::{EntitySignalSource, SemanticDiscoverySource, SignalSource};
 use signal_engine::SignalEngine;
 use store::D1Store;
-use vectorize::VectorizeIndex;
 
 /// KV key for the engine checkpoint cursor.
 const KV_LAST_RUN: &str = "signal_engine:last_run";
@@ -61,10 +62,11 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     let entity_source = EntitySignalSource;
     let semantic_source = SemanticDiscoverySource;
 
-    let vz: Option<VectorizeIndex> = env.get_binding("VECTORIZE").ok();
-    if vz.is_some() {
+    let semantic: Option<VectorizeSemanticQuery> = env.get_binding("VECTORIZE").ok().map(VectorizeSemanticQuery::new);
+    if semantic.is_some() {
         console_log!("semantic discovery: enabled");
     }
+    let semantic_ref: Option<&dyn SemanticQuery> = semantic.as_ref().map(|s| s as &dyn SemanticQuery);
 
     let sources: [&dyn SignalSource; 2] = [&entity_source, &semantic_source];
 
@@ -75,7 +77,7 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
     };
     let event_store_ref: Option<&dyn EventStore> = event_store.as_ref().map(|es| es as &dyn EventStore);
 
-    match SignalEngine::run(&store, event_store_ref, vz.as_ref(), &sources, now).await {
+    match SignalEngine::run(&store, event_store_ref, semantic_ref, &sources, now).await {
         Ok(report) => {
             console_log!(
                 "signal engine: {} threads, {} instances, {} events, {} lifecycle transitions",

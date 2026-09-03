@@ -23,18 +23,21 @@
 #![deny(unused)]
 
 pub mod discovery;
+pub mod error;
+pub mod ports;
 pub mod query;
 pub mod scoring;
 pub mod source;
 
 mod candidate;
 
+pub use error::SignalError;
 pub use scoring::score_to_impact;
 
 use event_store::EventStore;
 use store::StoreBackend;
-use vectorize::VectorizeIndex;
 
+use crate::ports::SemanticQuery;
 use crate::source::{DiscoveryContext, SignalSource};
 
 /// Aggregate report from a single Signal Engine run.
@@ -57,14 +60,14 @@ impl SignalEngine {
     pub async fn run(
         store: &impl StoreBackend,
         event_store: Option<&dyn EventStore>,
-        vectorize: Option<&VectorizeIndex>,
+        semantic: Option<&dyn SemanticQuery>,
         sources: &[&dyn SignalSource],
         now: i64,
     ) -> Result<SignalEngineReport, store::StoreError> {
         let mut report = SignalEngineReport::default();
 
         // Build context shared by all sources
-        let ctx = DiscoveryContext { store: store as &dyn StoreBackend, vectorize, now };
+        let ctx = DiscoveryContext { store: store as &dyn StoreBackend, semantic, now };
 
         // 1. Gather candidates from all sources
         let mut all_candidates: Vec<crate::source::SignalCandidate> = Vec::new();

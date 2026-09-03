@@ -17,6 +17,8 @@ memory-engine = { workspace = true }
 object-store = { workspace = true }
 store = { workspace = true }
 event-store = { workspace = true }
+signal-engine = { workspace = true }
+vectorize = { workspace = true }
 content-governance = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

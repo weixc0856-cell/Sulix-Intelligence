@@ -28,7 +28,6 @@ CONTROLLED=(signal-engine reflection-engine memory-engine ai-pipeline context-en
 # Remove a line once that coupling is migrated out (P3/P4/P5).
 GRANDFATHERED=(
   signal-engine:store
-  signal-engine:vectorize
   signal-engine:event-store
   claim-engine:store
 )

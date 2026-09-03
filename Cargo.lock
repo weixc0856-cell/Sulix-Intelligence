@@ -698,8 +698,10 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-kernel",
+ "signal-engine",
  "store",
  "thiserror",
+ "vectorize",
 ]
 
 [[package]]
@@ -1276,7 +1278,7 @@ dependencies = [
  "serde",
  "serde_json",
  "store",
- "vectorize",
+ "thiserror",
 ]
 
 [[package]]

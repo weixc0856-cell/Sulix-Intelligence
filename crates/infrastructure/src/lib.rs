@@ -18,4 +18,5 @@ pub mod event_log;
 pub mod memory_repository;
 pub mod provenance;
 pub mod reflection_repository;
+pub mod semantic_query;
 pub mod storage_policy;
