@@ -19,6 +19,7 @@ store.workspace = true
 fetcher.workspace = true
 rules.workspace = true
 ai-pipeline.workspace = true
+embedding.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 js-sys.workspace = true

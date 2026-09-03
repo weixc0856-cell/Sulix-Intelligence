@@ -1686,6 +1686,7 @@ dependencies = [
  "api",
  "console_error_panic_hook",
  "content-governance",
+ "embedding",
  "entity",
  "event-store",
  "feed-rs",

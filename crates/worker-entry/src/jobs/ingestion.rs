@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use worker::*;
 
 use crate::extract_body;
-use crate::jobs::embedding::upsert_vector;
+use crate::jobs::embedding::embed_and_upsert;
 use crate::metrics::PipelineMetrics;
 use crate::version::PIPELINE_VERSION;
 use ai_pipeline::{process_article, HttpSummarizer};
@@ -22,6 +22,7 @@ use vectorize::VectorizeIndex;
 pub(crate) struct FeedContext<'a, S: StoreBackend> {
     pub(crate) store: &'a S,
     pub(crate) summarizer: &'a Option<HttpSummarizer>,
+    pub(crate) embedder: &'a Option<crate::services::embedder::AiEmbedder>,
     pub(crate) r2_bucket: &'a Option<Bucket>,
     pub(crate) vectorize: &'a Option<VectorizeIndex>,
     pub(crate) rules: &'a [Rule],
@@ -173,20 +174,31 @@ pub(crate) async fn process_one_feed(
                                 {
                                     Ok(result) => {
                                         ctx.metrics.borrow_mut().record_ms("llm", PipelineMetrics::since(llm_start));
-                                        if !result.embedding.is_empty() {
-                                            if let Some(ref idx) = ctx.vectorize {
-                                                let emb_start = js_sys::Date::now();
-                                                if let Err(e) = upsert_vector(idx, article_id, &result.embedding).await
-                                                {
-                                                    console_log!(
-                                                        "  vectorize upsert failed for article {article_id}: {e}"
-                                                    );
-                                                    ctx.metrics.borrow_mut().errors += 1;
-                                                }
-                                                ctx.metrics
-                                                    .borrow_mut()
-                                                    .record_ms("embedding", PipelineMetrics::since(emb_start));
+                                        // Embedding (Workers AI) is a separate step from summarization: the
+                                        // article + summary were already persisted by process_article above,
+                                        // so an embed/upsert failure here must NOT abort ingestion — it is
+                                        // logged + metered (never silent) and leaves the article absent from
+                                        // Vectorize, re-embeddable via POST /api/admin/rebuild-embeddings.
+                                        if let (Some(embedder), Some(idx)) =
+                                            (ctx.embedder.as_ref(), ctx.vectorize.as_ref())
+                                        {
+                                            let emb_start = js_sys::Date::now();
+                                            if let Err(e) = embed_and_upsert(
+                                                embedder,
+                                                idx,
+                                                article_id,
+                                                &article.title,
+                                                &result.summary,
+                                                &result.tags,
+                                            )
+                                            .await
+                                            {
+                                                console_log!("  embed/vectorize failed for article {article_id}: {e}");
+                                                ctx.metrics.borrow_mut().errors += 1;
                                             }
+                                            ctx.metrics
+                                                .borrow_mut()
+                                                .record_ms("embedding", PipelineMetrics::since(emb_start));
                                         }
                                         // Entity persistence — extract, classify, and link named entities
                                         if !result.entities.is_empty() {
@@ -352,6 +364,7 @@ pub(crate) async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i6
         }
     };
     let summarizer = crate::services::summarizer::try_build_summarizer(env);
+    let embedder = crate::services::embedder::try_build_embedder(env);
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
     let rule_jsons = match store.active_rule_jsons("default").await {
@@ -366,6 +379,7 @@ pub(crate) async fn execute_feed_batch(env: &Env, feeds: &[store::Feed], now: i6
     let ctx = FeedContext {
         store: &store,
         summarizer: &summarizer,
+        embedder: &embedder,
         r2_bucket: &r2_bucket,
         vectorize: &vectorize,
         rules: &rules,

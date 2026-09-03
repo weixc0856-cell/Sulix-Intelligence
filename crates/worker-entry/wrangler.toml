@@ -11,10 +11,13 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = "worker-build --release"
 
+# Chat (summarization) runs via DeepSeek (AI_BASE_URL/AI_CHAT_MODEL + secret
+# AI_API_KEY). Embeddings run via the Workers AI binding (`env.ai("AI")`,
+# @cf/baai/bge-large-en-v1.5) — no model env var needed; the old AI_EMBEDDING_MODEL
+# DeepSeek /embeddings path was removed in the Phase-3 unification.
 [vars]
 AI_BASE_URL = "https://api.deepseek.com/v1"
 AI_CHAT_MODEL = "deepseek-v4-flash"
-AI_EMBEDDING_MODEL = "bge-large-en-v1.5"
 CRON_INGESTION_ENABLED = "true"
 CRON_SIGNAL_ENABLED = "true"
 # CRON_REFLECTION_ENABLED and CRON_MEMORY_ENABLED phased in after signal stable

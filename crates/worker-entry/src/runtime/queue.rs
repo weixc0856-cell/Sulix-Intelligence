@@ -17,6 +17,7 @@ pub(crate) async fn handle(batch: MessageBatch<FetchJob>, env: Env, _ctx: Contex
     console_error_panic_hook::set_once();
     let store = Store::new(env.d1("DB")?);
     let summarizer = crate::services::summarizer::try_build_summarizer(&env);
+    let embedder = crate::services::embedder::try_build_embedder(&env);
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize = env.get_binding::<VectorizeIndex>("VECTORIZE").ok();
     let now = (js_sys::Date::now() / 1000.0) as i64;
@@ -32,6 +33,7 @@ pub(crate) async fn handle(batch: MessageBatch<FetchJob>, env: Env, _ctx: Contex
     let feed_ctx = FeedContext {
         store: &store,
         summarizer: &summarizer,
+        embedder: &embedder,
         r2_bucket: &r2_bucket,
         vectorize: &vectorize,
         rules: &rules,

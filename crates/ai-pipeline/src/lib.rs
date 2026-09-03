@@ -1,13 +1,14 @@
-//! Summarize + tag + embed a single article, then persist the result
-//! through `store`. The actual model call is behind `Summarizer` so it can
-//! point at Workers AI, or an external LLM API (whichever you decide has
-//! better quality/cost for summarization) without touching this crate's
-//! callers -- only the concrete impl passed in at the composition root
-//! changes.
+//! Summarize + tag an article and persist the result through `store`. The
+//! actual model call is behind [`Summarizer`] so it can point at Workers AI,
+//! or an external LLM API (whichever you decide has better quality/cost for
+//! summarization) without touching this crate's callers -- only the concrete
+//! impl passed in at the composition root changes.
 //!
-//! HTTP transport is abstracted behind [`HttpClient`] so this crate does not
-//! depend on `worker::Fetch` -- the composition root (`worker-entry`) provides
-//! a worker-based implementation.
+//! Embedding is intentionally NOT part of this crate: [`SummaryResult`] carries
+//! only summary/tags/entities, and the outbound [`Embedder`] seam is consumed
+//! by the composition root *after* `process_article` has persisted the summary
+//! (see [`Embedder`] docs). Chat transport is provided by `model_runtime`
+//! (`ModelProvider`), which the composition root configures.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -30,21 +31,6 @@ pub struct SummaryResult {
     pub summary: String,
     pub tags: Vec<String>,     // mapped from AI topics (for backward compat)
     pub entities: Vec<String>, // extracted named entities
-    pub embedding: Vec<f32>,
-}
-
-// ---------------------------------------------------------------------------
-// HTTP client abstraction
-// ---------------------------------------------------------------------------
-
-#[async_trait(?Send)]
-pub trait HttpClient {
-    async fn post_json(
-        &self,
-        url: &str,
-        headers: &[(String, String)],
-        body: &serde_json::Value,
-    ) -> Result<serde_json::Value, PipelineError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,10 +42,32 @@ pub trait Summarizer {
     async fn summarize(&self, title: &str, body: &str) -> Result<SummaryResult, PipelineError>;
 }
 
+/// Outbound seam for computing a text embedding from an article's summary.
+///
+/// Embedding is deliberately separate from [`Summarizer`] / [`SummaryResult`]:
+/// the text contract fed to the embedder (the `Title:/Summary:/Topics:` shape)
+/// is owned by the composition root, which builds it via the `embedding` crate
+/// and hands a pre-formatted string here. Keeping this crate free of any
+/// embedding provider/model/Cloudflare knowledge is what lets the same code run
+/// against Workers AI today and another provider tomorrow.
+///
+/// The composition root implements this by wrapping a concrete embedder (e.g.
+/// `embedding::WorkersAiEmbedder`). Embedding runs *after* `process_article`
+/// has already persisted the article's summary + tags, so a failure on this
+/// seam never loses the article — the caller logs + meters it and the vector is
+/// simply absent (re-embeddable by the admin rebuild endpoint).
+#[async_trait(?Send)]
+pub trait Embedder {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, PipelineError>;
+}
+
 /// Runs summarization for one article and writes the result back through
 /// `store`. `score` is the rules-engine output computed upstream.
 ///
-/// Delegates to the embedded ModelProvider for the LLM call.
+/// Embedding is intentionally NOT performed here: it needs the freshly-built
+/// summary + normalized tags, whose text contract lives in the composition
+/// root. Callers run the [`Embedder`] seam after this returns (and only then,
+/// so an embed failure can never skip or roll back this persistence).
 pub async fn process_article(
     store: &impl StoreBackend,
     summarizer: &dyn Summarizer,
@@ -77,44 +85,19 @@ pub async fn process_article(
 }
 
 // ---------------------------------------------------------------------------
-// HttpSummarizer
+// HttpSummarizer — DeepSeek (or any OpenAI-compatible) chat via ModelProvider
 // ---------------------------------------------------------------------------
 
 pub struct HttpSummarizer {
     /// Model provider for LLM chat completions.
     provider: Box<dyn model_runtime::ModelProvider>,
-    /// Optional embedding configuration.
-    embedding_model: String,
-    embedding_base_url: String,
-    embedding_api_key: String,
-    /// HTTP client for embeddings only (chat goes through provider).
-    client: Box<dyn HttpClient>,
 }
 
 impl HttpSummarizer {
     /// Create a new HttpSummarizer backed by a ModelProvider.
-    /// The provider handles all chat completions; embedding_base_url/api_key/client
-    /// are only used for optional embedding calls.
-    pub fn new(
-        provider: Box<dyn model_runtime::ModelProvider>,
-        embedding_model: String,
-        embedding_base_url: String,
-        embedding_api_key: String,
-        client: Box<dyn HttpClient>,
-    ) -> Self {
-        Self { provider, embedding_model, embedding_base_url, embedding_api_key, client }
-    }
-
-    fn auth_headers(&self) -> Vec<(String, String)> {
-        vec![
-            ("Content-Type".into(), "application/json".into()),
-            ("Authorization".into(), format!("Bearer {}", self.embedding_api_key)),
-        ]
-    }
-
-    async fn post_json(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, PipelineError> {
-        let url = format!("{}{}", self.embedding_base_url, path);
-        self.client.post_json(&url, &self.auth_headers(), body).await
+    /// The provider handles all chat completions.
+    pub fn new(provider: Box<dyn model_runtime::ModelProvider>) -> Self {
+        Self { provider }
     }
 }
 
@@ -175,33 +158,7 @@ impl Summarizer for HttpSummarizer {
             extracted.topics = extracted.tags;
         }
 
-        let embedding = if self.embedding_model.is_empty() {
-            Vec::new()
-        } else {
-            match self
-                .post_json(
-                    "/embeddings",
-                    &serde_json::json!({
-                        "model": self.embedding_model,
-                        "input": format!("{title}\n{}", extracted.summary)
-                    }),
-                )
-                .await
-            {
-                Ok(resp) => resp["data"][0]["embedding"]
-                    .as_array()
-                    .map(|arr| arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
-                    .unwrap_or_default(),
-                Err(_) => Vec::new(),
-            }
-        };
-
-        Ok(SummaryResult {
-            summary: extracted.summary,
-            tags: extracted.topics,
-            entities: extracted.entities,
-            embedding,
-        })
+        Ok(SummaryResult { summary: extracted.summary, tags: extracted.topics, entities: extracted.entities })
     }
 }
 
@@ -237,33 +194,21 @@ mod tests {
         assert!(prompt.contains("Text with"));
     }
 
-    struct DummyHttpClient;
-
-    #[async_trait(?Send)]
-    impl HttpClient for DummyHttpClient {
-        async fn post_json(
-            &self,
-            _url: &str,
-            _headers: &[(String, String)],
-            _body: &serde_json::Value,
-        ) -> Result<serde_json::Value, PipelineError> {
-            Ok(serde_json::json!({}))
-        }
-    }
-
+    /// Regression guard for the embedding unification: a summary JSON payload
+    /// that still carries an `embedding` array (as the old DeepSeek path
+    /// produced) must deserialize into the new 3-field SummaryResult, proving
+    /// the deleted field is safe for any persisted/cached payloads.
     #[test]
-    fn auth_headers_contains_bearer() {
-        let provider = Box::new(model_runtime::NoopProvider::new());
-        let s = HttpSummarizer::new(
-            provider,
-            "".into(),
-            "https://api.example.com".into(),
-            "test-key-123".into(),
-            Box::new(DummyHttpClient),
-        );
-        let headers = s.auth_headers();
-        assert_eq!(headers.len(), 2);
-        assert!(headers.contains(&("Content-Type".into(), "application/json".into())));
-        assert!(headers.contains(&("Authorization".into(), "Bearer test-key-123".into())));
+    fn summary_result_ignores_stray_embedding_in_json() {
+        let raw = serde_json::json!({
+            "summary": "S",
+            "tags": ["a"],
+            "entities": ["b"],
+            "embedding": [0.1, 0.2, 0.3],
+        });
+        let r: SummaryResult = serde_json::from_value(raw).unwrap();
+        assert_eq!(r.summary, "S");
+        assert_eq!(r.tags, vec!["a"]);
+        assert_eq!(r.entities, vec!["b"]);
     }
 }

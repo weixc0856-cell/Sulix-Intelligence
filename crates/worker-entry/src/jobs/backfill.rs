@@ -6,7 +6,8 @@ use store::D1Store;
 use vectorize::VectorizeIndex;
 use worker::*;
 
-use crate::jobs::embedding::upsert_vector;
+use crate::jobs::embedding::embed_and_upsert;
+use crate::services::embedder::try_build_embedder;
 use crate::services::summarizer::try_build_summarizer;
 
 const MAX_PER_CYCLE: u32 = 50;
@@ -25,6 +26,7 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
         console_log!("[backfill] summarizer unavailable — skipping");
         return;
     }
+    let embedder = try_build_embedder(env);
 
     let r2_bucket = env.bucket("RAW_CONTENT").ok();
     let vectorize: Option<VectorizeIndex> = env.get_binding("VECTORIZE").ok();
@@ -74,9 +76,14 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
         if let Some(ref s) = summarizer {
             match process_article(&store, s, article_id, &article.title, &body_str, article.score).await {
                 Ok(result) => {
-                    if !result.embedding.is_empty() {
-                        if let Some(ref idx) = vectorize {
-                            let _ = upsert_vector(idx, article_id, &result.embedding).await;
+                    // Embedding is a separate step — summary was already persisted by
+                    // process_article, so failure here is logged and leaves the article
+                    // re-embeddable via POST /api/admin/rebuild-embeddings.
+                    if let (Some(e), Some(idx)) = (embedder.as_ref(), vectorize.as_ref()) {
+                        if let Err(err) =
+                            embed_and_upsert(e, idx, article_id, &article.title, &result.summary, &result.tags).await
+                        {
+                            console_log!("[backfill] embed/vectorize failed for article {article_id}: {err}");
                         }
                     }
                     if !result.entities.is_empty() {
