@@ -11,8 +11,6 @@ CRON_INGESTION_ENABLED = "true"
 CRON_SIGNAL_ENABLED = "true"
 # CRON_REFLECTION_ENABLED and CRON_MEMORY_ENABLED phased in after signal stable
 
-migrations_dir = "../../migrations"
-
 [triggers]
 crons = ["*/30 * * * *"]
 
@@ -20,6 +18,7 @@ crons = ["*/30 * * * *"]
 binding = "DB"
 database_name = "sulix-feed-db"
 database_id = "42e589bc-036e-4e1f-8763-bbff092354e0"
+migrations_dir = "../../migrations"
 
 [[r2_buckets]]
 binding = "RAW_CONTENT"
