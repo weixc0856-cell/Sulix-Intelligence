@@ -31,7 +31,6 @@ GRANDFATHERED=(
   signal-engine:vectorize
   signal-engine:event-store
   reflection-engine:event-store
-  ai-pipeline:store
   context-engine:store
   context-engine:object-store
   claim-engine:store

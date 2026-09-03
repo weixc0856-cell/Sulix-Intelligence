@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 shared-kernel = { workspace = true }
+ai-pipeline = { workspace = true }
 decision-engine = { workspace = true }
 reflection-engine = { workspace = true }
 memory-engine = { workspace = true }

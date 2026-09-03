@@ -10,6 +10,7 @@ use crate::version::PIPELINE_VERSION;
 use ai_pipeline::{process_article, HttpSummarizer};
 use entity::{canonicalizer, classifier};
 use fetcher::{fetch_feed, FetchOutcome};
+use infrastructure::article_persistence::D1ArticlePersistence;
 use rules::{score, ArticleInput, Rule};
 use store::{NewArticle, NewArtifact, Store, StoreBackend};
 use vectorize::VectorizeIndex;
@@ -169,7 +170,8 @@ pub(crate) async fn process_one_feed(
                         if do_ai {
                             if let Some(ref s) = ctx.summarizer {
                                 let llm_start = js_sys::Date::now();
-                                match process_article(ctx.store, s, article_id, &article.title, &body, article_score)
+                                let persistence = D1ArticlePersistence::new(ctx.store);
+                                match process_article(&persistence, s, article_id, &article.title, &body, article_score)
                                     .await
                                 {
                                     Ok(result) => {

@@ -33,7 +33,6 @@ dependencies = [
  "model-runtime",
  "serde",
  "serde_json",
- "store",
  "thiserror",
 ]
 
@@ -689,6 +688,7 @@ dependencies = [
 name = "infrastructure"
 version = "0.1.0"
 dependencies = [
+ "ai-pipeline",
  "async-trait",
  "content-governance",
  "decision-engine",

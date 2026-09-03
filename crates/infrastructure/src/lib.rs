@@ -10,6 +10,7 @@
 //! - [`artifact_registry`] — ArtifactRegistry impl (InMemory for tests, D1 for production)
 //! - [`storage_policy`] — Source governance ↔ artifact retention policy
 
+pub mod article_persistence;
 pub mod artifact_registry;
 pub mod decision_repository;
 pub mod memory_repository;

@@ -1,7 +1,8 @@
 //! Daily Intelligence Brief generator.
 //!
-//! Transforms signals from [`store::signals_today`] into a structured
-//! LLM-synthesised briefing with insights, recommendations, and evidence.
+//! Transforms signal inputs (owned [`types::BriefSignalInput`] DTOs, mapped
+//! from store rows by the composition root) into a structured LLM-synthesised
+//! briefing with insights, recommendations, and evidence.
 
 pub mod context;
 pub mod converter;
@@ -11,4 +12,4 @@ mod prompt;
 pub mod types;
 
 pub use generator::generate_daily_brief;
-pub use types::{EvidenceArticle, SignalCandidate};
+pub use types::{BriefArticleInput, BriefSignalInput, EvidenceArticle, RelatedEntityInput, SignalCandidate};

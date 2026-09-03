@@ -87,3 +87,39 @@ pub struct EvidenceArticle {
     pub feed_name: Option<String>,
     pub score: f64,
 }
+
+// ---------------------------------------------------------------------------
+// Input DTOs — owned by ai-pipeline so the briefing generator never sees
+// store types. The composition root (worker-entry) maps store rows onto these
+// before calling into briefing; converter.rs projects them onto candidates.
+// ---------------------------------------------------------------------------
+
+/// Projection of a signal thread fed into the briefing generator.
+#[derive(Debug, Clone)]
+pub struct BriefSignalInput {
+    pub thread_id: i64,
+    pub title: String,
+    pub description: String,
+    pub recent_article_count: i64,
+    pub source_count: i64,
+    pub current_score: f64,
+    pub trend: String,
+    pub evidence: Vec<BriefArticleInput>,
+    pub related_entities: Vec<RelatedEntityInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BriefArticleInput {
+    pub id: i64,
+    pub title: String,
+    pub url: Option<String>,
+    pub feed_name: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RelatedEntityInput {
+    pub name: String,
+    pub entity_type: String,
+    pub confidence: Option<f64>,
+}

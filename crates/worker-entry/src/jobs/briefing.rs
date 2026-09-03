@@ -122,7 +122,7 @@ pub(crate) async fn generate_briefing_task(env: &Env, now: i64) {
         .into_iter()
         .map(|input| {
             let tid = input.thread_id;
-            let mut candidate: SignalCandidate = input.into();
+            let mut candidate: SignalCandidate = to_brief_signal_input(input).into();
             if let Some(decisions) = context_bundle.decision_map.get(&tid) {
                 candidate.context.decisions = decisions
                     .iter()
@@ -257,6 +257,42 @@ async fn generate_and_persist(
 
     console_log!("[Sulix:briefing] generated for {date} — {} insights", briefing.insights.len());
     Ok(())
+}
+
+/// Map a store signal-thread row onto the ai-pipeline-owned briefing input DTO.
+///
+/// Lives here (the composition root) rather than in ai-pipeline so that crate
+/// never names a store type; ai-pipeline converts [`BriefSignalInput`] itself.
+fn to_brief_signal_input(s: store::SignalBriefInput) -> ai_pipeline::briefing::BriefSignalInput {
+    ai_pipeline::briefing::BriefSignalInput {
+        thread_id: s.thread_id,
+        title: s.title,
+        description: s.description,
+        recent_article_count: s.recent_article_count,
+        source_count: s.source_count,
+        current_score: s.current_score,
+        trend: s.trend,
+        evidence: s
+            .evidence
+            .into_iter()
+            .map(|a| ai_pipeline::briefing::BriefArticleInput {
+                id: a.id,
+                title: a.title,
+                url: a.url,
+                feed_name: a.feed_name,
+                score: a.score,
+            })
+            .collect(),
+        related_entities: s
+            .related_entities
+            .into_iter()
+            .map(|e| ai_pipeline::briefing::RelatedEntityInput {
+                name: e.name,
+                entity_type: e.entity_type,
+                confidence: e.confidence,
+            })
+            .collect(),
+    }
 }
 
 /// Fallback: load legacy `signals_today()` candidates when no signal threads exist.

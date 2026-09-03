@@ -12,7 +12,6 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::{StoreBackend, StoreError};
 
 pub mod briefing;
 pub mod retry;
@@ -22,8 +21,8 @@ pub mod tag_normalizer;
 pub enum PipelineError {
     #[error("summarizer error: {0}")]
     Summarizer(String),
-    #[error(transparent)]
-    Store(#[from] StoreError),
+    #[error("persistence error: {0}")]
+    Persistence(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,6 +30,25 @@ pub struct SummaryResult {
     pub summary: String,
     pub tags: Vec<String>,     // mapped from AI topics (for backward compat)
     pub entities: Vec<String>, // extracted named entities
+}
+
+// ---------------------------------------------------------------------------
+// ArticlePersistence — outbound seam for persisting an AI summary result
+// ---------------------------------------------------------------------------
+
+/// Persistence seam for the summarization step. One use-case method only —
+/// deliberately NOT a general store abstraction (see StoreBackend deprecation).
+/// Implementations live in `infrastructure` (e.g. `D1ArticlePersistence`).
+#[async_trait(?Send)]
+pub trait ArticlePersistence {
+    async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        tags_json: &str,
+        vector_id: &str,
+        score: f64,
+    ) -> Result<(), PipelineError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,15 +79,16 @@ pub trait Embedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>, PipelineError>;
 }
 
-/// Runs summarization for one article and writes the result back through
-/// `store`. `score` is the rules-engine output computed upstream.
+/// Runs summarization for one article and writes the result back through an
+/// [`ArticlePersistence`] seam. `score` is the rules-engine output computed
+/// upstream.
 ///
 /// Embedding is intentionally NOT performed here: it needs the freshly-built
 /// summary + normalized tags, whose text contract lives in the composition
 /// root. Callers run the [`Embedder`] seam after this returns (and only then,
 /// so an embed failure can never skip or roll back this persistence).
 pub async fn process_article(
-    store: &impl StoreBackend,
+    persistence: &impl ArticlePersistence,
     summarizer: &dyn Summarizer,
     article_id: i64,
     title: &str,
@@ -80,7 +99,7 @@ pub async fn process_article(
     let normalized = tag_normalizer::normalize_tags(&result.tags);
     let tags_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
     let vector_id = format!("article-{article_id}");
-    store.set_ai_summary(article_id, &result.summary, &tags_json, &vector_id, score).await?;
+    persistence.set_ai_summary(article_id, &result.summary, &tags_json, &vector_id, score).await?;
     Ok(result)
 }
 

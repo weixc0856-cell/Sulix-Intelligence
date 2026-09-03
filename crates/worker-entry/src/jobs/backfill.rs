@@ -2,6 +2,7 @@
 
 use ai_pipeline::process_article;
 use entity::{canonicalizer, classifier};
+use infrastructure::article_persistence::D1ArticlePersistence;
 use store::D1Store;
 use vectorize::VectorizeIndex;
 use worker::*;
@@ -74,7 +75,8 @@ pub(crate) async fn process_backfill(env: &Env, _now: i64) {
         let body_str: String = String::from_utf8_lossy(&body).into();
 
         if let Some(ref s) = summarizer {
-            match process_article(&store, s, article_id, &article.title, &body_str, article.score).await {
+            let persistence = D1ArticlePersistence::new(&store);
+            match process_article(&persistence, s, article_id, &article.title, &body_str, article.score).await {
                 Ok(result) => {
                     // Embedding is a separate step — summary was already persisted by
                     // process_article, so failure here is logged and leaves the article
