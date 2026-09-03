@@ -21,11 +21,16 @@ Sulix is a curated RSS Feed + AI Digest product, deployed entirely on Cloudflare
 
 ## Project Structure
 
+> **Workspace members**: the backend is a Rust workspace with **27 member crates**.
+> The root [`Cargo.toml`](./Cargo.toml) `[workspace.members]` is the **authoritative** list —
+> the tree below is a high-level map and is not kept in lockstep with it (don't hand-sync).
+> See `docs/decisions/` for architecture decisions.
+
 ```
 D:\Project\Sulix Intelligence (Rust workspace — backend)
-├── Cargo.toml               ← workspace root (9 member crates)
-├── migrations/
-│   └── 0001_init.sql        ← D1 schema (feeds, articles, filter_rules)
+├── Cargo.toml               ← workspace root (27 members — authoritative list)
+├── rust-toolchain.toml      ← pinned Rust toolchain (single source for channel/components/targets)
+├── migrations/              ← D1 schema, single source of truth (0001…0049)
 ├── crates/
 │   ├── store/               ← D1 access layer + StoreBackend trait + MemoryStore
 │   ├── fetcher/             ← RSS/Atom fetch + SSRF guard + AbortSignal timeout
@@ -56,7 +61,7 @@ D:\Project\intel-web (Astro — frontend)
     ├── pages/search.astro   ← Search page
     ├── components/          ← Header.astro, ArticleCard.astro
     ├── layouts/Layout.astro ← HTML shell
-    ├── lib/api.ts           ← Typed API client
+    ├── infrastructure/api/  ← ApiClient (typed client over service binding env.API)
     └── styles/global.css    ← Tailwind base + fonts
 ```
 
@@ -97,15 +102,21 @@ Sprint 5 目标为空表。`cargo-deny` 只能做全局限禁、无法按消费�
 架构总纲见 `docs/architecture/final-architecture-v2.md`。
 
 ### Backend (wasm32-unknown-unknown target required)
+Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).
 ```bash
 cargo check --workspace
 cargo test --workspace              # 90+ unit tests
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
-cargo install worker-build          # need once per machine
-worker-build --release              # full Worker build
-npx wrangler deploy -c crates/worker-entry/wrangler.toml
+cargo check --workspace --all-features --target wasm32-unknown-unknown   # wasm gate (PR + deploy)
+cargo install worker-build@0.8.5    # once per machine (pin exact — keep in sync with [build] + deploy.yml)
+cd crates/worker-entry
+wrangler dev                        # runs [build] → worker-build --release automatically
+wrangler deploy                     # runs [build], then deploys (migrations_dir → ../../migrations)
 ```
+Wrangler's `[build]` in `crates/worker-entry/wrangler.toml` is the **single Worker build entry** — both
+`wrangler dev` and `wrangler deploy` run `worker-build --release` there. D1 migrations live in root
+`migrations/` (the only copy); do NOT add a `migrations/` dir under `crates/worker-entry/`.
 
 ### Frontend
 ```bash
@@ -123,6 +134,9 @@ npm run deploy          # build + wrangler deploy
 - **Astro server mode + service binding** (not static) — fresh data per-request, no rebuild for new articles
 - **worker::Router** (not Axum) — worker::Env/D1Database are not Send/Sync, worker::Router is designed for this
 - **SSRF guard** in fetcher blocks IP-literal + localhost-alias URLs; DNS rebinding acknowledged limitation
+- **Wrangler `[build]` = single Worker build entry** — `wrangler dev`/`deploy` both run `worker-build --release`; toolchain install is not the hook's job (see ADR-003)
+- **Rust toolchain pinned** via `rust-toolchain.toml`; CI dtolnay pins match — bump is an explicit, validated change
+- **Root `migrations/` is the only migrations copy** — never add one under `crates/worker-entry/`
 
 ## Skills
 
