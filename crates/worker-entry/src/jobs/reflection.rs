@@ -1,20 +1,24 @@
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
 use infrastructure::artifact_registry::D1ArtifactRegistry;
+use infrastructure::reflection_repository::D1ReflectionRepository;
 use object_store::R2Store;
 use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
-use store::D1Store;
+use store::{D1Store, UpdateReflection};
 use worker::*;
 
 use crate::runtime::intelligence::IntelligenceRuntime;
 
-type ReflectionEngineType =
-    ReflectionEngine<D1Store, Box<dyn EventStore>, RealReflectionGenerator, D1ArtifactRegistry<D1Store, R2Store>>;
+type ReflectionEngineType = ReflectionEngine<
+    D1ReflectionRepository<D1Store>,
+    Box<dyn EventStore>,
+    RealReflectionGenerator,
+    D1ArtifactRegistry<D1Store, R2Store>,
+>;
 
 const MAX_PER_CYCLE: u32 = 3;
 
 fn build_engine(env: &Env) -> Result<ReflectionEngineType, String> {
-    let store = D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding: {e}"))?);
     let r2_bucket = env.bucket("RAW_CONTENT").map_err(|e| format!("R2 binding: {e}"))?;
     let r2_store = R2Store::new(r2_bucket);
     let event_store: Box<dyn EventStore> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
@@ -25,14 +29,15 @@ fn build_engine(env: &Env) -> Result<ReflectionEngineType, String> {
         _ => Box::new(NoopEventStore::new()),
     };
     let artifact_registry =
-        D1ArtifactRegistry::new(D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding 2: {e}"))?), r2_store);
+        D1ArtifactRegistry::new(D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding: {e}"))?), r2_store);
+    let repository = D1ReflectionRepository::new(D1Store::new(env.d1("DB").map_err(|e| format!("D1 binding 2: {e}"))?));
 
     let provider = IntelligenceRuntime::new(env)
         .map(|r| r.provider)
         .unwrap_or_else(|_| Box::new(model_runtime::NoopProvider::new()));
     let generator = RealReflectionGenerator::new(provider);
 
-    Ok(ReflectionEngine::new(store, event_store, generator, artifact_registry))
+    Ok(ReflectionEngine::new(repository, event_store, generator, artifact_registry))
 }
 
 pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
@@ -44,12 +49,21 @@ pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
         }
     };
 
+    // Scheduling queries live on the composition root (worker-entry), which may
+    // depend on store; the engine itself only sees its ReflectionRepository.
+    let sched = match env.d1("DB") {
+        Ok(db) => D1Store::new(db),
+        Err(e) => {
+            console_log!("[reflection] D1 binding failed: {e}");
+            return;
+        }
+    };
+
     // 1. Stale recovery
-    if let Ok(stale) = engine.repository().stale_generating_reflections(now).await {
+    if let Ok(stale) = sched.stale_generating_reflections(now).await {
         for r in &stale {
-            let _ = engine
-                .repository()
-                .update_reflection(&store::UpdateReflection {
+            let _ = sched
+                .update_reflection(&UpdateReflection {
                     id: r.id,
                     status: "failed".into(),
                     result: None,
@@ -68,10 +82,10 @@ pub(crate) async fn process_pending_reflections(env: &Env, now: i64) {
     }
 
     // 2. New eligible decisions
-    let eligible = engine.repository().decisions_eligible_for_reflection(now, MAX_PER_CYCLE).await.unwrap_or_default();
+    let eligible = sched.decisions_eligible_for_reflection(now, MAX_PER_CYCLE).await.unwrap_or_default();
 
     // 3. Failed retries
-    let failed = engine.repository().failed_reflections_for_retry(MAX_PER_CYCLE).await.unwrap_or_default();
+    let failed = sched.failed_reflections_for_retry(MAX_PER_CYCLE).await.unwrap_or_default();
 
     let mut to_process: Vec<i64> = eligible;
     for r in &failed {

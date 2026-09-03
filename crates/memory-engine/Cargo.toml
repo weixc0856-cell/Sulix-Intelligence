@@ -9,8 +9,6 @@ workspace = true
 
 [dependencies]
 worker.workspace = true
-store.workspace = true
-event-store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true

@@ -1,10 +1,15 @@
 //! Reflection context — immutable snapshot of what was decided, why, and what happened.
 //!
-//! The [`ReflectionContextBuilder`] loads data from D1 and computes a
-//! completeness score.  The engine uses this context to generate the
-//! reflection via LLM.
+//! The [`ReflectionContextBuilder`] pulls the decision facts through the
+//! domain-owned [`ReflectionRepository`] port and computes a completeness
+//! score.  The engine uses this context to generate the reflection via LLM.
+//!
+//! D1 row→snapshot mapping happens in the infrastructure adapter
+//! (`load_decision_context`), so this module only ever sees domain value
+//! objects.
 
-use store::StoreBackend;
+use crate::error::ReflectionError;
+use crate::repository::ReflectionRepository;
 
 /// Snapshot of the decision itself.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -58,64 +63,48 @@ pub struct ReflectionContext {
     pub completeness_score: f64,
 }
 
-/// Builds a `ReflectionContext` by loading data from the store.
+/// Builds a `ReflectionContext` from the decision facts the repository loads.
 ///
 /// Formula for completeness_score:
 ///   decision_exists * 0.3 + thesis_exists * 0.2 + outcome_exists * 0.3 + evidence_exists * 0.2
-pub struct ReflectionContextBuilder<'a, S: StoreBackend> {
-    store: &'a S,
+pub struct ReflectionContextBuilder<'a, R: ReflectionRepository> {
+    repository: &'a R,
 }
 
-impl<'a, S: StoreBackend> ReflectionContextBuilder<'a, S> {
-    pub fn new(store: &'a S) -> Self {
-        Self { store }
+impl<'a, R: ReflectionRepository> ReflectionContextBuilder<'a, R> {
+    pub fn new(repository: &'a R) -> Self {
+        Self { repository }
     }
 
     /// Load all context for a decision.
-    pub async fn build(&self, decision_id: i64) -> Result<ReflectionContext, store::StoreError> {
-        let decision = self.store.get_decision(decision_id).await?;
-        let outcomes = self.store.get_decision_outcomes(decision_id).await?;
-        let evaluations = self.store.get_decision_evaluations(decision_id).await?;
+    pub async fn build(&self, decision_id: i64) -> Result<ReflectionContext, ReflectionError> {
+        let facts = self
+            .repository
+            .load_decision_context(decision_id)
+            .await?
+            .ok_or(ReflectionError::DecisionNotFound(decision_id))?;
 
-        let (decision_snap, thesis_snap) = match decision {
-            Some(d) => (
-                DecisionSnapshot { id: d.id, title: d.title.clone(), decision_type: d.decision_type.clone() },
-                ThesisSnapshot {
-                    hypothesis: d.hypothesis.unwrap_or_default(),
-                    assumptions: Vec::new(),
-                    initial_confidence: d.confidence,
-                },
-            ),
-            None => return Err(store::StoreError::D1("decision not found".into())),
+        let decision_snap =
+            DecisionSnapshot { id: facts.decision_id, title: facts.title, decision_type: facts.decision_type };
+
+        let thesis_snap = ThesisSnapshot {
+            hypothesis: facts.hypothesis.unwrap_or_default(),
+            assumptions: Vec::new(),
+            initial_confidence: facts.confidence,
         };
-
-        let outcome_snap = outcomes.first().map(|o| OutcomeSnapshot {
-            id: o.id,
-            outcome_type: o.outcome_type.clone(),
-            observation: o.observation.clone(),
-        });
-
-        let eval_snaps: Vec<EvaluationSnapshot> = evaluations
-            .into_iter()
-            .map(|e| EvaluationSnapshot {
-                evaluation: e.evaluation.to_string(),
-                confidence: e.confidence,
-                reasoning: e.reasoning,
-            })
-            .collect();
 
         // Compute completeness score
         let decision_score = 0.3;
         let thesis_score = if thesis_snap.hypothesis.is_empty() { 0.0 } else { 0.2 };
-        let outcome_score = if outcome_snap.is_some() { 0.3 } else { 0.0 };
+        let outcome_score = if facts.outcome.is_some() { 0.3 } else { 0.0 };
         let evidence_score = 0.2; // placeholder — could check signal evidence
         let completeness = decision_score + thesis_score + outcome_score + evidence_score;
 
         Ok(ReflectionContext {
             decision: decision_snap,
             thesis: thesis_snap,
-            outcome: outcome_snap,
-            evaluations: eval_snaps,
+            outcome: facts.outcome,
+            evaluations: facts.evaluations,
             evidence: Vec::new(),
             completeness_score: completeness,
         })

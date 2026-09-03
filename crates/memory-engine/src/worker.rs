@@ -1,13 +1,13 @@
 use crate::candidate::extract_candidates;
 use crate::evaluator::{evaluate, EvaluationResult};
 use crate::promotion::promote;
-use store::StoreBackend;
+use crate::repository::MemoryRepository;
 use worker::console_log;
 
 pub const DEFAULT_BATCH_SIZE: u32 = 50;
 pub const KV_LAST_RUN: &str = "memory:last_run";
 
-pub async fn process_pending<S: StoreBackend>(store: &S, cache: &worker::kv::KvStore, now: i64) {
+pub async fn process_pending<R: MemoryRepository>(repo: &R, cache: &worker::kv::KvStore, now: i64) {
     if let Ok(Some(val)) = cache.get(KV_LAST_RUN).text().await {
         if let Ok(ts) = val.trim().parse::<i64>() {
             if now - ts < 86400 {
@@ -16,7 +16,7 @@ pub async fn process_pending<S: StoreBackend>(store: &S, cache: &worker::kv::KvS
         }
     }
 
-    let candidates = match extract_candidates(store, now - 86400 * 7, DEFAULT_BATCH_SIZE).await {
+    let candidates = match extract_candidates(repo, now - 86400 * 7, DEFAULT_BATCH_SIZE).await {
         Ok(c) => c,
         Err(e) => {
             console_log!("[memory] extract_candidates failed: {e}");
@@ -33,7 +33,7 @@ pub async fn process_pending<S: StoreBackend>(store: &S, cache: &worker::kv::KvS
         let result = evaluate(0.75, true, true, true, 0.5, 0.5, 0.5);
         match result {
             EvaluationResult::Promote { score } => {
-                match promote(store, candidate, &score, "Consolidated memory from reflection").await {
+                match promote(repo, candidate, &score, "Consolidated memory from reflection").await {
                     Ok(id) => console_log!("[memory] MEM-{:06} promoted", id),
                     Err(e) => console_log!("[memory] promotion failed: {e}"),
                 }

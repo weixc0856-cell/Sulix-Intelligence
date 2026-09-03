@@ -1,6 +1,7 @@
 use crate::shared::response;
 use event_store::{EventR2Backend, EventStore, NoopEventStore};
 use infrastructure::artifact_registry::D1ArtifactRegistry;
+use infrastructure::reflection_repository::D1ReflectionRepository;
 use object_store::R2Store;
 use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
@@ -8,11 +9,14 @@ use serde_json::json;
 use store::D1Store;
 use worker::*;
 
-type ReflectionEngineType =
-    ReflectionEngine<D1Store, Box<dyn EventStore>, RealReflectionGenerator, D1ArtifactRegistry<D1Store, R2Store>>;
+type ReflectionEngineType = ReflectionEngine<
+    D1ReflectionRepository<D1Store>,
+    Box<dyn EventStore>,
+    RealReflectionGenerator,
+    D1ArtifactRegistry<D1Store, R2Store>,
+>;
 
 fn build_engine(env: &Env) -> Result<ReflectionEngineType> {
-    let store = D1Store::new(env.d1("DB")?);
     let r2_bucket = env.bucket("RAW_CONTENT")?;
     let r2_store = R2Store::new(r2_bucket);
     let event_store: Box<dyn EventStore> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
@@ -22,10 +26,11 @@ fn build_engine(env: &Env) -> Result<ReflectionEngineType> {
         _ => Box::new(NoopEventStore::new()),
     };
     let artifact_registry = D1ArtifactRegistry::new(D1Store::new(env.d1("DB")?), r2_store);
+    let repository = D1ReflectionRepository::new(D1Store::new(env.d1("DB")?));
 
     let provider = try_build_reflection_provider(env);
     let generator = RealReflectionGenerator::new(provider);
-    Ok(ReflectionEngine::new(store, event_store, generator, artifact_registry))
+    Ok(ReflectionEngine::new(repository, event_store, generator, artifact_registry))
 }
 
 /// Build a model provider for the reflection generator, falling back to NoopProvider.

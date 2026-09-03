@@ -4,14 +4,15 @@
 //!   ContextBuilder → completeness check → Generator (LLM) → Validation → Persister
 //!
 //! Design principle: domain service never writes artifact storage directly.
-//! All durable projections flow through D1 state + outbox.
+//! All durable projections flow through the repository port (D1 state) + the
+//! injected event store / artifact registry.
 
 use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata, EventStore};
 use shared_kernel::artifact_registry::{ArtifactRef, ArtifactRegistry, NewArtifact};
-use store::{NewOutbox, NewReflection, StoreBackend, UpdateReflection};
 
 use crate::context::ReflectionContextBuilder;
 use crate::generator::ReflectionGenerator;
+use crate::repository::{ReflectionRepository, ReflectionUpdate};
 use crate::validation;
 
 /// Trigger source for a reflection job.
@@ -40,13 +41,13 @@ pub struct ReflectionResult {
 /// ReflectionEngine — domain service.
 ///
 /// Generic over:
-/// - `R`: Repository (StoreBackend or narrower trait)
+/// - `R`: Reflection persistence ([`ReflectionRepository`])
 /// - `E`: Event store
 /// - `G`: LLM generator
 /// - `A`: Artifact registry for large-object storage (R2)
 pub struct ReflectionEngine<R, E, G, A>
 where
-    R: StoreBackend,
+    R: ReflectionRepository,
     E: EventStore,
     G: ReflectionGenerator,
     A: ArtifactRegistry,
@@ -59,18 +60,13 @@ where
 
 impl<R, E, G, A> ReflectionEngine<R, E, G, A>
 where
-    R: StoreBackend,
+    R: ReflectionRepository,
     E: EventStore,
     G: ReflectionGenerator,
     A: ArtifactRegistry,
 {
     pub fn new(repository: R, event_store: E, generator: G, artifact_registry: A) -> Self {
         Self { repository, event_store, generator, artifact_registry }
-    }
-
-    /// Access the underlying repository (for cron housekeeping queries).
-    pub fn repository(&self) -> &R {
-        &self.repository
     }
 
     fn now() -> i64 {
@@ -89,22 +85,16 @@ where
         let decision_id = job.decision_id;
 
         // 1. Create reflection row (status=pending→generating)
-        let new_reflection = NewReflection {
-            decision_id,
-            outcome_id: None,
-            job_id: Some(Self::job_id(decision_id, now)),
-            status: "generating".into(),
-        };
         let reflection_id = self
             .repository
-            .create_reflection(&new_reflection)
+            .create(decision_id, &Self::job_id(decision_id, now))
             .await
             .map_err(|e| format!("create_reflection failed: {e}"))?;
 
         // Start lease
         let _ = self
             .repository
-            .update_reflection(&UpdateReflection {
+            .update(&ReflectionUpdate {
                 id: reflection_id,
                 status: "generating".into(),
                 result: None,
@@ -172,7 +162,7 @@ where
         // 7. Persist reflection result in D1 (dual-write: artifact_key + result for backward compat)
         let _ = self
             .repository
-            .update_reflection(&UpdateReflection {
+            .update(&ReflectionUpdate {
                 id: reflection_id,
                 status: "generated".into(),
                 result: Some(draft.result.clone()),
@@ -199,11 +189,11 @@ where
         });
         let _ = self
             .repository
-            .insert_outbox(&NewOutbox {
-                object_type: "event:reflection".into(),
-                object_key: format!("memory/events/reflection/{}/{}", now, correlation_id),
-                payload: event_payload.to_string(),
-            })
+            .enqueue_event(
+                "event:reflection",
+                &format!("memory/events/reflection/{}/{}", now, correlation_id),
+                &event_payload,
+            )
             .await;
 
         // 9. EventStore append
@@ -231,12 +221,17 @@ where
     }
 
     /// Mark a reflection as failed with error message.
+    ///
+    /// The retry-count lookup mirrors the pre-decoupling behaviour exactly: it
+    /// reads whatever row [`ReflectionRepository::find_latest_for_decision`]
+    /// resolves for the id passed in. Switching that lookup to a true by-id read
+    /// is a behavioural fix intentionally left out of the porting change.
     async fn mark_failed(&self, id: i64, error: &str) {
-        let ref_lookup = self.repository.get_reflection_by_decision(id).await.ok().flatten();
+        let ref_lookup = self.repository.find_latest_for_decision(id).await.ok().flatten();
         let retry_count = ref_lookup.map(|r| r.retry_count + 1).unwrap_or(0);
         let _ = self
             .repository
-            .update_reflection(&UpdateReflection {
+            .update(&ReflectionUpdate {
                 id,
                 status: "failed".into(),
                 result: None,
@@ -256,7 +251,7 @@ where
     async fn mark_failed_with_retry(&self, id: i64, error: &str, retry_count: i64) {
         let _ = self
             .repository
-            .update_reflection(&UpdateReflection {
+            .update(&ReflectionUpdate {
                 id,
                 status: "failed".into(),
                 result: None,

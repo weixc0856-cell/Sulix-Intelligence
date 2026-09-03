@@ -1,3 +1,4 @@
+use infrastructure::memory_repository::D1MemoryRepository;
 use store::D1Store;
 use worker::*;
 
@@ -16,5 +17,6 @@ pub(crate) async fn process_pending(env: &Env, now: i64) {
             return;
         }
     };
-    memory_engine::worker::process_pending(&store, &cache, now).await;
+    let repo = D1MemoryRepository::new(store);
+    memory_engine::worker::process_pending(&repo, &cache, now).await;
 }

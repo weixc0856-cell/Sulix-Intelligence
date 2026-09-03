@@ -1,8 +1,9 @@
 use crate::candidate::MemoryCandidate;
-use store::{NewMemory, NewOutbox, PromotionScore, StoreBackend};
+use crate::model::{NewMemory, PromotionScore};
+use crate::repository::MemoryRepository;
 
-pub async fn promote<S: StoreBackend>(
-    store: &S,
+pub async fn promote<R: MemoryRepository>(
+    repo: &R,
     candidate: &MemoryCandidate,
     score: &PromotionScore,
     statement: &str,
@@ -10,7 +11,7 @@ pub async fn promote<S: StoreBackend>(
     let now = (js_sys::Date::now() / 1000.0) as i64;
     let artifact_key = format!("memory/insights/{}.json", candidate.reflection_id.replace("REF", "MEM"));
 
-    let memory_id = store
+    let memory_id = repo
         .create_memory(&NewMemory {
             memory_type: "strategic_pattern".into(),
             memory_origin: "derived".into(),
@@ -32,13 +33,7 @@ pub async fn promote<S: StoreBackend>(
         "score": score.total,
         "artifact_key": artifact_key,
     });
-    let _ = store
-        .insert_outbox(&NewOutbox {
-            object_type: "event:memory".into(),
-            object_key: format!("mem_{now}_{memory_id}"),
-            payload: event_payload.to_string(),
-        })
-        .await;
+    let _ = repo.enqueue_event("event:memory", &format!("mem_{now}_{memory_id}"), &event_payload).await;
 
     let archive_payload = serde_json::json!({
         "schema_version": 1, "artifact_type": "memory",
@@ -48,13 +43,7 @@ pub async fn promote<S: StoreBackend>(
         "lineage": { "reflections": [candidate.reflection_id], "decisions": [candidate.decision_id] },
         "promotion": { "score": score.total }, "created_at": now,
     });
-    let _ = store
-        .insert_outbox(&NewOutbox {
-            object_type: "archive:memory".into(),
-            object_key: artifact_key,
-            payload: archive_payload.to_string(),
-        })
-        .await;
+    let _ = repo.enqueue_event("archive:memory", &artifact_key, &archive_payload).await;
 
     Ok(memory_id)
 }

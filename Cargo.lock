@@ -694,7 +694,9 @@ dependencies = [
  "content-governance",
  "decision-engine",
  "futures",
+ "memory-engine",
  "object-store",
+ "reflection-engine",
  "serde",
  "serde_json",
  "shared-kernel",
@@ -815,12 +817,10 @@ name = "memory-engine"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "event-store",
  "futures",
  "js-sys",
  "serde",
  "serde_json",
- "store",
  "thiserror",
  "worker",
 ]
@@ -1074,7 +1074,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-kernel",
- "store",
  "thiserror",
 ]
 

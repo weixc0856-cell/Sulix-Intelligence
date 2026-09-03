@@ -1,4 +1,4 @@
-use store::PromotionScore;
+use crate::model::PromotionScore;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvaluationResult {
