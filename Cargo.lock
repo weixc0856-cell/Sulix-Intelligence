@@ -49,11 +49,9 @@ dependencies = [
 name = "api"
 version = "0.1.0"
 dependencies = [
- "agent-engine",
  "application",
  "async-trait",
  "content-governance",
- "context-engine",
  "decision-engine",
  "embedding",
  "event-store",
@@ -197,10 +195,8 @@ dependencies = [
  "async-trait",
  "futures",
  "js-sys",
- "object-store",
  "serde",
  "serde_json",
- "store",
  "thiserror",
 ]
 
@@ -691,6 +687,7 @@ dependencies = [
  "ai-pipeline",
  "async-trait",
  "content-governance",
+ "context-engine",
  "decision-engine",
  "futures",
  "memory-engine",
@@ -1679,10 +1676,12 @@ dependencies = [
 name = "worker-entry"
 version = "0.1.0"
 dependencies = [
+ "agent-engine",
  "ai-pipeline",
  "api",
  "console_error_panic_hook",
  "content-governance",
+ "context-engine",
  "embedding",
  "entity",
  "event-store",

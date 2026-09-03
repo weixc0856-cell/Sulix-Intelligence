@@ -1,5 +1,5 @@
-use object_store::{ObjectStore, R2Store};
-use store::{NewContextSnapshot, StoreBackend};
+use crate::models::NewContextSnapshot;
+use crate::repository::ContextRepository;
 
 use crate::assembler::assemble;
 use crate::intent::parse;
@@ -10,25 +10,28 @@ use crate::retriever::{retrieve_decisions, retrieve_memories, retrieve_reflectio
 use crate::types::{AgentContext, ContextRequestOptions};
 
 /// ContextBuilder — facade that orchestrates the full pipeline.
-pub struct ContextBuilder<S: StoreBackend> {
-    store: S,
+///
+/// Generic over [`ContextRepository`]; the composition root supplies a concrete
+/// adapter (e.g. `D1ContextRepository`). Previously this was generic over
+/// `StoreBackend`; the engine no longer names a store type.
+pub struct ContextBuilder<R: ContextRepository> {
+    repo: R,
 }
 
-impl<S: StoreBackend> ContextBuilder<S> {
-    pub fn new(store: S) -> Self {
-        Self { store }
+impl<R: ContextRepository> ContextBuilder<R> {
+    pub fn new(repo: R) -> Self {
+        Self { repo }
     }
 
     /// Build context for a query. Full pipeline: parse → plan → retrieve → rank → assemble → snapshot.
     ///
-    /// `object_store` if provided: writes snapshot JSON to R2 and stores pointer in D1.
-    /// Without it: falls back to D1 `context_json` column (legacy compat).
+    /// The snapshot is written to D1 via [`ContextRepository::save_context_snapshot`].
+    /// (The legacy R2 artifact path was removed — every caller passed no object store.)
     pub async fn build(
         &self,
         query: &str,
         options: Option<ContextRequestOptions>,
         user_scope: Option<String>,
-        object_store: Option<&R2Store>,
     ) -> Result<AgentContext, String> {
         let opts = options.unwrap_or_default();
         let _max_results = opts.max_results.unwrap_or(10);
@@ -41,17 +44,17 @@ impl<S: StoreBackend> ContextBuilder<S> {
 
         // 3. Retrieve
         let decisions = if let Some(ref dq) = retrieval_plan.decision_query {
-            retrieve_decisions(&self.store, dq).await?
+            retrieve_decisions(&self.repo, dq).await?
         } else {
             Vec::new()
         };
         let reflections = if let Some(ref rq) = retrieval_plan.reflection_query {
-            retrieve_reflections(&self.store, rq).await?
+            retrieve_reflections(&self.repo, rq).await?
         } else {
             Vec::new()
         };
         let memories = if let Some(ref mq) = retrieval_plan.memory_query {
-            retrieve_memories(&self.store, mq).await?
+            retrieve_memories(&self.repo, mq).await?
         } else {
             Vec::new()
         };
@@ -75,32 +78,18 @@ impl<S: StoreBackend> ContextBuilder<S> {
         let snapshot_id = format!("CTX-{}", now);
         let context = assemble(&snapshot_id, query, &intent, decisions, reflections, memories, patterns);
 
-        // 7. Save snapshot — R2 first (artifact), then D1 (metadata)
+        // 7. Persist snapshot (D1 metadata; non-fatal on failure)
         let context_json = serde_json::to_string(&context).unwrap_or_default();
         let evidence_refs: Vec<String> = context.evidence.iter().map(|e| e.source_id.clone()).collect();
 
-        let (object_key, object_size) = if let Some(os) = object_store {
-            let key = format!("memory/context/{}.json", snapshot_id);
-            let bytes = context_json.as_bytes();
-            if os.write_object(&key, bytes).await.is_ok() {
-                (Some(key), Some(bytes.len() as i64))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
-
         let _ = self
-            .store
+            .repo
             .save_context_snapshot(&NewContextSnapshot {
                 id: snapshot_id.clone(),
                 query: query.into(),
                 intent: serde_json::to_string(&intent).unwrap_or_default(),
                 domain: intent.domain.clone(),
-                context_json, // kept for backward compat; R2 stores canonical version
-                object_key,
-                object_size,
+                context_json,
                 evidence_refs: Some(serde_json::to_string(&evidence_refs).unwrap_or_default()),
                 confidence: context.confidence.overall,
                 user_scope,

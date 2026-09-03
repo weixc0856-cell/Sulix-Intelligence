@@ -12,7 +12,15 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
             Err(e) => Response::error(format!("cron failed: {e}"), 500),
         }
     } else {
-        let result = router().run(req, env).await;
+        // Composition-root route injection: internal routes that require
+        // adapters/state owned by worker-entry are registered here on the api
+        // router (a consuming builder). Only HTTP composition/wiring lives in
+        // worker-entry — the handlers delegate to application services.
+        let result = router()
+            .post_async("/api/internal/context", crate::routes::context::internal_context)
+            .post_async("/api/internal/agent/run", crate::routes::agent::run)
+            .run(req, env)
+            .await;
         if let Err(ref e) = result {
             console_log!("[ERROR] router.run failed: {e}");
         }

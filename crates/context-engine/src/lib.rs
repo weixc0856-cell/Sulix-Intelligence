@@ -1,8 +1,11 @@
 pub mod assembler;
 pub mod builder;
+pub mod error;
 pub mod intent;
+pub mod models;
 pub mod pattern;
 pub mod planner;
 pub mod ranking;
+pub mod repository;
 pub mod retriever;
 pub mod types;

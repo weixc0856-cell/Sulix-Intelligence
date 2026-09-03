@@ -2,6 +2,7 @@ use worker::*;
 
 mod jobs;
 pub(crate) mod metrics;
+mod routes;
 mod runtime;
 pub(crate) mod services;
 pub(crate) mod utils;

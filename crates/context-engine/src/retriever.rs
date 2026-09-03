@@ -1,13 +1,12 @@
-use store::StoreBackend;
-
+use crate::repository::ContextRepository;
 use crate::types::{DecisionQuery, MemoryQuery, ReflectionQuery, ScoredDecision, ScoredMemory, ScoredReflection};
 
 /// Retrieve decisions matching a query.
-pub async fn retrieve_decisions<S: StoreBackend>(
-    store: &S,
+pub async fn retrieve_decisions<R: ContextRepository>(
+    repo: &R,
     query: &DecisionQuery,
 ) -> Result<Vec<ScoredDecision>, String> {
-    let decisions = store.list_decisions(None, query.limit).await.map_err(|e| format!("list_decisions: {e}"))?;
+    let decisions = repo.list_decisions(query.limit).await.map_err(|e| format!("list_decisions: {e}"))?;
     let scored: Vec<ScoredDecision> = decisions
         .into_iter()
         .filter_map(|d| {
@@ -39,21 +38,22 @@ pub async fn retrieve_decisions<S: StoreBackend>(
 
 /// Retrieve reflections matching a query.
 #[allow(unused_variables)]
-pub async fn retrieve_reflections<S: StoreBackend>(
-    store: &S,
+pub async fn retrieve_reflections<R: ContextRepository>(
+    repo: &R,
     query: &ReflectionQuery,
 ) -> Result<Vec<ScoredReflection>, String> {
     // Reflections queried by status via list_decisions then look up. For MVP: return empty vector.
-    // Full impl when reflection CRUD methods are added to StoreBackend.
+    // Full impl when reflection retrieval is added to the ContextRepository port.
     Ok(Vec::new())
 }
 
 /// Retrieve memories matching a query.
-pub async fn retrieve_memories<S: StoreBackend>(store: &S, query: &MemoryQuery) -> Result<Vec<ScoredMemory>, String> {
-    let memories = store
-        .list_memories(None, query.status.as_deref(), query.limit)
-        .await
-        .map_err(|e| format!("list_memories: {e}"))?;
+pub async fn retrieve_memories<R: ContextRepository>(
+    repo: &R,
+    query: &MemoryQuery,
+) -> Result<Vec<ScoredMemory>, String> {
+    let memories =
+        repo.list_memories(query.status.as_deref(), query.limit).await.map_err(|e| format!("list_memories: {e}"))?;
     let scored: Vec<ScoredMemory> = memories
         .into_iter()
         .map(|m| ScoredMemory {

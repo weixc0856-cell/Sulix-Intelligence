@@ -91,10 +91,6 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/articles/:id/adjacent", routes::article::article_adjacent)
         .get_async("/api/articles/:id", routes::article::article_detail)
         .get_async("/api/articles/:id/content", routes::article::article_content)
-        // Context Engine
-        .post_async("/api/internal/context", routes::context::internal_context)
-        // Agent Reasoning Engine
-        .post_async("/api/internal/agent/run", routes::agent::run)
         // Decision Graph Projection
         .get_async("/api/projections/decision-graph", routes::graph::decision_graph)
         .post_async("/api/projections/decision-graph/:id/expand", routes::graph::expand)

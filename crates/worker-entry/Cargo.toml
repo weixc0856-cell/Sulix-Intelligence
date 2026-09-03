@@ -34,6 +34,8 @@ object-store.workspace = true
 event-store.workspace = true
 reflection-engine.workspace = true
 memory-engine.workspace = true
+context-engine.workspace = true
+agent-engine.workspace = true
 infrastructure.workspace = true
 
 

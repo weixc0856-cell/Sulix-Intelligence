@@ -12,6 +12,7 @@
 
 pub mod article_persistence;
 pub mod artifact_registry;
+pub mod context_repository;
 pub mod decision_repository;
 pub mod memory_repository;
 pub mod provenance;
