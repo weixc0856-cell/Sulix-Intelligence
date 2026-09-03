@@ -1,0 +1,10 @@
+# Single source of truth for the Rust toolchain (W04 reproducibility).
+# Keep the channel in sync with the dtolnay/rust-toolchain pins in
+# .github/workflows/{lint,coverage,deploy}.yml.
+# 1.97.0 is the version the full chain was validated on locally:
+#   native check/test + wasm32 check + worker-build --release.
+[toolchain]
+channel = "1.97.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

@@ -22,8 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Toolchain pinned by rust-toolchain.toml — keep both in sync.
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.97.0"
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt
 
