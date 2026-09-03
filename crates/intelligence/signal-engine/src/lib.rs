@@ -23,7 +23,6 @@
 #![deny(unused)]
 
 pub mod discovery;
-pub mod pipeline;
 pub mod query;
 pub mod scoring;
 pub mod source;

@@ -15,10 +15,9 @@
 
 pub mod detail;
 pub mod entity;
-pub mod radar;
 
 use event_store::EventStore;
-use store::{RelatedEntityRef, StoreBackend, StoreError};
+use store::{StoreBackend, StoreError};
 
 /// Unified query service for Intelligence read models.
 pub struct SignalQueryService<'a, S: StoreBackend> {
@@ -29,15 +28,6 @@ pub struct SignalQueryService<'a, S: StoreBackend> {
 impl<'a, S: StoreBackend> SignalQueryService<'a, S> {
     pub fn new(store: &'a S) -> Self {
         Self { store, event_store: None }
-    }
-
-    pub fn with_event_store(store: &'a S, event_store: &'a dyn EventStore) -> Self {
-        Self { store, event_store: Some(event_store) }
-    }
-
-    /// Radar dashboard — active threads with health projection.
-    pub async fn radar(&self, now: i64) -> Result<RadarProjection, StoreError> {
-        radar::build(self.store, now).await
     }
 
     /// Thread detail — thread + instances + signal_events + evidence + entities.
@@ -65,34 +55,4 @@ pub struct SignalThreadSummary {
     pub total_articles: i64,
     pub first_seen_at: i64,
     pub last_seen_at: i64,
-}
-
-/// Radar projection — active signal threads with health scores.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarProjection {
-    pub generated_at: i64,
-    pub summary: RadarSummary,
-    pub signals: Vec<RadarSignal>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarSummary {
-    pub total_active: i64,
-    pub rising: i64,
-    pub stable: i64,
-    pub decaying: i64,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RadarSignal {
-    pub id: String,
-    pub title: String,
-    pub status: String,
-    pub trend: String,
-    pub health: store::SignalHealth,
-    pub anchor_entity: Option<store::EntitySignalRef>,
-    pub evidence: store::SignalEvidenceSummary,
-    pub related: Vec<RelatedEntityRef>,
-    pub first_seen_at: i64,
-    pub last_evidence_at: i64,
 }
