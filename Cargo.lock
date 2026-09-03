@@ -65,7 +65,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shared-kernel",
- "signal-engine",
  "store",
  "url",
  "vectorize",
@@ -1276,7 +1275,6 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
- "store",
  "thiserror",
 ]
 

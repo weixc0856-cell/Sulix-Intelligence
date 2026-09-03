@@ -4,8 +4,9 @@
 //! directly and returned empty titles. This query joins `signal_threads`
 //! to return thread-level summaries with meaningful metadata.
 
-use store::{StoreBackend, StoreError};
-
+use crate::error::SignalError;
+use crate::models::SignalThreadFilter;
+use crate::ports::SignalQuery;
 use crate::query::SignalThreadSummary;
 
 /// Load signal threads anchored to an entity.
@@ -13,23 +14,20 @@ use crate::query::SignalThreadSummary;
 /// Returns thread-level summaries (not individual instances),
 /// because the product object is the SignalThread, not the instance.
 pub async fn threads(
-    store: &impl StoreBackend,
+    query: &dyn SignalQuery,
     entity_id: i64,
     limit: u32,
-) -> Result<Vec<SignalThreadSummary>, StoreError> {
-    // Use the store's listing method filtered by anchor_entity_id
-    // We leverage get_active_signal_threads + list_signal_threads
-    // by using a dedicated filter that targets this entity's threads.
-    //
-    // The D1-level approach would JOIN signal_threads + intelligence_signals:
-    // but since StoreBackend abstracts over D1, we use the trait methods.
+) -> Result<Vec<SignalThreadSummary>, SignalError> {
+    // Use the store's listing method filtered by anchor_entity_id — the signal
+    // thread listing is the widest read across statuses, then this projection
+    // narrows to the entity's own threads (matches by signal_key).
 
-    let filter = store::SignalThreadFilter {
+    let filter = SignalThreadFilter {
         statuses: vec!["active".into(), "decaying".into(), "resolved".into(), "archived".into()],
         limit,
         min_score: 0.0,
     };
-    let threads = store.list_signal_threads(&filter).await?;
+    let threads = query.list_signal_threads(&filter).await?;
 
     let mut result: Vec<SignalThreadSummary> = Vec::new();
 

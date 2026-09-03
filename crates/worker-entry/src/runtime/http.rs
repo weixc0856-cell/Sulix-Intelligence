@@ -19,6 +19,11 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
         let result = router()
             .post_async("/api/internal/context", crate::routes::context::internal_context)
             .post_async("/api/internal/agent/run", crate::routes::agent::run)
+            // Signal read-model routes migrated out of api (P3 Round 2) — they
+            // assemble D1SignalQuery in the composition root.
+            .get_async("/api/intelligence/threads/:id", crate::routes::signal::thread_detail)
+            .get_async("/api/intelligence/entities/:id/signals", crate::routes::signal::entities_signals)
+            .get_async("/api/intelligence/entities/:id/threads", crate::routes::signal::entities_threads)
             .run(req, env)
             .await;
         if let Err(ref e) = result {

@@ -16,29 +16,33 @@
 pub mod detail;
 pub mod entity;
 
-use store::{StoreBackend, StoreError};
-
-use crate::ports::SignalEventLog;
+use crate::error::SignalError;
+use crate::models::SignalDetail;
+use crate::ports::{SignalEventLog, SignalQuery};
 
 /// Unified query service for Intelligence read models.
-pub struct SignalQueryService<'a, S: StoreBackend> {
-    pub store: &'a S,
+///
+/// Reads through the [`SignalQuery`] boundary (store-backed adapter in
+/// infrastructure) so the read-model assembly never depends on `store`
+/// directly.
+pub struct SignalQueryService<'a> {
+    pub query: &'a dyn SignalQuery,
     pub event_log: Option<&'a dyn SignalEventLog>,
 }
 
-impl<'a, S: StoreBackend> SignalQueryService<'a, S> {
-    pub fn new(store: &'a S) -> Self {
-        Self { store, event_log: None }
+impl<'a> SignalQueryService<'a> {
+    pub fn new(query: &'a dyn SignalQuery) -> Self {
+        Self { query, event_log: None }
     }
 
     /// Thread detail — thread + instances + signal_events + evidence + entities.
-    pub async fn thread_detail(&self, thread_id: i64) -> Result<Option<store::SignalDetail>, StoreError> {
-        detail::build(self.store, self.event_log, thread_id).await
+    pub async fn thread_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, SignalError> {
+        detail::build(self.query, self.event_log, thread_id).await
     }
 
     /// Entity signal threads — threads anchored to an entity.
-    pub async fn entity_threads(&self, entity_id: i64, limit: u32) -> Result<Vec<SignalThreadSummary>, StoreError> {
-        entity::threads(self.store, entity_id, limit).await
+    pub async fn entity_threads(&self, entity_id: i64, limit: u32) -> Result<Vec<SignalThreadSummary>, SignalError> {
+        entity::threads(self.query, entity_id, limit).await
     }
 }
 

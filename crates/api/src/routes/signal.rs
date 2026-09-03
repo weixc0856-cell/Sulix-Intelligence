@@ -100,27 +100,3 @@ pub async fn signal_provenance(_req: Request, ctx: RouteContext<()>) -> Result<R
 
     response::json_ok(json!(provenance))
 }
-
-/// GET /api/intelligence/threads/:id — Signal Thread Detail (Read Model).
-///
-/// Uses the unified SignalQueryService to build the response:
-/// merges instance timeline with signal_events, adds rule-based summary.
-pub async fn thread_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    use signal_engine::query::SignalQueryService;
-
-    let store = crate::Store::new(ctx.env.d1("DB")?);
-    let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid thread id"),
-    };
-
-    let qs = SignalQueryService::new(&store);
-    match qs.thread_detail(id).await {
-        Ok(Some(detail)) => response::json_ok(serde_json::json!({ "success": true, "signal": detail })),
-        Ok(None) => response::json_err(404, "thread not found"),
-        Err(e) => {
-            console_log!("[Sulix:thread] thread_detail failed: {e}");
-            response::json_err_internal("thread detail query failed")
-        }
-    }
-}

@@ -27,3 +27,10 @@ pub(crate) fn json_err(status: u16, msg: &str) -> Result<Response> {
     cors_headers(&mut resp);
     Ok(resp)
 }
+
+/// Log an internal error server-side and return a generic 500 response.
+/// Never passes internal details to the HTTP client.
+pub(crate) fn json_err_internal(msg: &str) -> Result<Response> {
+    console_log!("[Sulix:internal] error: {msg}");
+    json_err(500, "Internal server error")
+}

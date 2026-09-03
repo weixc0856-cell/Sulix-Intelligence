@@ -12,7 +12,10 @@
 use async_trait::async_trait;
 
 use crate::error::SignalError;
-use crate::models::{DiscoveryMethod, EmbeddedArticle, EntityCandidate, SignalUpsertResult};
+use crate::models::{
+    DiscoveryMethod, EmbeddedArticle, EntityCandidate, SignalDetail, SignalEventRecord, SignalThreadFilter,
+    SignalThreadRow, SignalUpsertResult,
+};
 
 /// An event appended to the signal event log.
 #[derive(Debug, Clone)]
@@ -124,4 +127,21 @@ pub trait SignalDiscovery {
         days: i64,
         limit: u32,
     ) -> Result<Vec<EmbeddedArticle>, SignalError>;
+}
+
+/// Read-model boundary — the query service's store reads.
+///
+/// Wraps the store's signal read-model calls (detail / stored events / thread
+/// listing) so the read-model assembly in `query/` no longer reaches
+/// `StoreBackend` directly. Only the methods the live read models actually call
+/// are ported (radar-era `get_active_signal_threads` / `load_thread_related_entities`
+/// were deleted with their dead consumers in P3 Round 2).
+#[async_trait(?Send)]
+pub trait SignalQuery {
+    /// Full thread detail read model.
+    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, SignalError>;
+    /// Legacy stored D1 `signal_events` rows (timeline fallback).
+    async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEventRecord>, SignalError>;
+    /// List signal threads matching a filter (listing projection).
+    async fn list_signal_threads(&self, filter: &SignalThreadFilter) -> Result<Vec<SignalThreadRow>, SignalError>;
 }

@@ -50,7 +50,6 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/radar", routes::signal::radar)
         .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
         .get_async("/api/intelligence/signals/:id/provenance", routes::signal::signal_provenance)
-        .get_async("/api/intelligence/threads/:id", routes::signal::thread_detail)
         .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
         .get_async("/api/intelligence/briefings", briefing::list_briefings)
         .get_async("/api/intelligence/briefings/:id", briefing::get_briefing)
@@ -59,9 +58,7 @@ pub fn router() -> Router<'static, ()> {
         .get_async("/api/intelligence/entities/:id", entities::entities_get)
         .get_async("/api/intelligence/entities/:id/activity", entities::entities_activity)
         .get_async("/api/intelligence/entities/:id/articles", entities::entities_articles)
-        .get_async("/api/intelligence/entities/:id/signals", entities::entities_signals)
         .get_async("/api/intelligence/entities/:id/relations", entities::entities_get_relations)
-        .get_async("/api/intelligence/entities/:id/threads", entities::entities_threads)
         // Decision Loop
         .get_async("/api/intelligence/decisions", routes::decision::list)
         .get_async("/api/intelligence/decisions/stats", routes::decision::stats)

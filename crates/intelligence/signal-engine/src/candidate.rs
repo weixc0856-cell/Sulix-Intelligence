@@ -2,10 +2,10 @@
 //!
 //! The primary filtering is done at the SQL level via
 //! `entity_signal_candidates_filtered`; this module holds reference
-//! implementations for testing.
+//! implementations for testing (over the owned candidate record).
 
 #[cfg(test)]
-use store::EntitySignalCandidate;
+use crate::models::EntityCandidate;
 
 /// Minimum quality threshold for a candidate to become a signal thread.
 ///
@@ -13,7 +13,7 @@ use store::EntitySignalCandidate;
 /// - Entity type is known (not `"unknown"`)
 /// - Has at least 2 distinct sources (multi-source evidence)
 #[cfg(test)]
-fn is_valid_candidate(candidate: &EntitySignalCandidate) -> bool {
+fn is_valid_candidate(candidate: &EntityCandidate) -> bool {
     if candidate.entity_type.eq_ignore_ascii_case("unknown") {
         return false;
     }
@@ -27,17 +27,12 @@ fn is_valid_candidate(candidate: &EntitySignalCandidate) -> bool {
 mod tests {
     use super::*;
 
-    fn make_candidate(entity_type: &str, source_count: i64) -> EntitySignalCandidate {
-        EntitySignalCandidate {
+    fn make_candidate(entity_type: &str, source_count: i64) -> EntityCandidate {
+        EntityCandidate {
             entity_id: 1,
             entity_name: "Test".into(),
             entity_type: entity_type.into(),
             score: 0.5,
-            volume: 0.0,
-            diversity: 0.0,
-            quality: 0.0,
-            velocity: 0.0,
-            novelty: 0.0,
             article_count: 3,
             source_count,
             avg_score: 0.5,

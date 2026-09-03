@@ -12,25 +12,25 @@
 //! port (event-store-backed in production),
 //! with D1 signal_events as fallback.
 
-use store::{SignalAnalysis, SignalDetail, SignalTimelineEvent, StoreBackend, StoreError};
-
-use crate::ports::SignalEventLog;
+use crate::error::SignalError;
+use crate::models::{SignalAnalysis, SignalDetail, SignalTimelineEvent};
+use crate::ports::{SignalEventLog, SignalQuery};
 
 /// Build the full SignalDetail for a thread.
 pub async fn build(
-    store: &impl StoreBackend,
+    query: &dyn SignalQuery,
     event_log: Option<&dyn SignalEventLog>,
     thread_id: i64,
-) -> Result<Option<SignalDetail>, StoreError> {
-    // 1. Load thread via existing detail method
-    let detail = store.load_signal_detail(thread_id).await?;
+) -> Result<Option<SignalDetail>, SignalError> {
+    // 1. Load thread via the read-model port
+    let detail = query.load_signal_detail(thread_id).await?;
     let mut detail = match detail {
         Some(d) => d,
         None => return Ok(None),
     };
 
-    // 2. Merge signal_events into timeline
-    let merged = merge_signal_events(store, event_log, thread_id, &detail.timeline).await?;
+    // 2. Merge stored events into timeline
+    let merged = merge_signal_events(query, event_log, thread_id, &detail.timeline).await?;
     detail.timeline = merged;
 
     // 3. Build SignalAnalysis (structured, not appended to description)
@@ -44,11 +44,11 @@ pub async fn build(
 /// Prefers the R2 event archive via [`SignalEventLog`], falling back to the D1
 /// `signal_events` table for backward compatibility.
 async fn merge_signal_events(
-    store: &impl StoreBackend,
+    query: &dyn SignalQuery,
     event_log: Option<&dyn SignalEventLog>,
     thread_id: i64,
     instance_timeline: &[SignalTimelineEvent],
-) -> Result<Vec<SignalTimelineEvent>, StoreError> {
+) -> Result<Vec<SignalTimelineEvent>, SignalError> {
     // Try the event log first (R2 archive)
     if let Some(log) = event_log {
         let agg_id = format!("SIG-{thread_id:06}");
@@ -73,7 +73,7 @@ async fn merge_signal_events(
     }
 
     // D1 legacy fallback
-    let events = store.load_signal_events(thread_id, 50).await?;
+    let events = query.load_signal_events(thread_id, 50).await?;
 
     if events.is_empty() {
         return Ok(instance_timeline.to_vec());

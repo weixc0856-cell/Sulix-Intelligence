@@ -8,3 +8,4 @@
 pub(crate) mod agent;
 pub(crate) mod context;
 mod response;
+pub(crate) mod signal;

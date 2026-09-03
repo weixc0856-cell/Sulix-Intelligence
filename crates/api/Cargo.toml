@@ -18,7 +18,6 @@ serde_json.workspace = true
 js-sys.workspace = true
 embedding.workspace = true
 vectorize.workspace = true
-signal-engine.workspace = true
 application.workspace = true
 object-store.workspace = true
 event-store.workspace = true
