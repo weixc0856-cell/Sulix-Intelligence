@@ -13,6 +13,30 @@ use async_trait::async_trait;
 
 use crate::error::SignalError;
 
+/// An event appended to the signal event log.
+#[derive(Debug, Clone)]
+pub struct SignalEvent {
+    /// e.g. `SignalScoreChanged` / `SignalCreated`.
+    pub event_type: String,
+    /// Aggregate this event belongs to, e.g. `SIG-{thread_id:06}`.
+    pub aggregate_id: String,
+    pub payload: serde_json::Value,
+    pub occurred_at: i64,
+}
+
+/// Append/read the durable signal event log (R2 event archive in production).
+///
+/// The per-write `sequence` (a per-run counter in the engine) is event-id
+/// *generation* metadata, not domain semantics — the read side never consumes
+/// it — so it is passed to [`SignalEventLog::append`] rather than carried on
+/// [`SignalEvent`]. The adapter derives the stored `event_id` from
+/// `(occurred_at, sequence)`, mirroring the legacy `evt_{ts}_{seq}` scheme.
+#[async_trait(?Send)]
+pub trait SignalEventLog {
+    async fn append(&self, event: &SignalEvent, sequence: u64) -> Result<(), SignalError>;
+    async fn load(&self, aggregate_id: &str, limit: u32) -> Result<Vec<SignalEvent>, SignalError>;
+}
+
 /// A match returned by semantic ANN search.
 ///
 /// `vector_id` is the raw stored-vector identifier returned by the index

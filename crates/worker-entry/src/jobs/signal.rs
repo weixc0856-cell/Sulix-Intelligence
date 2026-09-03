@@ -8,12 +8,13 @@
 //! the intelligence pipeline — every cron cycle would otherwise create
 //! a fresh round of signal instances + events even when nothing changed.
 
-use event_store::{EventR2Backend, EventStore};
+use event_store::EventR2Backend;
 use infrastructure::semantic_query::VectorizeSemanticQuery;
+use infrastructure::signal_event_log::EventStoreSignalLog;
 use object_store::R2Store;
 use worker::*;
 
-use signal_engine::ports::SemanticQuery;
+use signal_engine::ports::{SemanticQuery, SignalEventLog};
 use signal_engine::source::{EntitySignalSource, SemanticDiscoverySource, SignalSource};
 use signal_engine::SignalEngine;
 use store::D1Store;
@@ -70,14 +71,16 @@ pub(crate) async fn run_signal_engine(env: &Env, now: i64) {
 
     let sources: [&dyn SignalSource; 2] = [&entity_source, &semantic_source];
 
-    // Build EventStore (R2 archive + D1 outbox/index)
-    let event_store: Option<EventR2Backend<D1Store>> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
-        (Some(db), Some(bucket)) => Some(EventR2Backend::new(D1Store::new(db), R2Store::new(bucket))),
+    // Build the signal event log adapter (R2 archive + D1 outbox/index)
+    let event_log: Option<EventStoreSignalLog> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
+        (Some(db), Some(bucket)) => {
+            Some(EventStoreSignalLog::new(Box::new(EventR2Backend::new(D1Store::new(db), R2Store::new(bucket)))))
+        }
         _ => None,
     };
-    let event_store_ref: Option<&dyn EventStore> = event_store.as_ref().map(|es| es as &dyn EventStore);
+    let event_log_ref: Option<&dyn SignalEventLog> = event_log.as_ref().map(|l| l as &dyn SignalEventLog);
 
-    match SignalEngine::run(&store, event_store_ref, semantic_ref, &sources, now).await {
+    match SignalEngine::run(&store, event_log_ref, semantic_ref, &sources, now).await {
         Ok(report) => {
             console_log!(
                 "signal engine: {} threads, {} instances, {} events, {} lifecycle transitions",

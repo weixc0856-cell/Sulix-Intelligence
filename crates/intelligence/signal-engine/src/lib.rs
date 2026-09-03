@@ -34,10 +34,9 @@ mod candidate;
 pub use error::SignalError;
 pub use scoring::score_to_impact;
 
-use event_store::EventStore;
 use store::StoreBackend;
 
-use crate::ports::SemanticQuery;
+use crate::ports::{SemanticQuery, SignalEvent, SignalEventLog};
 use crate::source::{DiscoveryContext, SignalSource};
 
 /// Aggregate report from a single Signal Engine run.
@@ -59,7 +58,7 @@ impl SignalEngine {
     /// and persists them as signal threads.
     pub async fn run(
         store: &impl StoreBackend,
-        event_store: Option<&dyn EventStore>,
+        event_log: Option<&dyn SignalEventLog>,
         semantic: Option<&dyn SemanticQuery>,
         sources: &[&dyn SignalSource],
         now: i64,
@@ -128,49 +127,31 @@ impl SignalEngine {
                 "signal_key": candidate.signal_key,
             });
 
-            // Sprint 5.10: EventStore is the canonical path. Legacy signal_events removed.
+            // Sprint 5.10: the event log is the canonical path. Legacy signal_events removed.
+            // The per-run `events_written` counter seeds the stored event_id
+            // (adapter derives `evt_{occurred_at}_{sequence}`) — unchanged behaviour.
             let sig_id = format!("SIG-{thread_id:06}");
-            if let Some(es) = event_store {
+            if let Some(log) = event_log {
                 report.events_written += 1;
-                let event = event_store::EventEnvelope {
-                    schema_version: 1,
-                    event_version: 1,
-                    event_id: event_store::keys::format_id(now, report.events_written),
-                    aggregate: event_store::AggregateRef {
-                        aggregate_type: "signal_thread".into(),
-                        aggregate_id: sig_id.clone(),
-                    },
+                let event = SignalEvent {
                     event_type: "SignalScoreChanged".into(),
+                    aggregate_id: sig_id.clone(),
                     payload: payload.clone(),
-                    metadata: event_store::EventMetadata { actor: "system".into(), source: "cron".into() },
-                    correlation_id: String::new(),
-                    causation_id: String::new(),
                     occurred_at: now,
-                    created_at: now,
                 };
-                let _ = es.append_event(&event).await;
+                let _ = log.append(&event, report.events_written).await;
             }
 
             if upsert.mutation == store::SignalMutation::Created {
-                if let Some(es) = event_store {
+                if let Some(log) = event_log {
                     report.events_written += 1;
-                    let event = event_store::EventEnvelope {
-                        schema_version: 1,
-                        event_version: 1,
-                        event_id: event_store::keys::format_id(now, report.events_written),
-                        aggregate: event_store::AggregateRef {
-                            aggregate_type: "signal_thread".into(),
-                            aggregate_id: sig_id,
-                        },
+                    let event = SignalEvent {
                         event_type: "SignalCreated".into(),
+                        aggregate_id: sig_id,
                         payload: serde_json::json!({"signal_key": candidate.signal_key}),
-                        metadata: event_store::EventMetadata { actor: "system".into(), source: "cron".into() },
-                        correlation_id: String::new(),
-                        causation_id: String::new(),
                         occurred_at: now,
-                        created_at: now,
                     };
-                    let _ = es.append_event(&event).await;
+                    let _ = log.append(&event, report.events_written).await;
                 }
             }
         }
@@ -226,14 +207,7 @@ mod tests {
 
         let source = crate::source::EntitySignalSource;
         let sources = [&source as &dyn crate::source::SignalSource];
-        let report = futures::executor::block_on(crate::SignalEngine::run(
-            &store,
-            None::<&dyn event_store::EventStore>,
-            None,
-            &sources,
-            now,
-        ))
-        .unwrap();
+        let report = futures::executor::block_on(crate::SignalEngine::run(&store, None, None, &sources, now)).unwrap();
         assert!(report.threads_created >= 2, "should create at least 2 threads");
         assert!(report.instances_appended >= 2, "should append at least 2 instances");
 

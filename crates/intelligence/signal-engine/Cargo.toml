@@ -13,5 +13,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
-event-store = { workspace = true }
 thiserror = { workspace = true }

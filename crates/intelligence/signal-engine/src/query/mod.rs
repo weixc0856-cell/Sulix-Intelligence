@@ -16,23 +16,24 @@
 pub mod detail;
 pub mod entity;
 
-use event_store::EventStore;
 use store::{StoreBackend, StoreError};
+
+use crate::ports::SignalEventLog;
 
 /// Unified query service for Intelligence read models.
 pub struct SignalQueryService<'a, S: StoreBackend> {
     pub store: &'a S,
-    pub event_store: Option<&'a dyn EventStore>,
+    pub event_log: Option<&'a dyn SignalEventLog>,
 }
 
 impl<'a, S: StoreBackend> SignalQueryService<'a, S> {
     pub fn new(store: &'a S) -> Self {
-        Self { store, event_store: None }
+        Self { store, event_log: None }
     }
 
     /// Thread detail — thread + instances + signal_events + evidence + entities.
     pub async fn thread_detail(&self, thread_id: i64) -> Result<Option<store::SignalDetail>, StoreError> {
-        detail::build(self.store, self.event_store, thread_id).await
+        detail::build(self.store, self.event_log, thread_id).await
     }
 
     /// Entity signal threads — threads anchored to an entity.

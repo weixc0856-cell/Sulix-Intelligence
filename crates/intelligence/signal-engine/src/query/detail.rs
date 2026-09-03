@@ -8,16 +8,18 @@
 //!
 //! Also computes a rule-based "Why This Matters" analysis.
 //!
-//! Sprint 5.2+: Events are read from the R2 Event Archive via EventStore,
+//! Sprint 5.2+: Events are read from the R2 event archive via the SignalEventLog
+//! port (event-store-backed in production),
 //! with D1 signal_events as fallback.
 
-use event_store::EventStore;
 use store::{SignalAnalysis, SignalDetail, SignalTimelineEvent, StoreBackend, StoreError};
+
+use crate::ports::SignalEventLog;
 
 /// Build the full SignalDetail for a thread.
 pub async fn build(
     store: &impl StoreBackend,
-    event_store: Option<&dyn EventStore>,
+    event_log: Option<&dyn SignalEventLog>,
     thread_id: i64,
 ) -> Result<Option<SignalDetail>, StoreError> {
     // 1. Load thread via existing detail method
@@ -28,7 +30,7 @@ pub async fn build(
     };
 
     // 2. Merge signal_events into timeline
-    let merged = merge_signal_events(store, event_store, thread_id, &detail.timeline).await?;
+    let merged = merge_signal_events(store, event_log, thread_id, &detail.timeline).await?;
     detail.timeline = merged;
 
     // 3. Build SignalAnalysis (structured, not appended to description)
@@ -39,18 +41,18 @@ pub async fn build(
 
 /// Merge stored signal events into the timeline.
 ///
-/// Prefers the R2 Event Archive via [`EventStore`], falling back to the D1
+/// Prefers the R2 event archive via [`SignalEventLog`], falling back to the D1
 /// `signal_events` table for backward compatibility.
 async fn merge_signal_events(
     store: &impl StoreBackend,
-    event_store: Option<&dyn EventStore>,
+    event_log: Option<&dyn SignalEventLog>,
     thread_id: i64,
     instance_timeline: &[SignalTimelineEvent],
 ) -> Result<Vec<SignalTimelineEvent>, StoreError> {
-    // Try EventStore first (R2 archive)
-    if let Some(es) = event_store {
+    // Try the event log first (R2 archive)
+    if let Some(log) = event_log {
         let agg_id = format!("SIG-{thread_id:06}");
-        match es.load_events("signal_thread", &agg_id, 50).await {
+        match log.load(&agg_id, 50).await {
             Ok(events) if !events.is_empty() => {
                 let mut merged: Vec<SignalTimelineEvent> = instance_timeline.to_vec();
                 for e in events {
@@ -66,7 +68,7 @@ async fn merge_signal_events(
                 merged.dedup_by(|a, b| a.timestamp == b.timestamp && a.event_type == b.event_type);
                 return Ok(merged);
             }
-            _ => {} // R2 unavailable or empty — fall through to D1
+            _ => {} // event log unavailable or empty — fall through to D1
         }
     }
 
