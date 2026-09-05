@@ -24,9 +24,8 @@ use async_trait::async_trait;
 use crate::{
     traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, Decision, DecisionEvaluation,
     DiscoveryMethod, EntitySignalCandidate, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
-    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewObservation, NewOutcomeEvent, NewReflection, NewSource,
-    Observation, OutcomeEvent, Reflection, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError,
-    UpdateReflection,
+    NewDecision, NewDecisionEvaluation, NewObservation, NewOutcomeEvent, NewReflection, NewSource, Observation,
+    OutcomeEvent, Reflection, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -70,6 +69,7 @@ pub trait StoreBackend:
     + OutboxStore
     + EventIndexStore
     + MemoryPersistence
+    + ContextSnapshotStore
 {
     // ---- Rules ----
 
@@ -293,8 +293,4 @@ pub trait StoreBackend:
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Source>, StoreError>;
-
-    // ===== Context Engine (Sprint 5.6) =====
-
-    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError>;
 }

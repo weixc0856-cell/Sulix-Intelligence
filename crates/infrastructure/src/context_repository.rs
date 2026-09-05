@@ -7,14 +7,14 @@ use async_trait::async_trait;
 use context_engine::error::ContextError;
 use context_engine::models::{DecisionRecord, MemoryRecord, NewContextSnapshot};
 use context_engine::repository::ContextRepository;
-use store::StoreBackend;
+use store::{ContextSnapshotStore, DecisionQueryService, MemoryPersistence};
 
 /// Maps context retrieval + snapshot persistence to the D1 store.
 pub struct D1ContextRepository<S> {
     store: S,
 }
 
-impl<S: StoreBackend> D1ContextRepository<S> {
+impl<S: DecisionQueryService + MemoryPersistence + ContextSnapshotStore> D1ContextRepository<S> {
     pub fn new(store: S) -> Self {
         Self { store }
     }
@@ -25,7 +25,7 @@ impl<S: StoreBackend> D1ContextRepository<S> {
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> ContextRepository for D1ContextRepository<S> {
+impl<S: DecisionQueryService + MemoryPersistence + ContextSnapshotStore> ContextRepository for D1ContextRepository<S> {
     async fn list_decisions(&self, limit: u32) -> Result<Vec<DecisionRecord>, ContextError> {
         let rows = self.store.list_decisions(None, limit).await.map_err(Self::to_persistence)?;
         Ok(rows

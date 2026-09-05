@@ -674,10 +674,6 @@ impl StoreBackend for crate::D1Store {
     ) -> Result<Vec<Source>, StoreError> {
         crate::D1Store::list_sources(self, tier, policy, limit, offset).await
     }
-
-    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
-        crate::D1Store::save_context_snapshot(self, snap).await
-    }
 }
 
 //  Fine-grained P4 subtraits — the 8 methods above were lifted off StoreBackend
@@ -743,5 +739,12 @@ impl MemoryPersistence for crate::D1Store {
         limit: u32,
     ) -> Result<Vec<Memory>, StoreError> {
         crate::D1Store::list_memories(self, memory_type, status, limit).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ContextSnapshotStore for crate::D1Store {
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        crate::D1Store::save_context_snapshot(self, snap).await
     }
 }

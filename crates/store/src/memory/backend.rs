@@ -1147,29 +1147,6 @@ impl StoreBackend for MemoryStore {
     async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
         ClaimQueryService::get_claim_evidence(self, claim_id).await
     }
-
-    // ===== Context Engine (Sprint 5.6) =====
-
-    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
-        self.snapshots.borrow_mut().insert(
-            snap.id.clone(),
-            ContextSnapshot {
-                id: snap.id.clone(),
-                query: snap.query.clone(),
-                intent: snap.intent.clone(),
-                domain: snap.domain.clone(),
-                engine_version: "context-engine-v1".into(),
-                context_json: snap.context_json.clone(),
-                object_key: snap.object_key.clone(),
-                object_size: snap.object_size,
-                evidence_refs: snap.evidence_refs.clone(),
-                confidence: snap.confidence,
-                user_scope: snap.user_scope.clone(),
-                created_at: 1000000,
-            },
-        );
-        Ok(())
-    }
 }
 
 // ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
@@ -1305,5 +1282,29 @@ impl MemoryPersistence for MemoryStore {
             .collect();
         // Note: limit not applied for MemoryStore simplicity
         Ok(result)
+    }
+}
+
+#[async_trait(?Send)]
+impl ContextSnapshotStore for MemoryStore {
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        self.snapshots.borrow_mut().insert(
+            snap.id.clone(),
+            ContextSnapshot {
+                id: snap.id.clone(),
+                query: snap.query.clone(),
+                intent: snap.intent.clone(),
+                domain: snap.domain.clone(),
+                engine_version: "context-engine-v1".into(),
+                context_json: snap.context_json.clone(),
+                object_key: snap.object_key.clone(),
+                object_size: snap.object_size,
+                evidence_refs: snap.evidence_refs.clone(),
+                confidence: snap.confidence,
+                user_scope: snap.user_scope.clone(),
+                created_at: 1000000,
+            },
+        );
+        Ok(())
     }
 }
