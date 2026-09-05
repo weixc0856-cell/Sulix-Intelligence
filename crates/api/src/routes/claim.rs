@@ -1,17 +1,15 @@
 //! Claim API — 查询专用，无公开写 API。
 //! Claim 由 Pipeline Agent 内部生成。
 
-use application::ClaimService;
+use application::ProductionAppServices;
 use serde_json::json;
 use worker::*;
-
-use store::Store;
 
 use crate::shared::response;
 
 /// GET /api/claims/:id — Claim detail with evidence.
-pub async fn detail_with_evidence(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ClaimService::new(ctx.data.clone());
+pub async fn detail_with_evidence(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.claim;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid claim id"),

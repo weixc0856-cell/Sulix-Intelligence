@@ -11,24 +11,23 @@
 //! checks) lives in [`application::RuleService`]; these handlers map its
 //! outcomes onto the HTTP contract.
 
-use application::{RuleError, RuleService};
+use application::{ProductionAppServices, RuleError};
 use serde::Deserialize;
 use serde_json::json;
-use store::Store;
 use worker::*;
 
 use crate::shared::{params, response};
 
-pub(crate) async fn rules_list(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = RuleService::new(ctx.data.clone());
+pub(crate) async fn rules_list(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.rule;
     match service.list().await {
         Ok(list) => response::json_ok(json!({"rules": list})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
-pub(crate) async fn rules_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = RuleService::new(ctx.data.clone());
+pub(crate) async fn rules_get(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.rule;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -49,8 +48,8 @@ struct CreateRuleBody {
     score_delta: Option<f64>,
 }
 
-pub(crate) async fn rules_create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = RuleService::new(ctx.data.clone());
+pub(crate) async fn rules_create(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.rule;
     let body: CreateRuleBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid JSON body"),
@@ -90,8 +89,8 @@ struct UpdateRuleBody {
     signal_type: Option<Option<String>>,
 }
 
-pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = RuleService::new(ctx.data.clone());
+pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.rule;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -118,8 +117,8 @@ pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<Store>) -> 
     }
 }
 
-pub(crate) async fn rules_delete(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = RuleService::new(ctx.data.clone());
+pub(crate) async fn rules_delete(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.rule;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

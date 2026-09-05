@@ -9,12 +9,14 @@
 //! API controllers in the `api` crate parse HTTP requests, call these
 //! services, and convert results to JSON responses.
 
+pub mod app_services;
 pub mod graph;
 pub mod provenance;
 pub mod radar;
 pub mod semantic_search;
 pub mod services;
 
+pub use app_services::{AppServices, ProductionAppServices};
 pub use graph::{ExpandRequest, ExpandResponse, GraphProjectionService};
 pub use provenance::{get_lineage, ProvenanceChain, ProvenanceNode};
 pub use radar::RadarProjectionService;
@@ -34,3 +36,9 @@ pub use services::sources::SourceService;
 pub use services::strategies::StrategyPreviewService;
 pub use services::system::SystemService;
 pub use services::trust::TrustService;
+
+// ── Store DTO bridge (Phase 2 §21) ──
+// Data contracts only — never infrastructure handles or persistence traits.
+// These let the `api` crate deserialize/serialize store-backed DTOs without a
+// Cargo dependency on `store` (the bridge re-exports shapes, not handles).
+pub use store::{ConfidenceEvent, NewSource, PreviewRequest, Source};

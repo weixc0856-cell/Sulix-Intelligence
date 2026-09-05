@@ -3,6 +3,7 @@
 //! be consumed from the Astro frontend (even on a different domain) and
 //! from browser-based dev tools without a proxy.
 
+use application::ProductionAppServices;
 use worker::*;
 
 // Backward-compatible re-exports for existing module files
@@ -14,15 +15,14 @@ pub(crate) use shared::params::parse_offset;
 pub(crate) use shared::response::json_err;
 pub(crate) use shared::response::json_err_internal;
 pub(crate) use shared::response::json_ok;
-pub use store::Store;
 
 mod entities;
 mod routes;
 mod shared;
 mod strategies;
 
-pub fn router(store: Store) -> Router<'static, Store> {
-    Router::with_data(store)
+pub fn router(app: ProductionAppServices) -> Router<'static, ProductionAppServices> {
+    Router::with_data(app)
         // CORS preflight
         .options_async("/api/*path", routes::system::cors_preflight)
         // Health / debug
@@ -39,9 +39,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/tags", routes::system::tags)
         .get_async("/api/intelligence/signals", routes::system::intelligence_signals)
         .get_async("/api/intelligence/trust", routes::system::trust)
-        .get_async("/api/intelligence/radar", routes::signal::radar)
-        .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
-        .get_async("/api/intelligence/signals/:id/provenance", routes::signal::signal_provenance)
         // Entity Graph
         .get_async("/api/intelligence/entities", entities::entities_list)
         .get_async("/api/intelligence/entities/:id", entities::entities_get)
@@ -70,7 +67,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/articles/:id/related", routes::article::article_related)
         .get_async("/api/articles/:id/adjacent", routes::article::article_adjacent)
         .get_async("/api/articles/:id", routes::article::article_detail)
-        .get_async("/api/articles/:id/content", routes::article::article_content)
         // Decision Graph Projection
         .get_async("/api/projections/decision-graph", routes::graph::decision_graph)
         .post_async("/api/projections/decision-graph/:id/expand", routes::graph::expand)

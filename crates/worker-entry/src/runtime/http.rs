@@ -2,6 +2,7 @@ use worker::*;
 
 use crate::jobs::ingestion;
 use api::router;
+use application::ProductionAppServices;
 use store::Store;
 
 pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Response> {
@@ -13,12 +14,14 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
             Err(e) => Response::error(format!("cron failed: {e}"), 500),
         }
     } else {
-        // Composition root: the HTTP runtime builds the D1-backed Store once and
-        // injects it via Router::with_data so handlers read ctx.data instead of
-        // constructing their own Store::new(env.d1(...)). Internal routes that
-        // require adapters/state owned by worker-entry are registered here on the
-        // api router (a consuming builder). Only HTTP composition/wiring lives in
-        // worker-entry — the handlers delegate to application services.
+        // Composition root: the HTTP runtime builds the D1-backed Store once,
+        // wraps it in the application service bundle (ProductionAppServices),
+        // and injects that via Router::with_data. api handlers read the exact
+        // service they need from ctx.data; infra routes registered here reach
+        // the raw store through ctx.data.store. Internal routes that require
+        // adapters/state owned by worker-entry are registered on the api router
+        // (a consuming builder). Only HTTP composition/wiring lives here — the
+        // handlers delegate to application services.
         let store = match env.d1("DB") {
             Ok(db) => Store::new(db),
             Err(e) => {
@@ -26,14 +29,21 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
                 return Response::error("D1 unavailable", 503);
             }
         };
-        let result = router(store)
+        let app = ProductionAppServices::new(store);
+        let result = router(app)
             .post_async("/api/internal/context", crate::routes::context::internal_context)
             .post_async("/api/internal/agent/run", crate::routes::agent::run)
-            // Signal read-model routes migrated out of api (P3 Round 2) — they
-            // assemble D1SignalQuery in the composition root.
+            // Signal read-model + radar routes migrated out of api — they
+            // assemble D1SignalQuery / drive raw-store reads in the composition
+            // root (raw Store reachable via ctx.data.store).
             .get_async("/api/intelligence/threads/:id", crate::routes::signal::thread_detail)
             .get_async("/api/intelligence/entities/:id/signals", crate::routes::signal::entities_signals)
             .get_async("/api/intelligence/entities/:id/threads", crate::routes::signal::entities_threads)
+            .get_async("/api/intelligence/radar", crate::routes::signal::radar)
+            .get_async("/api/intelligence/signals/:id", crate::routes::signal::signal_detail)
+            .get_async("/api/intelligence/signals/:id/provenance", crate::routes::signal::signal_provenance)
+            // Article raw content (R2 + content-governance policy) — infra route.
+            .get_async("/api/articles/:id/content", crate::routes::article::article_content)
             // Infrastructure-facing endpoints migrated out of api (Phase 2) —
             // semantic/rebuild/search drive Vectorize + D1 FTS directly, and
             // reflection assembles its engine from worker env adapters.

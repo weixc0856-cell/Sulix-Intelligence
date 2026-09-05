@@ -8,10 +8,10 @@
 //! only — no business logic is copied into this crate.
 
 use super::response::{json_err, json_err_internal, json_ok};
+use application::ProductionAppServices;
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use js_sys::{Object, Reflect};
 use serde::Deserialize;
-use store::Store;
 use vectorize::VectorizeIndex;
 use worker::wasm_bindgen::JsCast;
 use worker::wasm_bindgen::JsValue;
@@ -23,7 +23,7 @@ struct SemanticSearchRequest {
     limit: Option<u32>,
 }
 
-pub(crate) async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn semantic_search(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let body: SemanticSearchRequest = match req.json().await {
         Ok(b) => b,
         Err(_) => return json_err(400, "invalid JSON body"),
@@ -32,7 +32,7 @@ pub(crate) async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) 
         return json_err(400, "missing query 'q'");
     }
 
-    let store = ctx.data.clone();
+    let store = ctx.data.store.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
         Err(e) => return json_err_internal(&format!("VECTORIZE binding: {e}")),

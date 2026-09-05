@@ -7,17 +7,15 @@
 //! - `PUT    /api/feeds/:id`   — update an existing feed
 //! - `DELETE /api/feeds/:id`   — soft-delete (set status to "inactive")
 
-use application::FeedService;
+use application::ProductionAppServices;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;
 
-use store::Store;
-
 use crate::shared::{params, response};
 
-pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = FeedService::new(ctx.data.clone());
+pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.feed;
     let status_filter =
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     match service.list(status_filter.as_deref()).await {
@@ -26,8 +24,8 @@ pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<Store>) -> Result
     }
 }
 
-pub(crate) async fn feeds_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = FeedService::new(ctx.data.clone());
+pub(crate) async fn feeds_get(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.feed;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -47,8 +45,8 @@ struct CreateFeedBody {
     fetch_interval_sec: Option<i64>,
 }
 
-pub(crate) async fn feeds_create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = FeedService::new(ctx.data.clone());
+pub(crate) async fn feeds_create(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.feed;
     let body: CreateFeedBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid JSON body"),
@@ -80,8 +78,8 @@ struct UpdateFeedBody {
     status: Option<String>,
 }
 
-pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = FeedService::new(ctx.data.clone());
+pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.feed;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -110,8 +108,8 @@ pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<Store>) -> 
     }
 }
 
-pub(crate) async fn feeds_delete(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = FeedService::new(ctx.data.clone());
+pub(crate) async fn feeds_delete(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.feed;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

@@ -10,15 +10,15 @@
 //!      crate (`store`/`vectorize`/`embedding`/`event-store`/`object-store`/
 //!      `infrastructure`).  Hard rule — already clean.
 //!   2. **application** never depends on `worker` or a concrete-infra crate.
-//!      `store` is still present and grandfathered while P5 routes application
+//!      `store` is still present and grandfathered while P6 routes application
 //!      use-cases through domain ports.
 //!   3. **api** never depends on a concrete-infra crate (delivery may keep
-//!      `worker`).  Every such edge today is grandfathered and must shrink to
-//!      zero in P5.
+//!      `worker`).  Phase 2 (Domain Lift) cut all six `api:*` edges — the API
+//!      reaches services only through `application::ProductionAppServices`.
 //!   4. The workspace crate graph contains no cycles.
 //!
 //! `GRANDFATHERED` is the *shrinking* set of forbidden edges still present
-//! while P5 is in flight (same idiom as `scripts/check-layered-deps.sh`).
+//! while P6 is in flight (same idiom as `scripts/check-layered-deps.sh`).
 //! The moment an edge disappears the test reports it as *removable* — delete
 //! the entry in the same change so the rule hard-enforces from then on.
 //! Adding a forbidden edge that is not grandfathered fails immediately.
@@ -46,7 +46,8 @@ const DOMAIN_CRATES: &[&str] = &[
     "signal-engine",
 ];
 
-/// Application layer — the unique use-case entry point (still thin; P5).
+/// Application layer — the unique use-case entry point (generic over narrow
+/// store traits; `store` edge remains while P6 migrates it to domain ports).
 const APPLICATION_CRATES: &[&str] = &["application"];
 
 /// Delivery layer crates governed by the concrete-infra rule. `worker` stays
@@ -59,17 +60,9 @@ const HOST_CRATES: &[&str] = &["worker"];
 /// Concrete-infrastructure crates (workspace members).
 const INFRA_CRATES: &[&str] = &["store", "vectorize", "embedding", "event-store", "object-store", "infrastructure"];
 
-/// Forbidden edges still present today (P5 in flight). Format `source:target`.
+/// Forbidden edges still present today (P6 in flight). Format `source:target`.
 /// Delete an entry once the edge is gone → it becomes hard-enforced.
-const GRANDFATHERED: &[&str] = &[
-    "application:store",
-    "api:store",
-    "api:vectorize",
-    "api:embedding",
-    "api:event-store",
-    "api:object-store",
-    "api:infrastructure",
-];
+const GRANDFATHERED: &[&str] = &["application:store"];
 
 // ---------------------------------------------------------------------------
 // cargo metadata (--no-deps) JSON surface.

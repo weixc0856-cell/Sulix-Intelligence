@@ -9,24 +9,18 @@ workspace = true
 
 [dependencies]
 worker.workspace = true
+application.workspace = true
 content-governance.workspace = true
-store.workspace = true
 search.workspace = true
 rules.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 js-sys.workspace = true
-embedding.workspace = true
-vectorize.workspace = true
-application.workspace = true
-object-store.workspace = true
-event-store.workspace = true
 async-trait.workspace = true
 reflection-engine.workspace = true
 decision-engine.workspace = true
 shared-kernel.workspace = true
 model-runtime.workspace = true
-infrastructure.workspace = true
 
 [dev-dependencies]
 url.workspace = true

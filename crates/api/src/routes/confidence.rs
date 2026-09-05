@@ -1,11 +1,9 @@
 //! Confidence History API — append-only 置信度演化追踪。
 
-use application::ConfidenceService;
+use application::{ConfidenceEvent, ProductionAppServices};
 use serde::Serialize;
 use serde_json::json;
 use worker::*;
-
-use store::{ConfidenceEvent, Store};
 
 use crate::shared::response;
 
@@ -21,8 +19,8 @@ pub struct ConfidenceHistoryResponse {
 ///
 /// 返回某实体的置信度历史变化轨迹。
 /// entity_type: "decision" | "signal" | "claim"
-pub async fn history(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ConfidenceService::new(ctx.data.clone());
+pub async fn history(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.confidence;
 
     let entity_type = match ctx.param("entity_type") {
         Some(v) => v.to_string(),

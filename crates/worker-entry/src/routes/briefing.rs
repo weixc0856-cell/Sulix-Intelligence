@@ -16,11 +16,10 @@
 //! - 503  Dependency failure (transient — may be generated next cycle)
 //! - 500  Stored content corrupted (non-transient — investigate)
 
-use application::BriefingService;
+use application::{BriefingService, ProductionAppServices};
 use object_store::{ObjectStore, R2Store};
 use serde::Deserialize;
 use serde_json::json;
-use store::Store;
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 
@@ -80,7 +79,7 @@ async fn read_briefing_from_r2(env: &Env, date: &str) -> Option<serde_json::Valu
     Some(envelope.content)
 }
 
-pub(crate) async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn today_briefing(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let date = fmt_date_ymd((js_sys::Date::now() / 1000.0) as i64);
     let cache_key = format!("briefing:{date}");
 
@@ -102,7 +101,7 @@ pub(crate) async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> R
     }
 
     // 3. R2 miss — D1 legacy fallback (D1 read through BriefingService)
-    let service = BriefingService::new(ctx.data.clone());
+    let service = BriefingService::new(ctx.data.store.clone());
 
     match service.today(&date).await {
         Ok(Some(content)) => match serde_json::from_str::<serde_json::Value>(&content) {
@@ -129,8 +128,8 @@ pub(crate) async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> R
 }
 
 /// GET /api/intelligence/briefings — list all historical briefings.
-pub(crate) async fn list_briefings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = BriefingService::new(ctx.data.clone());
+pub(crate) async fn list_briefings(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = BriefingService::new(ctx.data.store.clone());
     match service.list().await {
         Ok(briefings) => json_ok(json!({ "success": true, "briefings": briefings })),
         Err(e) => json_err_internal(&e.to_string()),
@@ -138,8 +137,8 @@ pub(crate) async fn list_briefings(_req: Request, ctx: RouteContext<Store>) -> R
 }
 
 /// GET /api/intelligence/briefings/:id — single historical briefing.
-pub(crate) async fn get_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = BriefingService::new(ctx.data.clone());
+pub(crate) async fn get_briefing(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = BriefingService::new(ctx.data.store.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid briefing id"),

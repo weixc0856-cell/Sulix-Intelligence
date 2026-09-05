@@ -6,8 +6,8 @@
 //! `D1FtsSearch` directly against the `DB` binding — an infrastructure-facing
 //! HTTP endpoint that lives in worker-entry. Wiring only.
 
+use application::ProductionAppServices;
 use serde_json::json;
-use store::Store;
 use worker::*;
 
 use search::D1FtsSearch;
@@ -15,7 +15,7 @@ use search::D1FtsSearch;
 use super::response;
 
 /// GET /api/articles/search — full-text search via D1 FTS5.
-pub(crate) async fn search_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn search_articles(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let db = ctx.env.d1("DB")?;
     let search = D1FtsSearch::new(&db);
     let url = req.url()?;

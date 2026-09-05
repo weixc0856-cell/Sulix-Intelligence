@@ -8,13 +8,13 @@
 //! 50 articles per call to stay within Workers CPU time limits. Wiring only.
 
 use super::response::{json_err_internal, json_ok};
+use application::ProductionAppServices;
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
-use store::Store;
 use vectorize::{VectorMetadata, VectorRecord, VectorizeIndex};
 use worker::*;
 
-pub(crate) async fn rebuild_embeddings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+pub(crate) async fn rebuild_embeddings(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let store = ctx.data.store.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
         Err(e) => return json_err_internal(&format!("VECTORIZE binding: {e}")),

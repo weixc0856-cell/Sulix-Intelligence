@@ -14,11 +14,10 @@
 //! - `POST   /api/decision-records`                       — create decision record
 //! - `POST   /api/decision-records/:id/outcomes`          — create outcome metric
 
+use application::ProductionAppServices;
 use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata};
 use serde_json::json;
-use store::{
-    Decision, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, Store, StoreBackend, StoreError,
-};
+use store::{Decision, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, StoreBackend, StoreError};
 use worker::*;
 
 use super::response;
@@ -206,8 +205,8 @@ impl<S: StoreBackend> DecisionService<S> {
 // ── HTTP handlers ─────────────────────────────────────────────────────────
 
 /// POST /api/intelligence/signals/:id/decisions
-pub(crate) async fn create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = DecisionService::new(ctx.data.clone());
+pub(crate) async fn create(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let svc = DecisionService::new(ctx.data.store.clone());
     let signal_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal thread id"),
@@ -244,8 +243,8 @@ pub(crate) async fn create(mut req: Request, ctx: RouteContext<Store>) -> Result
 }
 
 /// POST /api/intelligence/decisions/:id/status
-pub(crate) async fn update_status(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = DecisionService::new(ctx.data.clone());
+pub(crate) async fn update_status(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let svc = DecisionService::new(ctx.data.store.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -271,8 +270,8 @@ pub(crate) async fn update_status(mut req: Request, ctx: RouteContext<Store>) ->
 }
 
 /// POST /api/intelligence/decisions/:id/outcomes
-pub(crate) async fn create_outcome(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = DecisionService::new(ctx.data.clone());
+pub(crate) async fn create_outcome(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let svc = DecisionService::new(ctx.data.store.clone());
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -301,8 +300,8 @@ pub(crate) async fn create_outcome(mut req: Request, ctx: RouteContext<Store>) -
 }
 
 /// POST /api/intelligence/decisions/:id/evaluations
-pub(crate) async fn create_evaluation(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = DecisionService::new(ctx.data.clone());
+pub(crate) async fn create_evaluation(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let svc = DecisionService::new(ctx.data.store.clone());
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -334,7 +333,10 @@ pub(crate) async fn create_evaluation(mut req: Request, ctx: RouteContext<Store>
 // ── Sprint 6.0: Decision Record writes ──
 
 /// POST /api/decision-records — create a decision record
-pub(crate) async fn create_decision_record(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn create_decision_record(
+    mut req: Request,
+    ctx: RouteContext<ProductionAppServices>,
+) -> Result<Response> {
     #[derive(serde::Deserialize)]
     struct CreateInput {
         title: String,
@@ -345,7 +347,7 @@ pub(crate) async fn create_decision_record(mut req: Request, ctx: RouteContext<S
         confidence: Option<f64>,
         signal_id: Option<i64>,
     }
-    let store = ctx.data.clone();
+    let store = ctx.data.store.clone();
     let input: CreateInput = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
@@ -369,14 +371,17 @@ pub(crate) async fn create_decision_record(mut req: Request, ctx: RouteContext<S
 }
 
 /// POST /api/decision-records/:id/outcomes — create an outcome metric
-pub(crate) async fn create_outcome_metric(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn create_outcome_metric(
+    mut req: Request,
+    ctx: RouteContext<ProductionAppServices>,
+) -> Result<Response> {
     #[derive(serde::Deserialize)]
     struct OutcomeInput {
         metric: String,
         expected_value: Option<String>,
         measurement_method: Option<String>,
     }
-    let store = ctx.data.clone();
+    let store = ctx.data.store.clone();
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

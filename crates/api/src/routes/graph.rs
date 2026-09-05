@@ -2,10 +2,9 @@
 //!
 //! - `GET /api/projections/decision-graph` — Decision-centric graph projection
 
+use application::ProductionAppServices;
 use serde_json::json;
 use worker::*;
-
-use store::Store;
 
 use crate::shared::{params, response};
 
@@ -14,9 +13,8 @@ use crate::shared::{params, response};
 /// Returns a render-ready node+edge projection of recent decisions,
 /// their associated signals, and outcomes.
 /// Query params: `?limit=20`
-pub async fn decision_graph(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    let service = application::GraphProjectionService::new(store);
+pub async fn decision_graph(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.graph;
     let url = req.url()?;
     let limit = params::parse_limit(&url);
 
@@ -32,11 +30,10 @@ pub async fn decision_graph(req: Request, ctx: RouteContext<Store>) -> Result<Re
 /// POST /api/projections/decision-graph/{id}/expand
 ///
 /// Expand a node to reveal its neighbors. Returns additional nodes and edges.
-pub async fn expand(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub async fn expand(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     use application::ExpandRequest;
 
-    let store = ctx.data.clone();
-    let service = application::GraphProjectionService::new(store);
+    let service = &ctx.data.graph;
 
     let node_id = match ctx.param("id") {
         Some(id) => id.to_string(),

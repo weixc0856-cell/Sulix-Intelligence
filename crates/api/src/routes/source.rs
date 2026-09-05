@@ -4,15 +4,14 @@
 use serde_json::json;
 use worker::*;
 
-use application::SourceService;
-use store::{NewSource, Store};
+use application::{NewSource, ProductionAppServices};
 
 use crate::shared::response;
 
 /// GET /api/sources
 /// List all sources with optional ?tier= and ?policy= filters.
-pub async fn sources_list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = SourceService::new(ctx.data.clone());
+pub async fn sources_list(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.source;
 
     let url = req.url()?;
     let pairs = url.query_pairs().collect::<Vec<_>>();
@@ -31,8 +30,8 @@ pub async fn sources_list(req: Request, ctx: RouteContext<Store>) -> Result<Resp
 }
 
 /// GET /api/sources/:id
-pub async fn sources_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = SourceService::new(ctx.data.clone());
+pub async fn sources_get(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.source;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),
@@ -49,8 +48,8 @@ pub async fn sources_get(_req: Request, ctx: RouteContext<Store>) -> Result<Resp
 }
 
 /// POST /api/sources — Create a new source entry.
-pub async fn sources_create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = SourceService::new(ctx.data.clone());
+pub async fn sources_create(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.source;
     let body: NewSource = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
@@ -66,8 +65,8 @@ pub async fn sources_create(mut req: Request, ctx: RouteContext<Store>) -> Resul
 }
 
 /// PUT /api/sources/:id — Update a source entry.
-pub async fn sources_update(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = SourceService::new(ctx.data.clone());
+pub async fn sources_update(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.source;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),
@@ -89,8 +88,8 @@ pub async fn sources_update(mut req: Request, ctx: RouteContext<Store>) -> Resul
 }
 
 /// DELETE /api/sources/:id
-pub async fn sources_delete(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = SourceService::new(ctx.data.clone());
+pub async fn sources_delete(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.source;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),

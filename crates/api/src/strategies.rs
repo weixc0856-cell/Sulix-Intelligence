@@ -3,9 +3,8 @@
 //! matched results so users can see impact before saving.
 
 use crate::{json_err, json_ok};
-use application::StrategyPreviewService;
+use application::{PreviewRequest, ProductionAppServices};
 use rules::{score, ArticleInput, Condition};
-use store::{PreviewRequest, Store};
 use worker::*;
 
 /// POST /api/strategies/preview
@@ -17,8 +16,8 @@ use worker::*;
 /// invocation stay here (this layer owns the `rules` dependency); the
 /// candidate fetch and the match/filter assembly run in
 /// [`StrategyPreviewService`].
-pub async fn preview(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = StrategyPreviewService::new(ctx.data.clone());
+pub async fn preview(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.strategy_preview;
 
     let body: PreviewRequest = match req.json().await {
         Ok(b) => b,

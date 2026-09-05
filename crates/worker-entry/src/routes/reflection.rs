@@ -8,6 +8,7 @@
 //! worker-entry. Wiring only — `build_engine` / provider construction move
 //! wholesale; no domain refactor.
 
+use application::ProductionAppServices;
 use event_store::{EventR2Backend, NoopEventStore};
 use infrastructure::artifact_registry::D1ArtifactRegistry;
 use infrastructure::event_log::EventStoreLog;
@@ -17,7 +18,7 @@ use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
 use serde_json::json;
 use shared_kernel::event_log::EventLog;
-use store::{D1Store, Store};
+use store::D1Store;
 use worker::*;
 
 use super::response;
@@ -107,13 +108,13 @@ impl model_runtime::HttpClient for WorkerHttpClient {
 }
 
 /// POST /api/intelligence/decisions/:id/reflect
-pub(crate) async fn reflect(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn reflect(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let engine = match build_engine(&ctx.env, ctx.data.clone()) {
+    let engine = match build_engine(&ctx.env, ctx.data.store.clone()) {
         Ok(e) => e,
         Err(_) => return response::json_err(503, "service unavailable"),
     };

@@ -1,18 +1,16 @@
-use application::ArticleService;
+use application::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 
-use store::Store;
-
 use crate::shared::{params, response};
 
-pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let url = req.url()?;
     let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
     let limit = params::parse_limit(&url);
     let offset = params::parse_offset(&url);
-    let service = ArticleService::new(ctx.data.clone());
+    let service = &ctx.data.article;
     if tag.is_none() && category.is_none() && limit == 30 && offset == 0 {
         let cache_key = "v1:latest:30:0";
         if let Some(cached) = crate::cache_get(&ctx.env, cache_key).await {
@@ -54,8 +52,8 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> R
     }
 }
 
-pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ArticleService::new(ctx.data.clone());
+pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.article;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -70,48 +68,8 @@ pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<Store>) -> R
     }
 }
 
-pub(crate) async fn article_content(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    let id = match params::param_i64(&ctx, "id") {
-        Some(v) => v,
-        None => return response::json_err(400, "missing id"),
-    };
-
-    // Resolve source and check policy before serving content
-    if let Ok(Some(article)) = store.article_by_id(id).await {
-        if let Ok(Some(source)) = store.find_source_by_feed(article.feed_id).await {
-            let decision = content_governance::evaluate_policy(&source);
-            if decision.serving == content_governance::ServingPermission::Denied {
-                return response::json_err(403, "Content access denied by source policy");
-            }
-        }
-    }
-
-    match store.get_raw_content_key(id).await {
-        Ok(Some(k)) => {
-            let bucket = match ctx.env.bucket("RAW_CONTENT") {
-                Ok(b) => b,
-                Err(e) => return response::json_err_internal(&format!("RAW_CONTENT bucket: {e}")),
-            };
-            match bucket.get(&k).execute().await {
-                Ok(Some(obj)) => match obj.body() {
-                    Some(body) => match body.text().await {
-                        Ok(t) => response::json_ok(json!({"id": id, "content": t, "format": "html", "source": "r2"})),
-                        Err(e) => response::json_err_internal(&format!("body read: {e}")),
-                    },
-                    None => response::json_err(500, "R2 object has no body"),
-                },
-                Ok(None) => response::json_err(404, "content not found in storage"),
-                Err(e) => response::json_err_internal(&format!("R2 read: {e}")),
-            }
-        }
-        Ok(None) => response::json_err(404, "no raw content for this article"),
-        Err(e) => response::json_err_internal(&e.to_string()),
-    }
-}
-
-pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ArticleService::new(ctx.data.clone());
+pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.article;
     let ids_param = req
         .url()
         .ok()
@@ -127,8 +85,8 @@ pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<Store>) -> Re
     }
 }
 
-pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ArticleService::new(ctx.data.clone());
+pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.article;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -139,8 +97,8 @@ pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<Store>) ->
     }
 }
 
-pub(crate) async fn article_related(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ArticleService::new(ctx.data.clone());
+pub(crate) async fn article_related(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.article;
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -151,8 +109,8 @@ pub(crate) async fn article_related(_req: Request, ctx: RouteContext<Store>) -> 
     }
 }
 
-pub(crate) async fn trending(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ArticleService::new(ctx.data.clone());
+pub(crate) async fn trending(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.article;
     let url = req.url()?;
     let limit = params::parse_limit(&url);
     let offset = params::parse_offset(&url);

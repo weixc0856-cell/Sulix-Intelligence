@@ -15,16 +15,15 @@
 //! - `GET    /api/intelligence/decisions/:id/timeline`   — decision timeline
 //! - `GET    /api/intelligence/decisions/:id/explanation` — decision explanation
 
-use application::DecisionReadService;
+use application::ProductionAppServices;
 use serde_json::json;
-use store::Store;
 use worker::*;
 
 use crate::shared::response;
 
 /// GET /api/intelligence/decisions?status=active
-pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn list(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let status = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     let limit = 50u32;
     match service.list(status.as_deref(), limit).await {
@@ -37,8 +36,8 @@ pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
 }
 
 /// GET /api/intelligence/decisions/:id
-pub async fn detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn detail(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -54,8 +53,8 @@ pub async fn detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response>
 }
 
 /// GET /api/intelligence/signals/:id/decisions
-pub async fn by_signal(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn by_signal(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let signal_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal thread id"),
@@ -70,8 +69,8 @@ pub async fn by_signal(_req: Request, ctx: RouteContext<Store>) -> Result<Respon
 }
 
 /// GET /api/intelligence/decisions/stats — Decision Accuracy Dashboard.
-pub async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn stats(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     match service.stats().await {
         Ok(stats) => response::json_ok(json!(stats)),
         Err(e) => {
@@ -82,8 +81,8 @@ pub async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> 
 }
 
 /// GET /api/intelligence/decisions/:id/evaluations
-pub async fn list_evaluations(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn list_evaluations(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -98,8 +97,8 @@ pub async fn list_evaluations(_req: Request, ctx: RouteContext<Store>) -> Result
 }
 
 /// GET /api/intelligence/decisions/:id/outcomes
-pub async fn list_outcomes(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn list_outcomes(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -116,8 +115,8 @@ pub async fn list_outcomes(_req: Request, ctx: RouteContext<Store>) -> Result<Re
 // ── Decision Timeline ──
 
 /// GET /api/intelligence/decisions/:id/timeline
-pub async fn timeline(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn timeline(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -142,8 +141,8 @@ pub async fn timeline(_req: Request, ctx: RouteContext<Store>) -> Result<Respons
 /// Returns a structured explanation of why the system holds this belief:
 /// supporting evidence, confidence drivers, and known uncertainties.
 /// This is the core "Why Sulix Thinks This" API.
-pub async fn explanation(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn explanation(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
@@ -162,8 +161,8 @@ pub async fn explanation(_req: Request, ctx: RouteContext<Store>) -> Result<Resp
 // ── Sprint 6.0: Decision Records (reads) ──
 
 /// GET /api/decision-records — list decision records (?status=)
-pub async fn list_decision_records(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn list_decision_records(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let status = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     let limit = 50u32;
     match service.list_records(status.as_deref(), limit).await {
@@ -176,8 +175,8 @@ pub async fn list_decision_records(req: Request, ctx: RouteContext<Store>) -> Re
 }
 
 /// GET /api/decision-records/:id — detail with memo
-pub async fn get_decision_record(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn get_decision_record(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -195,8 +194,8 @@ pub async fn get_decision_record(_req: Request, ctx: RouteContext<Store>) -> Res
 }
 
 /// GET /api/decision-records/:id/memo — get or generate the decision memo
-pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn decision_memo(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -245,8 +244,8 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Re
 }
 
 /// GET /api/decision-records/:id/outcomes — list outcomes
-pub async fn list_outcome_metrics(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = DecisionReadService::new(ctx.data.clone());
+pub async fn list_outcome_metrics(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.decision_read;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

@@ -1,18 +1,16 @@
 //! Observation API — read-only access to structured observation records
 //! and their lineage chain.
 
-use application::ObservationService;
+use application::ProductionAppServices;
 use serde_json::json;
 use worker::*;
-
-use store::Store;
 
 use crate::shared::response;
 
 /// GET /api/observations
 /// List observations, optionally filtered by ?source_type= and ?source_id=.
-pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ObservationService::new(ctx.data.clone());
+pub async fn list(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.observation;
 
     let url = req.url()?;
     let pairs = url.query_pairs().collect::<Vec<_>>();
@@ -31,8 +29,8 @@ pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
 }
 
 /// GET /api/observations/:id
-pub async fn get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ObservationService::new(ctx.data.clone());
+pub async fn get(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.observation;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid observation id"),
@@ -50,8 +48,8 @@ pub async fn get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
 
 /// GET /api/observations/:id/lineage
 /// Full provenance chain: Source → Observation → Signals → Claims → Decisions.
-pub async fn lineage(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ObservationService::new(ctx.data.clone());
+pub async fn lineage(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.observation;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid observation id"),

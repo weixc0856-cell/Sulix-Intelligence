@@ -2,10 +2,11 @@ use agent_engine::context::ContextProvider;
 use agent_engine::infrastructure::model_provider::ModelProviderLLM;
 use agent_engine::runtime::AgentRuntime;
 use agent_engine::types::{AgentRequest, ContextResult};
+use application::ProductionAppServices;
 use context_engine::builder::ContextBuilder;
 use infrastructure::context_repository::D1ContextRepository;
 use model_runtime::{build_provider, ModelRuntimeConfig};
-use store::{D1Store, Store};
+use store::D1Store;
 use worker::*;
 
 use super::response;
@@ -32,13 +33,13 @@ fn try_build_provider(env: &Env) -> Option<Box<dyn model_runtime::ModelProvider>
 }
 
 /// POST /api/internal/agent/run
-pub(crate) async fn run(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn run(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let body: AgentRequest = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    let store = ctx.data.clone();
+    let store = ctx.data.store.clone();
 
     let provider: Box<dyn model_runtime::ModelProvider> =
         try_build_provider(&ctx.env).unwrap_or_else(|| Box::new(model_runtime::NoopProvider::new()));

@@ -7,6 +7,5 @@ pub(crate) mod feed;
 pub(crate) mod graph;
 pub(crate) mod observation;
 pub(crate) mod rules;
-pub(crate) mod signal;
 pub(crate) mod source;
 pub(crate) mod system;

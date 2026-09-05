@@ -4,12 +4,10 @@
 //! Approved takedowns create content_visibility_overrides (block serving).
 //! Source policy is NOT modified by takedown — overrides are independent.
 
-use application::ComplianceService;
+use application::ProductionAppServices;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;
-
-use store::Store;
 
 use crate::shared::response;
 
@@ -30,8 +28,8 @@ struct TakedownStatusBody {
 /// POST /api/compliance/takedown
 /// Submit a takedown request. If article_id is provided, immediately
 /// blocks article serving via visibility override.
-pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ComplianceService::new(ctx.data.clone());
+pub async fn submit_takedown(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.compliance;
     let body: SubmitTakedownBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
@@ -59,8 +57,8 @@ pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Resu
 
 /// GET /api/compliance/takedowns
 /// List all takedown requests (admin).
-pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ComplianceService::new(ctx.data.clone());
+pub async fn list_takedowns(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.compliance;
 
     let status_filter =
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
@@ -81,8 +79,8 @@ pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Re
 
 /// PUT /api/compliance/takedowns/:id/status
 /// Update takedown status (admin).
-pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let service = ComplianceService::new(ctx.data.clone());
+pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
+    let service = &ctx.data.compliance;
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid takedown id"),
