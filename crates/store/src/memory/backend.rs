@@ -14,13 +14,14 @@ use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary,
-    ClaimEvidence, ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats,
-    DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary,
-    EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent,
-    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
-    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
-    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    ClaimEvidence, ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionOutcome,
+    DecisionRecord, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
+    EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
+    NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation,
+    NewDecisionRecord, NewMemory, NewObservation, NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource,
+    Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
+    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
+    Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
@@ -1298,6 +1299,38 @@ impl MetricsStore for MemoryStore {
         Err(StoreError::D1("not implemented".into()))
     }
     async fn calibration_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+}
+
+#[async_trait(?Send)]
+impl DecisionRecordStore for MemoryStore {
+    async fn create_decision_record(&self, _record: &NewDecisionRecord) -> Result<i64, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn get_decision_record(&self, _id: i64) -> Result<Option<DecisionRecord>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn list_decision_records(
+        &self,
+        _status: Option<&str>,
+        _limit: u32,
+    ) -> Result<Vec<DecisionRecord>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn create_outcome_metric(&self, _outcome: &NewOutcome) -> Result<i64, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn list_decision_outcomes(&self, _decision_id: i64) -> Result<Vec<DecisionOutcome>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn get_decision_claims(&self, _decision_id: i64) -> Result<Vec<serde_json::Value>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn set_decision_memo(&self, _id: i64, _memo_json: &str) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn get_decision_framework_traces(&self, _decision_id: i64) -> Result<Vec<serde_json::Value>, StoreError> {
         Err(StoreError::D1("not implemented".into()))
     }
 }

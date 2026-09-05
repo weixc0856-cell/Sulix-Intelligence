@@ -11,13 +11,14 @@ use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary, Claim,
-    ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
-    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot,
-    NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection,
-    NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
-    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord,
+    DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate,
+    EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim,
+    NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewDecisionRecord, NewMemory,
+    NewObservation, NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry,
+    OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef, ScoreDist,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter, SignalUpsertResult,
+    Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 //  Repositories (save / find)
@@ -750,5 +751,33 @@ impl SignalStore for crate::D1Store {
     ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
         crate::D1Store::entity_signal_candidates_filtered(self, now, days, limit, min_entity_articles, min_sources)
             .await
+    }
+}
+
+#[async_trait(?Send)]
+impl DecisionRecordStore for crate::D1Store {
+    async fn create_decision_record(&self, record: &NewDecisionRecord) -> Result<i64, StoreError> {
+        crate::D1Store::create_decision_record(self, record).await
+    }
+    async fn get_decision_record(&self, id: i64) -> Result<Option<DecisionRecord>, StoreError> {
+        crate::D1Store::get_decision_record(self, id).await
+    }
+    async fn list_decision_records(&self, status: Option<&str>, limit: u32) -> Result<Vec<DecisionRecord>, StoreError> {
+        crate::D1Store::list_decision_records(self, status, limit).await
+    }
+    async fn create_outcome_metric(&self, outcome: &NewOutcome) -> Result<i64, StoreError> {
+        crate::D1Store::create_outcome_metric(self, outcome).await
+    }
+    async fn list_decision_outcomes(&self, decision_id: i64) -> Result<Vec<DecisionOutcome>, StoreError> {
+        crate::D1Store::list_decision_outcomes(self, decision_id).await
+    }
+    async fn get_decision_claims(&self, decision_id: i64) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::get_decision_claims(self, decision_id).await
+    }
+    async fn set_decision_memo(&self, id: i64, memo_json: &str) -> Result<(), StoreError> {
+        crate::D1Store::set_decision_memo(self, id, memo_json).await
+    }
+    async fn get_decision_framework_traces(&self, decision_id: i64) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::get_decision_framework_traces(self, decision_id).await
     }
 }

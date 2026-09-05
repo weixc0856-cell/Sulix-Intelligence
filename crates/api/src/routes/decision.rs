@@ -7,8 +7,9 @@
 //! - `GET    /api/intelligence/signals/:id/decisions`    — decisions by signal
 //! - `POST   /api/intelligence/decisions/:id/status`     — update status
 
+use application::DecisionReadService;
 use serde_json::json;
-use store::{D1Store, DecisionRepository, NewDecisionEvaluation, NewOutcomeEvent, Store};
+use store::{D1Store, NewDecisionEvaluation, NewOutcomeEvent, Store};
 use worker::*;
 
 use crate::services::decision::{CreateDecision, DecisionService};
@@ -20,10 +21,10 @@ fn build_decision_service(store: D1Store) -> DecisionService<D1Store> {
 
 /// GET /api/intelligence/decisions?status=active
 pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let status = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     let limit = 50u32;
-    match store.list_decisions(status.as_deref(), limit).await {
+    match service.list(status.as_deref(), limit).await {
         Ok(decisions) => response::json_ok(json!({ "success": true, "decisions": decisions })),
         Err(e) => {
             console_log!("[Sulix:decisions] list failed: {e}");
@@ -34,12 +35,12 @@ pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
 
 /// GET /api/intelligence/decisions/:id
 pub async fn detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match store.find_decision(id).await {
+    match service.detail(id).await {
         Ok(Some(decision)) => response::json_ok(json!({ "success": true, "decision": decision })),
         Ok(None) => response::json_err(404, "decision not found"),
         Err(e) => {
@@ -89,12 +90,12 @@ pub async fn create(mut req: Request, ctx: RouteContext<Store>) -> Result<Respon
 
 /// GET /api/intelligence/signals/:id/decisions
 pub async fn by_signal(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let signal_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal thread id"),
     };
-    match store.decisions_by_signal(signal_id).await {
+    match service.by_signal(signal_id).await {
         Ok(decisions) => response::json_ok(json!({ "success": true, "decisions": decisions })),
         Err(e) => {
             console_log!("[Sulix:decisions] by_signal failed: {e}");
@@ -132,8 +133,8 @@ pub async fn update_status(mut req: Request, ctx: RouteContext<Store>) -> Result
 
 /// GET /api/intelligence/decisions/stats — Decision Accuracy Dashboard.
 pub async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    match store.decision_stats().await {
+    let service = DecisionReadService::new(ctx.data.clone());
+    match service.stats().await {
         Ok(stats) => response::json_ok(json!(stats)),
         Err(e) => {
             console_log!("[Sulix:decisions] stats failed: {e}");
@@ -209,12 +210,12 @@ pub async fn create_evaluation(mut req: Request, ctx: RouteContext<Store>) -> Re
 
 /// GET /api/intelligence/decisions/:id/evaluations
 pub async fn list_evaluations(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match <Store as store::DecisionQueryService>::list_evaluations(&store, decision_id).await {
+    match service.list_evaluations(decision_id).await {
         Ok(evaluations) => response::json_ok(json!({ "success": true, "evaluations": evaluations })),
         Err(e) => {
             console_log!("[Sulix:evaluations] list failed: {e}");
@@ -225,12 +226,12 @@ pub async fn list_evaluations(_req: Request, ctx: RouteContext<Store>) -> Result
 
 /// GET /api/intelligence/decisions/:id/outcomes
 pub async fn list_outcomes(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match <Store as store::DecisionQueryService>::list_outcomes(&store, decision_id).await {
+    match service.list_outcomes(decision_id).await {
         Ok(outcomes) => response::json_ok(json!({ "success": true, "outcomes": outcomes })),
         Err(e) => {
             console_log!("[Sulix:outcomes] list failed: {e}");
@@ -241,117 +242,27 @@ pub async fn list_outcomes(_req: Request, ctx: RouteContext<Store>) -> Result<Re
 
 // ── Decision Timeline ──
 
-#[derive(serde::Serialize)]
-struct TimelineEvent {
-    pub timestamp: i64,
-    pub event_type: String,
-    pub title: String,
-    pub description: String,
-}
-
 /// GET /api/intelligence/decisions/:id/timeline
 pub async fn timeline(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let decision = match store.find_decision(id).await {
-        Ok(Some(d)) => d,
-        Ok(None) => return response::json_err(404, "decision not found"),
+    match service.timeline(id).await {
+        Ok(Some(timeline)) => {
+            response::json_ok(json!({ "success": true, "events": timeline.events, "learning": timeline.learning }))
+        }
+        Ok(None) => response::json_err(404, "decision not found"),
         Err(e) => {
             console_log!("[Sulix:timeline] {e}");
-            return response::json_err_internal("timeline failed");
-        }
-    };
-
-    let mut events: Vec<TimelineEvent> = Vec::new();
-
-    events.push(TimelineEvent {
-        timestamp: decision.created_at,
-        event_type: "decision.created".into(),
-        title: "Decision registered".into(),
-        description: format!("Status: {}, Confidence: {:.0}%", decision.status, decision.confidence * 100.0),
-    });
-
-    if let Ok(outcomes) = <Store as store::DecisionQueryService>::list_outcomes(&store, id).await {
-        for o in &outcomes {
-            events.push(TimelineEvent {
-                timestamp: o.observed_at,
-                event_type: "outcome.observed".into(),
-                title: format!("Outcome: {}", o.outcome_type),
-                description: o.observation.clone(),
-            });
+            response::json_err_internal("timeline failed")
         }
     }
-
-    if let Ok(evals) = <Store as store::DecisionQueryService>::list_evaluations(&store, id).await {
-        for e in &evals {
-            events.push(TimelineEvent {
-                timestamp: e.evaluated_at,
-                event_type: "decision.evaluated".into(),
-                title: format!("Judgment: {}", e.evaluation),
-                description: e.reasoning.clone().unwrap_or_default(),
-            });
-        }
-    }
-
-    if let Ok(Some(r)) = store.get_reflection_by_decision(id).await {
-        if let Some(started) = r.started_at {
-            events.push(TimelineEvent {
-                timestamp: started,
-                event_type: "reflection.generated".into(),
-                title: "AI Reflection".into(),
-                description: r.result.unwrap_or_default(),
-            });
-        }
-    }
-
-    events.sort_by_key(|e| e.timestamp);
-
-    let learning = store.get_reflection_by_decision(id).await.ok().flatten().and_then(|r| r.result);
-
-    response::json_ok(serde_json::json!({ "success": true, "events": events, "learning": learning }))
 }
 
 // ── Decision Explanation ──
-
-#[derive(serde::Serialize)]
-struct SupportingEvidence {
-    title: String,
-    strength: f64,
-    source: Option<String>,
-}
-
-#[derive(serde::Serialize)]
-struct ConfidenceDriver {
-    factor: String,
-    impact: String,
-}
-
-#[derive(serde::Serialize)]
-struct FrameworkTrace {
-    id: String,
-    name: String,
-    category: String,
-    relevance: f64,
-    reasoning: String,
-}
-
-#[derive(serde::Serialize)]
-struct ExplanationResponse {
-    decision_id: String,
-    decision_title: String,
-    hypothesis: Option<String>,
-    confidence: f64,
-    trend: String,
-    supporting_evidence: Vec<SupportingEvidence>,
-    confidence_drivers: Vec<ConfidenceDriver>,
-    uncertainties: Vec<String>,
-    outcome_summary: Option<String>,
-    frameworks_applied: Vec<FrameworkTrace>,
-}
 
 /// GET /api/intelligence/decisions/:id/explanation
 ///
@@ -359,134 +270,30 @@ struct ExplanationResponse {
 /// supporting evidence, confidence drivers, and known uncertainties.
 /// This is the core "Why Sulix Thinks This" API.
 pub async fn explanation(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let decision = match store.find_decision(id).await {
-        Ok(Some(d)) => d,
-        Ok(None) => return response::json_err(404, "decision not found"),
+    match service.explanation(id).await {
+        Ok(Some(explanation)) => response::json_ok(json!(explanation)),
+        Ok(None) => response::json_err(404, "decision not found"),
         Err(e) => {
-            console_log!("[Sulix:explanation] get_decision failed: {e}");
-            return response::json_err_internal("explanation query failed");
-        }
-    };
-
-    // Determine trend from confidence history
-    let trend = match store.list_confidence_history("decision", &id.to_string()).await {
-        Ok(events) if events.len() >= 2 => {
-            let latest = events.last().unwrap();
-            let prev = &events[events.len() - 2];
-            if latest.confidence > prev.previous_confidence.unwrap_or(0.0) {
-                "increasing".into()
-            } else if latest.confidence < prev.confidence {
-                "decreasing".into()
-            } else {
-                "stable".into()
-            }
-        }
-        _ => "stable".into(),
-    };
-
-    // Load evidence from signal thread
-    let mut supporting_evidence: Vec<SupportingEvidence> = Vec::new();
-    if let Some(signal_id) = decision.signal_thread_id {
-        if let Ok(Some(detail)) = store.load_signal_detail(signal_id).await {
-            for article in &detail.evidence_top {
-                supporting_evidence.push(SupportingEvidence {
-                    title: article.title.clone(),
-                    strength: article.score.clamp(0.0, 1.0),
-                    source: article.feed_name.clone(),
-                });
-            }
+            console_log!("[Sulix:explanation] {e}");
+            response::json_err_internal("explanation query failed")
         }
     }
-
-    // Load outcomes for accuracy summary
-    let outcome_summary = match <Store as store::DecisionQueryService>::list_outcomes(&store, id).await {
-        Ok(outcomes) if !outcomes.is_empty() => {
-            let confirmed = outcomes
-                .iter()
-                .filter(|o| o.outcome_type == "confirmed" || o.outcome_type == "prediction_correct")
-                .count();
-            Some(format!("{}/{} outcomes confirmed", confirmed, outcomes.len()))
-        }
-        _ => None,
-    };
-
-    // Build confidence drivers
-    let mut confidence_drivers: Vec<ConfidenceDriver> = Vec::new();
-    let evidence_count = supporting_evidence.len();
-    if evidence_count >= 3 {
-        confidence_drivers.push(ConfidenceDriver {
-            factor: "evidence".into(),
-            impact: format!("{} independent sources", evidence_count),
-        });
-    } else if evidence_count >= 1 {
-        confidence_drivers
-            .push(ConfidenceDriver { factor: "evidence".into(), impact: format!("{} source", evidence_count) });
-    }
-    if trend == "increasing" {
-        confidence_drivers
-            .push(ConfidenceDriver { factor: "trend".into(), impact: "Confidence rising over time".into() });
-    }
-    if let Some(ref _hypothesis) = decision.hypothesis {
-        confidence_drivers.push(ConfidenceDriver {
-            factor: "analysis".into(),
-            impact: "Based on structured hypothesis testing".into(),
-        });
-    }
-
-    // Uncertainties
-    let mut uncertainties: Vec<String> = Vec::new();
-    if evidence_count < 5 {
-        uncertainties.push("Limited number of supporting sources".into());
-    }
-    if outcome_summary.is_none() {
-        uncertainties.push("Outcome not yet observed — prediction pending".into());
-    }
-
-    // Load reasoning framework traces
-    let frameworks_applied: Vec<FrameworkTrace> = store
-        .get_decision_framework_traces(id)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|row| FrameworkTrace {
-            id: row["framework_id"].as_str().unwrap_or("").to_string(),
-            name: row["name"].as_str().unwrap_or("").to_string(),
-            category: row["category"].as_str().unwrap_or("").to_string(),
-            relevance: row["relevance"].as_f64().unwrap_or(0.0),
-            reasoning: row["reasoning"].as_str().unwrap_or("").to_string(),
-        })
-        .collect();
-
-    let response = ExplanationResponse {
-        decision_id: format!("DEC-{:06}", id),
-        decision_title: decision.title,
-        hypothesis: decision.hypothesis,
-        confidence: decision.confidence,
-        trend,
-        supporting_evidence,
-        confidence_drivers,
-        uncertainties,
-        outcome_summary,
-        frameworks_applied,
-    };
-
-    response::json_ok(json!(response))
 }
 
 // ── Sprint 6.0: Decision Records ──
 
 /// GET /api/decision-records — list decision records (?status=)
 pub async fn list_decision_records(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let status = req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     let limit = 50u32;
-    match store.list_decision_records(status.as_deref(), limit).await {
+    match service.list_records(status.as_deref(), limit).await {
         Ok(records) => response::json_ok(json!({ "records": records })),
         Err(e) => {
             console_log!("[Sulix:decision-records] list failed: {e}");
@@ -532,32 +339,31 @@ pub async fn create_decision_record(mut req: Request, ctx: RouteContext<Store>) 
 
 /// GET /api/decision-records/:id — detail with memo
 pub async fn get_decision_record(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
     };
-    let record = match store.get_decision_record(id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => return response::json_err(404, "not found"),
+    match service.record_detail(id).await {
+        Ok(Some(detail)) => {
+            response::json_ok(json!({ "record": detail.record, "outcomes": detail.outcomes, "claims": detail.claims }))
+        }
+        Ok(None) => response::json_err(404, "not found"),
         Err(e) => {
             console_log!("[Sulix:decision-records] get failed: {e}");
-            return response::json_err_internal("get failed");
+            response::json_err_internal("get failed")
         }
-    };
-    let outcomes = store.list_decision_outcomes(id).await.unwrap_or_default();
-    let claims = store.get_decision_claims(id).await.unwrap_or_default();
-    response::json_ok(json!({ "record": record, "outcomes": outcomes, "claims": claims }))
+    }
 }
 
 /// GET /api/decision-records/:id/memo — get or generate the decision memo
 pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
     };
-    let record = match store.get_decision_record(id).await {
+    let record = match service.record(id).await {
         Ok(Some(r)) => r,
         Ok(None) => return response::json_err(404, "not found"),
         Err(e) => {
@@ -572,8 +378,8 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Re
         }
     }
     // Load framework traces for memo sections 5+8
-    let frameworks: Vec<decision_engine::FrameworkMemoSection> = store
-        .get_decision_framework_traces(id)
+    let frameworks: Vec<decision_engine::FrameworkMemoSection> = service
+        .framework_traces(id)
         .await
         .unwrap_or_default()
         .into_iter()
@@ -596,7 +402,7 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Re
         fw_opt,
     );
     let memo_json = serde_json::to_string(&memo).unwrap_or_default();
-    let _ = store.set_decision_memo(id, &memo_json).await;
+    let _ = service.save_memo(id, &memo_json).await;
     response::json_ok(json!({ "memo": memo }))
 }
 
@@ -635,12 +441,12 @@ pub async fn create_outcome_metric(mut req: Request, ctx: RouteContext<Store>) -
 
 /// GET /api/decision-records/:id/outcomes — list outcomes
 pub async fn list_outcome_metrics(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = DecisionReadService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
     };
-    match store.list_decision_outcomes(id).await {
+    match service.record_outcomes(id).await {
         Ok(outcomes) => response::json_ok(json!({ "outcomes": outcomes })),
         Err(e) => {
             console_log!("[Sulix:decision-records] outcomes list failed: {e}");

@@ -10,6 +10,7 @@ pub mod claims;
 pub mod compliance;
 pub mod confidence;
 pub mod decision;
+pub mod decision_read;
 pub mod entities;
 pub mod feeds;
 pub mod observations;
