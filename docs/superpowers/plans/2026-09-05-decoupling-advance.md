@@ -15,7 +15,7 @@
 | P0/P1 baseline + dependency fence | ✅ done |
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
 | P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
-| P4 remove `StoreBackend` | ❌ 未动（supertrait + d1_delegate 转发 + memory/backend 仍在） |
+| P4 remove `StoreBackend` | 🟡 **Phase A 完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles 的 supertrait 方法已拆除（batch 0–4，见 §2 尾部 commit 清单），body 收敛 45→36；`StoreBackend` 终局删除仍待 remaining-domain generic 消费方收窄（Phase B §3） |
 | P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 直接 `use store::`） |
 | P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
 | P7 cargo-metadata 架构护栏 | 🟡 仅 heuristic 脚本，未入 CI |
@@ -59,6 +59,28 @@ migrate → after tests；fmt/clippy/wasm 绿。
 **Verify / Commit**
 - 每步 `cargo test --workspace` 不降；`-D warnings`；`scripts/check-layered-deps.sh` 空表。
 - Commit 粒度：每 bounded context `refactor(store): drop StoreBackend <domain> methods`。
+
+### Phase A 完成记录（2026-09-05，已 push `b7a51f9..f6dcbda`）
+
+用户裁决 Option A（`store::traits` 新建细粒度 trait）。逐 batch：新 trait → D1Store + MemoryStore 双 impl →
+挂入 `StoreBackend` supertrait 列表 → 删 supertrait 方法声明/impl body → 收窄 infra adapter bound。
+
+| Batch | Commit | 拆除（StoreBackend body） | 新增 fine-grained trait | 收窄 |
+|---|---|---|---|---|
+| 0 | `c3c4ea9` | 9 方法（4 死代码 + 5 inherent-only） | — | — |
+| 1 | `5ab158f` | outbox 4 / event-index 2 / memory 2 | `OutboxStore` `EventIndexStore` `MemoryPersistence` | memory_repository + event-store r2 |
+| 2 | `5a9ce4a` | context 1 | `ContextSnapshotStore` | context_repository（→ DecisionQueryService 等） |
+| 3 | `6f0b572` | reflection 3 | `ReflectionPersistence` | reflection_repository（+ swap decision read slices） |
+| 4 | `f6dcbda` | signal 8（B1–B3 后余量） | `SignalStore` | signal_repository（`SignalStore`/`+ArticleQueryService`/`+SignalQueryService`）+ event-store d1_backend |
+
+`StoreBackend` body 方法数 45→36，仅剩：rules / article 生命周期 / feed / entity 别名 /
+decision+outcome+evaluation / artifact registry / claim / observation / confidence / source。
+测试 **333 passed / 0 failed**（不降）；guard 空表；fmt/clippy/wasm 全绿。已 port 上下文无
+generic `StoreBackend` 消费方残留。decision 上下文仍未动（§5 GATED）。
+
+**下一步**：Phase B（§3）前需先把 remaining-domain（decision/claim/observation/confidence/source/
+artifact/article/entity/feed/rules）的 infra adapter 从 `S: StoreBackend` 收窄到对应 repo/query 小 trait
+（多数已有），再删 supertrait 定义。
 
 ---
 
