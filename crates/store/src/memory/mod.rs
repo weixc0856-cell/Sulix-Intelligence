@@ -71,7 +71,6 @@ pub struct MemoryStore {
 
     // Memory Archive state
     memory_artifacts: RefCell<Vec<ArtifactRecord>>,
-    next_memory_artifact_id: RefCell<i64>,
 
     // Event Archive state
     event_archive: RefCell<Vec<EventIndexEntry>>,
@@ -166,7 +165,6 @@ impl MemoryStore {
             outbox: RefCell::new(Vec::new()),
             next_outbox_id: RefCell::new(1),
             memory_artifacts: RefCell::new(Vec::new()),
-            next_memory_artifact_id: RefCell::new(1),
             event_archive: RefCell::new(Vec::new()),
             next_event_archive_id: RefCell::new(1),
 

@@ -13,7 +13,7 @@ use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
     ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary,
     EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats,
-    Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision,
+    Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision,
     NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource,
     Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
     ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
@@ -443,10 +443,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
     }
 
-    async fn expire_old_articles(&self, now: i64, days: i64) -> Result<u64, StoreError> {
-        crate::D1Store::expire_old_articles(self, now, days).await
-    }
-
     async fn record_fetch_result(
         &self,
         feed_id: i64,
@@ -509,79 +505,13 @@ impl StoreBackend for crate::D1Store {
     async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
         crate::D1Store::list_artifacts_by_entity(self, entity_id, limit).await
     }
-    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError> {
-        crate::D1Store::put_artifact(self, artifact).await
-    }
-    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError> {
-        crate::D1Store::get_artifact(self, artifact_type, date).await
-    }
     async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
         crate::D1Store::list_artifacts(self, artifact_type, limit).await
     }
 
     // ===== Claim (Sprint 5.3) =====
 
-    async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
-        crate::D1Store::create_claim(self, c).await
-    }
-    async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
-        crate::D1Store::get_claim(self, id).await
-    }
-    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
-        crate::D1Store::list_claims(self, status, None, limit, 0).await
-    }
-    async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
-        crate::D1Store::get_claim_evidence(self, claim_id).await
-    }
-    async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
-        crate::D1Store::create_observation(self, o).await
-    }
-    async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
-        crate::D1Store::get_observation(self, id).await
-    }
-    async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
-        crate::D1Store::find_observation_by_hash(self, hash).await
-    }
-    async fn list_observations(
-        &self,
-        source_type: Option<&str>,
-        source_id: Option<&str>,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<Observation>, StoreError> {
-        crate::D1Store::list_observations(self, source_type, source_id, limit, offset).await
-    }
-    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
-        crate::D1Store::append_confidence(self, e).await
-    }
-    async fn list_confidence_history(
-        &self,
-        entity_type: &str,
-        entity_id: &str,
-    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
-        crate::D1Store::list_confidence_history(self, entity_type, entity_id).await
-    }
-
     // ===== Source Registry (Sprint 5.6) =====
-
-    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
-        crate::D1Store::save_source(self, s).await
-    }
-    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
-        crate::D1Store::find_source(self, id).await
-    }
-    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
-        crate::D1Store::find_source_by_feed(self, feed_id).await
-    }
-    async fn list_sources(
-        &self,
-        tier: Option<&str>,
-        policy: Option<&str>,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<Source>, StoreError> {
-        crate::D1Store::list_sources(self, tier, policy, limit, offset).await
-    }
 }
 
 //  Fine-grained P4 subtraits — the 8 methods above were lifted off StoreBackend

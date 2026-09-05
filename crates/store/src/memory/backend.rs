@@ -13,14 +13,14 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, ClaimEvidence,
     ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
     EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
-    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
-    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
-    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
-    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot,
+    NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection,
+    NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
+    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
+    SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
@@ -768,10 +768,6 @@ impl StoreBackend for MemoryStore {
         Ok(())
     }
 
-    async fn expire_old_articles(&self, _now: i64, _days: i64) -> Result<u64, StoreError> {
-        Ok(0)
-    }
-
     async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
         self.save_article(article).await
     }
@@ -906,31 +902,6 @@ impl StoreBackend for MemoryStore {
 
     // ── Memory Artifacts ──
 
-    async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_memory_artifact_id.borrow();
-        *self.next_memory_artifact_id.borrow_mut() = id + 1;
-        self.memory_artifacts.borrow_mut().push(ArtifactRecord {
-            id,
-            artifact_type: artifact.artifact_type.clone(),
-            artifact_date: artifact.artifact_date.clone(),
-            object_key: artifact.object_key.clone(),
-            schema_version: artifact.schema_version,
-            content_hash: artifact.content_hash.clone(),
-            size_bytes: artifact.size_bytes,
-            metadata: artifact.metadata.clone(),
-            created_at: now,
-        });
-        Ok(id)
-    }
-    async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError> {
-        Ok(self
-            .memory_artifacts
-            .borrow()
-            .iter()
-            .find(|a| a.artifact_type == artifact_type && a.artifact_date == date)
-            .cloned())
-    }
     async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
         let mut results: Vec<ArtifactRecord> =
             self.memory_artifacts.borrow().iter().filter(|a| a.artifact_type == artifact_type).cloned().collect();
@@ -940,65 +911,6 @@ impl StoreBackend for MemoryStore {
     }
 
     // ===== Claim (Sprint 5.3) =====
-
-    async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
-        self.save_claim(c).await
-    }
-    async fn get_claim(&self, id: i64) -> Result<Option<Claim>, StoreError> {
-        self.find_claim(id).await
-    }
-    async fn list_claims(&self, status: Option<&str>, limit: u32) -> Result<Vec<Claim>, StoreError> {
-        ClaimQueryService::list_claims(self, status, limit).await
-    }
-    async fn create_observation(&self, o: &NewObservation) -> Result<i64, StoreError> {
-        self.save_observation(o).await
-    }
-    async fn get_observation(&self, id: i64) -> Result<Option<Observation>, StoreError> {
-        self.find_observation(id).await
-    }
-    async fn find_observation_by_hash(&self, hash: &str) -> Result<Option<Observation>, StoreError> {
-        ObservationRepository::find_observation_by_hash(self, hash).await
-    }
-    async fn list_observations(
-        &self,
-        source_type: Option<&str>,
-        source_id: Option<&str>,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<Observation>, StoreError> {
-        ObservationQueryService::list_observations(self, source_type, source_id, limit, offset).await
-    }
-    async fn append_confidence(&self, e: &NewConfidenceEvent) -> Result<i64, StoreError> {
-        ConfidenceRepository::append_confidence(self, e).await
-    }
-    async fn list_confidence_history(
-        &self,
-        entity_type: &str,
-        entity_id: &str,
-    ) -> Result<Vec<ConfidenceEvent>, StoreError> {
-        ConfidenceRepository::list_confidence_history(self, entity_type, entity_id).await
-    }
-    async fn save_source(&self, s: &NewSource) -> Result<i64, StoreError> {
-        SourceRepository::save_source(self, s).await
-    }
-    async fn find_source(&self, id: i64) -> Result<Option<Source>, StoreError> {
-        SourceRepository::find_source(self, id).await
-    }
-    async fn find_source_by_feed(&self, feed_id: i64) -> Result<Option<Source>, StoreError> {
-        SourceRepository::find_source_by_feed(self, feed_id).await
-    }
-    async fn list_sources(
-        &self,
-        tier: Option<&str>,
-        policy: Option<&str>,
-        limit: u32,
-        offset: u32,
-    ) -> Result<Vec<Source>, StoreError> {
-        SourceQueryService::list_sources(self, tier, policy, limit, offset).await
-    }
-    async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
-        ClaimQueryService::get_claim_evidence(self, claim_id).await
-    }
 }
 
 // ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
