@@ -24,8 +24,8 @@ use async_trait::async_trait;
 use crate::{
     traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, Decision, DecisionEvaluation,
     DiscoveryMethod, EntitySignalCandidate, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
-    NewDecision, NewDecisionEvaluation, NewObservation, NewOutcomeEvent, NewReflection, NewSource, Observation,
-    OutcomeEvent, Reflection, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
+    NewDecision, NewDecisionEvaluation, NewObservation, NewOutcomeEvent, NewSource, Observation, OutcomeEvent,
+    SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -70,6 +70,7 @@ pub trait StoreBackend:
     + EventIndexStore
     + MemoryPersistence
     + ContextSnapshotStore
+    + ReflectionPersistence
 {
     // ---- Rules ----
 
@@ -236,12 +237,6 @@ pub trait StoreBackend:
 
     /// List artifacts of a given type, newest first.
     async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError>;
-
-    // ===== Reflection Engine (Sprint 5.4) =====
-
-    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError>;
-    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError>;
-    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError>;
 
     // ===== Claim (Sprint 5.3) =====
 

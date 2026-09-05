@@ -12,6 +12,7 @@ pub mod event_index_store;
 pub mod memory_persistence;
 pub mod outbox_store;
 pub mod query;
+pub mod reflection_persistence;
 pub mod repo;
 
 pub use context_snapshot_store::ContextSnapshotStore;
@@ -19,4 +20,5 @@ pub use event_index_store::EventIndexStore;
 pub use memory_persistence::MemoryPersistence;
 pub use outbox_store::OutboxStore;
 pub use query::*;
+pub use reflection_persistence::ReflectionPersistence;
 pub use repo::*;

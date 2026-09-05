@@ -7,14 +7,16 @@ use async_trait::async_trait;
 use reflection_engine::context::{EvaluationSnapshot, OutcomeSnapshot};
 use reflection_engine::error::ReflectionError;
 use reflection_engine::repository::{DecisionFacts, ReflectionRecord, ReflectionRepository, ReflectionUpdate};
-use store::StoreBackend;
+use store::{DecisionRepository, EvaluationQueryService, OutboxStore, OutcomeQueryService, ReflectionPersistence};
 
 /// Maps Reflection aggregate persistence to the D1 `reflections` table.
 pub struct D1ReflectionRepository<S> {
     store: S,
 }
 
-impl<S: StoreBackend> D1ReflectionRepository<S> {
+impl<S: ReflectionPersistence + DecisionRepository + OutcomeQueryService + EvaluationQueryService + OutboxStore>
+    D1ReflectionRepository<S>
+{
     pub fn new(store: S) -> Self {
         Self { store }
     }
@@ -25,7 +27,9 @@ impl<S: StoreBackend> D1ReflectionRepository<S> {
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> ReflectionRepository for D1ReflectionRepository<S> {
+impl<S: ReflectionPersistence + DecisionRepository + OutcomeQueryService + EvaluationQueryService + OutboxStore>
+    ReflectionRepository for D1ReflectionRepository<S>
+{
     async fn create(&self, decision_id: i64, job_id: &str) -> Result<i64, ReflectionError> {
         let new = store::NewReflection {
             decision_id,
@@ -59,10 +63,10 @@ impl<S: StoreBackend> ReflectionRepository for D1ReflectionRepository<S> {
     }
 
     async fn load_decision_context(&self, decision_id: i64) -> Result<Option<DecisionFacts>, ReflectionError> {
-        let decision = self.store.get_decision(decision_id).await.map_err(Self::to_persistence)?;
+        let decision = self.store.find_decision(decision_id).await.map_err(Self::to_persistence)?;
         let Some(d) = decision else { return Ok(None) };
-        let outcomes = self.store.get_decision_outcomes(decision_id).await.map_err(Self::to_persistence)?;
-        let evaluations = self.store.get_decision_evaluations(decision_id).await.map_err(Self::to_persistence)?;
+        let outcomes = self.store.list_outcomes(decision_id).await.map_err(Self::to_persistence)?;
+        let evaluations = self.store.list_evaluations(decision_id).await.map_err(Self::to_persistence)?;
 
         Ok(Some(DecisionFacts {
             decision_id: d.id,

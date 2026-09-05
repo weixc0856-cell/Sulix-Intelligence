@@ -602,15 +602,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::list_artifacts(self, artifact_type, limit).await
     }
 
-    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError> {
-        crate::D1Store::create_reflection(self, req).await
-    }
-    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError> {
-        crate::D1Store::update_reflection(self, req).await
-    }
-    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
-        crate::D1Store::get_reflection_by_decision(self, decision_id).await
-    }
     // ===== Claim (Sprint 5.3) =====
 
     async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
@@ -746,5 +737,18 @@ impl MemoryPersistence for crate::D1Store {
 impl ContextSnapshotStore for crate::D1Store {
     async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
         crate::D1Store::save_context_snapshot(self, snap).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ReflectionPersistence for crate::D1Store {
+    async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError> {
+        crate::D1Store::create_reflection(self, req).await
+    }
+    async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError> {
+        crate::D1Store::update_reflection(self, req).await
+    }
+    async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
+        crate::D1Store::get_reflection_by_decision(self, decision_id).await
     }
 }
