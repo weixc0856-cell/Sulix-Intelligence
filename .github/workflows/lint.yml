@@ -69,3 +69,20 @@ jobs:
       # 失败时可定位到具体 crate。
       - name: Run tests
         run: cargo test --workspace --all-features --no-fail-fast
+
+  # Step 5: 架构依赖护栏（decoupling P7）— cargo-metadata 断言 DDD 分层 + 无循环依赖。
+  # 独立 job：测试里嵌套跑 `cargo metadata --no-deps`，与 lint job 的编译锁互不干扰。
+  architecture-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain pinned by rust-toolchain.toml — keep both in sync.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Architecture dependency guard (P7)
+        run: cargo test -p shared-kernel --test architecture
