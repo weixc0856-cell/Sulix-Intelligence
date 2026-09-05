@@ -14,6 +14,7 @@ pub mod outbox_store;
 pub mod query;
 pub mod reflection_persistence;
 pub mod repo;
+pub mod signal_store;
 
 pub use context_snapshot_store::ContextSnapshotStore;
 pub use event_index_store::EventIndexStore;
@@ -22,3 +23,4 @@ pub use outbox_store::OutboxStore;
 pub use query::*;
 pub use reflection_persistence::ReflectionPersistence;
 pub use repo::*;
+pub use signal_store::SignalStore;

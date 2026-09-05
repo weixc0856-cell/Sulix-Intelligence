@@ -690,18 +690,6 @@ impl EvaluationQueryService for MemoryStore {
 
 #[async_trait(?Send)]
 impl StoreBackend for MemoryStore {
-    async fn upsert_signal_thread(
-        &self,
-        _signal_key: &str,
-        _anchor_entity_id: Option<i64>,
-        _title: &str,
-        _status: &str,
-        _discovery_method: &DiscoveryMethod,
-        _discovery_score: Option<f64>,
-    ) -> Result<SignalUpsertResult, StoreError> {
-        Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
-    }
-
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
         let now = 1000000;
         let id = *self.next_decision_id.borrow();
@@ -808,69 +796,6 @@ impl StoreBackend for MemoryStore {
         _confidence: f64,
     ) -> Result<(), StoreError> {
         self.link_relation(source, target, rtype).await
-    }
-
-    // ── Entity SIgnal Candidates (bridge to Intelligence) ──
-
-    async fn entity_signal_candidates_filtered(
-        &self,
-        _now: i64,
-        _days: i64,
-        _limit: u32,
-        _min_entity_articles: u32,
-        _min_sources: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
-        Ok(Vec::new())
-    }
-
-    // ── Signal Threads ──
-
-    async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
-        Ok(())
-    }
-    async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
-        Ok(None)
-    }
-
-    async fn get_latest_instance_fingerprint(&self, _thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
-        Ok(None) // MemoryStore: no persisted instances to compare
-    }
-    async fn append_signal_instance_v2(
-        &self,
-        _thread_id: i64,
-        _score: f64,
-        _impact: &str,
-        _trend: &str,
-        _article_count: i64,
-        _source_count: i64,
-        _avg_score: f64,
-        _entity_id: i64,
-    ) -> Result<i64, StoreError> {
-        let id = *self.next_signal_event_id.borrow();
-        *self.next_signal_event_id.borrow_mut() = id + 1;
-        Ok(id)
-    }
-
-    async fn insert_signal_event(
-        &self,
-        thread_id: i64,
-        event_type: &str,
-        payload: Option<&str>,
-    ) -> Result<(), StoreError> {
-        let id = *self.next_signal_event_id.borrow();
-        *self.next_signal_event_id.borrow_mut() = id + 1;
-        self.signal_events.borrow_mut().push(SignalEvent {
-            id,
-            thread_id,
-            event_type: event_type.to_string(),
-            payload: payload.map(|s| s.to_string()),
-            created_at: 1000000,
-        });
-        Ok(())
-    }
-
-    async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
-        Ok(self.signal_events.borrow().iter().filter(|e| e.thread_id == thread_id).cloned().collect())
     }
 
     // ── Artifact / Briefing ──
@@ -1307,5 +1232,80 @@ impl ReflectionPersistence for MemoryStore {
 
     async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
         Ok(self.reflections.borrow().get(&decision_id).cloned())
+    }
+}
+
+#[async_trait(?Send)]
+impl SignalStore for MemoryStore {
+    async fn upsert_signal_thread(
+        &self,
+        _signal_key: &str,
+        _anchor_entity_id: Option<i64>,
+        _title: &str,
+        _status: &str,
+        _discovery_method: &DiscoveryMethod,
+        _discovery_score: Option<f64>,
+    ) -> Result<SignalUpsertResult, StoreError> {
+        Ok(SignalUpsertResult { id: 1, mutation: crate::SignalMutation::Created })
+    }
+
+    async fn entity_signal_candidates_filtered(
+        &self,
+        _now: i64,
+        _days: i64,
+        _limit: u32,
+        _min_entity_articles: u32,
+        _min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn update_signal_lifecycle(&self, _now: i64) -> Result<(), StoreError> {
+        Ok(())
+    }
+    async fn load_signal_detail(&self, _thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        Ok(None)
+    }
+
+    async fn get_latest_instance_fingerprint(&self, _thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
+        Ok(None) // MemoryStore: no persisted instances to compare
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn append_signal_instance_v2(
+        &self,
+        _thread_id: i64,
+        _score: f64,
+        _impact: &str,
+        _trend: &str,
+        _article_count: i64,
+        _source_count: i64,
+        _avg_score: f64,
+        _entity_id: i64,
+    ) -> Result<i64, StoreError> {
+        let id = *self.next_signal_event_id.borrow();
+        *self.next_signal_event_id.borrow_mut() = id + 1;
+        Ok(id)
+    }
+
+    async fn insert_signal_event(
+        &self,
+        thread_id: i64,
+        event_type: &str,
+        payload: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let id = *self.next_signal_event_id.borrow();
+        *self.next_signal_event_id.borrow_mut() = id + 1;
+        self.signal_events.borrow_mut().push(SignalEvent {
+            id,
+            thread_id,
+            event_type: event_type.to_string(),
+            payload: payload.map(|s| s.to_string()),
+            created_at: 1000000,
+        });
+        Ok(())
+    }
+
+    async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
+        Ok(self.signal_events.borrow().iter().filter(|e| e.thread_id == thread_id).cloned().collect())
     }
 }

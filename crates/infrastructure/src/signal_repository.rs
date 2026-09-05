@@ -1,7 +1,8 @@
 //! Store-backed [`SignalPersistence`] / [`SignalDiscovery`] / [`SignalQuery`] adapters.
 //!
 //! Bridges the signal-engine write-orchestration + candidate-discovery ports
-//! onto the D1 store (`StoreBackend`). Lives in infrastructure so signal-engine
+//! onto the D1 store (fine-grained `SignalStore`/`SignalQueryService`/… traits,
+//! never the legacy `StoreBackend`). Lives in infrastructure so signal-engine
 //! never depends on store.
 //!
 //! Unlike Round-1 adapters (owned `store: S`), these hold the store **by
@@ -19,7 +20,10 @@ use signal_engine::models::{
     SignalInstanceMoment, SignalMutation, SignalThreadFilter, SignalThreadRow, SignalTimelineEvent, SignalUpsertResult,
 };
 use signal_engine::ports::{SignalDiscovery, SignalPersistence, SignalQuery};
-use store::{ArticleEmbeddingRef, EntitySignalCandidate, SignalBriefInput, SignalEvent, StoreBackend, StoreError};
+use store::{
+    ArticleEmbeddingRef, ArticleQueryService, EntitySignalCandidate, SignalBriefInput, SignalEvent, SignalQueryService,
+    SignalStore, StoreError,
+};
 
 /// Error-map `store::StoreError` → domain `SignalError::Persistence`.
 fn to_persistence(e: StoreError) -> SignalError {
@@ -92,14 +96,14 @@ pub struct D1SignalPersistence<'a, S> {
     store: &'a S,
 }
 
-impl<'a, S: StoreBackend> D1SignalPersistence<'a, S> {
+impl<'a, S: SignalStore> D1SignalPersistence<'a, S> {
     pub fn new(store: &'a S) -> Self {
         Self { store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> SignalPersistence for D1SignalPersistence<'_, S> {
+impl<S: SignalStore> SignalPersistence for D1SignalPersistence<'_, S> {
     async fn upsert_signal_thread(
         &self,
         signal_key: &str,
@@ -164,14 +168,14 @@ pub struct D1SignalDiscovery<'a, S> {
     store: &'a S,
 }
 
-impl<'a, S: StoreBackend> D1SignalDiscovery<'a, S> {
+impl<'a, S: SignalStore + ArticleQueryService> D1SignalDiscovery<'a, S> {
     pub fn new(store: &'a S) -> Self {
         Self { store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> SignalDiscovery for D1SignalDiscovery<'_, S> {
+impl<S: SignalStore + ArticleQueryService> SignalDiscovery for D1SignalDiscovery<'_, S> {
     async fn entity_signal_candidates(
         &self,
         now: i64,
@@ -309,14 +313,14 @@ pub struct D1SignalQuery<'a, S> {
     store: &'a S,
 }
 
-impl<'a, S: StoreBackend> D1SignalQuery<'a, S> {
+impl<'a, S: SignalStore + SignalQueryService> D1SignalQuery<'a, S> {
     pub fn new(store: &'a S) -> Self {
         Self { store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> SignalQuery for D1SignalQuery<'_, S> {
+impl<S: SignalStore + SignalQueryService> SignalQuery for D1SignalQuery<'_, S> {
     async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, SignalError> {
         let d = self.store.load_signal_detail(thread_id).await.map_err(to_query)?;
         Ok(d.map(to_owned_detail))

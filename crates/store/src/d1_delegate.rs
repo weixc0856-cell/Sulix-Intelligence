@@ -412,27 +412,6 @@ impl BatchSignalQueryService for crate::D1Store {
 
 #[async_trait(?Send)]
 impl StoreBackend for crate::D1Store {
-    async fn upsert_signal_thread(
-        &self,
-        signal_key: &str,
-        anchor_entity_id: Option<i64>,
-        title: &str,
-        status: &str,
-        discovery_method: &DiscoveryMethod,
-        discovery_score: Option<f64>,
-    ) -> Result<SignalUpsertResult, StoreError> {
-        crate::D1Store::upsert_signal_thread(
-            self,
-            signal_key,
-            anchor_entity_id,
-            title,
-            status,
-            discovery_method,
-            discovery_score,
-        )
-        .await
-    }
-
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
         crate::D1Store::create_decision(self, d).await
     }
@@ -498,68 +477,6 @@ impl StoreBackend for crate::D1Store {
         confidence: f64,
     ) -> Result<(), StoreError> {
         crate::D1Store::link_entity_relation(self, source, target, rtype, confidence).await
-    }
-
-    async fn entity_signal_candidates_filtered(
-        &self,
-        now: i64,
-        days: i64,
-        limit: u32,
-        min_entity_articles: u32,
-        min_sources: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
-        crate::D1Store::entity_signal_candidates_filtered(self, now, days, limit, min_entity_articles, min_sources)
-            .await
-    }
-
-    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError> {
-        crate::D1Store::update_signal_lifecycle(self, now).await
-    }
-
-    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
-        crate::D1Store::load_signal_detail(self, thread_id).await
-    }
-
-    async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
-        crate::D1Store::get_latest_instance_fingerprint(self, thread_id).await
-    }
-
-    async fn append_signal_instance_v2(
-        &self,
-        thread_id: i64,
-        score: f64,
-        impact: &str,
-        trend: &str,
-        article_count: i64,
-        source_count: i64,
-        avg_score: f64,
-        entity_id: i64,
-    ) -> Result<i64, StoreError> {
-        crate::D1Store::append_signal_instance_v2(
-            self,
-            thread_id,
-            score,
-            impact,
-            trend,
-            article_count,
-            source_count,
-            avg_score,
-            entity_id,
-        )
-        .await
-    }
-
-    async fn insert_signal_event(
-        &self,
-        thread_id: i64,
-        event_type: &str,
-        payload: Option<&str>,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::insert_signal_event(self, thread_id, event_type, payload).await
-    }
-
-    async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
-        crate::D1Store::load_signal_events(self, thread_id, limit).await
     }
 
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
@@ -750,5 +667,85 @@ impl ReflectionPersistence for crate::D1Store {
     }
     async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
         crate::D1Store::get_reflection_by_decision(self, decision_id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl SignalStore for crate::D1Store {
+    async fn upsert_signal_thread(
+        &self,
+        signal_key: &str,
+        anchor_entity_id: Option<i64>,
+        title: &str,
+        status: &str,
+        discovery_method: &DiscoveryMethod,
+        discovery_score: Option<f64>,
+    ) -> Result<SignalUpsertResult, StoreError> {
+        crate::D1Store::upsert_signal_thread(
+            self,
+            signal_key,
+            anchor_entity_id,
+            title,
+            status,
+            discovery_method,
+            discovery_score,
+        )
+        .await
+    }
+    async fn update_signal_lifecycle(&self, now: i64) -> Result<(), StoreError> {
+        crate::D1Store::update_signal_lifecycle(self, now).await
+    }
+    async fn load_signal_detail(&self, thread_id: i64) -> Result<Option<SignalDetail>, StoreError> {
+        crate::D1Store::load_signal_detail(self, thread_id).await
+    }
+    async fn get_latest_instance_fingerprint(&self, thread_id: i64) -> Result<Option<(f64, String)>, StoreError> {
+        crate::D1Store::get_latest_instance_fingerprint(self, thread_id).await
+    }
+    #[allow(clippy::too_many_arguments)]
+    async fn append_signal_instance_v2(
+        &self,
+        thread_id: i64,
+        score: f64,
+        impact: &str,
+        trend: &str,
+        article_count: i64,
+        source_count: i64,
+        avg_score: f64,
+        entity_id: i64,
+    ) -> Result<i64, StoreError> {
+        crate::D1Store::append_signal_instance_v2(
+            self,
+            thread_id,
+            score,
+            impact,
+            trend,
+            article_count,
+            source_count,
+            avg_score,
+            entity_id,
+        )
+        .await
+    }
+    async fn insert_signal_event(
+        &self,
+        thread_id: i64,
+        event_type: &str,
+        payload: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::insert_signal_event(self, thread_id, event_type, payload).await
+    }
+    async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
+        crate::D1Store::load_signal_events(self, thread_id, limit).await
+    }
+    async fn entity_signal_candidates_filtered(
+        &self,
+        now: i64,
+        days: i64,
+        limit: u32,
+        min_entity_articles: u32,
+        min_sources: u32,
+    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
+        crate::D1Store::entity_signal_candidates_filtered(self, now, days, limit, min_entity_articles, min_sources)
+            .await
     }
 }

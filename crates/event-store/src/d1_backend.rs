@@ -4,7 +4,7 @@
 //! is being backfilled.  Write path: appends to `signal_events` table.
 
 use async_trait::async_trait;
-use store::StoreBackend;
+use store::SignalStore;
 
 use crate::{EventEnvelope, EventId, EventStore, EventStoreError};
 
@@ -13,18 +13,18 @@ use crate::{EventEnvelope, EventId, EventStore, EventStoreError};
 /// This exists solely for backward compatibility during the Sprint 5.2
 /// transition.  Once all signal events have been migrated to R2, this
 /// backend can be removed.
-pub struct D1EventBackend<S: StoreBackend> {
+pub struct D1EventBackend<S: SignalStore> {
     pub store: S,
 }
 
-impl<S: StoreBackend> D1EventBackend<S> {
+impl<S: SignalStore> D1EventBackend<S> {
     pub fn new(store: S) -> Self {
         Self { store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend + 'static> EventStore for D1EventBackend<S> {
+impl<S: SignalStore + 'static> EventStore for D1EventBackend<S> {
     async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
         let payload_str =
             serde_json::to_string(&event.payload).map_err(|e| EventStoreError::Serialisation(e.to_string()))?;
