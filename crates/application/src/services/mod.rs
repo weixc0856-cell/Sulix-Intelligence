@@ -4,9 +4,12 @@
 //! publishers) so callers in `worker-entry` can wire concrete infrastructure
 //! implementations at the composition root.
 
+pub mod articles;
 pub mod claims;
 pub mod confidence;
 pub mod decision;
 pub mod entities;
+pub mod feeds;
 pub mod observations;
+pub mod rules;
 pub mod sources;

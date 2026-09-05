@@ -16,8 +16,8 @@ use crate::{
     Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision,
     NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource,
     Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
-    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
-    Source, StoreError, TodaySignal, UpdateReflection,
+    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter,
+    SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 //  Repositories (save / find)
@@ -46,6 +46,28 @@ impl FeedRepository for crate::D1Store {
         last_modified: Option<&str>,
     ) -> Result<(), StoreError> {
         crate::D1Store::record_fetch_result(self, feed_id, fetched_at, etag, last_modified).await
+    }
+    async fn insert_feed(
+        &self,
+        url: &str,
+        title: &str,
+        category: &str,
+        interval: i64,
+    ) -> Result<Option<i64>, StoreError> {
+        crate::D1Store::insert_feed(self, url, title, category, interval).await
+    }
+    async fn update_feed(
+        &self,
+        id: i64,
+        title: Option<&str>,
+        category: Option<&str>,
+        interval: Option<i64>,
+        extraction_level: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::update_feed(self, id, title, category, interval, extraction_level).await
+    }
+    async fn set_feed_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
+        crate::D1Store::set_feed_status(self, id, status).await
     }
 }
 
@@ -467,6 +489,35 @@ impl ArticleAnalysisStore for crate::D1Store {
 impl RuleStore for crate::D1Store {
     async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
         crate::D1Store::active_rule_jsons(self, audience_tag).await
+    }
+    async fn list_rules(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::list_rules(self).await
+    }
+    async fn get_rule(&self, id: i64) -> Result<Option<SignalStrategy>, StoreError> {
+        crate::D1Store::get_rule(self, id).await
+    }
+    async fn insert_rule(
+        &self,
+        name: &str,
+        rule_json: &str,
+        audience_tag: &str,
+        signal_type: Option<&str>,
+        score_delta: f64,
+    ) -> Result<Option<i64>, StoreError> {
+        crate::D1Store::insert_rule(self, name, rule_json, audience_tag, signal_type, score_delta).await
+    }
+    async fn update_rule(
+        &self,
+        id: i64,
+        name: Option<&str>,
+        rule_json: Option<&str>,
+        enabled: Option<bool>,
+        signal_type: Option<Option<&str>>,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::update_rule(self, id, name, rule_json, enabled, signal_type).await
+    }
+    async fn delete_rule(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::delete_rule(self, id).await
     }
 }
 

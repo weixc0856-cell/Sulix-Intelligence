@@ -51,6 +51,29 @@ impl FeedRepository for MemoryStore {
         ));
         Ok(())
     }
+    async fn insert_feed(
+        &self,
+        _url: &str,
+        _title: &str,
+        _category: &str,
+        _interval: i64,
+    ) -> Result<Option<i64>, StoreError> {
+        // Feeds are seeded, not writable, in the memory test-double.
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn update_feed(
+        &self,
+        _id: i64,
+        _title: Option<&str>,
+        _category: Option<&str>,
+        _interval: Option<i64>,
+        _extraction_level: Option<&str>,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn set_feed_status(&self, _id: i64, _status: &str) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
 }
 
 #[async_trait(?Send)]
@@ -872,6 +895,37 @@ impl RuleStore for MemoryStore {
             return Err(StoreError::D1("injected rules failure".into()));
         }
         Ok(self.rules.clone())
+    }
+    async fn list_rules(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        // Rules are seeded as raw `rule_json` strings; there is no row model in
+        // the memory test-double, so CRUD surfaces are not modelled.
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn get_rule(&self, _id: i64) -> Result<Option<crate::SignalStrategy>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn insert_rule(
+        &self,
+        _name: &str,
+        _rule_json: &str,
+        _audience_tag: &str,
+        _signal_type: Option<&str>,
+        _score_delta: f64,
+    ) -> Result<Option<i64>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn update_rule(
+        &self,
+        _id: i64,
+        _name: Option<&str>,
+        _rule_json: Option<&str>,
+        _enabled: Option<bool>,
+        _signal_type: Option<Option<&str>>,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn delete_rule(&self, _id: i64) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
     }
 }
 

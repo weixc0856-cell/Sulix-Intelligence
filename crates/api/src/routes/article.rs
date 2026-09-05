@@ -1,3 +1,4 @@
+use application::ArticleService;
 use serde_json::json;
 use worker::*;
 
@@ -12,6 +13,7 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> R
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
     let limit = params::parse_limit(&url);
     let offset = params::parse_offset(&url);
+    let service = ArticleService::new(ctx.data.clone());
     if tag.is_none() && category.is_none() && limit == 30 && offset == 0 {
         let cache_key = "v1:latest:30:0";
         if let Some(cached) = crate::cache_get(&ctx.env, cache_key).await {
@@ -21,9 +23,8 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> R
                 return Ok(resp);
             }
         }
-        let store = ctx.data.clone();
-        let total = store.article_count().await.unwrap_or(0);
-        match store.latest_articles(30, 0).await {
+        let total = service.count().await.unwrap_or(0);
+        match service.latest(30, 0).await {
             Ok(a) => {
                 let result = serde_json::json!({"articles": a, "total": total, "limit": 30, "offset": 0});
                 if let Ok(json_str) = serde_json::to_string(&result) {
@@ -34,21 +35,20 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> R
             Err(e) => response::json_err_internal(&e.to_string()),
         }
     } else {
-        let store = ctx.data.clone();
         if let Some(ref tag) = tag {
-            return match store.articles_by_tag(tag, limit, offset).await {
+            return match service.by_tag(tag, limit, offset).await {
                 Ok(a) => response::json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
                 Err(e) => response::json_err_internal(&e.to_string()),
             };
         }
         if let Some(ref cat) = category {
-            return match store.articles_by_category(cat, limit, offset).await {
+            return match service.by_category(cat, limit, offset).await {
                 Ok(a) => response::json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
                 Err(e) => response::json_err_internal(&e.to_string()),
             };
         }
-        let total = store.article_count().await.unwrap_or(0);
-        match store.latest_articles(limit, offset).await {
+        let total = service.count().await.unwrap_or(0);
+        match service.latest(limit, offset).await {
             Ok(a) => response::json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
             Err(e) => response::json_err_internal(&e.to_string()),
         }
@@ -78,27 +78,16 @@ pub(crate) async fn search_articles(req: Request, ctx: RouteContext<Store>) -> R
 }
 
 pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ArticleService::new(ctx.data.clone());
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
     };
-    match store.article_detail(id).await {
-        Ok(Some(article)) => {
-            // Resolve source provenance using service-layer composition
-            let provenance: Option<store::ArticleProvenance> = match store.find_source_by_feed(article.feed_id).await {
-                Ok(Some(source)) => {
-                    let summary: store::SourceSummary = source.into();
-                    Some(store::ArticleProvenance { attribution: summary.attribution.clone(), source: Some(summary) })
-                }
-                _ => None,
-            };
-
-            response::json_ok(json!({
-                "article": article,
-                "provenance": provenance,
-            }))
-        }
+    match service.detail(id).await {
+        Ok(Some((article, provenance))) => response::json_ok(json!({
+            "article": article,
+            "provenance": provenance,
+        })),
         Ok(None) => response::json_err(404, "not found"),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
@@ -145,7 +134,7 @@ pub(crate) async fn article_content(_req: Request, ctx: RouteContext<Store>) -> 
 }
 
 pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ArticleService::new(ctx.data.clone());
     let ids_param = req
         .url()
         .ok()
@@ -155,43 +144,43 @@ pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<Store>) -> Re
     if ids.is_empty() {
         return response::json_err(400, "missing or empty ids query parameter - expected comma-separated integers");
     }
-    match store.articles_by_ids(&ids).await {
+    match service.batch(&ids).await {
         Ok(articles) => response::json_ok(json!({"articles": articles})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
 pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ArticleService::new(ctx.data.clone());
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
     };
-    match store.adjacent_articles(id).await {
+    match service.adjacent(id).await {
         Ok((prev, next)) => response::json_ok(json!({"prev": prev, "next": next})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
 pub(crate) async fn article_related(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ArticleService::new(ctx.data.clone());
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
     };
-    match store.related_articles(id, 6).await {
+    match service.related(id, 6).await {
         Ok(articles) => response::json_ok(json!({"articles": articles})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
 pub(crate) async fn trending(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ArticleService::new(ctx.data.clone());
     let url = req.url()?;
     let limit = params::parse_limit(&url);
     let offset = params::parse_offset(&url);
-    let total = store.trending_count().await.unwrap_or(0);
-    match store.trending_articles(limit, offset).await {
+    let total = service.trending_count().await.unwrap_or(0);
+    match service.trending(limit, offset).await {
         Ok(articles) => {
             response::json_ok(json!({"articles": articles, "total": total, "limit": limit, "offset": offset}))
         }
