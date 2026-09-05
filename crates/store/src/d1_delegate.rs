@@ -38,6 +38,15 @@ impl FeedRepository for crate::D1Store {
     async fn find_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
         crate::D1Store::get_feed(self, id).await
     }
+    async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::record_fetch_result(self, feed_id, fetched_at, etag, last_modified).await
+    }
 }
 
 #[async_trait(?Send)]
@@ -420,46 +429,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_decision(self, id).await
     }
 
-    async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
-        crate::D1Store::active_rule_jsons(self, audience_tag).await
-    }
-
-    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
-        crate::D1Store::insert_article(self, article).await
-    }
-
-    async fn record_fetch_result(
-        &self,
-        feed_id: i64,
-        fetched_at: i64,
-        etag: Option<&str>,
-        last_modified: Option<&str>,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::record_fetch_result(self, feed_id, fetched_at, etag, last_modified).await
-    }
-
-    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
-        crate::D1Store::upsert_entity(self, name, normalized, entity_type).await
-    }
-    async fn link_article_entity(
-        &self,
-        article_id: i64,
-        entity_id: i64,
-        relevance: f64,
-        context: Option<&str>,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::link_article_entity(self, article_id, entity_id, relevance, context).await
-    }
-    async fn link_entity_relation(
-        &self,
-        source: i64,
-        target: i64,
-        rtype: &str,
-        confidence: f64,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::link_entity_relation(self, source, target, rtype, confidence).await
-    }
-
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
         crate::D1Store::update_decision_status(self, id, status).await
     }
@@ -507,6 +476,13 @@ impl ArticleAnalysisStore for crate::D1Store {
 
     async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
         crate::D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
+    }
+}
+
+#[async_trait(?Send)]
+impl RuleStore for crate::D1Store {
+    async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError> {
+        crate::D1Store::active_rule_jsons(self, audience_tag).await
     }
 }
 

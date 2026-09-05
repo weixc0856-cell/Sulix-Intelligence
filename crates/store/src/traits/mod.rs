@@ -16,6 +16,7 @@ pub mod outbox_store;
 pub mod query;
 pub mod reflection_persistence;
 pub mod repo;
+pub mod rule_store;
 pub mod signal_store;
 
 pub use article_analysis_store::ArticleAnalysisStore;
@@ -27,4 +28,5 @@ pub use outbox_store::OutboxStore;
 pub use query::*;
 pub use reflection_persistence::ReflectionPersistence;
 pub use repo::*;
+pub use rule_store::RuleStore;
 pub use signal_store::SignalStore;

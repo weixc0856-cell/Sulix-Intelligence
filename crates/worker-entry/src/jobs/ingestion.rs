@@ -12,7 +12,7 @@ use entity::{canonicalizer, classifier};
 use fetcher::{fetch_feed, FetchOutcome};
 use infrastructure::article_persistence::D1ArticlePersistence;
 use rules::{score, ArticleInput, Rule};
-use store::{NewArticle, NewArtifact, Store, StoreBackend};
+use store::{NewArticle, NewArtifact, Store};
 use vectorize::VectorizeIndex;
 
 // ---------------------------------------------------------------------------
@@ -20,8 +20,11 @@ use vectorize::VectorizeIndex;
 // ---------------------------------------------------------------------------
 
 /// Context that groups all per-fetch dependencies.
-pub(crate) struct FeedContext<'a, S: StoreBackend> {
-    pub(crate) store: &'a S,
+///
+/// `store` is the concrete D1 `Store`: worker-entry is the composition root
+/// and every call site builds `FeedContext` from `Store::new(env.d1("DB"))`.
+pub(crate) struct FeedContext<'a> {
+    pub(crate) store: &'a Store,
     pub(crate) summarizer: &'a Option<HttpSummarizer>,
     pub(crate) embedder: &'a Option<crate::services::embedder::AiEmbedder>,
     pub(crate) r2_bucket: &'a Option<Bucket>,
@@ -74,7 +77,7 @@ const MAX_NEW_PER_CYCLE: usize = 30;
 /// [`MAX_NEW_PER_CYCLE`]; when the cap is hit the fetch result is NOT
 /// recorded, so the feed stays due and drains across subsequent cycles.
 pub(crate) async fn process_one_feed(
-    ctx: &FeedContext<'_, impl StoreBackend>,
+    ctx: &FeedContext<'_>,
     _env: &Env,
     job: &FetchJob,
     existing_guids: &HashSet<String>,

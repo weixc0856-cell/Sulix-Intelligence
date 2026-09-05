@@ -155,7 +155,7 @@ mod tests {
             published_at: None,
             raw_content_r2_key: None,
         };
-        let id = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        let id = futures::executor::block_on(store.save_article(&article)).unwrap();
         assert!(id.is_some());
     }
 
@@ -170,9 +170,9 @@ mod tests {
             published_at: None,
             raw_content_r2_key: None,
         };
-        let id1 = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        let id1 = futures::executor::block_on(store.save_article(&article)).unwrap();
         assert!(id1.is_some());
-        let id2 = futures::executor::block_on(store.insert_article(&article)).unwrap();
+        let id2 = futures::executor::block_on(store.save_article(&article)).unwrap();
         assert!(id2.is_none(), "duplicate should return None");
     }
 
@@ -208,7 +208,7 @@ mod tests {
             published_at: None,
             raw_content_r2_key: None,
         };
-        assert!(futures::executor::block_on(store.insert_article(&article)).is_err());
+        assert!(futures::executor::block_on(store.save_article(&article)).is_err());
     }
 
     #[test]

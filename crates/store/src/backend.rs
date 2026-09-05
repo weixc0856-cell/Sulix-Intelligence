@@ -22,8 +22,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    traits::*, Decision, DecisionEvaluation, NewArticle, NewDecision, NewDecisionEvaluation, NewOutcomeEvent,
-    OutcomeEvent, StoreError,
+    traits::*, Decision, DecisionEvaluation, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent,
+    StoreError,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -32,12 +32,9 @@ use crate::{
 /// `T: StoreBackend` generic code continues to compile as we migrate toward
 /// smaller, context-specific boundaries.
 ///
-/// Remaining body methods (shrunken by P4 batches 0–5) are the groups whose
-/// generic consumers still bind [`StoreBackend`]:
-/// - Article insert alias (insert_article) + rule management (active_rule_jsons)
-///   + feed fetch state (record_fetch_result)
-/// - Entity compat aliases (upsert_entity, link_article_entity, link_entity_relation)
-/// - Decision / outcome / evaluation CRUD (decision vertical — see decoupling plan §5)
+/// Only the decision vertical remains on the body (shrunken by P4 batches 0–9);
+/// every other capability now lives on a smaller [`traits`] subtrait. The
+/// decision vertical is ported in the decoupling plan §5 (GATED).
 #[async_trait(?Send)]
 pub trait StoreBackend:
     FeedRepository
@@ -69,52 +66,9 @@ pub trait StoreBackend:
     + ContextSnapshotStore
     + ReflectionPersistence
     + ArtifactStore
+    + RuleStore
     + SignalStore
 {
-    // ---- Rules ----
-
-    /// Return `rule_json` strings for every enabled rule matching `audience_tag`.
-    async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError>;
-
-    // ---- Article insert (ingestion alias; maps to ArticleRepository::save_article) ----
-
-    /// Insert a new article (called by ingestion; maps to ArticleRepository::save_article).
-    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError>;
-
-    // ---- Feed lifecycle ----
-
-    /// Record a fetch result (etag / last-modified) after a successful fetch.
-    async fn record_fetch_result(
-        &self,
-        feed_id: i64,
-        fetched_at: i64,
-        etag: Option<&str>,
-        last_modified: Option<&str>,
-    ) -> Result<(), StoreError>;
-
-    // ---- Entity lifecycle (compat aliases for ingestion) ----
-
-    /// Upsert an entity (called by ingestion; maps to EntityRepository::save_entity).
-    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError>;
-
-    /// Link article to entity (called by ingestion; maps to EntityRepository::link_article).
-    async fn link_article_entity(
-        &self,
-        article_id: i64,
-        entity_id: i64,
-        relevance: f64,
-        context: Option<&str>,
-    ) -> Result<(), StoreError>;
-
-    /// Link two entities (called by ingestion; maps to EntityRepository::link_relation).
-    async fn link_entity_relation(
-        &self,
-        source: i64,
-        target: i64,
-        rtype: &str,
-        confidence: f64,
-    ) -> Result<(), StoreError>;
-
     // ==== Decision lifecycle (pre-Event-Sourcing) ====
 
     /// Create a new decision (called by api/services/decision.rs; maps to DecisionRepository::save_decision).

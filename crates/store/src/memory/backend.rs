@@ -33,6 +33,24 @@ impl FeedRepository for MemoryStore {
     async fn find_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
         Ok(self.feeds.get(&id).cloned())
     }
+    async fn record_fetch_result(
+        &self,
+        feed_id: i64,
+        fetched_at: i64,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<(), StoreError> {
+        if self.fail_fetch_result {
+            return Err(StoreError::D1("injected fetch result failure".into()));
+        }
+        self.fetch_results.borrow_mut().push((
+            feed_id,
+            fetched_at,
+            etag.map(|s| s.to_string()),
+            last_modified.map(|s| s.to_string()),
+        ));
+        Ok(())
+    }
 }
 
 #[async_trait(?Send)]
@@ -715,62 +733,6 @@ impl StoreBackend for MemoryStore {
         Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
     }
 
-    // ── Rules ──
-
-    async fn active_rule_jsons(&self, _audience_tag: &str) -> Result<Vec<String>, StoreError> {
-        if self.fail_rules {
-            return Err(StoreError::D1("injected rules failure".into()));
-        }
-        Ok(self.rules.clone())
-    }
-
-    // ── Feed lifecycle ──
-
-    async fn record_fetch_result(
-        &self,
-        feed_id: i64,
-        fetched_at: i64,
-        etag: Option<&str>,
-        last_modified: Option<&str>,
-    ) -> Result<(), StoreError> {
-        if self.fail_fetch_result {
-            return Err(StoreError::D1("injected fetch result failure".into()));
-        }
-        self.fetch_results.borrow_mut().push((
-            feed_id,
-            fetched_at,
-            etag.map(|s| s.to_string()),
-            last_modified.map(|s| s.to_string()),
-        ));
-        Ok(())
-    }
-
-    async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
-        self.save_article(article).await
-    }
-
-    async fn upsert_entity(&self, name: &str, normalized: &str, entity_type: &str) -> Result<i64, StoreError> {
-        self.save_entity(name, normalized, entity_type).await
-    }
-    async fn link_article_entity(
-        &self,
-        article_id: i64,
-        entity_id: i64,
-        _relevance: f64,
-        _context: Option<&str>,
-    ) -> Result<(), StoreError> {
-        self.link_article(article_id, entity_id, _relevance).await
-    }
-    async fn link_entity_relation(
-        &self,
-        source: i64,
-        target: i64,
-        rtype: &str,
-        _confidence: f64,
-    ) -> Result<(), StoreError> {
-        self.link_relation(source, target, rtype).await
-    }
-
     // ── Decision lifecycle (pre-Event-Sourcing) ──
 
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
@@ -914,6 +876,16 @@ impl ArtifactStore for MemoryStore {
         results.reverse();
         results.truncate(limit as usize);
         Ok(results)
+    }
+}
+
+#[async_trait(?Send)]
+impl RuleStore for MemoryStore {
+    async fn active_rule_jsons(&self, _audience_tag: &str) -> Result<Vec<String>, StoreError> {
+        if self.fail_rules {
+            return Err(StoreError::D1("injected rules failure".into()));
+        }
+        Ok(self.rules.clone())
     }
 }
 
