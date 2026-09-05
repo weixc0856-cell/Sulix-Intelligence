@@ -37,6 +37,7 @@ use serde::Deserialize;
 const DOMAIN_CRATES: &[&str] = &[
     "claim-engine",
     "decision-engine",
+    "domain",
     "events",
     "intelligence-domain",
     "model-runtime",
