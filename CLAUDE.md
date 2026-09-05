@@ -21,18 +21,19 @@ Sulix is a curated RSS Feed + AI Digest product, deployed entirely on Cloudflare
 
 ## Project Structure
 
-> **Workspace members**: the backend is a Rust workspace with **27 member crates**.
+> **Workspace members**: the backend is a Rust workspace with **29 member crates**.
 > The root [`Cargo.toml`](./Cargo.toml) `[workspace.members]` is the **authoritative** list —
 > the tree below is a high-level map and is not kept in lockstep with it (don't hand-sync).
 > See `docs/decisions/` for architecture decisions.
 
 ```
 D:\Project\Sulix Intelligence (Rust workspace — backend)
-├── Cargo.toml               ← workspace root (27 members — authoritative list)
+├── Cargo.toml               ← workspace root (29 members — authoritative list)
 ├── rust-toolchain.toml      ← pinned Rust toolchain (single source for channel/components/targets)
 ├── migrations/              ← D1 schema, single source of truth (47 files; numbered 0001…0049)
 ├── crates/
-│   ├── store/               ← D1 access layer + StoreBackend trait + MemoryStore
+│   ├── store/               ← D1 access: implements domain::* traits (D1Store) + MemoryStore + legacy StoreBackend
+│   ├── domain/              ← infra-free persistence ports: DTOs + ~36 narrow traits + StoreError (re-exported by store)
 │   ├── fetcher/             ← RSS/Atom fetch + SSRF guard + AbortSignal timeout
 │   ├── rules/               ← Filter/scoring engine (pure logic, unit-tested)
 │   ├── ai-pipeline/         ← AI summarization trait + HttpSummarizer
@@ -41,8 +42,9 @@ D:\Project\Sulix Intelligence (Rust workspace — backend)
 │   ├── embedding/           ← Workers AI embedding (bge-large-en-v1.5)
 │   ├── vectorize/           ← Shared wasm binding (upsert/query/delete)
 │   ├── entity/              ← Entity canonicalizer + classifier (pure logic)
-│   ├── api/                 ← HTTP routes (worker::Router)
-│   ├── worker-entry/        ← Workers entry (HTTP + Cron + Queue + Metrics)
+│   ├── api/                 ← HTTP routes (worker::Router; imports composition alias, no store dep)
+│   ├── worker-entry/        ← Workers entry (HTTP + Cron + Queue + Metrics); composition root
+│   ├── composition/         ← wiring only: `ProductionAppServices = AppServices<D1Store>`
 │   ├── object-store/        ← R2 abstraction (ObjectStore trait + R2Store)
 │   ├── event-store/         ← Event sourcing (EventStore trait + D1/R2 backends)
 │   ├── intelligence/
@@ -66,18 +68,20 @@ D:\Project\intel-web (Astro — frontend)
     └── styles/global.css    ← Tailwind base + fonts
 ```
 
-## Backend Crate Dependencies（decoupling 现状 2026-09-05 — 详见 decoupling plan + final-architecture-v2）
+## Backend Crate Dependencies（decoupling 现状 2026-09-06 — 详见 decoupling plan + final-architecture-v2）
 
-DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。进度：P4 `StoreBackend` body
-45→**4**（仅余 GATED decision 写方法，读端 4 方法已删、读 surface 全走 subtrait，supertrait 未删）；P7
-架构守卫已入 CI；P5 Phase 1（Source/Entity 编排上收 application）+ **P5b composition-root 注入**（HTTP
-Store 由 worker-entry 构造、经 `Router::with_data` 注入）已完成；**Phase 2（Domain Lift）已完成**
-（2026-09-05）—— 六条 `api:*` concrete-infra edge 全删（store/vectorize/embedding/event-store/
-object-store/infrastructure），api 只经 `application::ProductionAppServices` 访问服务。
+DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。**主线 decoupling 已收口**
+（C1–C6，2026-09-06）：P4 `StoreBackend` body 归零（GATED decision 写方法 4 条迁到窄 trait
+`DecisionWriteStore`，StoreBackend 保留为空 composite 供 worker-entry 生产 DecisionService 合成）；P5
+Phase 1 + P5b composition-root 注入；Phase 2（Domain Lift）api 六条 concrete-infra edge 归零；最后一步
+**`application:store` 正常依赖边归零** —— application 改指 infra-free `domain` crate（23 trait bound +
+DTO + StoreError），`store` 降为 application 的 dev-dep（仅单测 MemoryStore）。新 crate：`domain`
+（端口 + 契约）与 `composition`（仅 `ProductionAppServices = AppServices<D1Store>` 一行 wiring）。
+`GRANDFATHERED` 现为空表（P7 全硬禁）。api 只经 `composition::ProductionAppServices` 访问服务。
 详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md` 与 `docs/architecture/final-architecture-v2.md`。
 
 ```
-delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
+delivery: worker-entry → api + composition + store；worker-entry 组装 infrastructure adapters
           → fetcher → worker, feed-rs
           → rules (pure — no worker dep)
           → vectorize (shared wasm binding)
@@ -86,16 +90,17 @@ delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
           → 禁止直接依赖 store/vectorize/embedding/event-store/object-store（CI 守卫，见下）
 application：AppServices<S>（composition bundle：store 字段 + 15 个 service 字段，构造 trait-bound
              为各 service `new` 的 bound 并集）+ services/*.rs（UseCase 编排，generic over 最窄
-             store subtrait；零 Worker/HTTP/js_sys；MemoryStore 单测）；
-             `ProductionAppServices = AppServices<D1Store>`（binding 在 application）；
+             domain subtrait；零 Worker/HTTP/js_sys/store；MemoryStore 走 dev-dep 单测）；
              DTO bridge 再导出数据契约（Source/NewSource/ConfidenceEvent/PreviewRequest）—— 非 handle
-api → concrete-infra = 0（Phase 2 达成）。router 接收 ProductionAppServices，handler 读 `ctx.data.<service>`
+domain：      infra-free 端口 + 契约（DTO/trait/StoreError），被 application 与 store 依赖
+composition： 仅 `pub type ProductionAppServices = application::AppServices<store::D1Store>;`
+api → concrete-infra = 0。router 接收 composition::ProductionAppServices，handler 读 `ctx.data.<service>`
        （ArticleService/FeedService/SourceService/…/DecisionReadService）；raw-Store / infra 编排 route
        已移至 worker-entry（signal read/radar、article_content、semantic/rebuild/search、reflection、
        decision-write、briefing R2/KV orchestration），经 `ctx.data.store.clone()` 触达 raw Store
 api → search/rules/content-governance（纯逻辑、非 infra）Cargo 边仍存（P7 只治理 concrete-infra）
 infrastructure adapters（D1XxxRepository / R2 / Vectorize）→ store(D1 access)/embedding/object-store
-store → worker (D1Database)
+store → domain + worker (D1Database)；memory/ 为 MemoryStore 测试替身
 ```
 
 ## Commands
@@ -120,20 +125,20 @@ cargo fmt --check                            # 格式统一
 受控 crate（中间层，不得依赖基础设施）：`signal-engine`、`reflection-engine`、`memory-engine`、
 `ai-pipeline`、`context-engine`、`agent-engine`、`claim-engine`。
 
-`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲、进度与剩余项
-（P4 `StoreBackend` body=4 / P5 Phase 1 Source+Entity 上收 / P5b composition-root / Phase 2 api 边归零 /
-P6 删壳 / GATED decision vertical / `application:store` edge 迁 domain ports（下一阶段））见
-`docs/superpowers/plans/2026-09-05-decoupling-advance.md`、
+`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲与已收口阶段
+（P4 `StoreBackend` body 归零 → `DecisionWriteStore` / P5 Phase 1 Source+Entity 上收 / P5b
+composition-root / Phase 2 api 边归零 / P6 删壳 / GATED decision vertical / `application:store` edge 迁
+domain ports（已完成 2026-09-06））见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`、
 `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 与
 `docs/architecture/final-architecture-v2.md`。
 
-#### P7 跨 crate 架构护栏（decoupling — 已入 CI 2026-09-05）
+#### P7 跨 crate 架构护栏（decoupling — 已入 CI 2026-09-05；GRANDFATHERED 空表 2026-09-06）
 
 `crates/shared-kernel/tests/architecture.rs` 用 `cargo metadata --no-deps` 断言 DDD 分层的**正常依赖边**
-+ 无循环。`GRANDFATHERED` 现 = `application:store` **一条**（Phase 2 已删 `api:{store,vectorize,embedding,
-event-store,object-store,infrastructure}` 六条，删边即报 removable）。与 `check-layered-deps.sh` 互补：
-后者封受控引擎的 banned infra 边（当前空表），前者管 application 的暂留边（收紧 = 把 `application:store`
-迁到 domain ports 后移除该条目）。
++ 无循环。`GRANDFATHERED` 现为**空表**（`application:store` 最后一条已删）：domain/application 不得依赖
+host 或任何 concrete-infra，domain 与 application 不得依赖 `composition`（防反向成环），api 不得依赖
+concrete-infra。任何新增 banned 边直接 CI 失败。与 `check-layered-deps.sh` 互补：后者封受控引擎的 banned
+infra 边（空表），前者锁 domain/application/api 的新边界。
 
 ### Backend (wasm32-unknown-unknown target required)
 Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).

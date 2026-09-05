@@ -77,6 +77,14 @@ intelligence-domain（伪迁移）
 > intelligence-domain 与否）等本矛盾裁决后再定。裁决后需同步更新本节、decoupling plan、README。
 > 若保留：P6 语义改为"删除旧 engine 壳 + `store::domain/*` 伪迁移层"，不含 intelligence-domain。
 
+> **现状补记（2026-09-06）**：P4（`StoreBackend` body → 0；GATED decision 写方法 4 条迁窄 trait
+> `DecisionWriteStore`，StoreBackend 保留为空 composite 供 worker-entry 生产 DecisionService 合成）、
+> P5 Phase 1 / P5b（composition-root 注入）、Phase 2（api 六条 concrete-infra edge 归零）及主线最后一步
+> **`application:store` 正常边归零**均已收口：application 改指 infra-free `domain` crate（23 trait bound +
+> DTO + StoreError），store 降为 application dev-dep（仅单测 MemoryStore）；新 crate `composition` 承载
+> `ProductionAppServices = AppServices<D1Store>`（wiring only）。P7 guard `GRANDFATHERED = &[]`，
+> 新增 domain/application 不得依赖 composition 规则。详见 decoupling plan。
+
 ---
 
 ## 5–10. Frontend（摘要，详见前端镜像文档）
