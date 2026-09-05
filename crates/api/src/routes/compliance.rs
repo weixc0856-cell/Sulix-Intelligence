@@ -4,7 +4,7 @@
 //! Approved takedowns create content_visibility_overrides (block serving).
 //! Source policy is NOT modified by takedown — overrides are independent.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;

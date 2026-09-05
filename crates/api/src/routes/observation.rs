@@ -1,7 +1,7 @@
 //! Observation API — read-only access to structured observation records
 //! and their lineage chain.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 

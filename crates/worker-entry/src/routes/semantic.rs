@@ -8,7 +8,7 @@
 //! only — no business logic is copied into this crate.
 
 use super::response::{json_err, json_err_internal, json_ok};
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use js_sys::{Object, Reflect};
 use serde::Deserialize;

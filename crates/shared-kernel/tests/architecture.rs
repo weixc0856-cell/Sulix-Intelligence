@@ -14,7 +14,7 @@
 //!      use-cases through domain ports.
 //!   3. **api** never depends on a concrete-infra crate (delivery may keep
 //!      `worker`).  Phase 2 (Domain Lift) cut all six `api:*` edges — the API
-//!      reaches services only through `application::ProductionAppServices`.
+//!      reaches services only through `composition::ProductionAppServices`.
 //!   4. The workspace crate graph contains no cycles.
 //!
 //! `GRANDFATHERED` is the *shrinking* set of forbidden edges still present

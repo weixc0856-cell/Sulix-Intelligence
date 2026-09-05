@@ -1,13 +1,10 @@
 //! Composition bundle wiring every application service to one store.
 //!
-//! The HTTP delivery layer (`api` + `worker-entry`) shares a single
-//! `worker::Router` data type. `api` never sees a concrete store — it holds
-//! `ProductionAppServices` (= `AppServices<D1Store>`) and reaches the exact
-//! service it needs through a named field. `worker-entry` infrastructure
-//! routes reach the raw store via the `store` field when they must assemble
-//! adapters (Vectorize, R2, reflection engines) in the composition root.
-
-use store::D1Store;
+//! `AppServices<S>` is generic over the narrow store subtraits each service
+//! needs; the D1-backed production alias `ProductionAppServices =
+//! AppServices<D1Store>` lives in the `composition` crate (the only place
+//! `application` and `store` are co-visible), so `api`/`worker-entry` can name
+//! the concrete bundle without `api` depending on `store`.
 
 use crate::graph::GraphProjectionService;
 use crate::services::articles::ArticleService;
@@ -95,8 +92,3 @@ where
         }
     }
 }
-
-/// Production binding: the D1-backed service bundle injected into the router
-/// by `worker-entry`. `api` depends on this alias — never on `D1Store` or any
-/// store trait.
-pub type ProductionAppServices = AppServices<D1Store>;

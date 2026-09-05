@@ -16,7 +16,8 @@
 //! - 503  Dependency failure (transient — may be generated next cycle)
 //! - 500  Stored content corrupted (non-transient — investigate)
 
-use application::{BriefingService, ProductionAppServices};
+use application::BriefingService;
+use composition::ProductionAppServices;
 use object_store::{ObjectStore, R2Store};
 use serde::Deserialize;
 use serde_json::json;

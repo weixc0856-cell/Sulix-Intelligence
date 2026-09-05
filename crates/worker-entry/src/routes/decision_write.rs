@@ -14,7 +14,7 @@
 //! - `POST   /api/decision-records`                       — create decision record
 //! - `POST   /api/decision-records/:id/outcomes`          — create outcome metric
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use event_store::{keys as event_keys, AggregateRef, EventEnvelope, EventMetadata};
 use serde_json::json;
 use store::{Decision, NewDecision, NewDecisionEvaluation, NewOutbox, NewOutcomeEvent, StoreBackend, StoreError};

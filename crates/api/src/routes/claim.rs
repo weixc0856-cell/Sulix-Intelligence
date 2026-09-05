@@ -1,7 +1,7 @@
 //! Claim API — 查询专用，无公开写 API。
 //! Claim 由 Pipeline Agent 内部生成。
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 

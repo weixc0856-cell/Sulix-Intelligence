@@ -10,7 +10,8 @@
 
 use std::collections::BTreeSet;
 
-use application::{ProductionAppServices, RadarProjectionService};
+use application::RadarProjectionService;
+use composition::ProductionAppServices;
 use infrastructure::signal_repository::D1SignalQuery;
 use serde_json::json;
 use signal_engine::query::SignalQueryService;

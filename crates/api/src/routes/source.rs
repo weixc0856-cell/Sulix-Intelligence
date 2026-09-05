@@ -4,7 +4,8 @@
 use serde_json::json;
 use worker::*;
 
-use application::{NewSource, ProductionAppServices};
+use application::NewSource;
+use composition::ProductionAppServices;
 
 use crate::shared::response;
 

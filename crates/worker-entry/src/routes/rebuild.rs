@@ -8,7 +8,7 @@
 //! 50 articles per call to stay within Workers CPU time limits. Wiring only.
 
 use super::response::{json_err_internal, json_ok};
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use vectorize::{VectorMetadata, VectorRecord, VectorizeIndex};
 use worker::*;

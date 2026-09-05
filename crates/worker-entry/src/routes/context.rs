@@ -1,4 +1,4 @@
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use context_engine::builder::ContextBuilder;
 use context_engine::types::{ContextRequest, ContextResponse};
 use infrastructure::context_repository::D1ContextRepository;

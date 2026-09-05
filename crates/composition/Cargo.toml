@@ -1,0 +1,12 @@
+[package]
+name = "composition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+application.workspace = true
+store.workspace = true

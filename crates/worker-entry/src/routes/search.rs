@@ -6,7 +6,7 @@
 //! `D1FtsSearch` directly against the `DB` binding — an infrastructure-facing
 //! HTTP endpoint that lives in worker-entry. Wiring only.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 

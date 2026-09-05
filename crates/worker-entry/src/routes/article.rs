@@ -7,7 +7,7 @@
 //! R2, so it is an infrastructure-facing endpoint that lives in worker-entry
 //! next to the other adapters. Wiring only — no business logic is copied here.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 

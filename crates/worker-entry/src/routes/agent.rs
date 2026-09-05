@@ -2,7 +2,7 @@ use agent_engine::context::ContextProvider;
 use agent_engine::infrastructure::model_provider::ModelProviderLLM;
 use agent_engine::runtime::AgentRuntime;
 use agent_engine::types::{AgentRequest, ContextResult};
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use context_engine::builder::ContextBuilder;
 use infrastructure::context_repository::D1ContextRepository;
 use model_runtime::{build_provider, ModelRuntimeConfig};

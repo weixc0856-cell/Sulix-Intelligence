@@ -29,6 +29,7 @@ members = [
     "crates/intelligence-domain",
     "crates/reasoning-framework",
     "crates/domain",
+    "crates/composition",
 ]
 
 [workspace.package]
@@ -83,6 +84,7 @@ infrastructure = { path = "crates/infrastructure" }
 intelligence-domain = { path = "crates/intelligence-domain" }
 reasoning-framework = { path = "crates/reasoning-framework" }
 domain = { path = "crates/domain" }
+composition = { path = "crates/composition" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -16,7 +16,7 @@ pub mod radar;
 pub mod semantic_search;
 pub mod services;
 
-pub use app_services::{AppServices, ProductionAppServices};
+pub use app_services::AppServices;
 pub use graph::{ExpandRequest, ExpandResponse, GraphProjectionService};
 pub use provenance::{get_lineage, ProvenanceChain, ProvenanceNode};
 pub use radar::RadarProjectionService;

@@ -3,7 +3,8 @@
 //! matched results so users can see impact before saving.
 
 use crate::{json_err, json_ok};
-use application::{PreviewRequest, ProductionAppServices};
+use application::PreviewRequest;
+use composition::ProductionAppServices;
 use rules::{score, ArticleInput, Condition};
 use worker::*;
 

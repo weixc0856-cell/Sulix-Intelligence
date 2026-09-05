@@ -7,7 +7,7 @@
 //! - `PUT    /api/feeds/:id`   — update an existing feed
 //! - `DELETE /api/feeds/:id`   — soft-delete (set status to "inactive")
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;

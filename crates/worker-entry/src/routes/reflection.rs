@@ -8,7 +8,7 @@
 //! worker-entry. Wiring only — `build_engine` / provider construction move
 //! wholesale; no domain refactor.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use event_store::{EventR2Backend, NoopEventStore};
 use infrastructure::artifact_registry::D1ArtifactRegistry;
 use infrastructure::event_log::EventStoreLog;

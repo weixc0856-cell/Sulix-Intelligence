@@ -11,7 +11,8 @@
 //! checks) lives in [`application::RuleService`]; these handlers map its
 //! outcomes onto the HTTP contract.
 
-use application::{ProductionAppServices, RuleError};
+use application::RuleError;
+use composition::ProductionAppServices;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;

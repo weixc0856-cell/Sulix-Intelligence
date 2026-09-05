@@ -3,7 +3,7 @@
 //! be consumed from the Astro frontend (even on a different domain) and
 //! from browser-based dev tools without a proxy.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use worker::*;
 
 // Backward-compatible re-exports for existing module files

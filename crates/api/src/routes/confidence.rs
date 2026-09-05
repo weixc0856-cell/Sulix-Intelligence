@@ -1,6 +1,7 @@
 //! Confidence History API — append-only 置信度演化追踪。
 
-use application::{ConfidenceEvent, ProductionAppServices};
+use application::ConfidenceEvent;
+use composition::ProductionAppServices;
 use serde::Serialize;
 use serde_json::json;
 use worker::*;

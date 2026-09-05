@@ -8,7 +8,7 @@
 //! - `GET /api/intelligence/entities/:id/relations`        — related entities
 
 use crate::{json_err, json_err_internal, json_ok, param_i64, parse_limit, parse_offset};
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use worker::*;
 
 pub async fn entities_list(req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {

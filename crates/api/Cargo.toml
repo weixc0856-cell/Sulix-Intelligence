@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 worker.workspace = true
 application.workspace = true
+composition.workspace = true
 content-governance.workspace = true
 search.workspace = true
 rules.workspace = true

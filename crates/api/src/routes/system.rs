@@ -5,7 +5,7 @@
 //! the KV cache-aside (categories/tags) and KV pipeline-metrics enrichment
 //! (pipeline_status) stay route-level, since KV is delivery-layer infra.
 
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use serde_json::json;
 use worker::*;
 

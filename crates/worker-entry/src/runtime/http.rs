@@ -2,7 +2,7 @@ use worker::*;
 
 use crate::jobs::ingestion;
 use api::router;
-use application::ProductionAppServices;
+use composition::ProductionAppServices;
 use store::Store;
 
 pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Response> {

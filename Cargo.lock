@@ -51,6 +51,7 @@ version = "0.1.0"
 dependencies = [
  "application",
  "async-trait",
+ "composition",
  "content-governance",
  "decision-engine",
  "js-sys",
@@ -162,6 +163,14 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "composition"
+version = "0.1.0"
+dependencies = [
+ "application",
+ "store",
 ]
 
 [[package]]
@@ -1687,6 +1696,7 @@ dependencies = [
  "ai-pipeline",
  "api",
  "application",
+ "composition",
  "console_error_panic_hook",
  "content-governance",
  "context-engine",
