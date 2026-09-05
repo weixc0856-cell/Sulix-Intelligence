@@ -11,13 +11,13 @@ use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
-    ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
-    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
-    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
-    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
-    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
-    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary,
+    EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats,
+    Memory, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision,
+    NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource,
+    Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
+    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
+    Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 //  Repositories (save / find)
@@ -500,14 +500,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::link_entity_relation(self, source, target, rtype, confidence).await
     }
 
-    async fn entity_signal_candidates(
-        &self,
-        now: i64,
-        days: i64,
-        limit: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
-        crate::D1Store::entity_signal_candidates(self, now, days, limit).await
-    }
     async fn entity_signal_candidates_filtered(
         &self,
         now: i64,
@@ -568,14 +560,6 @@ impl StoreBackend for crate::D1Store {
 
     async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
         crate::D1Store::load_signal_events(self, thread_id, limit).await
-    }
-
-    async fn load_thread_related_entities(
-        &self,
-        thread_id: i64,
-        limit: u32,
-    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
-        crate::D1Store::load_thread_related_entities(self, thread_id, limit).await
     }
 
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
@@ -669,16 +653,6 @@ impl StoreBackend for crate::D1Store {
     async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
         crate::D1Store::get_reflection_by_decision(self, decision_id).await
     }
-    async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError> {
-        crate::D1Store::decisions_eligible_for_reflection(self, now, limit).await
-    }
-    async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError> {
-        crate::D1Store::failed_reflections_for_retry(self, limit).await
-    }
-    async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError> {
-        crate::D1Store::stale_generating_reflections(self, now).await
-    }
-
     // ===== Claim (Sprint 5.3) =====
 
     async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
@@ -746,9 +720,6 @@ impl StoreBackend for crate::D1Store {
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
         crate::D1Store::create_memory(self, entry).await
     }
-    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError> {
-        crate::D1Store::get_memory(self, id).await
-    }
     async fn list_memories(
         &self,
         memory_type: Option<&str>,
@@ -757,17 +728,8 @@ impl StoreBackend for crate::D1Store {
     ) -> Result<Vec<Memory>, StoreError> {
         crate::D1Store::list_memories(self, memory_type, status, limit).await
     }
-    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError> {
-        crate::D1Store::touch_memory(self, id, now).await
-    }
-    async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
-        crate::D1Store::count_candidate_memories(self).await
-    }
 
     async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
         crate::D1Store::save_context_snapshot(self, snap).await
-    }
-    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError> {
-        crate::D1Store::get_context_snapshot(self, id).await
     }
 }

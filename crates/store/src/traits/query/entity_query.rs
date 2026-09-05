@@ -2,10 +2,10 @@
 //!
 //! Entity mutations (`save_entity`, `link_article`, `link_relation`)
 //! belong in [`super::super::repo::EntityRepository`].
-//! Signal-candidate generation methods (`entity_signal_candidates`,
-//! `entity_signal_candidates_filtered`) remain on
-//! [`StoreBackend`](crate::StoreBackend) until they are promoted to
-//! the Intelligence context.
+//! Signal-candidate generation (`entity_signal_candidates_filtered`) remains
+//! on [`StoreBackend`](crate::StoreBackend) until it is promoted to the
+//! Intelligence context (the unfiltered 3-arg variant was removed as
+//! dead/inherent-only in P4).
 
 use async_trait::async_trait;
 

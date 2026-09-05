@@ -812,14 +812,6 @@ impl StoreBackend for MemoryStore {
 
     // ── Entity SIgnal Candidates (bridge to Intelligence) ──
 
-    async fn entity_signal_candidates(
-        &self,
-        _now: i64,
-        _days: i64,
-        _limit: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError> {
-        Ok(Vec::new())
-    }
     async fn entity_signal_candidates_filtered(
         &self,
         _now: i64,
@@ -879,14 +871,6 @@ impl StoreBackend for MemoryStore {
 
     async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
         Ok(self.signal_events.borrow().iter().filter(|e| e.thread_id == thread_id).cloned().collect())
-    }
-
-    async fn load_thread_related_entities(
-        &self,
-        _thread_id: i64,
-        _limit: u32,
-    ) -> Result<Vec<RelatedEntityRef>, StoreError> {
-        Ok(Vec::new())
     }
 
     // ── Artifact / Briefing ──
@@ -1184,19 +1168,6 @@ impl StoreBackend for MemoryStore {
         Ok(self.reflections.borrow().get(&decision_id).cloned())
     }
 
-    async fn decisions_eligible_for_reflection(&self, _now: i64, _limit: u32) -> Result<Vec<i64>, StoreError> {
-        // MemoryStore has no completed decisions; return empty
-        Ok(Vec::new())
-    }
-
-    async fn failed_reflections_for_retry(&self, _limit: u32) -> Result<Vec<Reflection>, StoreError> {
-        Ok(self.reflections.borrow().values().filter(|r| r.status == "failed" && r.retry_count < 3).cloned().collect())
-    }
-
-    async fn stale_generating_reflections(&self, _now: i64) -> Result<Vec<Reflection>, StoreError> {
-        Ok(Vec::new())
-    }
-
     // ===== Claim (Sprint 5.3) =====
 
     async fn create_claim(&self, c: &NewClaim) -> Result<i64, StoreError> {
@@ -1288,10 +1259,6 @@ impl StoreBackend for MemoryStore {
         Ok(id)
     }
 
-    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError> {
-        Ok(self.memories.borrow().get(&id).cloned())
-    }
-
     async fn list_memories(
         &self,
         memory_type: Option<&str>,
@@ -1310,19 +1277,6 @@ impl StoreBackend for MemoryStore {
             .collect();
         // Note: limit not applied for MemoryStore simplicity
         Ok(result)
-    }
-
-    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError> {
-        if let Some(m) = self.memories.borrow_mut().get_mut(&id) {
-            m.usage_count += 1;
-            m.last_used_at = Some(now);
-        }
-        Ok(())
-    }
-
-    async fn count_candidate_memories(&self) -> Result<i64, StoreError> {
-        let count = self.memories.borrow().values().filter(|m| m.status == "candidate").count() as i64;
-        Ok(count)
     }
 
     // ===== Context Engine (Sprint 5.6) =====
@@ -1346,9 +1300,5 @@ impl StoreBackend for MemoryStore {
             },
         );
         Ok(())
-    }
-
-    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError> {
-        Ok(self.snapshots.borrow().get(id).cloned())
     }
 }

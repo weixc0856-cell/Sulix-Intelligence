@@ -22,11 +22,11 @@
 use async_trait::async_trait;
 
 use crate::{
-    traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, ContextSnapshot, Decision,
-    DecisionEvaluation, DiscoveryMethod, EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact,
-    NewArtifactRecord, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory,
-    NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent,
-    Reflection, RelatedEntityRef, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
+    traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, Decision, DecisionEvaluation,
+    DiscoveryMethod, EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewArtifactRecord,
+    NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation,
+    NewOutbox, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, Reflection,
+    SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -130,14 +130,6 @@ pub trait StoreBackend:
 
     // ---- Entity signal candidates (bridge to Intelligence context) ----
 
-    /// Generate entity-anchored signal candidates with 5-factor scoring.
-    async fn entity_signal_candidates(
-        &self,
-        now: i64,
-        days: i64,
-        limit: u32,
-    ) -> Result<Vec<EntitySignalCandidate>, StoreError>;
-
     /// Generate entity-anchored signal candidates with quality filters.
     async fn entity_signal_candidates_filtered(
         &self,
@@ -194,13 +186,6 @@ pub trait StoreBackend:
 
     /// Load signal timeline events.
     async fn load_signal_events(&self, thread_id: i64, limit: u32) -> Result<Vec<SignalEvent>, StoreError>;
-
-    /// Load related entities for a signal thread.
-    async fn load_thread_related_entities(
-        &self,
-        thread_id: i64,
-        limit: u32,
-    ) -> Result<Vec<RelatedEntityRef>, StoreError>;
 
     // ==== Decision lifecycle (pre-Event-Sourcing) ====
 
@@ -289,9 +274,6 @@ pub trait StoreBackend:
     async fn create_reflection(&self, req: &NewReflection) -> Result<i64, StoreError>;
     async fn update_reflection(&self, req: &UpdateReflection) -> Result<(), StoreError>;
     async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError>;
-    async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError>;
-    async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError>;
-    async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError>;
 
     // ===== Claim (Sprint 5.3) =====
 
@@ -347,18 +329,14 @@ pub trait StoreBackend:
     // ===== Memory Engine (Sprint 5.5) =====
 
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError>;
-    async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError>;
     async fn list_memories(
         &self,
         memory_type: Option<&str>,
         status: Option<&str>,
         limit: u32,
     ) -> Result<Vec<Memory>, StoreError>;
-    async fn touch_memory(&self, id: i64, now: i64) -> Result<(), StoreError>;
-    async fn count_candidate_memories(&self) -> Result<i64, StoreError>;
 
     // ===== Context Engine (Sprint 5.6) =====
 
     async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError>;
-    async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError>;
 }
