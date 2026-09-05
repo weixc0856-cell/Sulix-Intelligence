@@ -8,7 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-store.workspace = true
+intelligence-domain.workspace = true
 model-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -162,10 +162,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
+ "intelligence-domain",
  "model-runtime",
  "serde",
  "serde_json",
- "store",
  "thiserror",
 ]
 

@@ -3,9 +3,9 @@
 //! Uses the ConfidenceEngine v2 factors (not LLM's stated uncertainty).
 //! Confidence is a function of evidence quality, source trust, and freshness.
 
-use store::domain::confidence::calculator::calculate;
-use store::domain::confidence::factors::{ConfidenceFactors, ConfidenceResult};
-use store::domain::confidence::policy::ConfidencePolicy;
+use intelligence_domain::confidence::calculator::calculate;
+use intelligence_domain::confidence::factors::{ConfidenceFactors, ConfidenceResult};
+use intelligence_domain::confidence::policy::ConfidencePolicy;
 
 use crate::domain::ClaimCandidate;
 

@@ -18,8 +18,8 @@
 //! | freshness           | max(0, 1 − days_since_evidence / halflife_90d) |
 //! | calibration         | historical_prediction_accuracy                  |
 
-use crate::domain::confidence::factors::{ConfidenceFactorExplanation, ConfidenceFactors, ConfidenceResult};
-use crate::domain::confidence::policy::ConfidencePolicy;
+use crate::confidence::factors::{ConfidenceFactorExplanation, ConfidenceFactors, ConfidenceResult};
+use crate::confidence::policy::ConfidencePolicy;
 
 /// Compute confidence from factors using an interpretable geometric-mean formula.
 pub fn calculate(factors: &ConfidenceFactors, policy: &ConfidencePolicy) -> ConfidenceResult {
@@ -98,8 +98,8 @@ fn summarize(evidence: f64, source: f64, freshness: f64, calibration: f64, score
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::confidence::factors::ConfidenceFactors;
-    use crate::domain::confidence::policy::ConfidencePolicy;
+    use crate::confidence::factors::ConfidenceFactors;
+    use crate::confidence::policy::ConfidencePolicy;
 
     #[test]
     fn high_evidence_high_trust() {

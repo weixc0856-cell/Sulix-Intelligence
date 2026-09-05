@@ -26,11 +26,9 @@ CONTROLLED=(signal-engine reflection-engine memory-engine ai-pipeline context-en
 
 # Controlled layer crates → grandfathered couplings (format crateName:dep).
 # Remove a line once that coupling is migrated out (P3/P4/P5).
-# P3 Round 2 removed signal-engine's store/vectorize/event-store couplings;
-# claim-engine:store is the sole remaining one (migration: P6).
-GRANDFATHERED=(
-  claim-engine:store
-)
+# P6 removed claim-engine's store coupling (pure confidence logic relocated
+# to intelligence-domain); the grandfather set is now empty.
+GRANDFATHERED=()
 
 # Parse once: crate name → declared dep names (includes optional deps).
 declare -A DEPS

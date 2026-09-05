@@ -15,6 +15,7 @@
 //! They will be deprecated in a future sprint.
 
 mod claim;
+pub mod confidence;
 mod engine;
 mod error;
 mod observation;
@@ -24,6 +25,9 @@ mod signal;
 // ── Public API ───────────────────────────────────────────
 
 pub use claim::{Claim, ClaimType, EvidenceRef, EvidenceRelation, NewClaim};
+pub use confidence::calculator::calculate;
+pub use confidence::factors::{ConfidenceFactorExplanation, ConfidenceFactors, ConfidenceResult};
+pub use confidence::policy::ConfidencePolicy;
 pub use engine::IntelligenceEngine;
 pub use error::IntelligenceError;
 pub use observation::{NewObservation, Observation};
