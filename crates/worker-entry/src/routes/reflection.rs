@@ -1,4 +1,13 @@
-use crate::shared::response;
+//! Decision-reflection route — composition-root owned.
+//!
+//! POST /api/intelligence/decisions/:id/reflect
+//!
+//! Migrated from `api` in Phase 2. Reflection orchestrates the reflection
+//! engine with adapters assembled from the worker environment (R2, D1
+//! repositories, event log, model provider), so the HTTP adapter lives here in
+//! worker-entry. Wiring only — `build_engine` / provider construction move
+//! wholesale; no domain refactor.
+
 use event_store::{EventR2Backend, NoopEventStore};
 use infrastructure::artifact_registry::D1ArtifactRegistry;
 use infrastructure::event_log::EventStoreLog;
@@ -10,6 +19,8 @@ use serde_json::json;
 use shared_kernel::event_log::EventLog;
 use store::{D1Store, Store};
 use worker::*;
+
+use super::response;
 
 type ReflectionEngineType = ReflectionEngine<
     D1ReflectionRepository<D1Store>,
@@ -96,7 +107,7 @@ impl model_runtime::HttpClient for WorkerHttpClient {
 }
 
 /// POST /api/intelligence/decisions/:id/reflect
-pub async fn reflect(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn reflect(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),

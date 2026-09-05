@@ -1,8 +1,13 @@
-//! Semantic search endpoint.
+//! Semantic search endpoint — composition-root owned.
 //!
 //! POST /api/articles/search
+//!
+//! Migrated from `api` in Phase 2: this endpoint embeds the query with Workers
+//! AI and queries Vectorize directly, so it is an infrastructure-facing HTTP
+//! endpoint that belongs next to the other adapters in worker-entry. Wiring
+//! only — no business logic is copied into this crate.
 
-use crate::{json_err, json_ok};
+use super::response::{json_err, json_err_internal, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use js_sys::{Object, Reflect};
 use serde::Deserialize;
@@ -18,7 +23,7 @@ struct SemanticSearchRequest {
     limit: Option<u32>,
 }
 
-pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let body: SemanticSearchRequest = match req.json().await {
         Ok(b) => b,
         Err(_) => return json_err(400, "invalid JSON body"),
@@ -30,7 +35,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Resu
     let store = ctx.data.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
-        Err(e) => return crate::json_err_internal(&format!("VECTORIZE binding: {e}")),
+        Err(e) => return json_err_internal(&format!("VECTORIZE binding: {e}")),
     };
     let limit = body.limit.unwrap_or(30).min(100);
 
@@ -39,7 +44,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Resu
     let embed_text = build_embedding_text(&body.q, "", &[], None);
     let query_emb = match embedder.embed(&embed_text).await {
         Ok(v) => v,
-        Err(e) => return crate::json_err_internal(&format!("embedding failed: {e}")),
+        Err(e) => return json_err_internal(&format!("embedding failed: {e}")),
     };
 
     // 2. Build Vectorize query: JSON vector array + options object
@@ -56,7 +61,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Resu
 
     let result: JsValue = match vectorize.query(vec_js, opts.into()).await {
         Ok(v) => v,
-        Err(e) => return crate::json_err_internal(&format!("Vectorize query failed: {e:?}")),
+        Err(e) => return json_err_internal(&format!("Vectorize query failed: {e:?}")),
     };
 
     // 3. Parse matches
@@ -86,7 +91,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Resu
     // 5. Fetch from D1 + enrich
     let articles = match store.articles_by_ids(&article_ids).await {
         Ok(a) => a,
-        Err(e) => return crate::json_err_internal(&e.to_string()),
+        Err(e) => return json_err_internal(&e.to_string()),
     };
     let mut enriched: Vec<serde_json::Value> = articles.into_iter().map(|a| {
         serde_json::json!({"id":a.id,"title":a.title,"url":a.url,"published_at":a.published_at,"ai_summary":a.ai_summary,"ai_tags":a.ai_tags,"similarity":sim_map.get(&a.id).copied().unwrap_or(0.0)})

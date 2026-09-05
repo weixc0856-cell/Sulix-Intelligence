@@ -1,18 +1,19 @@
-//! Admin endpoint to trigger bulk embedding rebuild.
+//! Admin endpoint to trigger bulk embedding rebuild — composition-root owned.
 //!
 //! POST /api/admin/rebuild-embeddings
 //!
-//! Scans articles pending AI processing, generates embeddings via
-//! Workers AI, and upserts to Vectorize. Limited to 50 articles per
-//! call to stay within Workers CPU time limits.
+//! Migrated from `api` in Phase 2: scans articles pending AI processing,
+//! generates embeddings via Workers AI and upserts to Vectorize — an
+//! infrastructure-facing HTTP endpoint that lives in worker-entry. Limited to
+//! 50 articles per call to stay within Workers CPU time limits. Wiring only.
 
-use crate::{json_err_internal, json_ok};
+use super::response::{json_err_internal, json_ok};
 use embedding::{build_embedding_text, EmbeddingProvider, WorkersAiEmbedder};
 use store::Store;
 use vectorize::{VectorMetadata, VectorRecord, VectorizeIndex};
 use worker::*;
 
-pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+pub(crate) async fn rebuild_embeddings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let store = ctx.data.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,

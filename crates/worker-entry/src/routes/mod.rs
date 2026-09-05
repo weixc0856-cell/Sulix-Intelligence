@@ -7,5 +7,9 @@
 
 pub(crate) mod agent;
 pub(crate) mod context;
+pub(crate) mod rebuild;
+pub(crate) mod reflection;
 mod response;
+pub(crate) mod search;
+pub(crate) mod semantic;
 pub(crate) mod signal;

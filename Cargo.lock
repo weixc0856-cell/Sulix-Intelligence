@@ -1694,6 +1694,7 @@ dependencies = [
  "object-store",
  "reflection-engine",
  "rules",
+ "search",
  "serde",
  "serde_json",
  "shared-kernel",

@@ -34,6 +34,13 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
             .get_async("/api/intelligence/threads/:id", crate::routes::signal::thread_detail)
             .get_async("/api/intelligence/entities/:id/signals", crate::routes::signal::entities_signals)
             .get_async("/api/intelligence/entities/:id/threads", crate::routes::signal::entities_threads)
+            // Infrastructure-facing endpoints migrated out of api (Phase 2) —
+            // semantic/rebuild/search drive Vectorize + D1 FTS directly, and
+            // reflection assembles its engine from worker env adapters.
+            .post_async("/api/articles/search", crate::routes::semantic::semantic_search)
+            .get_async("/api/articles/search", crate::routes::search::search_articles)
+            .post_async("/api/admin/rebuild-embeddings", crate::routes::rebuild::rebuild_embeddings)
+            .post_async("/api/intelligence/decisions/:id/reflect", crate::routes::reflection::reflect)
             .run(req, env)
             .await;
         if let Err(ref e) = result {

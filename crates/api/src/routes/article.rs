@@ -2,7 +2,6 @@ use application::ArticleService;
 use serde_json::json;
 use worker::*;
 
-use search::D1FtsSearch;
 use store::Store;
 
 use crate::shared::{params, response};
@@ -52,28 +51,6 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> R
             Ok(a) => response::json_ok(json!({"articles": a, "total": total, "limit": limit, "offset": offset})),
             Err(e) => response::json_err_internal(&e.to_string()),
         }
-    }
-}
-
-pub(crate) async fn search_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let db = ctx.env.d1("DB")?;
-    let search = D1FtsSearch::new(&db);
-    let url = req.url()?;
-    let query: String = url.query_pairs().find(|(k, _)| k == "q").map(|(_, v)| v.to_string()).unwrap_or_default();
-    if query.is_empty() {
-        return response::json_err(400, "missing query parameter 'q'");
-    }
-    let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
-    let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
-    let sort: Option<String> = url.query_pairs().find(|(k, _)| k == "sort").map(|(_, v)| v.to_string());
-    let limit = params::parse_limit(&url);
-    let offset = params::parse_offset(&url);
-
-    let total = search.search_count(&query, tag.as_deref(), category.as_deref()).await.unwrap_or(0);
-
-    match search.search_filtered(&query, limit, offset, tag.as_deref(), category.as_deref(), sort.as_deref()).await {
-        Ok(hits) => response::json_ok(json!({"results": hits, "total": total, "limit": limit, "offset": offset})),
-        Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 

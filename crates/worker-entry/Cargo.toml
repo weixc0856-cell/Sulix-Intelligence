@@ -16,6 +16,7 @@ api.workspace = true
 content-governance.workspace = true
 model-runtime.workspace = true
 store.workspace = true
+search.workspace = true
 fetcher.workspace = true
 rules.workspace = true
 ai-pipeline.workspace = true

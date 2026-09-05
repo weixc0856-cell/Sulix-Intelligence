@@ -20,9 +20,7 @@ pub use store::Store;
 
 mod briefing;
 mod entities;
-mod rebuild;
 mod routes;
-mod semantic;
 mod services;
 mod shared;
 mod strategies;
@@ -38,8 +36,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/debug/feeds-due", routes::system::debug_feeds_due)
         // Signal Strategies preview
         .post_async("/api/strategies/preview", strategies::preview)
-        .post_async("/api/articles/search", semantic::semantic_search)
-        .post_async("/api/admin/rebuild-embeddings", rebuild::rebuild_embeddings)
         // Aggregations
         .get_async("/api/dashboard", routes::system::dashboard)
         .get_async("/api/stats", routes::system::stats)
@@ -64,7 +60,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/intelligence/decisions/stats", routes::decision::stats)
         .get_async("/api/intelligence/decisions/:id", routes::decision::detail)
         .post_async("/api/intelligence/decisions/:id/status", routes::decision::update_status)
-        .post_async("/api/intelligence/decisions/:id/reflect", routes::reflection::reflect)
         .post_async("/api/intelligence/decisions/:id/outcomes", routes::decision::create_outcome)
         .get_async("/api/intelligence/decisions/:id/outcomes", routes::decision::list_outcomes)
         .post_async("/api/intelligence/decisions/:id/evaluations", routes::decision::create_evaluation)
@@ -83,7 +78,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/articles/latest", routes::article::latest_articles)
         .get_async("/api/articles/trending", routes::article::trending)
         .get_async("/api/articles/batch", routes::article::articles_batch)
-        .get_async("/api/articles/search", routes::article::search_articles)
         .get_async("/api/articles/:id/related", routes::article::article_related)
         .get_async("/api/articles/:id/adjacent", routes::article::article_adjacent)
         .get_async("/api/articles/:id", routes::article::article_detail)
