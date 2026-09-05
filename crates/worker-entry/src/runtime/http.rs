@@ -41,6 +41,20 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
             .get_async("/api/articles/search", crate::routes::search::search_articles)
             .post_async("/api/admin/rebuild-embeddings", crate::routes::rebuild::rebuild_embeddings)
             .post_async("/api/intelligence/decisions/:id/reflect", crate::routes::reflection::reflect)
+            // Decision-write vertical (Phase 2, Checkpoint F) — DecisionService
+            // emits outbox events to EventStore, so writes belong here in the
+            // composition root; api keeps the read handlers (DecisionReadService).
+            .post_async("/api/intelligence/signals/:id/decisions", crate::routes::decision_write::create)
+            .post_async("/api/intelligence/decisions/:id/status", crate::routes::decision_write::update_status)
+            .post_async("/api/intelligence/decisions/:id/outcomes", crate::routes::decision_write::create_outcome)
+            .post_async("/api/intelligence/decisions/:id/evaluations", crate::routes::decision_write::create_evaluation)
+            .post_async("/api/decision-records", crate::routes::decision_write::create_decision_record)
+            .post_async("/api/decision-records/:id/outcomes", crate::routes::decision_write::create_outcome_metric)
+            // Briefing read endpoints (Phase 2, Checkpoint F) — orchestrate KV +
+            // R2 Memory Archive from the worker env; D1 read is BriefingService.
+            .get_async("/api/intelligence/briefing/today", crate::routes::briefing::today_briefing)
+            .get_async("/api/intelligence/briefings", crate::routes::briefing::list_briefings)
+            .get_async("/api/intelligence/briefings/:id", crate::routes::briefing::get_briefing)
             .run(req, env)
             .await;
         if let Err(ref e) = result {

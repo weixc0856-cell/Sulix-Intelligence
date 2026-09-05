@@ -1,23 +1,26 @@
-//! Decision Loop route handlers.
+//! Decision Loop read route handlers.
+//!
+//! Decision *writes* were relocated to `worker-entry/routes/decision_write.rs`
+//! in Phase 2 (Checkpoint F) — they orchestrate infrastructure (outbox-first
+//! event emission) so they belong to the composition root. Read handlers here
+//! delegate to `application::DecisionReadService`.
 //!
 //! Routes:
 //! - `GET    /api/intelligence/decisions`               — list decisions
 //! - `GET    /api/intelligence/decisions/:id`            — decision detail
-//! - `POST   /api/intelligence/signals/:id/decisions`   — create decision for signal
 //! - `GET    /api/intelligence/signals/:id/decisions`    — decisions by signal
-//! - `POST   /api/intelligence/decisions/:id/status`     — update status
+//! - `GET    /api/intelligence/decisions/stats`          — decision stats
+//! - `GET    /api/intelligence/decisions/:id/evaluations` — list evaluations
+//! - `GET    /api/intelligence/decisions/:id/outcomes`   — list outcomes
+//! - `GET    /api/intelligence/decisions/:id/timeline`   — decision timeline
+//! - `GET    /api/intelligence/decisions/:id/explanation` — decision explanation
 
 use application::DecisionReadService;
 use serde_json::json;
-use store::{D1Store, NewDecisionEvaluation, NewOutcomeEvent, Store};
+use store::Store;
 use worker::*;
 
-use crate::services::decision::{CreateDecision, DecisionService};
 use crate::shared::response;
-
-fn build_decision_service(store: D1Store) -> DecisionService<D1Store> {
-    DecisionService::new(store)
-}
 
 /// GET /api/intelligence/decisions?status=active
 pub async fn list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
@@ -50,44 +53,6 @@ pub async fn detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response>
     }
 }
 
-/// POST /api/intelligence/signals/:id/decisions
-pub async fn create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = build_decision_service(ctx.data.clone());
-    let signal_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid signal thread id"),
-    };
-
-    let body: serde_json::Value = match req.json().await {
-        Ok(v) => v,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-
-    let title = match body["title"].as_str() {
-        Some(t) => t,
-        None => return response::json_err(400, "title is required"),
-    };
-
-    let cmd = CreateDecision {
-        signal_thread_id: Some(signal_id),
-        actor_id: body["actor_id"].as_i64().or(Some(0)),
-        decision_type: body["decision_type"].as_str().unwrap_or("monitor").to_string(),
-        title: title.to_string(),
-        hypothesis: body["hypothesis"].as_str().map(String::from),
-        rationale: body["rationale"].as_str().map(String::from),
-        confidence: body["confidence"].as_f64().unwrap_or(0.5),
-        priority: body["priority"].as_str().unwrap_or("medium").to_string(),
-    };
-
-    match svc.create_decision(cmd).await {
-        Ok(decision) => response::json_ok(json!({ "success": true, "decision": decision })),
-        Err(e) => {
-            console_log!("[Sulix:decisions] create failed: {e}");
-            response::json_err_internal("create decision failed")
-        }
-    }
-}
-
 /// GET /api/intelligence/signals/:id/decisions
 pub async fn by_signal(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let service = DecisionReadService::new(ctx.data.clone());
@@ -104,33 +69,6 @@ pub async fn by_signal(_req: Request, ctx: RouteContext<Store>) -> Result<Respon
     }
 }
 
-/// POST /api/intelligence/decisions/:id/status
-pub async fn update_status(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = build_decision_service(ctx.data.clone());
-    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid decision id"),
-    };
-
-    let body: serde_json::Value = match req.json().await {
-        Ok(v) => v,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-
-    let status = match body["status"].as_str() {
-        Some(s) => s,
-        None => return response::json_err(400, "status is required"),
-    };
-
-    match svc.change_status(id, status).await {
-        Ok(()) => response::json_ok(json!({ "success": true })),
-        Err(e) => {
-            console_log!("[Sulix:decisions] update_status failed: {e}");
-            response::json_err_internal("update status failed")
-        }
-    }
-}
-
 /// GET /api/intelligence/decisions/stats — Decision Accuracy Dashboard.
 pub async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let service = DecisionReadService::new(ctx.data.clone());
@@ -139,71 +77,6 @@ pub async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> 
         Err(e) => {
             console_log!("[Sulix:decisions] stats failed: {e}");
             response::json_err_internal("decision stats query failed")
-        }
-    }
-}
-
-// ===== Outcome Event handlers =====
-
-/// POST /api/intelligence/decisions/:id/outcomes
-pub async fn create_outcome(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = build_decision_service(ctx.data.clone());
-    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid decision id"),
-    };
-
-    let body: serde_json::Value = match req.json().await {
-        Ok(v) => v,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-
-    let outcome = NewOutcomeEvent {
-        decision_id,
-        outcome_type: body["outcome_type"].as_str().unwrap_or("observation").to_string(),
-        observation: body["observation"].as_str().unwrap_or("").to_string(),
-        evidence_url: body["evidence_url"].as_str().map(String::from),
-        observed_at: body["observed_at"].as_i64(),
-    };
-
-    match svc.record_outcome(decision_id, &outcome).await {
-        Ok(()) => response::json_ok(json!({ "success": true })),
-        Err(e) => {
-            console_log!("[Sulix:outcomes] create failed: {e}");
-            response::json_err_internal("create outcome failed")
-        }
-    }
-}
-
-// ===== Decision Evaluation handlers =====
-
-/// POST /api/intelligence/decisions/:id/evaluations
-pub async fn create_evaluation(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let svc = build_decision_service(ctx.data.clone());
-    let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid decision id"),
-    };
-
-    let body: serde_json::Value = match req.json().await {
-        Ok(v) => v,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-
-    let eval = NewDecisionEvaluation {
-        decision_id,
-        evaluation: body["evaluation"].as_str().unwrap_or("inconclusive").into(),
-        confidence: body["confidence"].as_f64(),
-        reasoning: body["reasoning"].as_str().map(String::from),
-        evaluator: body["evaluator"].as_str().unwrap_or("manual").into(),
-        evaluated_at: body["evaluated_at"].as_i64(),
-    };
-
-    match svc.record_evaluation(decision_id, &eval).await {
-        Ok(()) => response::json_ok(json!({ "success": true })),
-        Err(e) => {
-            console_log!("[Sulix:evaluations] create failed: {e}");
-            response::json_err_internal("create evaluation failed")
         }
     }
 }
@@ -286,7 +159,7 @@ pub async fn explanation(_req: Request, ctx: RouteContext<Store>) -> Result<Resp
     }
 }
 
-// ── Sprint 6.0: Decision Records ──
+// ── Sprint 6.0: Decision Records (reads) ──
 
 /// GET /api/decision-records — list decision records (?status=)
 pub async fn list_decision_records(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
@@ -298,41 +171,6 @@ pub async fn list_decision_records(req: Request, ctx: RouteContext<Store>) -> Re
         Err(e) => {
             console_log!("[Sulix:decision-records] list failed: {e}");
             response::json_err_internal("list failed")
-        }
-    }
-}
-
-/// POST /api/decision-records — create a decision record
-pub async fn create_decision_record(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    #[derive(serde::Deserialize)]
-    struct CreateInput {
-        title: String,
-        context: Option<String>,
-        decision_type: Option<String>,
-        action: Option<String>,
-        rationale: Option<String>,
-        confidence: Option<f64>,
-        signal_id: Option<i64>,
-    }
-    let store = ctx.data.clone();
-    let input: CreateInput = match req.json().await {
-        Ok(b) => b,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-    let body = store::NewDecisionRecord {
-        title: input.title,
-        context: input.context,
-        decision_type: input.decision_type,
-        action: input.action,
-        rationale: input.rationale,
-        confidence: input.confidence.unwrap_or(0.5),
-        signal_id: input.signal_id,
-    };
-    match store.create_decision_record(&body).await {
-        Ok(id) => response::json_ok(json!({ "id": id })),
-        Err(e) => {
-            console_log!("[Sulix:decision-records] create failed: {e}");
-            response::json_err_internal("create failed")
         }
     }
 }
@@ -404,39 +242,6 @@ pub async fn decision_memo(_req: Request, ctx: RouteContext<Store>) -> Result<Re
     let memo_json = serde_json::to_string(&memo).unwrap_or_default();
     let _ = service.save_memo(id, &memo_json).await;
     response::json_ok(json!({ "memo": memo }))
-}
-
-/// POST /api/decision-records/:id/outcomes — create an outcome metric
-pub async fn create_outcome_metric(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    #[derive(serde::Deserialize)]
-    struct OutcomeInput {
-        metric: String,
-        expected_value: Option<String>,
-        measurement_method: Option<String>,
-    }
-    let store = ctx.data.clone();
-    let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
-        Some(v) => v,
-        None => return response::json_err(400, "invalid id"),
-    };
-    let input: OutcomeInput = match req.json().await {
-        Ok(b) => b,
-        Err(_) => return response::json_err(400, "invalid request body"),
-    };
-    use store::domain::decision::record_crud::NewOutcome;
-    let body = NewOutcome {
-        decision_id: id,
-        metric: input.metric,
-        expected_value: input.expected_value,
-        measurement_method: input.measurement_method,
-    };
-    match store.create_outcome_metric(&body).await {
-        Ok(outcome_id) => response::json_ok(json!({ "outcome_id": outcome_id })),
-        Err(e) => {
-            console_log!("[Sulix:decision-records] outcome create failed: {e}");
-            response::json_err_internal("create outcome failed")
-        }
-    }
 }
 
 /// GET /api/decision-records/:id/outcomes — list outcomes

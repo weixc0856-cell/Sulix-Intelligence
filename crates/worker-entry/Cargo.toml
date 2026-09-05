@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 worker.workspace = true
 api.workspace = true
+application.workspace = true
 content-governance.workspace = true
 model-runtime.workspace = true
 store.workspace = true

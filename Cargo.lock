@@ -1679,6 +1679,7 @@ dependencies = [
  "agent-engine",
  "ai-pipeline",
  "api",
+ "application",
  "console_error_panic_hook",
  "content-governance",
  "context-engine",

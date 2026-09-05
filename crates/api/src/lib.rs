@@ -8,20 +8,16 @@ use worker::*;
 // Backward-compatible re-exports for existing module files
 pub(crate) use shared::cache::cache_get;
 pub(crate) use shared::cache::cache_put;
-pub(crate) use shared::params::fmt_date_ymd;
 pub(crate) use shared::params::param_i64;
 pub(crate) use shared::params::parse_limit;
 pub(crate) use shared::params::parse_offset;
-pub(crate) use shared::response::cors_headers;
 pub(crate) use shared::response::json_err;
 pub(crate) use shared::response::json_err_internal;
 pub(crate) use shared::response::json_ok;
 pub use store::Store;
 
-mod briefing;
 mod entities;
 mod routes;
-mod services;
 mod shared;
 mod strategies;
 
@@ -46,9 +42,6 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/intelligence/radar", routes::signal::radar)
         .get_async("/api/intelligence/signals/:id", routes::signal::signal_detail)
         .get_async("/api/intelligence/signals/:id/provenance", routes::signal::signal_provenance)
-        .get_async("/api/intelligence/briefing/today", briefing::today_briefing)
-        .get_async("/api/intelligence/briefings", briefing::list_briefings)
-        .get_async("/api/intelligence/briefings/:id", briefing::get_briefing)
         // Entity Graph
         .get_async("/api/intelligence/entities", entities::entities_list)
         .get_async("/api/intelligence/entities/:id", entities::entities_get)
@@ -59,14 +52,10 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .get_async("/api/intelligence/decisions", routes::decision::list)
         .get_async("/api/intelligence/decisions/stats", routes::decision::stats)
         .get_async("/api/intelligence/decisions/:id", routes::decision::detail)
-        .post_async("/api/intelligence/decisions/:id/status", routes::decision::update_status)
-        .post_async("/api/intelligence/decisions/:id/outcomes", routes::decision::create_outcome)
         .get_async("/api/intelligence/decisions/:id/outcomes", routes::decision::list_outcomes)
-        .post_async("/api/intelligence/decisions/:id/evaluations", routes::decision::create_evaluation)
         .get_async("/api/intelligence/decisions/:id/evaluations", routes::decision::list_evaluations)
         .get_async("/api/intelligence/decisions/:id/timeline", routes::decision::timeline)
         .get_async("/api/intelligence/decisions/:id/explanation", routes::decision::explanation)
-        .post_async("/api/intelligence/signals/:id/decisions", routes::decision::create)
         .get_async("/api/intelligence/signals/:id/decisions", routes::decision::by_signal)
         // Feed CRUD
         .get_async("/api/feeds", routes::feed::feeds_list)
@@ -94,12 +83,10 @@ pub fn router(store: Store) -> Router<'static, Store> {
         .post_async("/api/sources", routes::source::sources_create)
         .put_async("/api/sources/:id", routes::source::sources_update)
         .delete_async("/api/sources/:id", routes::source::sources_delete)
-        // Decision Records (Sprint 6.0)
+        // Decision Records (Sprint 6.0) — reads (POST writes live in worker-entry)
         .get_async("/api/decision-records", routes::decision::list_decision_records)
-        .post_async("/api/decision-records", routes::decision::create_decision_record)
         .get_async("/api/decision-records/:id", routes::decision::get_decision_record)
         .get_async("/api/decision-records/:id/memo", routes::decision::decision_memo)
-        .post_async("/api/decision-records/:id/outcomes", routes::decision::create_outcome_metric)
         .get_async("/api/decision-records/:id/outcomes", routes::decision::list_outcome_metrics)
         // Observations (Sprint 5.6)
         .get_async("/api/observations", routes::observation::list)
