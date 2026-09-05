@@ -7,21 +7,21 @@
 
 use ai_pipeline::{ArticlePersistence, PipelineError};
 use async_trait::async_trait;
-use store::StoreBackend;
+use store::ArticleAnalysisStore;
 
 /// Maps `set_ai_summary` to the D1 articles table.
-pub struct D1ArticlePersistence<'a, S: StoreBackend> {
+pub struct D1ArticlePersistence<'a, S: ArticleAnalysisStore> {
     store: &'a S,
 }
 
-impl<'a, S: StoreBackend> D1ArticlePersistence<'a, S> {
+impl<'a, S: ArticleAnalysisStore> D1ArticlePersistence<'a, S> {
     pub fn new(store: &'a S) -> Self {
         Self { store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> ArticlePersistence for D1ArticlePersistence<'_, S> {
+impl<S: ArticleAnalysisStore> ArticlePersistence for D1ArticlePersistence<'_, S> {
     async fn set_ai_summary(
         &self,
         article_id: i64,

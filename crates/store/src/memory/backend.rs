@@ -745,29 +745,6 @@ impl StoreBackend for MemoryStore {
         Ok(())
     }
 
-    async fn set_ai_summary(
-        &self,
-        article_id: i64,
-        summary: &str,
-        _tags_json: &str,
-        _vector_id: &str,
-        _score: f64,
-    ) -> Result<(), StoreError> {
-        if self.fail_summary {
-            return Err(StoreError::D1("injected summary failure".into()));
-        }
-        self.summaries.borrow_mut().insert(article_id, summary.to_string());
-        Ok(())
-    }
-
-    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
-        if self.fail_r2_key {
-            return Err(StoreError::D1("injected r2 key failure".into()));
-        }
-        self.r2_keys.borrow_mut().insert(article_id, r2_key.map(|s| s.to_string()));
-        Ok(())
-    }
-
     async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError> {
         self.save_article(article).await
     }
@@ -914,6 +891,32 @@ impl StoreBackend for MemoryStore {
 }
 
 // ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
+
+#[async_trait(?Send)]
+impl ArticleAnalysisStore for MemoryStore {
+    async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        _tags_json: &str,
+        _vector_id: &str,
+        _score: f64,
+    ) -> Result<(), StoreError> {
+        if self.fail_summary {
+            return Err(StoreError::D1("injected summary failure".into()));
+        }
+        self.summaries.borrow_mut().insert(article_id, summary.to_string());
+        Ok(())
+    }
+
+    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
+        if self.fail_r2_key {
+            return Err(StoreError::D1("injected r2 key failure".into()));
+        }
+        self.r2_keys.borrow_mut().insert(article_id, r2_key.map(|s| s.to_string()));
+        Ok(())
+    }
+}
 
 #[async_trait(?Send)]
 impl OutboxStore for MemoryStore {

@@ -7,6 +7,7 @@
 //! the above, so existing `T: StoreBackend` generic code continues to compile
 //! without changes.
 
+pub mod article_analysis_store;
 pub mod context_snapshot_store;
 pub mod event_index_store;
 pub mod memory_persistence;
@@ -16,6 +17,7 @@ pub mod reflection_persistence;
 pub mod repo;
 pub mod signal_store;
 
+pub use article_analysis_store::ArticleAnalysisStore;
 pub use context_snapshot_store::ContextSnapshotStore;
 pub use event_index_store::EventIndexStore;
 pub use memory_persistence::MemoryPersistence;

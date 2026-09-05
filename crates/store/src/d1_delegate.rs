@@ -428,21 +428,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::insert_article(self, article).await
     }
 
-    async fn set_ai_summary(
-        &self,
-        article_id: i64,
-        summary: &str,
-        tags_json: &str,
-        vector_id: &str,
-        score: f64,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::set_ai_summary(self, article_id, summary, tags_json, vector_id, score).await
-    }
-
-    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
-        crate::D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
-    }
-
     async fn record_fetch_result(
         &self,
         feed_id: i64,
@@ -514,8 +499,26 @@ impl StoreBackend for crate::D1Store {
     // ===== Source Registry (Sprint 5.6) =====
 }
 
-//  Fine-grained P4 subtraits — the 8 methods above were lifted off StoreBackend
-//  and are now reachable through composition instead of the legacy supertrait.
+//  Fine-grained P4 subtraits — methods above were lifted off StoreBackend and
+//  are now reachable through composition instead of the legacy supertrait.
+
+#[async_trait(?Send)]
+impl ArticleAnalysisStore for crate::D1Store {
+    async fn set_ai_summary(
+        &self,
+        article_id: i64,
+        summary: &str,
+        tags_json: &str,
+        vector_id: &str,
+        score: f64,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::set_ai_summary(self, article_id, summary, tags_json, vector_id, score).await
+    }
+
+    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
+        crate::D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
+    }
+}
 
 #[async_trait(?Send)]
 impl OutboxStore for crate::D1Store {

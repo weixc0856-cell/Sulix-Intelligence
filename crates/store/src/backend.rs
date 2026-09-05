@@ -34,16 +34,16 @@ use crate::{
 ///
 /// Remaining body methods (shrunken by P4 batches 0–5) are the groups whose
 /// generic consumers still bind [`StoreBackend`]:
-/// - Article analysis lifecycle (set_ai_summary, set_raw_content_r2_key, insert)
-/// - Rule management (active_rule_jsons) + feed fetch state (record_fetch_result)
+/// - Article insert alias (insert_article) + rule management (active_rule_jsons)
+///   + feed fetch state (record_fetch_result)
 /// - Entity compat aliases (upsert_entity, link_article_entity, link_entity_relation)
 /// - Decision / outcome / evaluation CRUD (decision vertical — see decoupling plan §5)
-/// - Artifact registry (create_artifact, list_artifacts_by_entity, list_artifacts)
 #[async_trait(?Send)]
 pub trait StoreBackend:
     FeedRepository
     + FeedQueryService
     + ArticleRepository
+    + ArticleAnalysisStore
     + ArticleQueryService
     + EntityRepository
     + EntityQueryService
@@ -75,23 +75,10 @@ pub trait StoreBackend:
     /// Return `rule_json` strings for every enabled rule matching `audience_tag`.
     async fn active_rule_jsons(&self, audience_tag: &str) -> Result<Vec<String>, StoreError>;
 
-    // ---- Article lifecycle (analysis / content) ----
+    // ---- Article insert (ingestion alias; maps to ArticleRepository::save_article) ----
 
     /// Insert a new article (called by ingestion; maps to ArticleRepository::save_article).
     async fn insert_article(&self, article: &NewArticle) -> Result<Option<i64>, StoreError>;
-
-    /// Persist AI summarisation results.
-    async fn set_ai_summary(
-        &self,
-        article_id: i64,
-        summary: &str,
-        tags_json: &str,
-        vector_id: &str,
-        score: f64,
-    ) -> Result<(), StoreError>;
-
-    /// Update the R2 key pointing to the article's full-text body.
-    async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError>;
 
     // ---- Feed lifecycle ----
 
