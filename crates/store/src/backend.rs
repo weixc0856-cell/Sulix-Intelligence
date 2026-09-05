@@ -23,10 +23,10 @@ use async_trait::async_trait;
 
 use crate::{
     traits::*, ArtifactEntry, ArtifactRecord, Claim, ClaimEvidence, ConfidenceEvent, Decision, DecisionEvaluation,
-    DiscoveryMethod, EntitySignalCandidate, EventIndexEntry, Memory, NewArticle, NewArtifact, NewArtifactRecord,
-    NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation,
-    NewOutbox, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, Reflection,
-    SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError, UpdateReflection,
+    DiscoveryMethod, EntitySignalCandidate, NewArticle, NewArtifact, NewArtifactRecord, NewClaim, NewConfidenceEvent,
+    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewObservation, NewOutcomeEvent, NewReflection, NewSource,
+    Observation, OutcomeEvent, Reflection, SignalDetail, SignalEvent, SignalUpsertResult, Source, StoreError,
+    UpdateReflection,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -67,6 +67,9 @@ pub trait StoreBackend:
     + SourceQueryService
     + ObservationQueryService
     + ClaimQueryService
+    + OutboxStore
+    + EventIndexStore
+    + MemoryPersistence
 {
     // ---- Rules ----
 
@@ -217,41 +220,6 @@ pub trait StoreBackend:
     /// Get the latest evaluation for a decision.
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
 
-    // ==== Object Outbox (infrastructure) ====
-
-    /// Enqueue a new outbox entry for deferred R2 archive write.
-    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError>;
-
-    /// Drain up to `limit` pending outbox entries, oldest first.
-    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError>;
-
-    /// Mark an outbox entry as successfully archived.
-    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError>;
-
-    /// Mark an outbox entry as failed (retries exhausted).
-    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError>;
-
-    // ==== Event Archive Index (infrastructure) ====
-
-    /// Insert a row into the event_archive_index table.
-    async fn insert_event_index(
-        &self,
-        event_id: &str,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        event_type: &str,
-        object_key: &str,
-        occurred_at: i64,
-    ) -> Result<(), StoreError>;
-
-    /// Find event index entries for an aggregate, newest first.
-    async fn find_event_keys(
-        &self,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        limit: u32,
-    ) -> Result<Vec<EventIndexEntry>, StoreError>;
-
     // ==== Artifact Registry ====
 
     /// Register an R2 artifact in the artifact_registry.
@@ -325,16 +293,6 @@ pub trait StoreBackend:
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Source>, StoreError>;
-
-    // ===== Memory Engine (Sprint 5.5) =====
-
-    async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError>;
-    async fn list_memories(
-        &self,
-        memory_type: Option<&str>,
-        status: Option<&str>,
-        limit: u32,
-    ) -> Result<Vec<Memory>, StoreError>;
 
     // ===== Context Engine (Sprint 5.6) =====
 

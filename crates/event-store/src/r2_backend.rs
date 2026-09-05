@@ -5,25 +5,25 @@
 
 use async_trait::async_trait;
 use object_store::ObjectStore;
-use store::StoreBackend;
+use store::{EventIndexStore, OutboxStore};
 use worker::console_log;
 
 use crate::{keys, EventEnvelope, EventId, EventStore, EventStoreError};
 
 /// Production EventStore backed by D1 (index + outbox) and R2 (payload archive).
-pub struct EventR2Backend<S: StoreBackend> {
+pub struct EventR2Backend<S: OutboxStore + EventIndexStore> {
     pub store: S,
     pub object_store: object_store::R2Store,
 }
 
-impl<S: StoreBackend> EventR2Backend<S> {
+impl<S: OutboxStore + EventIndexStore> EventR2Backend<S> {
     pub fn new(store: S, object_store: object_store::R2Store) -> Self {
         Self { store, object_store }
     }
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend + 'static> EventStore for EventR2Backend<S> {
+impl<S: OutboxStore + EventIndexStore + 'static> EventStore for EventR2Backend<S> {
     async fn append_event(&self, event: &EventEnvelope) -> Result<EventId, EventStoreError> {
         let event_id = event.event_id.clone();
         let object_key = keys::event(&event.aggregate.aggregate_type, event.occurred_at, &event_id);

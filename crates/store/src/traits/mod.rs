@@ -7,8 +7,14 @@
 //! the above, so existing `T: StoreBackend` generic code continues to compile
 //! without changes.
 
+pub mod event_index_store;
+pub mod memory_persistence;
+pub mod outbox_store;
 pub mod query;
 pub mod repo;
 
+pub use event_index_store::EventIndexStore;
+pub use memory_persistence::MemoryPersistence;
+pub use outbox_store::OutboxStore;
 pub use query::*;
 pub use repo::*;

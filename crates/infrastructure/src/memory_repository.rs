@@ -6,14 +6,14 @@ use async_trait::async_trait;
 use memory_engine::error::MemoryError;
 use memory_engine::model::{MemoryEventRef, NewMemory};
 use memory_engine::MemoryRepository;
-use store::StoreBackend;
+use store::{EventIndexStore, MemoryPersistence, OutboxStore};
 
 /// Maps Memory aggregate persistence to the D1 `memory_index` table.
 pub struct D1MemoryRepository<S> {
     store: S,
 }
 
-impl<S: StoreBackend> D1MemoryRepository<S> {
+impl<S: MemoryPersistence + OutboxStore + EventIndexStore> D1MemoryRepository<S> {
     pub fn new(store: S) -> Self {
         Self { store }
     }
@@ -24,7 +24,7 @@ impl<S: StoreBackend> D1MemoryRepository<S> {
 }
 
 #[async_trait(?Send)]
-impl<S: StoreBackend> MemoryRepository for D1MemoryRepository<S> {
+impl<S: MemoryPersistence + OutboxStore + EventIndexStore> MemoryRepository for D1MemoryRepository<S> {
     async fn create_memory(&self, memory: &NewMemory) -> Result<i64, MemoryError> {
         let entry = store::NewMemory {
             memory_type: memory.memory_type.clone(),

@@ -979,43 +979,6 @@ impl StoreBackend for MemoryStore {
         Ok(result.into_iter().last())
     }
 
-    // ── Object Outbox ──
-
-    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_outbox_id.borrow();
-        *self.next_outbox_id.borrow_mut() = id + 1;
-        self.outbox.borrow_mut().push(OutboxEntry {
-            id,
-            object_type: entry.object_type.clone(),
-            object_key: entry.object_key.clone(),
-            payload: entry.payload.clone(),
-            status: "pending".into(),
-            created_at: now,
-            retry_count: 0,
-        });
-        Ok(id)
-    }
-    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
-        let outbox = self.outbox.borrow();
-        let pending: Vec<OutboxEntry> =
-            outbox.iter().filter(|e| e.status == "pending").take(limit as usize).cloned().collect();
-        Ok(pending)
-    }
-    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
-        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id) {
-            e.status = "archived".into();
-        }
-        Ok(())
-    }
-    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
-        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id && e.retry_count >= 3) {
-            e.status = "failed".into();
-            e.retry_count += 1;
-        }
-        Ok(())
-    }
-
     // ── Memory Artifacts ──
 
     async fn put_artifact(&self, artifact: &NewArtifactRecord) -> Result<i64, StoreError> {
@@ -1046,50 +1009,6 @@ impl StoreBackend for MemoryStore {
     async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
         let mut results: Vec<ArtifactRecord> =
             self.memory_artifacts.borrow().iter().filter(|a| a.artifact_type == artifact_type).cloned().collect();
-        results.reverse();
-        results.truncate(limit as usize);
-        Ok(results)
-    }
-
-    // ── Event Archive Index ──
-
-    async fn insert_event_index(
-        &self,
-        event_id: &str,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        event_type: &str,
-        object_key: &str,
-        occurred_at: i64,
-    ) -> Result<(), StoreError> {
-        let now = 1000000;
-        let id = *self.next_event_archive_id.borrow();
-        *self.next_event_archive_id.borrow_mut() = id + 1;
-        self.event_archive.borrow_mut().push(EventIndexEntry {
-            id,
-            event_id: event_id.to_string(),
-            aggregate_type: aggregate_type.to_string(),
-            aggregate_id: aggregate_id.to_string(),
-            event_type: event_type.to_string(),
-            object_key: object_key.to_string(),
-            occurred_at,
-            created_at: now,
-        });
-        Ok(())
-    }
-    async fn find_event_keys(
-        &self,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        limit: u32,
-    ) -> Result<Vec<EventIndexEntry>, StoreError> {
-        let mut results: Vec<EventIndexEntry> = self
-            .event_archive
-            .borrow()
-            .iter()
-            .filter(|e| e.aggregate_type == aggregate_type && e.aggregate_id == aggregate_id)
-            .cloned()
-            .collect();
         results.reverse();
         results.truncate(limit as usize);
         Ok(results)
@@ -1229,8 +1148,117 @@ impl StoreBackend for MemoryStore {
         ClaimQueryService::get_claim_evidence(self, claim_id).await
     }
 
-    // ===== Memory Engine (Sprint 5.5) =====
+    // ===== Context Engine (Sprint 5.6) =====
 
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        self.snapshots.borrow_mut().insert(
+            snap.id.clone(),
+            ContextSnapshot {
+                id: snap.id.clone(),
+                query: snap.query.clone(),
+                intent: snap.intent.clone(),
+                domain: snap.domain.clone(),
+                engine_version: "context-engine-v1".into(),
+                context_json: snap.context_json.clone(),
+                object_key: snap.object_key.clone(),
+                object_size: snap.object_size,
+                evidence_refs: snap.evidence_refs.clone(),
+                confidence: snap.confidence,
+                user_scope: snap.user_scope.clone(),
+                created_at: 1000000,
+            },
+        );
+        Ok(())
+    }
+}
+
+// ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
+
+#[async_trait(?Send)]
+impl OutboxStore for MemoryStore {
+    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
+        let now = 1000000;
+        let id = *self.next_outbox_id.borrow();
+        *self.next_outbox_id.borrow_mut() = id + 1;
+        self.outbox.borrow_mut().push(OutboxEntry {
+            id,
+            object_type: entry.object_type.clone(),
+            object_key: entry.object_key.clone(),
+            payload: entry.payload.clone(),
+            status: "pending".into(),
+            created_at: now,
+            retry_count: 0,
+        });
+        Ok(id)
+    }
+    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
+        let outbox = self.outbox.borrow();
+        let pending: Vec<OutboxEntry> =
+            outbox.iter().filter(|e| e.status == "pending").take(limit as usize).cloned().collect();
+        Ok(pending)
+    }
+    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
+        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id) {
+            e.status = "archived".into();
+        }
+        Ok(())
+    }
+    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
+        if let Some(e) = self.outbox.borrow_mut().iter_mut().find(|e| e.id == id && e.retry_count >= 3) {
+            e.status = "failed".into();
+            e.retry_count += 1;
+        }
+        Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl EventIndexStore for MemoryStore {
+    async fn insert_event_index(
+        &self,
+        event_id: &str,
+        aggregate_type: &str,
+        aggregate_id: &str,
+        event_type: &str,
+        object_key: &str,
+        occurred_at: i64,
+    ) -> Result<(), StoreError> {
+        let now = 1000000;
+        let id = *self.next_event_archive_id.borrow();
+        *self.next_event_archive_id.borrow_mut() = id + 1;
+        self.event_archive.borrow_mut().push(EventIndexEntry {
+            id,
+            event_id: event_id.to_string(),
+            aggregate_type: aggregate_type.to_string(),
+            aggregate_id: aggregate_id.to_string(),
+            event_type: event_type.to_string(),
+            object_key: object_key.to_string(),
+            occurred_at,
+            created_at: now,
+        });
+        Ok(())
+    }
+    async fn find_event_keys(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: &str,
+        limit: u32,
+    ) -> Result<Vec<EventIndexEntry>, StoreError> {
+        let mut results: Vec<EventIndexEntry> = self
+            .event_archive
+            .borrow()
+            .iter()
+            .filter(|e| e.aggregate_type == aggregate_type && e.aggregate_id == aggregate_id)
+            .cloned()
+            .collect();
+        results.reverse();
+        results.truncate(limit as usize);
+        Ok(results)
+    }
+}
+
+#[async_trait(?Send)]
+impl MemoryPersistence for MemoryStore {
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
         let now = 1000000;
         let id = *self.next_memory_id.borrow();
@@ -1277,28 +1305,5 @@ impl StoreBackend for MemoryStore {
             .collect();
         // Note: limit not applied for MemoryStore simplicity
         Ok(result)
-    }
-
-    // ===== Context Engine (Sprint 5.6) =====
-
-    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
-        self.snapshots.borrow_mut().insert(
-            snap.id.clone(),
-            ContextSnapshot {
-                id: snap.id.clone(),
-                query: snap.query.clone(),
-                intent: snap.intent.clone(),
-                domain: snap.domain.clone(),
-                engine_version: "context-engine-v1".into(),
-                context_json: snap.context_json.clone(),
-                object_key: snap.object_key.clone(),
-                object_size: snap.object_size,
-                evidence_refs: snap.evidence_refs.clone(),
-                confidence: snap.confidence,
-                user_scope: snap.user_scope.clone(),
-                created_at: 1000000,
-            },
-        );
-        Ok(())
     }
 }

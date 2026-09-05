@@ -586,48 +586,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_latest_evaluation(self, decision_id).await
     }
 
-    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
-        crate::D1Store::insert_outbox(self, entry).await
-    }
-    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
-        crate::D1Store::drain_outbox(self, limit).await
-    }
-    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
-        crate::D1Store::mark_outbox_archived(self, id).await
-    }
-    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
-        crate::D1Store::mark_outbox_failed(self, id).await
-    }
-
-    async fn insert_event_index(
-        &self,
-        event_id: &str,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        event_type: &str,
-        object_key: &str,
-        occurred_at: i64,
-    ) -> Result<(), StoreError> {
-        crate::D1Store::insert_event_index(
-            self,
-            event_id,
-            aggregate_type,
-            aggregate_id,
-            event_type,
-            object_key,
-            occurred_at,
-        )
-        .await
-    }
-    async fn find_event_keys(
-        &self,
-        aggregate_type: &str,
-        aggregate_id: &str,
-        limit: u32,
-    ) -> Result<Vec<EventIndexEntry>, StoreError> {
-        crate::D1Store::find_event_keys(self, aggregate_type, aggregate_id, limit).await
-    }
-
     async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
         crate::D1Store::create_artifact(self, artifact).await
     }
@@ -717,6 +675,64 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::list_sources(self, tier, policy, limit, offset).await
     }
 
+    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
+        crate::D1Store::save_context_snapshot(self, snap).await
+    }
+}
+
+//  Fine-grained P4 subtraits — the 8 methods above were lifted off StoreBackend
+//  and are now reachable through composition instead of the legacy supertrait.
+
+#[async_trait(?Send)]
+impl OutboxStore for crate::D1Store {
+    async fn insert_outbox(&self, entry: &NewOutbox) -> Result<i64, StoreError> {
+        crate::D1Store::insert_outbox(self, entry).await
+    }
+    async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, StoreError> {
+        crate::D1Store::drain_outbox(self, limit).await
+    }
+    async fn mark_outbox_archived(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::mark_outbox_archived(self, id).await
+    }
+    async fn mark_outbox_failed(&self, id: i64) -> Result<(), StoreError> {
+        crate::D1Store::mark_outbox_failed(self, id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl EventIndexStore for crate::D1Store {
+    async fn insert_event_index(
+        &self,
+        event_id: &str,
+        aggregate_type: &str,
+        aggregate_id: &str,
+        event_type: &str,
+        object_key: &str,
+        occurred_at: i64,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::insert_event_index(
+            self,
+            event_id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            object_key,
+            occurred_at,
+        )
+        .await
+    }
+    async fn find_event_keys(
+        &self,
+        aggregate_type: &str,
+        aggregate_id: &str,
+        limit: u32,
+    ) -> Result<Vec<EventIndexEntry>, StoreError> {
+        crate::D1Store::find_event_keys(self, aggregate_type, aggregate_id, limit).await
+    }
+}
+
+#[async_trait(?Send)]
+impl MemoryPersistence for crate::D1Store {
     async fn create_memory(&self, entry: &NewMemory) -> Result<i64, StoreError> {
         crate::D1Store::create_memory(self, entry).await
     }
@@ -727,9 +743,5 @@ impl StoreBackend for crate::D1Store {
         limit: u32,
     ) -> Result<Vec<Memory>, StoreError> {
         crate::D1Store::list_memories(self, memory_type, status, limit).await
-    }
-
-    async fn save_context_snapshot(&self, snap: &NewContextSnapshot) -> Result<(), StoreError> {
-        crate::D1Store::save_context_snapshot(self, snap).await
     }
 }
