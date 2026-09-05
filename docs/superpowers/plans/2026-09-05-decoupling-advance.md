@@ -16,7 +16,7 @@
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
 | P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
 | P4 remove `StoreBackend` | 🟡 **Phase A（batch 0–5，45→19）+ Phase B 收窄（batch 6–9，19→8）已完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles/rule/artifact/article-analysis 全拆出 supertrait；3 个 generic `S: StoreBackend` 消费方（article_persistence/artifact_registry → 小 trait，worker-entry FeedContext → 具体 `store::Store`）已收窄；`StoreBackend` body 现**仅余 8 个 decision 方法（§5 GATED）**。终局删除 supertrait + P5 见 §3 |
-| P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 直接 `use store::`）；P7 guard 已将其余 8 条 infra 边记入 `GRANDFATHERED`（删边即收紧） |
+| P5 application 唯一用例入口 | 🟡 **Phase 1（Source/Entity 上收 application）已完成（2026-09-05，记录见 §3）**：业务编排移入 `services/{sources,entities}.rs`，api 委托；`api → store` 减少未归零（handler 仍自建 `Store::new`，composition-root 注入 = P5b）。`StoreBackend` supertrait 仍存（body=8 GATED decision）。P7 guard `GRANDFATHERED` 已记 `application:store` + `api:*` 8 边（删边即收紧） |
 | P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
 | P7 cargo-metadata 架构护栏 | ✅ done（`fcb728b`）：`shared-kernel/tests/architecture.rs` + lint.yml 独立 `architecture-guard` job |
 
@@ -108,7 +108,7 @@ application services (P5)`。
 
 **Commit**：`test(governance): architecture dependency guard (P7)`。
 
-### Phase B（收窄）+ Phase C 完成记录（2026-09-05，未 push）
+### Phase B（收窄）+ Phase C 完成记录（2026-09-05，已 push `3eccd42`）
 
 | Batch | Commit | 内容 |
 |---|---|---|
@@ -121,8 +121,32 @@ application services (P5)`。
 create_outcome/get_decision_outcomes/create_evaluation/get_decision_evaluations/get_latest_evaluation，§5 GATED）。
 测试 334 passed / 0 failed；guard 空表（0 grandfathered / 0 removable）；fmt / clippy / wasm 全绿。
 
-**下一步**：§3 终局（删 `StoreBackend` supertrait）+ P5（api 编排上收 application、`api → store = 0`；
-届时删 P7 guard `GRANDFATHERED` 中 `api:*` 与 `application:store` 条目即自动收紧）。
+**下一步**：P5 Phase 1（Source/Entity 上收，见下）已完成；续 **P5b composition-root 注入**（worker-entry
+建 store 经 `Router::with_data` 注入 → 真正 `api → store = 0`；届时删 P7 guard `GRANDFATHERED` 中
+`api:*` 与 `application:store` 条目即自动收紧）。
+
+### P5 Phase 1 完成记录（2026-09-05，已 push `37de1fc..e781672`）
+
+api 编排上收 application、确立可复用模式。本轮取 Source + Entity 两个**已完整 port** 的域（subtrait
+全覆盖，store 零改动）；Article 读非零迁移（search/R2/content-governance 未 port）推后到 Phase 2。
+
+| Commit | 内容 |
+|---|---|
+| `37de1fc` | `refactor(application): extract Source use-cases from api handlers` —— `services/sources.rs` `SourceService<S>`（`S: SourceQueryService + SourceRepository`，list/get/create/update/delete）；`crates/api/src/routes/source.rs` 5 handler 委托。update 保留 `feed_id` 不变量移入 service（D1 `save_source` upsert 走 `ON CONFLICT(feed_id)`，丢 feed_id 即插 orphan 行） |
+| `6ee3ad9` | `fix(store): MemoryStore::save_entity 换 host-safe SystemTime 时钟` —— 原 `js_sys::Date::now()` 在 native `cargo test` 会 panic；对齐 `create_artifact` 既有 host-safe idiom（store 面唯一 js_sys 残留） |
+| `e781672` | `refactor(application): extract Entity use-cases from api handlers` —— `services/entities.rs` `EntityService<S>`（`S: EntityQueryService`，list/get/relations/articles/activity + `const ACTIVITY_WINDOW_DAYS: u32 = 7`）；`crates/api/src/entities.rs` 5 handler 委托。`now` 由 handler 用 `js_sys` 算好后**作参数传入**（application 零 runtime/HTTP/js_sys） |
+
+测试 **346 passed / 0 failed**（334 + Source 6 + Entity 6，净新增覆盖 —— 此二域此前零单测）；
+MemoryStore 测试模式：先 seed 再 `XxxService::new(store)` 包同一个 store（move 后不可再借 store 写）。
+guard 空表（0/0）；fmt / clippy -D warnings / wasm / P7 architecture-guard 全绿。
+
+**此轮边界**：api handler 仍 `Store::new(ctx.env.d1("DB")?)` 自建 store（transitional）——`api → store`
+未归零，composition-root 注入 = 独立后续阶段 **P5b**；`StoreBackend` supertrait 仍存（8 个 GATED
+decision 方法），终局删除留待 decision vertical（§5）。
+
+**下一步（续主线）**：P5b composition-root；Phase 2 域（Article 读需先定 search/R2/content-governance 的
+port 边界、Feed、Rules CRUD、briefing、compliance/takedown、trust-stats）；§3 终局删 `StoreBackend`
+supertrait（GATED）。
 
 ---
 

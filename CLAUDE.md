@@ -68,7 +68,9 @@ D:\Project\intel-web (Astro — frontend)
 
 ## Backend Crate Dependencies（decoupling 现状 2026-09-05 — 详见 decoupling plan + final-architecture-v2）
 
-DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`（P4–P7 尚未完成）。
+DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。进度：P4 `StoreBackend` body
+45→**8**（仅余 GATED decision 方法，supertrait 未删）；P7 架构守卫已入 CI；P5 Phase 1（Source/Entity
+编排上收 application）已完成 —— 详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。
 
 ```
 delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
@@ -78,7 +80,11 @@ delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
 受控引擎（signal/reflection/memory/context/agent/claim-engine）
           → intelligence-domain / shared-kernel / model-runtime + 域内 repository ports
           → 禁止直接依赖 store/vectorize/embedding/event-store/object-store（CI 守卫，见下）
-api → store/search/rules/embedding/vectorize 耦合仍存（P5 收敛目标）
+application：services/*.rs（UseCase 编排，generic over 最窄 store subtrait；零 Worker/HTTP/js_sys；
+             MemoryStore 单测）—— Source/Entity 已上收
+api → store：Source/Entity 经 application::SourceService/EntityService 委托；其余域仍直连 store 且
+       handler 自建 `Store::new(...)`（P5b composition-root 注入后 → api → store = 0）
+api → search/rules/embedding/vectorize 耦合仍存（P5 收敛目标）
 infrastructure adapters（D1XxxRepository / R2 / Vectorize）→ store(D1 access)/embedding/object-store
 store → worker (D1Database)
 ```
@@ -90,6 +96,7 @@ store → worker (D1Database)
 cargo deny check bans licenses sources       # 许可证合规 + 依赖重复检查（暂不包含 advisories）
 cargo-deny advisories 因 fxhash unmaintained 暂未启用。要启用需先升级或替换 scraper crate。详见 deny.toml。
 bash scripts/check-layered-deps.sh           # 分层依赖守卫：受控 crate 禁止新增 store/vectorize/embedding/event-store/object-store 依赖
+cargo test -p shared-kernel --test architecture   # P7 跨 crate 边护栏（cargo metadata，无循环）
 cargo clippy --workspace -- -D warnings      # 代码质量（遵守 workspace.lints）
 cargo fmt --check                            # 格式统一
 ```
@@ -104,16 +111,24 @@ cargo fmt --check                            # 格式统一
 受控 crate（中间层，不得依赖基础设施）：`signal-engine`、`reflection-engine`、`memory-engine`、
 `ai-pipeline`、`context-engine`、`agent-engine`、`claim-engine`。
 
-`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲与剩余项
-（P3 收尾 / P4 StoreBackend / P5 application / P6 删壳 / P7 架构守卫）见
+`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲、进度与剩余项
+（P4 `StoreBackend` body=8 / P5 Phase 1 Source+Entity 上收 / P5b composition-root / Phase 2 域 /
+P6 删壳 / GATED decision vertical）见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`、
 `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 与
 `docs/architecture/final-architecture-v2.md`。
+
+#### P7 跨 crate 架构护栏（decoupling — 已入 CI 2026-09-05）
+
+`crates/shared-kernel/tests/architecture.rs` 用 `cargo metadata --no-deps` 断言 DDD 分层的**正常依赖边**
++ 无循环。`GRANDFATHERED` 现 = `application:store` + `api:{store,vectorize,embedding,event-store,
+object-store,infrastructure}`（删边即报 removable）。与 `check-layered-deps.sh` 互补：后者封受控引擎
+的 banned infra 边（当前空表），前者管 api/application 的暂留边（收紧 = 移除 GRANDFATHERED 条目）。
 
 ### Backend (wasm32-unknown-unknown target required)
 Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).
 ```bash
 cargo check --workspace
-cargo test --workspace              # 350+ tests (Sprint 6.4 baseline 351)
+cargo test --workspace              # 346 passed（2026-09-05，仅后端；以实际运行为准）
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 cargo check --workspace --all-features --target wasm32-unknown-unknown   # wasm gate (PR + deploy)
