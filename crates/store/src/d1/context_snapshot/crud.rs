@@ -24,11 +24,11 @@ impl crate::D1Store {
     }
 
     pub async fn get_context_snapshot(&self, id: &str) -> Result<Option<ContextSnapshot>, StoreError> {
-        Ok(self
+        self
             .db
             .prepare("SELECT id, query, intent, domain, engine_version, context_json, object_key, object_size, evidence_refs, confidence, user_scope, created_at FROM context_snapshots WHERE id = ?1")
             .bind(&[id.into()]).s_err()?
             .first::<ContextSnapshot>(None)
-            .await.s_err()?)
+            .await.s_err()
     }
 }

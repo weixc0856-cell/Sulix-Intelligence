@@ -27,15 +27,15 @@ impl D1Store {
     }
 
     pub async fn signal_summary(&self) -> Result<Vec<SignalSummary>, StoreError> {
-        Ok(self.db.prepare("SELECT signal_type, COUNT(*) AS strategy_count, COALESCE(SUM(score_delta), 0) AS total_score_delta, COALESCE(AVG(score_delta), 0) AS avg_score_delta, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_count FROM filter_rules GROUP BY signal_type ORDER BY total_score_delta DESC").all().await.s_err()?.results().s_err()?)
+        self.db.prepare("SELECT signal_type, COUNT(*) AS strategy_count, COALESCE(SUM(score_delta), 0) AS total_score_delta, COALESCE(AVG(score_delta), 0) AS avg_score_delta, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_count FROM filter_rules GROUP BY signal_type ORDER BY total_score_delta DESC").all().await.s_err()?.results().s_err()
     }
 
     pub async fn list_rules(&self) -> Result<Vec<Value>, StoreError> {
-        Ok(self.db.prepare("SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC").all().await.s_err()?.results().s_err()?)
+        self.db.prepare("SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules ORDER BY created_at DESC").all().await.s_err()?.results().s_err()
     }
 
     pub async fn get_rule(&self, id: i64) -> Result<Option<SignalStrategy>, StoreError> {
-        Ok(self.db.prepare("SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules WHERE id = ?1").bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<SignalStrategy>(None).await.s_err()?)
+        self.db.prepare("SELECT id, name, signal_type, rule_json, audience_tag, score_delta, enabled, created_at, updated_at FROM filter_rules WHERE id = ?1").bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<SignalStrategy>(None).await.s_err()
     }
 
     pub async fn insert_rule(

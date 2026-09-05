@@ -38,8 +38,7 @@ impl crate::D1Store {
 
     /// List factual outcome observations for a decision, newest first.
     pub async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, decision_id, outcome_type, observation, evidence_url, observed_at, created_at \
                  FROM outcome_events \
@@ -52,6 +51,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

@@ -70,7 +70,7 @@ impl crate::D1Store {
         sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ?{idx}"));
         params.push(JsValue::from_f64(limit as f64));
 
-        Ok(self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     /// Update takedown request status (approve/reject/review).

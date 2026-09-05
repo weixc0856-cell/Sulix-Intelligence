@@ -42,8 +42,7 @@ impl crate::D1Store {
 
     /// List decisions for a specific signal thread.
     pub async fn decisions_by_signal(&self, signal_thread_id: i64) -> Result<Vec<Decision>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, \
                         confidence, status, priority, created_at, updated_at \
@@ -55,7 +54,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Get aggregated decision statistics.

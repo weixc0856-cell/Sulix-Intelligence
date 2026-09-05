@@ -35,7 +35,7 @@ impl crate::D1Store {
 
     /// List artifact_registry entries for a given entity.
     pub async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
-        Ok(self
+        self
             .db
             .prepare(
                 "SELECT id, artifact_type, entity_id, r2_key, schema_version, model, pipeline_version, metadata, created_at \
@@ -47,7 +47,7 @@ impl crate::D1Store {
             .bind(&[JsValue::from_f64(entity_id as f64), JsValue::from_f64(limit as f64)]).s_err()?
             .all()
             .await.s_err()?
-            .results().s_err()?)
+            .results().s_err()
     }
 
     // ── Memory Artifacts (Sprint 5.1+, unified Memory Archive index) ──
@@ -86,8 +86,7 @@ impl crate::D1Store {
 
     /// Retrieve an artifact record by type + date.
     pub async fn get_artifact(&self, artifact_type: &str, date: &str) -> Result<Option<ArtifactRecord>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, artifact_type, artifact_date, object_key, schema_version, \
                         content_hash, size_bytes, metadata, created_at \
@@ -98,13 +97,12 @@ impl crate::D1Store {
             .s_err()?
             .first::<ArtifactRecord>(None)
             .await
-            .s_err()?)
+            .s_err()
     }
 
     /// List artifacts of a given type, newest first.
     pub async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, artifact_type, artifact_date, object_key, schema_version, \
                         content_hash, size_bytes, metadata, created_at \
@@ -118,7 +116,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     // ── Sprint 6.1 Artifact Registry (unified R2 object registry) ──

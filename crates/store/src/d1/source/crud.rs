@@ -127,6 +127,6 @@ impl crate::D1Store {
         sql.push_str(&format!(" OFFSET ?{idx}"));
         params.push(JsValue::from_f64(offset as f64));
 
-        Ok(self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()
     }
 }

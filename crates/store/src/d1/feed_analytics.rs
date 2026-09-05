@@ -35,9 +35,9 @@ impl D1Store {
     }
 
     pub async fn feed_stats(&self) -> Result<Vec<FeedStats>, StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT f.id, f.title, f.url, f.category, f.status, f.last_fetched_at, COUNT(a.id) AS article_count FROM feeds f LEFT JOIN articles a ON a.feed_id = f.id GROUP BY f.id ORDER BY f.last_fetched_at DESC",
-        ).all().await.s_err()?.results().s_err()?)
+        ).all().await.s_err()?.results().s_err()
     }
 
     pub async fn health_stats(&self) -> Result<HealthStats, StoreError> {
@@ -104,11 +104,11 @@ impl D1Store {
     }
 
     pub async fn article_trend(&self, days: i64) -> Result<Vec<DayCount>, StoreError> {
-        Ok(self.db.prepare("SELECT DATE(published_at, 'unixepoch') AS day, COUNT(*) AS cnt FROM articles WHERE published_at IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT ?1").bind(&[JsValue::from_f64(days as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare("SELECT DATE(published_at, 'unixepoch') AS day, COUNT(*) AS cnt FROM articles WHERE published_at IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT ?1").bind(&[JsValue::from_f64(days as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn pending_ai_articles(&self, batch_size: u32) -> Result<Vec<PendingArticle>, StoreError> {
-        Ok(self.db.prepare("SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score, raw_content_r2_key FROM articles WHERE (ai_summary IS NULL OR ai_summary = '') ORDER BY published_at ASC LIMIT ?1").bind(&[JsValue::from_f64(batch_size as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare("SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score, raw_content_r2_key FROM articles WHERE (ai_summary IS NULL OR ai_summary = '') ORDER BY published_at ASC LIMIT ?1").bind(&[JsValue::from_f64(batch_size as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn expired_article_r2_keys(&self, now: i64, days: i64) -> Result<Vec<String>, StoreError> {
@@ -131,7 +131,7 @@ impl D1Store {
     }
 
     pub async fn recent_articles_for_preview(&self, limit: u32) -> Result<Vec<ArticleDetail>, StoreError> {
-        Ok(self.db.prepare("SELECT a.id, a.feed_id, f.title AS feed_name, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.title != '' ORDER BY a.published_at DESC LIMIT ?1").bind(&[JsValue::from_f64(limit as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare("SELECT a.id, a.feed_id, f.title AS feed_name, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.title != '' ORDER BY a.published_at DESC LIMIT ?1").bind(&[JsValue::from_f64(limit as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn article_ids_exist(&self, ids: &[i64]) -> Result<std::collections::HashSet<i64>, StoreError> {

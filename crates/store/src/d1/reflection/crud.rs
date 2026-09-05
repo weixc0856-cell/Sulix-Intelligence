@@ -88,8 +88,7 @@ impl crate::D1Store {
 
     /// Get a reflection by decision_id.
     pub async fn get_reflection_by_decision(&self, decision_id: i64) -> Result<Option<Reflection>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, decision_id, outcome_id, job_id, status, artifact_key, result, quality_score, \
                         generator_version, lessons_count, rules_count, generated_by, retry_count, last_error, \
@@ -100,7 +99,7 @@ impl crate::D1Store {
             .s_err()?
             .first::<Reflection>(None)
             .await
-            .s_err()?)
+            .s_err()
     }
 
     /// List completed decisions (>7d) without a reflection.
@@ -127,8 +126,7 @@ impl crate::D1Store {
 
     /// List failed reflections eligible for retry (retry_count < 3).
     pub async fn failed_reflections_for_retry(&self, limit: u32) -> Result<Vec<Reflection>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, decision_id, outcome_id, job_id, status, artifact_key, result, quality_score, \
                         generator_version, lessons_count, rules_count, generated_by, retry_count, last_error, \
@@ -143,13 +141,12 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// List stale generating reflections (lease expired).
     pub async fn stale_generating_reflections(&self, now: i64) -> Result<Vec<Reflection>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, decision_id, outcome_id, job_id, status, artifact_key, result, quality_score, \
                         generator_version, lessons_count, rules_count, generated_by, retry_count, last_error, \
@@ -164,6 +161,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

@@ -43,8 +43,7 @@ impl crate::D1Store {
         entity_type: &str,
         entity_id: &str,
     ) -> Result<Vec<ConfidenceEvent>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, entity_type, entity_id, previous_confidence, confidence, reason, trigger_event, \
                  factors_json, created_at \
@@ -56,6 +55,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

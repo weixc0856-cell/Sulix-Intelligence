@@ -129,9 +129,9 @@ impl crate::D1Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles ORDER BY published_at DESC LIMIT ?1 OFFSET ?2",
-        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn article_count(&self) -> Result<i64, crate::StoreError> {
@@ -145,9 +145,9 @@ impl crate::D1Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE score != 0 ORDER BY score DESC, published_at DESC LIMIT ?1 OFFSET ?2",
-        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        ).bind(&[JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn trending_count(&self) -> Result<i64, crate::StoreError> {
@@ -161,9 +161,9 @@ impl crate::D1Store {
     }
 
     pub async fn article_by_id(&self, id: i64) -> Result<Option<crate::Article>, crate::StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE id = ?1",
-        ).bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<crate::Article>(None).await.s_err()?)
+        ).bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<crate::Article>(None).await.s_err()
     }
 
     /// Batch fetch by IDs.  Used by the bookmarks / batch endpoint.
@@ -176,15 +176,15 @@ impl crate::D1Store {
             crate::in_placeholders(ids.len())
         );
         let binds: Vec<JsValue> = ids.iter().map(|id| JsValue::from_f64(*id as f64)).collect();
-        Ok(self.db.prepare(&sql).bind(&binds).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare(&sql).bind(&binds).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     /// Article with feed metadata joined in for the detail page.
     pub async fn article_detail(&self, id: i64) -> Result<Option<crate::ArticleDetail>, crate::StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT a.id, a.feed_id, f.title AS feed_name, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score
              FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
-        ).bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<crate::ArticleDetail>(None).await.s_err()?)
+        ).bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<crate::ArticleDetail>(None).await.s_err()
     }
 
     /// Get previous and next article relative to a given article id,
@@ -209,9 +209,9 @@ impl crate::D1Store {
         offset: u32,
     ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
         let pattern = crate::tag_like_pattern(tag);
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT id, feed_id, guid, title, url, published_at, ai_summary, ai_tags, score FROM articles WHERE ai_tags LIKE ?1 ESCAPE '\' ORDER BY published_at DESC LIMIT ?2 OFFSET ?3",
-        ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        ).bind(&[pattern.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn articles_by_category(
@@ -220,9 +220,9 @@ impl crate::D1Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<crate::PendingArticle>, crate::StoreError> {
-        Ok(self.db.prepare(
+        self.db.prepare(
             "SELECT a.id, a.feed_id, a.guid, a.title, a.url, a.published_at, a.ai_summary, a.ai_tags, a.score FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE f.category = ?1 ORDER BY a.published_at DESC LIMIT ?2 OFFSET ?3",
-        ).bind(&[category.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()?)
+        ).bind(&[category.into(), JsValue::from_f64(limit as f64), JsValue::from_f64(offset as f64)]).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     pub async fn categories_summary(&self) -> Result<Vec<(String, i64)>, crate::StoreError> {
@@ -272,8 +272,7 @@ impl crate::D1Store {
             conds.join(" OR "),
             conds.iter().map(|c| format!("CASE WHEN {} THEN 1 ELSE 0 END", c)).collect::<Vec<_>>().join(" + "),
         );
-        Ok(self
-            .db
+        self.db
             .prepare(&sql)
             .bind(&[JsValue::from_f64(article_id as f64), JsValue::from_f64(limit as f64)])
             .s_err()?
@@ -281,7 +280,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Load recent articles that have Vectorize embeddings for ANN discovery.
@@ -292,7 +291,7 @@ impl crate::D1Store {
         limit: u32,
     ) -> Result<Vec<crate::ArticleEmbeddingRef>, crate::StoreError> {
         let cutoff = now - days * 86400;
-        Ok(self
+        self
             .db
             .prepare(
                 "SELECT a.id AS article_id, a.vector_id, a.published_at, a.feed_id AS source_id, \
@@ -304,6 +303,6 @@ impl crate::D1Store {
             .bind(&[JsValue::from_f64(cutoff as f64), JsValue::from_f64(limit as f64)]).s_err()?
             .all()
             .await.s_err()?
-            .results().s_err()?)
+            .results().s_err()
     }
 }

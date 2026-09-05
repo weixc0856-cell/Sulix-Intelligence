@@ -9,8 +9,7 @@ impl crate::D1Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<crate::EntityArticle>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT a.id, a.title, a.url, a.published_at, a.ai_summary, a.score, f.title AS feed_name \
                  FROM article_entities ae \
@@ -30,7 +29,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Activity summary for an entity over the last N days.

@@ -37,8 +37,7 @@ impl crate::D1Store {
 
     /// Get a memory entry by id.
     pub async fn get_memory(&self, id: i64) -> Result<Option<Memory>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, memory_type, memory_origin, statement, confidence, stability_score, \
                         confidence_updated_at, memory_sources, artifact_key, status, usage_count, \
@@ -49,7 +48,7 @@ impl crate::D1Store {
             .s_err()?
             .first::<Memory>(None)
             .await
-            .s_err()?)
+            .s_err()
     }
 
     /// List memories, optionally filtered by type and status.
@@ -85,7 +84,7 @@ impl crate::D1Store {
         sql.push_str(" ORDER BY created_at DESC LIMIT ?");
         params.push(JsValue::from_f64(limit as f64));
 
-        Ok(self.db.prepare(sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare(sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     /// Update memory usage stats (increment usage_count, set last_used_at).

@@ -36,8 +36,7 @@ impl crate::D1Store {
     /// [`mark_outbox_archived`](Self::mark_outbox_archived).  After a
     /// failure it calls [`mark_outbox_retry`](Self::mark_outbox_retry).
     pub async fn drain_outbox(&self, limit: u32) -> Result<Vec<OutboxEntry>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, object_type, object_key, payload, status, created_at, retry_count \
                  FROM object_outbox \
@@ -51,7 +50,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Mark an outbox entry as successfully archived.

@@ -51,6 +51,6 @@ impl crate::D1Store {
             .all()
             .await
             .s_err()?;
-        Ok(result.results().s_err()?)
+        result.results().s_err()
     }
 }

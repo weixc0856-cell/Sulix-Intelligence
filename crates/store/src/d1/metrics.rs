@@ -6,8 +6,7 @@ use crate::StoreError;
 impl crate::D1Store {
     /// Query model invocation statistics from reasoning_runs table.
     pub async fn model_reliability_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT reasoning_type, model_name, \
                  COUNT(*) AS total_calls, \
@@ -24,7 +23,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Query decision record accuracy stats.
@@ -64,8 +63,7 @@ impl crate::D1Store {
 
     /// Query calibration statistics from confidence_calibrations table.
     pub async fn calibration_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT entity_type, \
                  COUNT(*) AS total_predictions, \
@@ -81,6 +79,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

@@ -97,8 +97,7 @@ impl crate::D1Store {
 
     /// List entities, paginated, ordered by article_count DESC.
     pub async fn list_entities(&self, limit: u32, offset: u32) -> Result<Vec<crate::EntitySummary>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT e.id, e.name, e.normalized_name, e.entity_type, e.canonical_id, \
                         COUNT(ae.article_id) AS article_count, \
@@ -115,7 +114,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Get a single entity by id with aggregate article_count.
@@ -146,7 +145,7 @@ impl crate::D1Store {
         entity_id: i64,
         limit: u32,
     ) -> Result<Vec<crate::RelatedEntity>, crate::StoreError> {
-        Ok(self
+        self
             .db
             .prepare(
                 "SELECT e.id, e.name, e.entity_type, er.relation_type, er.confidence, er.last_seen_at \
@@ -159,13 +158,12 @@ impl crate::D1Store {
             .bind(&[JsValue::from_f64(entity_id as f64), JsValue::from_f64(limit as f64)]).s_err()?
             .all()
             .await.s_err()?
-            .results().s_err()?)
+            .results().s_err()
     }
 
     /// Get entities linked to an article.
     pub async fn article_entities(&self, article_id: i64) -> Result<Vec<crate::EntityRef>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT e.id, e.name, e.normalized_name, e.entity_type, ae.relevance, ae.context \
                  FROM entities e \
@@ -179,6 +177,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

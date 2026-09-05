@@ -164,8 +164,7 @@ impl crate::D1Store {
 
     /// Load top evidence articles for a signal thread.
     async fn load_signal_detail_evidence(&self, thread_id: i64) -> Result<Vec<BriefArticle>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT DISTINCT se.article_id AS id, a.title, a.url, f.title AS feed_name, a.score \
                  FROM signal_evidence se JOIN articles a ON a.id = se.article_id \
@@ -179,7 +178,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Load related entities for a signal thread via entity_relations.
@@ -189,7 +188,7 @@ impl crate::D1Store {
         limit: u32,
     ) -> Result<Vec<RelatedEntityRef>, StoreError> {
         // Get anchor entity from thread, then get its relations
-        Ok(self
+        self
             .db
             .prepare(
                 "SELECT e.id, e.name, e.entity_type, 'mentioned_together' AS relation_type \
@@ -202,7 +201,7 @@ impl crate::D1Store {
             .bind(&[JsValue::from_f64(thread_id as f64), JsValue::from_f64(limit as f64)]).s_err()?
             .all()
             .await.s_err()?
-            .results().s_err()?)
+            .results().s_err()
     }
 
     /// Backward-compatible wrapper for internal use.
@@ -212,8 +211,7 @@ impl crate::D1Store {
 
     /// Load related signals (other threads sharing the same anchor entity).
     async fn load_related_signals(&self, thread_id: i64) -> Result<Vec<RelatedSignalRef>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT st.id, st.title, st.status, st.health_score \
                  FROM signal_threads st \
@@ -227,7 +225,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }
 

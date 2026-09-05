@@ -48,8 +48,7 @@ impl crate::D1Store {
         aggregate_id: &str,
         limit: u32,
     ) -> Result<Vec<EventIndexEntry>, StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, event_id, aggregate_type, aggregate_id, event_type, object_key, occurred_at, created_at \
                  FROM event_archive_index \
@@ -63,6 +62,6 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 }

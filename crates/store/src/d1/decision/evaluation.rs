@@ -41,8 +41,7 @@ impl crate::D1Store {
         &self,
         decision_id: i64,
     ) -> Result<Vec<DecisionEvaluation>, crate::StoreError> {
-        Ok(self
-            .db
+        self.db
             .prepare(
                 "SELECT id, decision_id, evaluation, confidence, reasoning, evaluator, evaluated_at, created_at \
                  FROM decision_evaluations \
@@ -55,7 +54,7 @@ impl crate::D1Store {
             .await
             .s_err()?
             .results()
-            .s_err()?)
+            .s_err()
     }
 
     /// Get the latest evaluation for a decision.

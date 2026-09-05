@@ -77,7 +77,7 @@ impl crate::D1Store {
         sql.push_str(&format!(" OFFSET ?{idx}"));
         params.push(JsValue::from_f64(offset as f64));
 
-        Ok(self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()?)
+        self.db.prepare(&sql).bind(&params).s_err()?.all().await.s_err()?.results().s_err()
     }
 
     /// List claims by article_id.
@@ -120,13 +120,13 @@ impl crate::D1Store {
 
     /// Get raw evidence rows for a claim (backward compat).
     pub async fn get_claim_evidence(&self, claim_id: i64) -> Result<Vec<ClaimEvidence>, StoreError> {
-        Ok(self
+        self
             .db
             .prepare("SELECT claim_id, article_id, relation, strength, created_at FROM claim_evidence WHERE claim_id = ?1 ORDER BY strength DESC")
             .bind(&[JsValue::from_f64(claim_id as f64)]).s_err()?
             .all()
             .await.s_err()?
-            .results().s_err()?)
+            .results().s_err()
     }
 
     /// Get evidence for a claim with article titles joined.

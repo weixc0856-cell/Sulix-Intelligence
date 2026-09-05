@@ -19,7 +19,7 @@ impl D1Store {
         } else {
             stmt.bind(&[JsValue::from_f64(now as f64)]).s_err()?
         };
-        Ok(stmt.all().await.s_err()?.results().s_err()?)
+        stmt.all().await.s_err()?.results().s_err()
     }
 
     pub async fn all_feeds(&self, status_filter: Option<&str>) -> Result<Vec<Feed>, StoreError> {
@@ -30,11 +30,11 @@ impl D1Store {
         };
         let stmt = self.db.prepare(sql);
         let stmt = if let Some(sf) = status_filter { stmt.bind(&[sf.into()]).s_err()? } else { stmt };
-        Ok(stmt.all().await.s_err()?.results().s_err()?)
+        stmt.all().await.s_err()?.results().s_err()
     }
 
     pub async fn get_feed(&self, id: i64) -> Result<Option<Feed>, StoreError> {
-        Ok(self.db.prepare("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE id = ?1").bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<Feed>(None).await.s_err()?)
+        self.db.prepare("SELECT id, url, title, category, fetch_interval_sec, last_fetched_at, etag, last_modified, status, extraction_level FROM feeds WHERE id = ?1").bind(&[JsValue::from_f64(id as f64)]).s_err()?.first::<Feed>(None).await.s_err()
     }
 
     pub async fn insert_feed(
