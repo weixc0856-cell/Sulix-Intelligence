@@ -484,16 +484,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::get_latest_evaluation(self, decision_id).await
     }
 
-    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
-        crate::D1Store::create_artifact(self, artifact).await
-    }
-    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
-        crate::D1Store::list_artifacts_by_entity(self, entity_id, limit).await
-    }
-    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
-        crate::D1Store::list_artifacts(self, artifact_type, limit).await
-    }
-
     // ===== Claim (Sprint 5.3) =====
 
     // ===== Source Registry (Sprint 5.6) =====
@@ -517,6 +507,19 @@ impl ArticleAnalysisStore for crate::D1Store {
 
     async fn set_raw_content_r2_key(&self, article_id: i64, r2_key: Option<&str>) -> Result<(), StoreError> {
         crate::D1Store::set_raw_content_r2_key(self, article_id, r2_key).await
+    }
+}
+
+#[async_trait(?Send)]
+impl ArtifactStore for crate::D1Store {
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
+        crate::D1Store::create_artifact(self, artifact).await
+    }
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
+        crate::D1Store::list_artifacts_by_entity(self, entity_id, limit).await
+    }
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
+        crate::D1Store::list_artifacts(self, artifact_type, limit).await
     }
 }
 

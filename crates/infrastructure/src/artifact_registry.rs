@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use object_store::ObjectStore;
 use shared_kernel::artifact_registry::{ArtifactRef, ArtifactRegistry, NewArtifact, RegistryError};
-use store::StoreBackend;
+use store::ArtifactStore;
 
 // ── In-memory registry (tests) ──────────────────────────────────
 
@@ -44,7 +44,7 @@ pub struct D1ArtifactRegistry<S, O> {
 
 impl<S, O> D1ArtifactRegistry<S, O>
 where
-    S: StoreBackend,
+    S: ArtifactStore,
     O: ObjectStore,
 {
     pub fn new(store: S, object_store: O) -> Self {
@@ -55,7 +55,7 @@ where
 #[async_trait(?Send)]
 impl<S, O> ArtifactRegistry for D1ArtifactRegistry<S, O>
 where
-    S: StoreBackend,
+    S: ArtifactStore,
     O: ObjectStore,
 {
     async fn store(&self, artifact: NewArtifact) -> Result<ArtifactRef, RegistryError> {

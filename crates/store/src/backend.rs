@@ -22,8 +22,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    traits::*, ArtifactEntry, ArtifactRecord, Decision, DecisionEvaluation, NewArticle, NewArtifact, NewDecision,
-    NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent, StoreError,
+    traits::*, Decision, DecisionEvaluation, NewArticle, NewDecision, NewDecisionEvaluation, NewOutcomeEvent,
+    OutcomeEvent, StoreError,
 };
 
 /// Storage backend for the Sulix Intelligence platform.
@@ -68,6 +68,7 @@ pub trait StoreBackend:
     + MemoryPersistence
     + ContextSnapshotStore
     + ReflectionPersistence
+    + ArtifactStore
     + SignalStore
 {
     // ---- Rules ----
@@ -143,15 +144,4 @@ pub trait StoreBackend:
 
     /// Get the latest evaluation for a decision.
     async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
-
-    // ==== Artifact Registry ====
-
-    /// Register an R2 artifact in the artifact_registry.
-    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError>;
-
-    /// List artifact_registry entries for a given entity.
-    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError>;
-
-    /// List artifacts of a given type, newest first.
-    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError>;
 }

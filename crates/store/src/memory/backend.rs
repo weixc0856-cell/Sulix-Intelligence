@@ -771,52 +771,6 @@ impl StoreBackend for MemoryStore {
         self.link_relation(source, target, rtype).await
     }
 
-    // ── Artifact / Briefing ──
-
-    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
-        // Host-safe timestamp (unix seconds) — the D1 impl uses js_sys::Date,
-        // but MemoryStore is the host test-double and must not panic on native.
-        let now =
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-        let id = *self.next_artifact_id.borrow();
-        *self.next_artifact_id.borrow_mut() = id + 1;
-        self.artifacts.borrow_mut().push(ArtifactData {
-            id,
-            artifact_type: artifact.artifact_type.clone(),
-            entity_id: artifact.entity_id,
-            r2_key: artifact.r2_key.clone(),
-            schema_version: artifact.schema_version.clone(),
-            model: artifact.model.clone(),
-            pipeline_version: artifact.pipeline_version.clone(),
-            metadata: artifact.metadata.clone(),
-            created_at: now,
-        });
-        Ok(id)
-    }
-
-    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
-        let artifacts = self.artifacts.borrow();
-        let mut result: Vec<ArtifactEntry> = artifacts
-            .iter()
-            .filter(|a| a.entity_id == entity_id)
-            .map(|a| ArtifactEntry {
-                id: a.id,
-                artifact_type: a.artifact_type.clone(),
-                entity_id: a.entity_id,
-                r2_key: a.r2_key.clone(),
-                schema_version: a.schema_version.clone(),
-                model: a.model.clone(),
-                pipeline_version: a.pipeline_version.clone(),
-                metadata: a.metadata.clone(),
-                created_at: a.created_at,
-            })
-            .collect();
-        result.reverse();
-        let limit = limit as usize;
-        result.truncate(limit);
-        Ok(result)
-    }
-
     // ── Decision lifecycle (pre-Event-Sourcing) ──
 
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
@@ -877,16 +831,6 @@ impl StoreBackend for MemoryStore {
         Ok(result.into_iter().last())
     }
 
-    // ── Memory Artifacts ──
-
-    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
-        let mut results: Vec<ArtifactRecord> =
-            self.memory_artifacts.borrow().iter().filter(|a| a.artifact_type == artifact_type).cloned().collect();
-        results.reverse();
-        results.truncate(limit as usize);
-        Ok(results)
-    }
-
     // ===== Claim (Sprint 5.3) =====
 }
 
@@ -915,6 +859,61 @@ impl ArticleAnalysisStore for MemoryStore {
         }
         self.r2_keys.borrow_mut().insert(article_id, r2_key.map(|s| s.to_string()));
         Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl ArtifactStore for MemoryStore {
+    async fn create_artifact(&self, artifact: &NewArtifact) -> Result<i64, StoreError> {
+        // Host-safe timestamp (unix seconds) — the D1 impl uses js_sys::Date,
+        // but MemoryStore is the host test-double and must not panic on native.
+        let now =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let id = *self.next_artifact_id.borrow();
+        *self.next_artifact_id.borrow_mut() = id + 1;
+        self.artifacts.borrow_mut().push(ArtifactData {
+            id,
+            artifact_type: artifact.artifact_type.clone(),
+            entity_id: artifact.entity_id,
+            r2_key: artifact.r2_key.clone(),
+            schema_version: artifact.schema_version.clone(),
+            model: artifact.model.clone(),
+            pipeline_version: artifact.pipeline_version.clone(),
+            metadata: artifact.metadata.clone(),
+            created_at: now,
+        });
+        Ok(id)
+    }
+
+    async fn list_artifacts_by_entity(&self, entity_id: i64, limit: u32) -> Result<Vec<ArtifactEntry>, StoreError> {
+        let artifacts = self.artifacts.borrow();
+        let mut result: Vec<ArtifactEntry> = artifacts
+            .iter()
+            .filter(|a| a.entity_id == entity_id)
+            .map(|a| ArtifactEntry {
+                id: a.id,
+                artifact_type: a.artifact_type.clone(),
+                entity_id: a.entity_id,
+                r2_key: a.r2_key.clone(),
+                schema_version: a.schema_version.clone(),
+                model: a.model.clone(),
+                pipeline_version: a.pipeline_version.clone(),
+                metadata: a.metadata.clone(),
+                created_at: a.created_at,
+            })
+            .collect();
+        result.reverse();
+        let limit = limit as usize;
+        result.truncate(limit);
+        Ok(result)
+    }
+
+    async fn list_artifacts(&self, artifact_type: &str, limit: u32) -> Result<Vec<ArtifactRecord>, StoreError> {
+        let mut results: Vec<ArtifactRecord> =
+            self.memory_artifacts.borrow().iter().filter(|a| a.artifact_type == artifact_type).cloned().collect();
+        results.reverse();
+        results.truncate(limit as usize);
+        Ok(results)
     }
 }
 
