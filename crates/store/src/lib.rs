@@ -12,9 +12,7 @@ pub use domain::*;
 
 pub mod backend;
 pub mod memory;
-pub mod traits;
 pub use backend::StoreBackend;
-pub use traits::*;
 
 pub mod d1;
 

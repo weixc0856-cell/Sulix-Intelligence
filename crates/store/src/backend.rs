@@ -21,7 +21,7 @@
 
 use async_trait::async_trait;
 
-use crate::{traits::*, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, StoreError};
+use domain::{traits::*, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, StoreError};
 
 /// Storage backend for the Sulix Intelligence platform.
 ///

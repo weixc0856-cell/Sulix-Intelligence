@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use crate::backend::StoreBackend;
-use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary, Claim,
     ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord,
@@ -20,6 +19,7 @@ use crate::{
     SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter, SignalUpsertResult,
     Source, StoreError, TodaySignal, UpdateReflection,
 };
+use domain::traits::*;
 
 //  Repositories (save / find)
 

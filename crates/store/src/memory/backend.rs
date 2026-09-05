@@ -11,7 +11,6 @@ use std::collections::HashMap;
 
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
-use crate::traits::*;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary,
     ClaimEvidence, ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionOutcome,
@@ -23,6 +22,7 @@ use crate::{
     ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
     Source, StoreError, TodaySignal, UpdateReflection,
 };
+use domain::traits::*;
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
 
