@@ -28,7 +28,7 @@ crons = ["*/30 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "sulix-feed-db"
-database_id = "42c2dc1c-d385-4f62-9bbf-d5bdb684cd28"
+database_id = "ee083fd3-7fd2-4571-8d53-5036a263265d"
 migrations_dir = "../../migrations"
 
 [[r2_buckets]]
@@ -37,7 +37,7 @@ bucket_name = "sulix-feed-raw"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "50437e8c1f9b4cf4b8b26c16fda159d0"
+id = "1cdea52318b4401391145b3898f68345"
 
 [[queues.producers]]
 binding = "FETCH_QUEUE"
