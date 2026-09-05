@@ -30,12 +30,13 @@ Sulix is a curated RSS Feed + AI Digest product, deployed entirely on Cloudflare
 D:\Project\Sulix Intelligence (Rust workspace — backend)
 ├── Cargo.toml               ← workspace root (27 members — authoritative list)
 ├── rust-toolchain.toml      ← pinned Rust toolchain (single source for channel/components/targets)
-├── migrations/              ← D1 schema, single source of truth (0001…0049)
+├── migrations/              ← D1 schema, single source of truth (47 files; numbered 0001…0049)
 ├── crates/
 │   ├── store/               ← D1 access layer + StoreBackend trait + MemoryStore
 │   ├── fetcher/             ← RSS/Atom fetch + SSRF guard + AbortSignal timeout
 │   ├── rules/               ← Filter/scoring engine (pure logic, unit-tested)
 │   ├── ai-pipeline/         ← AI summarization trait + HttpSummarizer
+│   ├── intelligence-domain/ ← Pure domain layer (confidence calc + domain ports) — no infra deps
 │   ├── search/              ← FTS5 search abstraction + WHERE builder (tested)
 │   ├── embedding/           ← Workers AI embedding (bge-large-en-v1.5)
 │   ├── vectorize/           ← Shared wasm binding (upsert/query/delete)
@@ -65,15 +66,20 @@ D:\Project\intel-web (Astro — frontend)
     └── styles/global.css    ← Tailwind base + fonts
 ```
 
-## Backend Crate Dependencies
+## Backend Crate Dependencies（decoupling 现状 2026-09-05 — 详见 decoupling plan + final-architecture-v2）
+
+DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`（P4–P7 尚未完成）。
 
 ```
-worker-entry → api → store → worker (D1, Queues, Router)
-            → fetcher → worker, feed-rs
-            → rules (pure — no worker dep)
-            → ai-pipeline → store (via StoreBackend trait), Summarizer trait
-            → vectorize (shared wasm binding)
-api → store, search, rules, embedding, vectorize
+delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
+          → fetcher → worker, feed-rs
+          → rules (pure — no worker dep)
+          → vectorize (shared wasm binding)
+受控引擎（signal/reflection/memory/context/agent/claim-engine）
+          → intelligence-domain / shared-kernel / model-runtime + 域内 repository ports
+          → 禁止直接依赖 store/vectorize/embedding/event-store/object-store（CI 守卫，见下）
+api → store/search/rules/embedding/vectorize 耦合仍存（P5 收敛目标）
+infrastructure adapters（D1XxxRepository / R2 / Vectorize）→ store(D1 access)/embedding/object-store
 store → worker (D1Database)
 ```
 
@@ -88,24 +94,26 @@ cargo clippy --workspace -- -D warnings      # 代码质量（遵守 workspace.l
 cargo fmt --check                            # 格式统一
 ```
 
-#### 分层依赖白名单（decoupling P1）
+#### 分层依赖守卫（decoupling P1 — 目标已达成 2026-09-05）
 
 `scripts/check-layered-deps.sh` 用 `cargo metadata --no-deps` 读取每个受控 crate 的声明依赖，
-断言其不含 banned 基础设施 crate（`store`/`vectorize`/`embedding`/`event-store`/`object-store`）——
-现状耦合在脚本的 `GRANDFATHERED` 表中豁免（到期：Sprint 5 归零），**新增**耦合直接 CI 失败。
+断言其不含 banned 基础设施 crate（`store`/`vectorize`/`embedding`/`event-store`/`object-store`）。
+**`GRANDFATHERED` 现为空表**（去耦 13→10→8→7→0 收口于 P3-C1/C2 + P6）——受控 crate 不再豁免任何
+基础设施依赖，**任何**新增耦合直接 CI 失败。
 
 受控 crate（中间层，不得依赖基础设施）：`signal-engine`、`reflection-engine`、`memory-engine`、
 `ai-pipeline`、`context-engine`、`agent-engine`、`claim-engine`。
 
-去耦推进时（decoupling P3/P4/P5）：每迁走一个耦合，删除对应 `GRANDFATHERED` 行——守卫随之收紧，
-Sprint 5 目标为空表。`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。
-架构总纲见 `docs/architecture/final-architecture-v2.md`。
+`cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲与剩余项
+（P3 收尾 / P4 StoreBackend / P5 application / P6 删壳 / P7 架构守卫）见
+`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 与
+`docs/architecture/final-architecture-v2.md`。
 
 ### Backend (wasm32-unknown-unknown target required)
 Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).
 ```bash
 cargo check --workspace
-cargo test --workspace              # 90+ unit tests
+cargo test --workspace              # 350+ tests (Sprint 6.4 baseline 351)
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 cargo check --workspace --all-features --target wasm32-unknown-unknown   # wasm gate (PR + deploy)

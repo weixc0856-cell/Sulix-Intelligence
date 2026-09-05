@@ -27,6 +27,10 @@ represented at the domain edge. See `final-architecture-v2.md` §4.
 `reflection-engine:store`, `memory-engine:store`, `memory-engine:event-store` —
 the last was declared but unused in code).
 
+> 后续收口（2026-09-05）：P3-C1/C2（`d25e036`/`876ec25`）与 P6 置信度归域（`acfaff8`）续将
+> GRANDFATHERED 10 → 8 → 7 → **0**。脚本现为空表；本 doc 属 P2 时点快照。详见
+> `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md`。
+
 ## SignalEvidence aggregate-ownership gate (no new port)
 
 Signal evidence is held by the Signal aggregate: instances/evidence are appended

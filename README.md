@@ -98,7 +98,7 @@ Source Registry → Content Policy → Observation
 ```bash
 # Backend (wasm32-unknown-unknown target required)
 cargo check --workspace
-cargo test --workspace              # 318+ unit tests
+cargo test --workspace              # 350+ tests (Sprint 6.4 baseline 351)
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
@@ -201,11 +201,22 @@ Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
 ## Migration Status
 
-Sprint 6.5 decoupling (Store god-object demolition) is **in progress**. Status as of 2026-08-21:
+Sprint 6.5 decoupling (Store god-object demolition) is **in progress**. Status as of 2026-09-05
+(`GRANDFATHERED` now empty — the dependency fence is fully tightened):
 
-**Done:** P1 (dependency bans + layered-deps gate) · T1 (baseline: fmt/clippy green) · T2 (infrastructure adapter tests) · T3 (shared-kernel/events contract tests) · T4 (llvm-cov + 70% gate) · T5 (PR wasm gate) · T10 (baseline tracking)
+**Done:** P1 (dependency bans + layered-deps gate, **`GRANDFATHERED` = 0**) · P2 (domain-owned repository
+ports for Reflection/Memory/Signal/Context) · P3 part (ai-pipeline decoupled from store; signal-engine +
+context-engine off store/vectorize/event-store via ports) · T1 (baseline) · T2 (infrastructure adapter
+tests) · T3 (shared-kernel/events contract tests) · T4 (llvm-cov + 70% gate) · T5 (PR wasm gate) ·
+T10 (baseline tracking)
 
-**Remaining:** P2 (domain-owned repository traits for Intelligence/Reflection/Memory) → P3 (adapter migration to `infrastructure`) → P4 (shrink `StoreBackend`, deprecated thin layer with hard TTL) → P5 (application becomes the sole use-case entry) → P6 (delete old crates + `StoreBackend`) → P7 (architecture guardrail `check-architecture.sh`); tests T6 (application use-case tests), T7 (decoupling per-commit guard), T8 (cross-domain integration: observe→claim→signal→decision→reflection), T9 (delivery-layer tests)
+**Remaining:** P3 finish (`D1DecisionRepository` wiring; per-domain `infrastructure` repository files +
+adapter mapping tests) → P4 (shrink/remove `StoreBackend`, ~50 deprecated methods + delegates) → P5
+(`application` becomes the sole use-case entry; converge `api`/`worker-entry` dep faces) → P6 (delete old
+engine shells + `StoreBackend` pseudo-layer; **`intelligence-domain` fate under review** — frozen arch v2
+§P6 vs current usage disagree) → P7 (cargo-metadata architecture guard in CI); tests T6 (application
+use-case tests), T7 (decoupling per-commit guard), T8 (cross-domain integration:
+observe→claim→signal→decision→reflection), T9 (delivery-layer tests)
 
 Plans: `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` (P1–P7) and `docs/superpowers/plans/2026-08-21-testing-plan.md` (T1–T10).
 

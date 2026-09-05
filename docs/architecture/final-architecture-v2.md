@@ -68,6 +68,15 @@ intelligence-domain（伪迁移）
 - **P6 — Remove intelligence-domain**：彻底删除伪迁移层。
 - **P7 — Architecture Guard**：CI 自动验证 domain→infrastructure / application→concrete adapter / api→store / StoreBackend 均 forbidden。
 
+> ⚠️ **CONTRADICTION / 待决议（2026-09-05）**：本行 P6 "删除 intelligence-domain" 与下列冲突：
+> (a) decoupling plan（`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 目标态图 +
+> Task 6.1）把 `intelligence-domain` 当作 signal/claim 领域类型的**永久归宿**（DoD #4 要求
+> "`intelligence_domain::` 为唯一来源"）；(b) README 目标架构同样保留它；(c) Task B P6（commit
+> `acfaff8`）刚把 confidence 纯逻辑**迁入** intelligence-domain。
+> **裁决暂缓（2026-09-05 决定）**：去耦先推不受影响的 P3 收尾 / P4 / P5 / P7；P6 范围（删
+> intelligence-domain 与否）等本矛盾裁决后再定。裁决后需同步更新本节、decoupling plan、README。
+> 若保留：P6 语义改为"删除旧 engine 壳 + `store::domain/*` 伪迁移层"，不含 intelligence-domain。
+
 ---
 
 ## 5–10. Frontend（摘要，详见前端镜像文档）
