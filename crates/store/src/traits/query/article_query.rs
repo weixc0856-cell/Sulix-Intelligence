@@ -57,6 +57,10 @@ pub trait ArticleQueryService {
 
     // ── Aggregations ──
 
+    /// Recent articles (feed name + AI summary joined) ordered by
+    /// `published_at DESC`, for the strategy-preview scoring endpoint.
+    async fn recent_articles_for_preview(&self, limit: u32) -> Result<Vec<ArticleDetail>, StoreError>;
+
     /// Category → article_count mapping, ordered by count DESC.
     async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError>;
 

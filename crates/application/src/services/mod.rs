@@ -15,4 +15,5 @@ pub mod feeds;
 pub mod observations;
 pub mod rules;
 pub mod sources;
+pub mod strategies;
 pub mod trust;

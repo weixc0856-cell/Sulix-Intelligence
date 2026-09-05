@@ -3,16 +3,22 @@
 //! matched results so users can see impact before saving.
 
 use crate::{json_err, json_ok};
+use application::StrategyPreviewService;
 use rules::{score, ArticleInput, Condition};
-use store::{PreviewMatch, PreviewRequest, PreviewResult, Store};
+use store::{PreviewRequest, Store};
 use worker::*;
 
 /// POST /api/strategies/preview
 ///
 /// Accepts a strategy condition + score_delta, evaluates against recent
 /// articles, and returns matched items with human-readable match reasons.
+///
+/// The temporary `rules::Rule` construction and the per-article `rules::score`
+/// invocation stay here (this layer owns the `rules` dependency); the
+/// candidate fetch and the match/filter assembly run in
+/// [`StrategyPreviewService`].
 pub async fn preview(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = StrategyPreviewService::new(ctx.data.clone());
 
     let body: PreviewRequest = match req.json().await {
         Ok(b) => b,
@@ -25,7 +31,7 @@ pub async fn preview(mut req: Request, ctx: RouteContext<Store>) -> Result<Respo
         Err(e) => return json_err(400, &format!("invalid condition: {e}")),
     };
 
-    // Build a temporary rule for scoring
+    // Build a temporary rule for scoring (preview doesn't persist a rule)
     let rule = rules::Rule {
         name: "preview".into(),
         audience_tag: "default".into(),
@@ -33,47 +39,25 @@ pub async fn preview(mut req: Request, ctx: RouteContext<Store>) -> Result<Respo
         score_delta: body.score_delta,
     };
 
-    // Fetch recent articles (max 500, default 100)
-    let articles = match store.recent_articles_for_preview(100).await {
-        Ok(a) => a,
-        Err(e) => return crate::json_err_internal(&e.to_string()),
-    };
-
-    let total = articles.len() as i64;
-
     // Build a human-readable match reason from the condition
     let match_reason = describe_condition(&condition);
 
-    let mut matched_items: Vec<PreviewMatch> = Vec::new();
-    let mut matched_count: i64 = 0;
+    // Fetch recent articles and score them (max 500, default 100)
+    let result = service
+        .preview(100, body.signal_type, match_reason, |article| {
+            let input = ArticleInput {
+                title: &article.title,
+                summary: &article.ai_summary,
+                feed_url: "", // preview doesn't need feed_url matching
+            };
+            score(&input, std::slice::from_ref(&rule), "default")
+        })
+        .await;
 
-    for article in &articles {
-        let input = ArticleInput {
-            title: &article.title,
-            summary: &article.ai_summary,
-            feed_url: "", // preview doesn't need feed_url matching
-        };
-        let result = score(&input, std::slice::from_ref(&rule), "default");
-        if result != 0.0 {
-            matched_count += 1;
-            matched_items.push(PreviewMatch {
-                id: article.id,
-                title: article.title.clone(),
-                url: article.url.clone(),
-                published_at: article.published_at,
-                feed_name: article.feed_name.clone(),
-                score_change: result,
-                matched_reason: match_reason.clone(),
-            });
-        }
+    match result {
+        Ok(preview) => json_ok(serde_json::json!(preview)),
+        Err(e) => crate::json_err_internal(&e.to_string()),
     }
-
-    json_ok(serde_json::json!(PreviewResult {
-        total,
-        matched: matched_count,
-        signal_type: body.signal_type,
-        items: matched_items,
-    }))
 }
 
 /// Produce a human-readable description of the condition.

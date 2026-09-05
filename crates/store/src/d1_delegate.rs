@@ -288,6 +288,9 @@ impl ArticleQueryService for crate::D1Store {
     async fn get_raw_content_key(&self, article_id: i64) -> Result<Option<String>, StoreError> {
         crate::D1Store::get_raw_content_key(self, article_id).await
     }
+    async fn recent_articles_for_preview(&self, limit: u32) -> Result<Vec<ArticleDetail>, StoreError> {
+        crate::D1Store::recent_articles_for_preview(self, limit).await
+    }
     async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
         crate::D1Store::categories_summary(self).await
     }

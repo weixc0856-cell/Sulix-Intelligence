@@ -495,6 +495,9 @@ impl ArticleQueryService for MemoryStore {
     async fn get_raw_content_key(&self, _article_id: i64) -> Result<Option<String>, StoreError> {
         Ok(None)
     }
+    async fn recent_articles_for_preview(&self, _limit: u32) -> Result<Vec<ArticleDetail>, StoreError> {
+        Ok(Vec::new())
+    }
     async fn categories_summary(&self) -> Result<Vec<(String, i64)>, StoreError> {
         Ok(Vec::new())
     }
