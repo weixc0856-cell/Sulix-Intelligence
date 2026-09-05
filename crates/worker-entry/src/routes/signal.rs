@@ -9,7 +9,7 @@
 use infrastructure::signal_repository::D1SignalQuery;
 use serde_json::json;
 use signal_engine::query::SignalQueryService;
-use store::D1Store;
+use store::Store;
 use worker::*;
 
 use super::response;
@@ -20,20 +20,13 @@ use super::response;
 /// timeline with stored signal_events, adds the rule-based summary. The event
 /// log is intentionally left unset (as the migrated api handler did), so the
 /// D1 `signal_events` fallback is the timeline source — no behaviour change.
-pub(crate) async fn thread_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn thread_detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid thread id"),
     };
 
-    let db = match ctx.env.d1("DB") {
-        Ok(db) => db,
-        Err(e) => {
-            console_log!("[signal] D1 binding failed: {e}");
-            return response::json_err(503, "service unavailable");
-        }
-    };
-    let store = D1Store::new(db);
+    let store = ctx.data.clone();
     let query = D1SignalQuery::new(&store);
     let qs = SignalQueryService::new(&query);
 
@@ -50,20 +43,13 @@ pub(crate) async fn thread_detail(_req: Request, ctx: RouteContext<()>) -> Resul
 /// GET /api/intelligence/entities/:id/signals — signal threads for an entity.
 ///
 /// Returns thread-level summaries from the SignalQueryService read model.
-pub(crate) async fn entities_signals(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn entities_signals(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid entity id"),
     };
 
-    let db = match ctx.env.d1("DB") {
-        Ok(db) => db,
-        Err(e) => {
-            console_log!("[signal] D1 binding failed: {e}");
-            return response::json_err(503, "service unavailable");
-        }
-    };
-    let store = D1Store::new(db);
+    let store = ctx.data.clone();
     let query = D1SignalQuery::new(&store);
     let qs = SignalQueryService::new(&query);
 
@@ -77,6 +63,6 @@ pub(crate) async fn entities_signals(_req: Request, ctx: RouteContext<()>) -> Re
 }
 
 /// GET /api/intelligence/entities/:id/threads — semantic alias for `signals`.
-pub(crate) async fn entities_threads(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn entities_threads(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     entities_signals(req, ctx).await
 }

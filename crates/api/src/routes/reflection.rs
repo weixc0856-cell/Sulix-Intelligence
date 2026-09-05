@@ -8,7 +8,7 @@ use reflection_engine::generator::RealReflectionGenerator;
 use reflection_engine::{ReflectionEngine, ReflectionJob, ReflectionTrigger};
 use serde_json::json;
 use shared_kernel::event_log::EventLog;
-use store::D1Store;
+use store::{D1Store, Store};
 use worker::*;
 
 type ReflectionEngineType = ReflectionEngine<
@@ -18,18 +18,18 @@ type ReflectionEngineType = ReflectionEngine<
     D1ArtifactRegistry<D1Store, R2Store>,
 >;
 
-fn build_engine(env: &Env) -> Result<ReflectionEngineType> {
+fn build_engine(env: &Env, store: D1Store) -> Result<ReflectionEngineType> {
     let r2_bucket = env.bucket("RAW_CONTENT")?;
     let r2_store = R2Store::new(r2_bucket);
-    let event_log: Box<dyn EventLog> = match (env.d1("DB").ok(), env.bucket("RAW_CONTENT").ok()) {
-        (Some(db), Some(_bucket)) => Box::new(EventStoreLog::new(Box::new(EventR2Backend::new(
-            D1Store::new(db),
+    let event_log: Box<dyn EventLog> = match env.bucket("RAW_CONTENT").ok() {
+        Some(_bucket) => Box::new(EventStoreLog::new(Box::new(EventR2Backend::new(
+            store.clone(),
             R2Store::new(env.bucket("RAW_CONTENT")?),
         )))),
         _ => Box::new(EventStoreLog::new(Box::new(NoopEventStore::new()))),
     };
-    let artifact_registry = D1ArtifactRegistry::new(D1Store::new(env.d1("DB")?), r2_store);
-    let repository = D1ReflectionRepository::new(D1Store::new(env.d1("DB")?));
+    let artifact_registry = D1ArtifactRegistry::new(store.clone(), r2_store);
+    let repository = D1ReflectionRepository::new(store);
 
     let provider = try_build_reflection_provider(env);
     let generator = RealReflectionGenerator::new(provider);
@@ -96,13 +96,13 @@ impl model_runtime::HttpClient for WorkerHttpClient {
 }
 
 /// POST /api/intelligence/decisions/:id/reflect
-pub async fn reflect(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn reflect(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let decision_id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let engine = match build_engine(&ctx.env) {
+    let engine = match build_engine(&ctx.env, ctx.data.clone()) {
         Ok(e) => e,
         Err(_) => return response::json_err(503, "service unavailable"),
     };

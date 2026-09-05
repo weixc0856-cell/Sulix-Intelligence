@@ -51,7 +51,7 @@ async fn read_briefing_from_r2(env: &Env, date: &str) -> Option<serde_json::Valu
     Some(envelope.content)
 }
 
-pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let date = fmt_date_ymd((js_sys::Date::now() / 1000.0) as i64);
     let cache_key = format!("briefing:{date}");
 
@@ -73,13 +73,7 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Resp
     }
 
     // 3. R2 miss — D1 legacy fallback
-    let store = match ctx.env.d1("DB") {
-        Ok(db) => Store::new(db),
-        Err(e) => {
-            console_log!("[briefing] d1_binding_failed date={} error={:?}", date, e);
-            return json_err(503, "Briefing temporarily unavailable");
-        }
-    };
+    let store = ctx.data.clone();
 
     match store.load_today_briefing(&date).await {
         Ok(Some(content)) => match serde_json::from_str::<serde_json::Value>(&content) {
@@ -106,8 +100,8 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Resp
 }
 
 /// GET /api/intelligence/briefings — list all historical briefings.
-pub async fn list_briefings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn list_briefings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     match store.list_briefings().await {
         Ok(briefings) => json_ok(serde_json::json!({ "success": true, "briefings": briefings })),
         Err(e) => json_err_internal(&e.to_string()),
@@ -115,8 +109,8 @@ pub async fn list_briefings(_req: Request, ctx: RouteContext<()>) -> Result<Resp
 }
 
 /// GET /api/intelligence/briefings/:id — single historical briefing.
-pub async fn get_briefing(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn get_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid briefing id"),

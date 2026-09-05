@@ -12,8 +12,8 @@ use application::EntityService;
 use store::Store;
 use worker::*;
 
-pub async fn entities_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
+pub async fn entities_list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let service = EntityService::new(ctx.data.clone());
     let url = req.url()?;
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
@@ -29,8 +29,8 @@ pub async fn entities_list(req: Request, ctx: RouteContext<()>) -> Result<Respon
     }
 }
 
-pub async fn entities_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
+pub async fn entities_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let service = EntityService::new(ctx.data.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
@@ -43,8 +43,8 @@ pub async fn entities_get(_req: Request, ctx: RouteContext<()>) -> Result<Respon
     }
 }
 
-pub async fn entities_get_relations(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
+pub async fn entities_get_relations(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let service = EntityService::new(ctx.data.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
@@ -57,8 +57,8 @@ pub async fn entities_get_relations(_req: Request, ctx: RouteContext<()>) -> Res
 }
 
 /// GET /api/intelligence/entities/:id/activity
-pub async fn entities_activity(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
+pub async fn entities_activity(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let service = EntityService::new(ctx.data.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
@@ -73,8 +73,8 @@ pub async fn entities_activity(_req: Request, ctx: RouteContext<()>) -> Result<R
 }
 
 /// GET /api/intelligence/entities/:id/articles
-pub async fn entities_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
+pub async fn entities_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let service = EntityService::new(ctx.data.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),

@@ -2,6 +2,7 @@ use worker::*;
 
 use crate::jobs::ingestion;
 use api::router;
+use store::Store;
 
 pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     console_error_panic_hook::set_once();
@@ -12,11 +13,20 @@ pub(crate) async fn handle(req: Request, env: Env, _ctx: Context) -> Result<Resp
             Err(e) => Response::error(format!("cron failed: {e}"), 500),
         }
     } else {
-        // Composition-root route injection: internal routes that require
-        // adapters/state owned by worker-entry are registered here on the api
-        // router (a consuming builder). Only HTTP composition/wiring lives in
+        // Composition root: the HTTP runtime builds the D1-backed Store once and
+        // injects it via Router::with_data so handlers read ctx.data instead of
+        // constructing their own Store::new(env.d1(...)). Internal routes that
+        // require adapters/state owned by worker-entry are registered here on the
+        // api router (a consuming builder). Only HTTP composition/wiring lives in
         // worker-entry — the handlers delegate to application services.
-        let result = router()
+        let store = match env.d1("DB") {
+            Ok(db) => Store::new(db),
+            Err(e) => {
+                console_log!("[http] D1 binding failed: {e}");
+                return Response::error("D1 unavailable", 503);
+            }
+        };
+        let result = router(store)
             .post_async("/api/internal/context", crate::routes::context::internal_context)
             .post_async("/api/internal/agent/run", crate::routes::agent::run)
             // Signal read-model routes migrated out of api (P3 Round 2) — they

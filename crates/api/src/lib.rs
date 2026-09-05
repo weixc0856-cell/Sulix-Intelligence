@@ -27,8 +27,8 @@ mod services;
 mod shared;
 mod strategies;
 
-pub fn router() -> Router<'static, ()> {
-    Router::new()
+pub fn router(store: Store) -> Router<'static, Store> {
+    Router::with_data(store)
         // CORS preflight
         .options_async("/api/*path", routes::system::cors_preflight)
         // Health / debug

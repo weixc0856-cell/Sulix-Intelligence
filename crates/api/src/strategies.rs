@@ -11,8 +11,8 @@ use worker::*;
 ///
 /// Accepts a strategy condition + score_delta, evaluates against recent
 /// articles, and returns matched items with human-readable match reasons.
-pub async fn preview(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn preview(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
 
     let body: PreviewRequest = match req.json().await {
         Ok(b) => b,

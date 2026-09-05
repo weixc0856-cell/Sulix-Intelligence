@@ -29,8 +29,8 @@ struct TakedownStatusBody {
 /// POST /api/compliance/takedown
 /// Submit a takedown request. If article_id is provided, immediately
 /// blocks article serving via visibility override.
-pub async fn submit_takedown(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let body: SubmitTakedownBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
@@ -58,8 +58,8 @@ pub async fn submit_takedown(mut req: Request, ctx: RouteContext<()>) -> Result<
 
 /// GET /api/compliance/takedowns
 /// List all takedown requests (admin).
-pub async fn list_takedowns(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
 
     let status_filter =
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
@@ -80,8 +80,8 @@ pub async fn list_takedowns(req: Request, ctx: RouteContext<()>) -> Result<Respo
 
 /// PUT /api/compliance/takedowns/:id/status
 /// Update takedown status (admin).
-pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid takedown id"),

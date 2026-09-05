@@ -15,8 +15,8 @@ use store::Store;
 
 use crate::shared::{params, response};
 
-pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let status_filter =
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
     match store.all_feeds(status_filter.as_deref()).await {
@@ -25,8 +25,8 @@ pub(crate) async fn feeds_list(req: Request, ctx: RouteContext<()>) -> Result<Re
     }
 }
 
-pub(crate) async fn feeds_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn feeds_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -46,8 +46,8 @@ struct CreateFeedBody {
     fetch_interval_sec: Option<i64>,
 }
 
-pub(crate) async fn feeds_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn feeds_create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let body: CreateFeedBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid JSON body"),
@@ -102,8 +102,8 @@ struct UpdateFeedBody {
     status: Option<String>,
 }
 
-pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -136,8 +136,8 @@ pub(crate) async fn feeds_update(mut req: Request, ctx: RouteContext<()>) -> Res
     }
 }
 
-pub(crate) async fn feeds_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn feeds_delete(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

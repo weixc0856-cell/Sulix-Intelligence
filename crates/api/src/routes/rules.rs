@@ -12,16 +12,16 @@ use serde::Deserialize;
 use store::Store;
 use worker::*;
 
-pub(crate) async fn rules_list(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn rules_list(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     match store.list_rules().await {
         Ok(list) => response::json_ok(serde_json::json!({"rules": list})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
-pub(crate) async fn rules_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn rules_get(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -42,8 +42,8 @@ struct CreateRuleBody {
     score_delta: Option<f64>,
 }
 
-pub(crate) async fn rules_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn rules_create(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let body: CreateRuleBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid JSON body"),
@@ -98,8 +98,8 @@ struct UpdateRuleBody {
     signal_type: Option<Option<String>>,
 }
 
-pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),
@@ -144,8 +144,8 @@ pub(crate) async fn rules_update(mut req: Request, ctx: RouteContext<()>) -> Res
     }
 }
 
-pub(crate) async fn rules_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn rules_delete(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "invalid id"),

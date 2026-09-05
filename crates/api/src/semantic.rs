@@ -18,7 +18,7 @@ struct SemanticSearchRequest {
     limit: Option<u32>,
 }
 
-pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn semantic_search(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let body: SemanticSearchRequest = match req.json().await {
         Ok(b) => b,
         Err(_) => return json_err(400, "invalid JSON body"),
@@ -27,7 +27,7 @@ pub async fn semantic_search(mut req: Request, ctx: RouteContext<()>) -> Result<
         return json_err(400, "missing query 'q'");
     }
 
-    let store = Store::new(ctx.env.d1("DB")?);
+    let store = ctx.data.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
         Err(e) => return crate::json_err_internal(&format!("VECTORIZE binding: {e}")),

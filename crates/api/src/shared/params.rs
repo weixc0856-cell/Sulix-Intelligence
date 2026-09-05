@@ -9,7 +9,7 @@ pub(crate) fn parse_offset(url: &Url) -> u32 {
     url.query_pairs().find(|(k, _)| k == "offset").and_then(|(_, v)| v.parse().ok()).unwrap_or(0)
 }
 
-pub(crate) fn param_i64(ctx: &RouteContext<()>, name: &str) -> Option<i64> {
+pub(crate) fn param_i64<D>(ctx: &RouteContext<D>, name: &str) -> Option<i64> {
     ctx.param(name)?.parse().ok()
 }
 

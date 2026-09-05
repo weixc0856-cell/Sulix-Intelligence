@@ -9,8 +9,8 @@ use store::Store;
 use crate::shared::response;
 
 /// GET /api/claims/:id — Claim detail with evidence.
-pub async fn detail_with_evidence(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn detail_with_evidence(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid claim id"),

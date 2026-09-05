@@ -14,8 +14,8 @@ use crate::shared::{params, response};
 /// Returns a render-ready node+edge projection of recent decisions,
 /// their associated signals, and outcomes.
 /// Query params: `?limit=20`
-pub async fn decision_graph(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn decision_graph(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let service = application::GraphProjectionService::new(store);
     let url = req.url()?;
     let limit = params::parse_limit(&url);
@@ -32,10 +32,10 @@ pub async fn decision_graph(req: Request, ctx: RouteContext<()>) -> Result<Respo
 /// POST /api/projections/decision-graph/{id}/expand
 ///
 /// Expand a node to reveal its neighbors. Returns additional nodes and edges.
-pub async fn expand(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub async fn expand(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     use application::ExpandRequest;
 
-    let store = Store::new(ctx.env.d1("DB")?);
+    let store = ctx.data.clone();
     let service = application::GraphProjectionService::new(store);
 
     let node_id = match ctx.param("id") {

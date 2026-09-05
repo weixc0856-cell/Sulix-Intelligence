@@ -18,8 +18,8 @@ use crate::shared::response;
 /// Uses the RadarProjectionService with batch queries (3 total D1 calls
 /// instead of the previous 1+3N pattern) to return active signal threads
 /// with health scores, evidence counts, and related entities.
-pub async fn radar(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn radar(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let projection = application::RadarProjectionService::new(store);
 
     match projection.build(20).await {
@@ -35,8 +35,8 @@ pub async fn radar(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
 ///
 /// Returns the full SignalDetail DTO for human investigation:
 /// thread metadata, health, timeline, evidence, entities, related signals.
-pub async fn signal_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = crate::Store::new(ctx.env.d1("DB")?);
+pub async fn signal_detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal id"),
@@ -56,8 +56,8 @@ pub async fn signal_detail(_req: Request, ctx: RouteContext<()>) -> Result<Respo
 ///
 /// Returns provenance summary for a signal: evidence sources, observation count,
 /// and confidence. Uses batch resolution: evidence article IDs → feed IDs → sources.
-pub async fn signal_provenance(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = crate::Store::new(ctx.env.d1("DB")?);
+pub async fn signal_provenance(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal id"),

@@ -5,7 +5,7 @@ use agent_engine::types::{AgentRequest, ContextResult};
 use context_engine::builder::ContextBuilder;
 use infrastructure::context_repository::D1ContextRepository;
 use model_runtime::{build_provider, ModelRuntimeConfig};
-use store::D1Store;
+use store::{D1Store, Store};
 use worker::*;
 
 use super::response;
@@ -32,19 +32,13 @@ fn try_build_provider(env: &Env) -> Option<Box<dyn model_runtime::ModelProvider>
 }
 
 /// POST /api/internal/agent/run
-pub(crate) async fn run(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn run(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let body: AgentRequest = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    let store = match ctx.env.d1("DB") {
-        Ok(db) => D1Store::new(db),
-        Err(e) => {
-            console_log!("[agent] D1 binding failed: {e}");
-            return response::json_err(503, "service unavailable");
-        }
-    };
+    let store = ctx.data.clone();
 
     let provider: Box<dyn model_runtime::ModelProvider> =
         try_build_provider(&ctx.env).unwrap_or_else(|| Box::new(model_runtime::NoopProvider::new()));

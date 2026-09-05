@@ -6,7 +6,7 @@ use store::Store;
 
 use crate::shared::{params, response};
 
-pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let url = req.url()?;
     let tag: Option<String> = url.query_pairs().find(|(k, _)| k == "tag").map(|(_, v)| v.to_string());
     let category: Option<String> = url.query_pairs().find(|(k, _)| k == "category").map(|(_, v)| v.to_string());
@@ -21,7 +21,7 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Resu
                 return Ok(resp);
             }
         }
-        let store = Store::new(ctx.env.d1("DB")?);
+        let store = ctx.data.clone();
         let total = store.article_count().await.unwrap_or(0);
         match store.latest_articles(30, 0).await {
             Ok(a) => {
@@ -34,7 +34,7 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Resu
             Err(e) => response::json_err_internal(&e.to_string()),
         }
     } else {
-        let store = Store::new(ctx.env.d1("DB")?);
+        let store = ctx.data.clone();
         if let Some(ref tag) = tag {
             return match store.articles_by_tag(tag, limit, offset).await {
                 Ok(a) => response::json_ok(json!({"articles": a, "limit": limit, "offset": offset})),
@@ -55,7 +55,7 @@ pub(crate) async fn latest_articles(req: Request, ctx: RouteContext<()>) -> Resu
     }
 }
 
-pub(crate) async fn search_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+pub(crate) async fn search_articles(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
     let db = ctx.env.d1("DB")?;
     let search = D1FtsSearch::new(&db);
     let url = req.url()?;
@@ -77,8 +77,8 @@ pub(crate) async fn search_articles(req: Request, ctx: RouteContext<()>) -> Resu
     }
 }
 
-pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -104,8 +104,8 @@ pub(crate) async fn article_detail(_req: Request, ctx: RouteContext<()>) -> Resu
     }
 }
 
-pub(crate) async fn article_content(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn article_content(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -144,8 +144,8 @@ pub(crate) async fn article_content(_req: Request, ctx: RouteContext<()>) -> Res
     }
 }
 
-pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let ids_param = req
         .url()
         .ok()
@@ -161,8 +161,8 @@ pub(crate) async fn articles_batch(req: Request, ctx: RouteContext<()>) -> Resul
     }
 }
 
-pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -173,8 +173,8 @@ pub(crate) async fn article_adjacent(_req: Request, ctx: RouteContext<()>) -> Re
     }
 }
 
-pub(crate) async fn article_related(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn article_related(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let id = match params::param_i64(&ctx, "id") {
         Some(v) => v,
         None => return response::json_err(400, "missing id"),
@@ -185,8 +185,8 @@ pub(crate) async fn article_related(_req: Request, ctx: RouteContext<()>) -> Res
     }
 }
 
-pub(crate) async fn trending(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub(crate) async fn trending(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let url = req.url()?;
     let limit = params::parse_limit(&url);
     let offset = params::parse_offset(&url);

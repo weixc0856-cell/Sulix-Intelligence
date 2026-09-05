@@ -20,8 +20,8 @@ pub struct ConfidenceHistoryResponse {
 ///
 /// 返回某实体的置信度历史变化轨迹。
 /// entity_type: "decision" | "signal" | "claim"
-pub async fn history(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn history(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
 
     let entity_type = match ctx.param("entity_type") {
         Some(v) => v.to_string(),

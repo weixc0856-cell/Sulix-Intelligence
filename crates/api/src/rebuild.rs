@@ -12,8 +12,8 @@ use store::Store;
 use vectorize::{VectorMetadata, VectorRecord, VectorizeIndex};
 use worker::*;
 
-pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+pub async fn rebuild_embeddings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
+    let store = ctx.data.clone();
     let vectorize = match ctx.env.get_binding::<VectorizeIndex>("VECTORIZE") {
         Ok(v) => v,
         Err(e) => return json_err_internal(&format!("VECTORIZE binding: {e}")),
