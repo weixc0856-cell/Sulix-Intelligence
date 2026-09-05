@@ -72,15 +72,18 @@ migrate → after tests；fmt/clippy/wasm 绿。
 | 2 | `5a9ce4a` | context 1 | `ContextSnapshotStore` | context_repository（→ DecisionQueryService 等） |
 | 3 | `6f0b572` | reflection 3 | `ReflectionPersistence` | reflection_repository（+ swap decision read slices） |
 | 4 | `f6dcbda` | signal 8（B1–B3 后余量） | `SignalStore` | signal_repository（`SignalStore`/`+ArticleQueryService`/`+SignalQueryService`）+ event-store d1_backend |
+| 5 | `c4682a5` | 17 死/仅具体消费方法（expire_old_articles、artifact put/get、claim/observation/confidence/source 全套） | — | — |
 
-`StoreBackend` body 方法数 45→36，仅剩：rules / article 生命周期 / feed / entity 别名 /
-decision+outcome+evaluation / artifact registry / claim / observation / confidence / source。
-测试 **333 passed / 0 failed**（不降）；guard 空表；fmt/clippy/wasm 全绿。已 port 上下文无
-generic `StoreBackend` 消费方残留。decision 上下文仍未动（§5 GATED）。
+`StoreBackend` body 方法数 45→36→**19**（2026-09-05 Phase B batch 5，已 push）。Batch 0–5 后仅剩：
+rules（active_rule_jsons）/ article 生命周期（insert_article, set_ai_summary, set_raw_content_r2_key）/
+feed（record_fetch_result）/ entity 别名（upsert_entity, link_article_entity, link_entity_relation）/
+**decision+outcome+evaluation 8 方法（§5 GATED）** / artifact registry 3 方法。11 个非 decision 方法仍由
+3 个 generic `S: StoreBackend` 消费方持有：article_persistence、artifact_registry、worker-entry
+`FeedContext<S: StoreBackend>`（仅具体 store 构造处使用，见 §3）。
+测试 **333 passed / 0 failed**（不降）；guard 空表；fmt/clippy/wasm 全绿。
 
-**下一步**：Phase B（§3）前需先把 remaining-domain（decision/claim/observation/confidence/source/
-artifact/article/entity/feed/rules）的 infra adapter 从 `S: StoreBackend` 收窄到对应 repo/query 小 trait
-（多数已有），再删 supertrait 定义。
+**下一步**：Phase B 续（§3）收窄上述 3 个 generic adapter → 目标 `StoreBackend` 只余 8 个 decision
+方法（GATED 不动），随后 Phase C（P7 cargo-metadata 守卫）。
 
 ---
 
