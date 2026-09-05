@@ -8,16 +8,17 @@
 //! - `GET /api/intelligence/entities/:id/relations`        — related entities
 
 use crate::{json_err, json_err_internal, json_ok, param_i64, parse_limit, parse_offset};
+use application::EntityService;
 use store::Store;
 use worker::*;
 
 pub async fn entities_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
     let url = req.url()?;
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
 
-    match store.list_entities(limit, offset).await {
+    match service.list(limit, offset).await {
         Ok(entities) => json_ok(serde_json::json!({
             "success": true,
             "entities": entities,
@@ -29,13 +30,13 @@ pub async fn entities_list(req: Request, ctx: RouteContext<()>) -> Result<Respon
 }
 
 pub async fn entities_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
     };
 
-    match store.entity_detail(id).await {
+    match service.get(id).await {
         Ok(Some(entity)) => json_ok(serde_json::json!({ "success": true, "entity": entity })),
         Ok(None) => json_err(404, "entity not found"),
         Err(e) => json_err_internal(&e.to_string()),
@@ -43,13 +44,13 @@ pub async fn entities_get(_req: Request, ctx: RouteContext<()>) -> Result<Respon
 }
 
 pub async fn entities_get_relations(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
     };
 
-    match store.entity_relations(id, 50).await {
+    match service.relations(id, 50).await {
         Ok(relations) => json_ok(serde_json::json!({ "success": true, "relations": relations })),
         Err(e) => json_err_internal(&e.to_string()),
     }
@@ -57,14 +58,15 @@ pub async fn entities_get_relations(_req: Request, ctx: RouteContext<()>) -> Res
 
 /// GET /api/intelligence/entities/:id/activity
 pub async fn entities_activity(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
     };
+    // The clock is read here (js_sys); the 7-day window is owned by the service.
     let now = (js_sys::Date::now() / 1000.0) as i64;
 
-    match store.entity_activity_summary(id, now, 7).await {
+    match service.activity(id, now).await {
         Ok(summary) => json_ok(serde_json::json!({ "success": true, "activity": summary, "entity_id": id })),
         Err(e) => json_err_internal(&e.to_string()),
     }
@@ -72,7 +74,7 @@ pub async fn entities_activity(_req: Request, ctx: RouteContext<()>) -> Result<R
 
 /// GET /api/intelligence/entities/:id/articles
 pub async fn entities_articles(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = EntityService::new(Store::new(ctx.env.d1("DB")?));
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid entity id"),
@@ -81,7 +83,7 @@ pub async fn entities_articles(req: Request, ctx: RouteContext<()>) -> Result<Re
     let limit = parse_limit(&url);
     let offset = parse_offset(&url);
 
-    match store.entity_articles(id, limit, offset).await {
+    match service.articles(id, limit, offset).await {
         Ok(articles) => json_ok(serde_json::json!({
             "success": true,
             "articles": articles,

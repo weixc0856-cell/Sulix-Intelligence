@@ -20,4 +20,5 @@ pub use provenance::{get_lineage, ProvenanceChain, ProvenanceNode};
 pub use radar::RadarProjectionService;
 pub use semantic_search::SemanticSearchService;
 pub use services::decision::DecisionService;
+pub use services::entities::EntityService;
 pub use services::sources::SourceService;
