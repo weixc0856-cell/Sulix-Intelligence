@@ -1,11 +1,11 @@
 //! Compliance application service — the takedown use-cases (submit / list /
 //! update-status) under `/api/compliance/*`.
 //!
-//! Generic over the narrow [`store::TakedownStore`] seam.  Request-shape
+//! Generic over the narrow [`domain::TakedownStore`] seam.  Request-shape
 //! validation (field presence, id/status formats) stays in the route layer;
 //! this service owns the persistence orchestration the routes delegate to.
 
-use store::StoreError;
+use domain::StoreError;
 
 /// Application service for the takedown/compliance use-cases.
 pub struct ComplianceService<S> {
@@ -14,7 +14,7 @@ pub struct ComplianceService<S> {
 
 impl<S> ComplianceService<S>
 where
-    S: store::TakedownStore,
+    S: domain::TakedownStore,
 {
     /// Wrap a store (or store-backed repository) in the service.
     pub fn new(store: S) -> Self {

@@ -9,7 +9,6 @@ workspace = true
 
 [dependencies]
 domain = { workspace = true }
-store = { workspace = true }
 decision-engine = { workspace = true }
 shared-kernel = { workspace = true }
 serde = { workspace = true }
@@ -17,5 +16,6 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
+store = { workspace = true }
 futures = { workspace = true, features = ["executor"] }
 infrastructure = { workspace = true }

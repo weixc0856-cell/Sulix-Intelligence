@@ -16,7 +16,7 @@ pub struct SemanticSearchCmd {
 
 /// One search hit.
 pub struct SemanticSearchHit {
-    pub article: store::Article,
+    pub article: domain::Article,
     pub similarity: f64,
 }
 
@@ -33,8 +33,8 @@ impl SemanticSearchResult {
 
 /// Service that orchestrates the semantic search pipeline.
 ///
-/// Generic over `S: StoreBackend` so it can be unit-tested with
-/// `MemoryStore` and used in production with `D1Store`.
+/// Generic over `S: ArticleQueryService` so it can be unit-tested with
+/// `MemoryStore` and used in production with the D1 store.
 pub struct SemanticSearchService<S> {
     #[allow(dead_code)]
     store: S,
@@ -48,7 +48,7 @@ impl<S> SemanticSearchService<S> {
 
 impl<S> SemanticSearchService<S>
 where
-    S: store::ArticleQueryService,
+    S: domain::ArticleQueryService,
 {
     /// Execute a semantic search: embed query → ANN → D1 enrich.
     ///

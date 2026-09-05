@@ -14,7 +14,7 @@
 //! - 1: batch evidence (WHERE signal_id IN (subquery))
 //! - 1: batch entities (WHERE source/target_entity_id IN (...))
 
-use store::{RelatedEntityRef, StoreError};
+use domain::{RelatedEntityRef, StoreError};
 
 /// A single radar signal item with full health, evidence, and entity data.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -30,9 +30,9 @@ pub struct RadarSignalItem {
     pub anchor_entity: Option<String>,
     pub signal_key: String,
     /// Enriched breakdown (derived from health_score / current_score).
-    pub health: store::SignalHealth,
+    pub health: domain::SignalHealth,
     /// Evidence summary (from batch-loaded data).
-    pub evidence: store::SignalEvidenceSummary,
+    pub evidence: domain::SignalEvidenceSummary,
     /// Related entities (from batch-loaded data).
     pub related: Vec<RelatedEntityRef>,
     pub first_seen_at: i64,
@@ -101,7 +101,7 @@ impl<S> RadarProjectionService<S> {
 
 impl<S> RadarProjectionService<S>
 where
-    S: store::SignalQueryService + store::BatchSignalQueryService,
+    S: domain::SignalQueryService + domain::BatchSignalQueryService,
 {
     /// Build the radar projection using batch-loaded evidence and entities.
     ///
@@ -139,9 +139,9 @@ where
                     source_count: t.source_count,
                     anchor_entity: t.anchor_entity,
                     signal_key: t.signal_key,
-                    health: store::SignalHealth {
+                    health: domain::SignalHealth {
                         score: t.health_score,
-                        breakdown: store::SignalHealthBreakdown {
+                        breakdown: domain::SignalHealthBreakdown {
                             activity: t.current_score.max(0.0),
                             diversity: (entity_count as f64 / 10.0).min(1.0),
                             quality: (t.health_score * 0.7 + t.current_score * 0.3).min(1.0),
@@ -154,7 +154,7 @@ where
                             },
                         },
                     },
-                    evidence: store::SignalEvidenceSummary {
+                    evidence: domain::SignalEvidenceSummary {
                         articles: evidence_count,
                         sources: t.source_count,
                         avg_score: articles_score,

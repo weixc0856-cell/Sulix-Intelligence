@@ -1,11 +1,11 @@
 //! Confidence-history application service — read-only access to the append-only
 //! 置信度演化追踪 for a single entity (decision / signal / claim).
 //!
-//! Generic over the narrowest store surface — [`store::ConfidenceRepository`].
+//! Generic over the narrowest store surface — [`domain::ConfidenceRepository`].
 //! Contains zero Worker / HTTP / `js_sys` code; the HTTP layer parses the path
 //! params and delegates the orchestration here.
 
-use store::{ConfidenceEvent, StoreError};
+use domain::{ConfidenceEvent, StoreError};
 
 /// Application service for confidence-history read use-cases.
 pub struct ConfidenceService<S> {
@@ -14,7 +14,7 @@ pub struct ConfidenceService<S> {
 
 impl<S> ConfidenceService<S>
 where
-    S: store::ConfidenceRepository,
+    S: domain::ConfidenceRepository,
 {
     /// Wrap a store (or store-backed repository) in the service.
     pub fn new(store: S) -> Self {
@@ -30,8 +30,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use domain::{ConfidenceRepository, NewConfidenceEvent};
     use store::memory::MemoryStore;
-    use store::{ConfidenceRepository, NewConfidenceEvent};
 
     fn seed(store: &MemoryStore, entity_type: &str, entity_id: &str, confidence: f64) {
         futures::executor::block_on(store.append_confidence(&NewConfidenceEvent {

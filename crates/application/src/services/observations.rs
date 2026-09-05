@@ -1,11 +1,11 @@
 //! Observation application service — read-only access to structured observation
 //! records and their lineage chain (Source → Observation).
 //!
-//! Generic over the narrowest store surface — [`store::ObservationQueryService`]
-//! for listing, [`store::ObservationRepository`] for row lookup and
-//! [`store::SourceRepository`] for registry-source resolution.
+//! Generic over the narrowest store surface — [`domain::ObservationQueryService`]
+//! for listing, [`domain::ObservationRepository`] for row lookup and
+//! [`domain::SourceRepository`] for registry-source resolution.
 
-use store::{Observation, Source, StoreError};
+use domain::{Observation, Source, StoreError};
 
 /// Application service for Observation read use-cases.
 pub struct ObservationService<S> {
@@ -14,7 +14,7 @@ pub struct ObservationService<S> {
 
 impl<S> ObservationService<S>
 where
-    S: store::ObservationQueryService + store::ObservationRepository + store::SourceRepository,
+    S: domain::ObservationQueryService + domain::ObservationRepository + domain::SourceRepository,
 {
     /// Wrap a store (or store-backed repository/query pair) in the service.
     pub fn new(store: S) -> Self {

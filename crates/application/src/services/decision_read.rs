@@ -12,7 +12,7 @@
 //!
 //! Zero Worker / HTTP / `js_sys` code; unit-testable with `MemoryStore`.
 
-use store::{Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord, DecisionStats, OutcomeEvent, StoreError};
+use domain::{Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord, DecisionStats, OutcomeEvent, StoreError};
 
 /// One event on a decision's timeline.
 #[derive(Debug, serde::Serialize)]
@@ -85,12 +85,12 @@ pub struct DecisionReadService<S> {
 
 impl<S> DecisionReadService<S>
 where
-    S: store::DecisionQueryService
-        + store::DecisionRepository
-        + store::ReflectionPersistence
-        + store::SignalStore
-        + store::ConfidenceRepository
-        + store::DecisionRecordStore,
+    S: domain::DecisionQueryService
+        + domain::DecisionRepository
+        + domain::ReflectionPersistence
+        + domain::SignalStore
+        + domain::ConfidenceRepository
+        + domain::DecisionRecordStore,
 {
     /// Wrap a store (or store-backed query-service set) in the service.
     pub fn new(store: S) -> Self {

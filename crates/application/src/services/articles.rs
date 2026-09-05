@@ -2,13 +2,13 @@
 //! (latest / trending / batch / detail / adjacent / related / tag / category)
 //! that the API routes expose under `/api/articles`.
 //!
-//! Generic over the narrowest store surface — [`store::ArticleQueryService`]
-//! for the read model and [`store::SourceRepository`] for provenance
+//! Generic over the narrowest store surface — [`domain::ArticleQueryService`]
+//! for the read model and [`domain::SourceRepository`] for provenance
 //! resolution.  Zero Worker / HTTP / `js_sys` code.  `search_articles` is
 //! intentionally NOT here: it talks to D1 FTS directly and lives with the
 //! other infrastructure-facing HTTP routes in `worker-entry`.
 
-use store::{Article, ArticleDetail, ArticleProvenance, PendingArticle, SourceSummary, StoreError};
+use domain::{Article, ArticleDetail, ArticleProvenance, PendingArticle, SourceSummary, StoreError};
 
 /// Application service for Article read use-cases.
 pub struct ArticleService<S> {
@@ -17,7 +17,7 @@ pub struct ArticleService<S> {
 
 impl<S> ArticleService<S>
 where
-    S: store::ArticleQueryService + store::SourceRepository,
+    S: domain::ArticleQueryService + domain::SourceRepository,
 {
     /// Wrap a store (or store-backed query/repository pair) in the service.
     pub fn new(store: S) -> Self {

@@ -30,7 +30,7 @@ pub struct ProvenanceChain {
 /// Resolve the full lineage chain.
 ///
 /// Generic over any [`shared_kernel::lineage_query::LineageQuery`] implementation
-/// (D1Store for production, MemoryStore for tests).
+/// (concrete D1 store for production, MemoryStore for tests).
 pub async fn get_lineage(
     query: &impl shared_kernel::lineage_query::LineageQuery,
     artifact_type: &str,

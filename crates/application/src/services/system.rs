@@ -9,7 +9,7 @@
 //!
 //! Zero Worker / HTTP / `js_sys` code; unit-testable with `MemoryStore`.
 
-use store::{DayCount, Feed, FeedStats, HealthStats, ScoreDist, StoreError, TodaySignal};
+use domain::{DayCount, Feed, FeedStats, HealthStats, ScoreDist, StoreError, TodaySignal};
 
 /// Application service for the system/aggregation read use-cases.
 pub struct SystemService<S> {
@@ -18,7 +18,7 @@ pub struct SystemService<S> {
 
 impl<S> SystemService<S>
 where
-    S: store::FeedQueryService + store::ArticleQueryService + store::SignalQueryService,
+    S: domain::FeedQueryService + domain::ArticleQueryService + domain::SignalQueryService,
 {
     /// Wrap a store (or store-backed query-service set) in the service.
     pub fn new(store: S) -> Self {

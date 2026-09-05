@@ -6,8 +6,8 @@
 //! MVP scope: Signal → Decision → Outcome (Reflection/Memory/Strategy deferred).
 //! Not a graph database — a read-model Projection.
 
+use domain::StoreError;
 use serde::{Deserialize, Serialize};
-use store::StoreError;
 
 // ── Graph Response (Generic Projection Contract) ──
 
@@ -108,7 +108,7 @@ impl<S> GraphProjectionService<S> {
 
 impl<S> GraphProjectionService<S>
 where
-    S: store::DecisionQueryService + store::OutcomeQueryService,
+    S: domain::DecisionQueryService + domain::OutcomeQueryService,
 {
     /// Build the decision-centric graph projection.
     ///
@@ -125,10 +125,10 @@ where
         let decision_ids: Vec<i64> = decisions.iter().map(|d| d.id).collect();
 
         // Load outcomes for ALL decisions (batch approach)
-        let mut outcome_map: std::collections::HashMap<i64, Vec<store::OutcomeEvent>> =
+        let mut outcome_map: std::collections::HashMap<i64, Vec<domain::OutcomeEvent>> =
             std::collections::HashMap::new();
         for &did in &decision_ids {
-            if let Ok(outs) = <S as store::OutcomeQueryService>::list_outcomes(&self.store, did).await {
+            if let Ok(outs) = <S as domain::OutcomeQueryService>::list_outcomes(&self.store, did).await {
                 outcome_map.insert(did, outs);
             }
         }
@@ -229,7 +229,7 @@ pub struct ExpandResponse {
 
 impl<S> GraphProjectionService<S>
 where
-    S: store::DecisionRepository + store::OutcomeQueryService,
+    S: domain::DecisionRepository + domain::OutcomeQueryService,
 {
     /// Expand a node to reveal its neighbors (signals, outcomes, reflections).
     ///
@@ -266,7 +266,8 @@ where
                     });
 
                     // Load outcomes
-                    if let Ok(outcomes) = <S as store::OutcomeQueryService>::list_outcomes(&self.store, entity_id).await
+                    if let Ok(outcomes) =
+                        <S as domain::OutcomeQueryService>::list_outcomes(&self.store, entity_id).await
                     {
                         for o in &outcomes {
                             nodes.push(GraphNode {

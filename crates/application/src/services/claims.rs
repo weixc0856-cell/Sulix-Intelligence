@@ -2,10 +2,10 @@
 //! the Pipeline Agent, never through a public API, so this service is
 //! query-only.
 //!
-//! Generic over the narrowest store surface — [`store::ClaimRepository`] for the
-//! claim row and [`store::ClaimQueryService`] for the article-evidence links.
+//! Generic over the narrowest store surface — [`domain::ClaimRepository`] for the
+//! claim row and [`domain::ClaimQueryService`] for the article-evidence links.
 
-use store::{Claim, ClaimEvidence, StoreError};
+use domain::{Claim, ClaimEvidence, StoreError};
 
 /// Application service for the Claim detail use-case.
 pub struct ClaimService<S> {
@@ -14,7 +14,7 @@ pub struct ClaimService<S> {
 
 impl<S> ClaimService<S>
 where
-    S: store::ClaimRepository + store::ClaimQueryService,
+    S: domain::ClaimRepository + domain::ClaimQueryService,
 {
     /// Wrap a store (or store-backed repository/query pair) in the service.
     pub fn new(store: S) -> Self {
@@ -39,8 +39,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use domain::{ClaimRepository, NewClaim};
     use store::memory::MemoryStore;
-    use store::{ClaimRepository, NewClaim};
 
     fn seed(store: &MemoryStore, statement: &str) -> i64 {
         futures::executor::block_on(store.save_claim(&NewClaim {

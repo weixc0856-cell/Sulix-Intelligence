@@ -2,9 +2,9 @@
 //! `/api/.../trust` route exposes.
 //!
 //! Generic over the four store surfaces it reads:
-//! [`store::FeedQueryService`] (health), [`store::DecisionQueryService`]
-//! (decision stats), [`store::SourceQueryService`] (source registry) and
-//! [`store::MetricsStore`] (model / calibration / decision-outcome stats).
+//! [`domain::FeedQueryService`] (health), [`domain::DecisionQueryService`]
+//! (decision stats), [`domain::SourceQueryService`] (source registry) and
+//! [`domain::MetricsStore`] (model / calibration / decision-outcome stats).
 //!
 //! Every store read is best-effort: a failing metric simply reports a zero /
 //! empty baseline rather than failing the whole dashboard (mirrors the
@@ -13,7 +13,7 @@
 
 use serde_json::json;
 
-use store::{EvalSummary, Source};
+use domain::{EvalSummary, Source};
 
 /// Application service for the trust-dashboard use-case.
 pub struct TrustService<S> {
@@ -22,7 +22,7 @@ pub struct TrustService<S> {
 
 impl<S> TrustService<S>
 where
-    S: store::FeedQueryService + store::DecisionQueryService + store::SourceQueryService + store::MetricsStore,
+    S: domain::FeedQueryService + domain::DecisionQueryService + domain::SourceQueryService + domain::MetricsStore,
 {
     /// Wrap a store in the service.
     pub fn new(store: S) -> Self {
@@ -30,7 +30,7 @@ where
     }
 
     /// Build the trust report.
-    pub async fn build(&self) -> Result<serde_json::Value, store::StoreError> {
+    pub async fn build(&self) -> Result<serde_json::Value, domain::StoreError> {
         let health = self.store.health_stats().await.ok();
         let decision_stats = self.store.decision_stats().await.ok();
 

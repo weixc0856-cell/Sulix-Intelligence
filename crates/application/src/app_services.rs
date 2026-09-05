@@ -1,10 +1,10 @@
 //! Composition bundle wiring every application service to one store.
 //!
-//! `AppServices<S>` is generic over the narrow store subtraits each service
-//! needs; the D1-backed production alias `ProductionAppServices =
-//! AppServices<D1Store>` lives in the `composition` crate (the only place
-//! `application` and `store` are co-visible), so `api`/`worker-entry` can name
-//! the concrete bundle without `api` depending on `store`.
+//! `AppServices<S>` is generic over the narrow domain subtraits each service
+//! needs; the production alias `ProductionAppServices =
+//! AppServices<concrete D1 store>` lives in the `composition` crate (the only
+//! place `application` and `store` are co-visible), so `api`/`worker-entry`
+//! can name the concrete bundle without `api` depending on `store`.
 
 use crate::graph::GraphProjectionService;
 use crate::services::articles::ArticleService;
@@ -22,7 +22,7 @@ use crate::services::system::SystemService;
 use crate::services::trust::TrustService;
 
 /// Generic composition bundle over any store that satisfies the union of the
-/// service constructor bounds (the full `MemoryStore`/`D1Store` surface).
+/// service constructor bounds (the full concrete-store surface).
 ///
 /// `new` only builds the service graph; individual methods keep their own
 /// narrow `where` clauses and are monomorphized against the concrete `S`.
@@ -49,26 +49,26 @@ pub struct AppServices<S> {
 impl<S> AppServices<S>
 where
     S: Clone
-        + store::ArticleQueryService
-        + store::ClaimQueryService
-        + store::ClaimRepository
-        + store::ConfidenceRepository
-        + store::DecisionQueryService
-        + store::DecisionRecordStore
-        + store::DecisionRepository
-        + store::EntityQueryService
-        + store::FeedQueryService
-        + store::FeedRepository
-        + store::MetricsStore
-        + store::ObservationQueryService
-        + store::ObservationRepository
-        + store::ReflectionPersistence
-        + store::RuleStore
-        + store::SignalQueryService
-        + store::SignalStore
-        + store::SourceQueryService
-        + store::SourceRepository
-        + store::TakedownStore,
+        + domain::ArticleQueryService
+        + domain::ClaimQueryService
+        + domain::ClaimRepository
+        + domain::ConfidenceRepository
+        + domain::DecisionQueryService
+        + domain::DecisionRecordStore
+        + domain::DecisionRepository
+        + domain::EntityQueryService
+        + domain::FeedQueryService
+        + domain::FeedRepository
+        + domain::MetricsStore
+        + domain::ObservationQueryService
+        + domain::ObservationRepository
+        + domain::ReflectionPersistence
+        + domain::RuleStore
+        + domain::SignalQueryService
+        + domain::SignalStore
+        + domain::SourceQueryService
+        + domain::SourceRepository
+        + domain::TakedownStore,
 {
     /// Build every service over one `store` value. Each service holds its own
     /// clone of the handle; the original is retained as `self.store`.

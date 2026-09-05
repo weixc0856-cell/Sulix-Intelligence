@@ -5,13 +5,13 @@
 //!
 //! The scoring primitive itself stays in the `rules` crate, which the API
 //! layer still owns: this service fetches the candidate articles through
-//! [`store::ArticleQueryService`] and applies a caller-supplied `score`
+//! [`domain::ArticleQueryService`] and applies a caller-supplied `score`
 //! closure.  That keeps the `application → rules` edge from appearing — the
 //! rule parsing / `rules::score` invocation lives in the route handler.
 //!
 //! Zero Worker / HTTP / `js_sys` code.  The preview path touches D1 only.
 
-use store::{ArticleDetail, PreviewMatch, PreviewResult, StoreError};
+use domain::{ArticleDetail, PreviewMatch, PreviewResult, StoreError};
 
 /// Application service for the signal-strategy preview use-case.
 pub struct StrategyPreviewService<S> {
@@ -20,7 +20,7 @@ pub struct StrategyPreviewService<S> {
 
 impl<S> StrategyPreviewService<S>
 where
-    S: store::ArticleQueryService,
+    S: domain::ArticleQueryService,
 {
     /// Wrap a store (or store-backed query service) in the service.
     pub fn new(store: S) -> Self {

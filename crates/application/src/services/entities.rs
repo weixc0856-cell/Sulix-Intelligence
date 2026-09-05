@@ -7,7 +7,7 @@
 //! parses requests, reads the clock via `js_sys`, and hands the timestamp in
 //! as a parameter.  The 7-day activity window is an application-owned rule.
 
-use store::{EntityActivitySummary, EntityArticle, EntityDetail, EntitySummary, RelatedEntity, StoreError};
+use domain::{EntityActivitySummary, EntityArticle, EntityDetail, EntitySummary, RelatedEntity, StoreError};
 
 /// How many days of activity the [`EntityService::activity`] summary covers.
 /// Business rule owned by the application layer.
@@ -20,7 +20,7 @@ pub struct EntityService<S> {
 
 impl<S> EntityService<S>
 where
-    S: store::EntityQueryService,
+    S: domain::EntityQueryService,
 {
     /// Wrap a store (or store-backed query service) in the service.
     pub fn new(store: S) -> Self {
@@ -57,8 +57,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use domain::EntityRepository;
     use store::memory::MemoryStore;
-    use store::EntityRepository;
 
     /// Seed the store with an entity, returning its id.
     fn seed_entity(store: &MemoryStore, name: &str) -> i64 {

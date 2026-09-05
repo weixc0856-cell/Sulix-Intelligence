@@ -7,7 +7,7 @@
 //! or `js_sys` code; the HTTP layer (`crates/api`) parses requests and builds
 //! the `Store`, then delegates the orchestration here.
 
-use store::{NewSource, Source, StoreError};
+use domain::{NewSource, Source, StoreError};
 
 /// Application service for the Source Registry use-cases.
 pub struct SourceService<S> {
@@ -16,7 +16,7 @@ pub struct SourceService<S> {
 
 impl<S> SourceService<S>
 where
-    S: store::SourceQueryService + store::SourceRepository,
+    S: domain::SourceQueryService + domain::SourceRepository,
 {
     /// Wrap a store (or store-backed repository/query pair) in the service.
     pub fn new(store: S) -> Self {

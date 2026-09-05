@@ -2,11 +2,11 @@
 //! / create / update / soft-delete) that the API routes expose under
 //! `/api/feeds`.
 //!
-//! Generic over the narrowest store surface — [`store::FeedQueryService`] for
-//! listing, [`store::FeedRepository`] for writes and [`store::SourceRepository`]
+//! Generic over the narrowest store surface — [`domain::FeedQueryService`] for
+//! listing, [`domain::FeedRepository`] for writes and [`domain::SourceRepository`]
 //! for the auto-registered default source.  Zero Worker / HTTP / `js_sys` code.
 
-use store::{Feed, NewSource, StoreError};
+use domain::{Feed, NewSource, StoreError};
 
 /// Application service for Feed CRUD use-cases.
 pub struct FeedService<S> {
@@ -15,7 +15,7 @@ pub struct FeedService<S> {
 
 impl<S> FeedService<S>
 where
-    S: store::FeedRepository + store::FeedQueryService + store::SourceRepository,
+    S: domain::FeedRepository + domain::FeedQueryService + domain::SourceRepository,
 {
     /// Wrap a store (or store-backed repository/query pair) in the service.
     pub fn new(store: S) -> Self {

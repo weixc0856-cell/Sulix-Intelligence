@@ -2,12 +2,12 @@
 //! briefing read use-cases (today / list / get) under `/api/intelligence/
 //! briefing*`.
 //!
-//! Generic over the narrow [`store::BriefingStore`] seam.  The R2 Memory
+//! Generic over the narrow [`domain::BriefingStore`] seam.  The R2 Memory
 //! Archive reads and KV caching that sit in front of this service are runtime
 //! orchestration owned by `worker-entry`, NOT application logic (Phase 2 plan
 //! §10), so they deliberately do not appear here.
 
-use store::{BriefingSummary, StoreError};
+use domain::{BriefingSummary, StoreError};
 
 /// Application service for the briefing persistence use-cases.
 pub struct BriefingService<S> {
@@ -16,7 +16,7 @@ pub struct BriefingService<S> {
 
 impl<S> BriefingService<S>
 where
-    S: store::BriefingStore,
+    S: domain::BriefingStore,
 {
     /// Wrap a store (or store-backed repository) in the service.
     pub fn new(store: S) -> Self {

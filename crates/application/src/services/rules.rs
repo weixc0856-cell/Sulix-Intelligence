@@ -1,6 +1,6 @@
 //! Rules application service — orchestrates the `/api/rules` CRUD use-cases.
 //!
-//! Generic over [`store::RuleStore`].  The scoring pipeline reads enabled
+//! Generic over [`domain::RuleStore`].  The scoring pipeline reads enabled
 //! rules through [`RuleStore::active_rule_jsons`], while the management
 //! routes write through the CRUD methods.  Zero Worker / HTTP / `js_sys` code.
 //!
@@ -11,7 +11,7 @@
 //! therefore a use-case invariant, and a malformed fragment is surfaced as
 //! [`RuleError::InvalidCondition`] for the route to map to a 400.
 
-use store::{SignalStrategy, StoreError};
+use domain::{SignalStrategy, StoreError};
 
 /// Application service for the rule-management use-cases.
 pub struct RuleService<S> {
@@ -33,7 +33,7 @@ pub enum RuleError {
 
 impl<S> RuleService<S>
 where
-    S: store::RuleStore,
+    S: domain::RuleStore,
 {
     /// Wrap a store (or store-backed repository) in the service.
     pub fn new(store: S) -> Self {

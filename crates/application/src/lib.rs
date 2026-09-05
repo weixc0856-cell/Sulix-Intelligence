@@ -1,7 +1,7 @@
 //! Application layer — UseCase orchestration services.
 //!
 //! Every UseCase in this crate:
-//! - Is **generic over its dependencies** (typically `StoreBackend` subtraits)
+//! - Is **generic over its dependencies** (typically narrow `domain` subtraits)
 //! - Contains **zero HTTP / Worker code**
 //! - Is **unit-testable** with `MemoryStore`
 //! - Returns domain types, not HTTP responses
@@ -41,4 +41,4 @@ pub use services::trust::TrustService;
 // Data contracts only — never infrastructure handles or persistence traits.
 // These let the `api` crate deserialize/serialize store-backed DTOs without a
 // Cargo dependency on `store` (the bridge re-exports shapes, not handles).
-pub use store::{ConfidenceEvent, NewSource, PreviewRequest, Source};
+pub use domain::{ConfidenceEvent, NewSource, PreviewRequest, Source};
