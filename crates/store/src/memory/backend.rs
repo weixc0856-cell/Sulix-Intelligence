@@ -734,10 +734,11 @@ impl EvaluationQueryService for MemoryStore {
     }
 }
 
-// ── Legacy StoreBackend (remaining methods) ──
+// ── Legacy decision-write vertical — now on `DecisionWriteStore` (GATED ──
+// ── relocation; bodies unchanged). `StoreBackend` is an empty composite. ──
 
 #[async_trait(?Send)]
-impl StoreBackend for MemoryStore {
+impl DecisionWriteStore for MemoryStore {
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
         let now = 1000000;
         let id = *self.next_decision_id.borrow();
@@ -806,8 +807,9 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-    // ===== Claim (Sprint 5.3) =====
 }
+
+impl StoreBackend for MemoryStore {}
 
 // ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
 

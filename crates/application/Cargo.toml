@@ -8,6 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+domain = { workspace = true }
 store = { workspace = true }
 decision-engine = { workspace = true }
 shared-kernel = { workspace = true }

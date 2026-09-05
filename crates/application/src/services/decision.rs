@@ -2,13 +2,13 @@
 //! outbox-first event emission and ArtifactRegistry-backed storage.
 //!
 //! Generic over:
-//! - `S: StoreBackend` — persistence (narrowed in 6.2D)
+//! - `S: DecisionWriteStore` — decision-write persistence (GATED narrow seam)
 //! - `A: ArtifactRegistry` — large-object storage
 
 use shared_kernel::artifact_registry::{ArtifactRegistry, NewArtifact};
-use store::StoreBackend;
 
 use decision_engine::{DecisionAggregate, DecisionError, ProposeDecision};
+use domain::DecisionWriteStore;
 
 /// Application service for the Decision aggregate.
 pub struct DecisionService<S, A> {
@@ -16,7 +16,7 @@ pub struct DecisionService<S, A> {
     artifact_registry: A,
 }
 
-impl<S: StoreBackend, A: ArtifactRegistry> DecisionService<S, A> {
+impl<S: DecisionWriteStore, A: ArtifactRegistry> DecisionService<S, A> {
     pub fn new(store: S, artifact_registry: A) -> Self {
         Self { store, artifact_registry }
     }
@@ -33,9 +33,9 @@ impl<S: StoreBackend, A: ArtifactRegistry> DecisionService<S, A> {
         let now = Self::now();
         let mut decision = DecisionAggregate::propose(cmd, now)?;
 
-        // Persist decision state via StoreBackend (legacy path)
+        // Persist decision state via the DecisionWriteStore port
         self.store
-            .create_decision(&store::NewDecision {
+            .create_decision(&domain::NewDecision {
                 signal_thread_id: None,
                 actor_id: None,
                 decision_type: "experiment".into(),

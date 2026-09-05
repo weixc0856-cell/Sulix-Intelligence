@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use crate::backend::StoreBackend;
+use crate::DecisionWriteStore;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary, Claim,
     ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord,
@@ -439,10 +440,12 @@ impl BatchSignalQueryService for crate::D1Store {
     }
 }
 
-//  Legacy StoreBackend (remaining methods not yet migrated to subtraits)
+//  Legacy decision-write vertical — now on the narrow `DecisionWriteStore`
+//  port (GATED relocation; bodies unchanged). `StoreBackend` remains as an
+//  empty composite for compatibility.
 
 #[async_trait(?Send)]
-impl StoreBackend for crate::D1Store {
+impl DecisionWriteStore for crate::D1Store {
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
         crate::D1Store::create_decision(self, d).await
     }
@@ -458,11 +461,11 @@ impl StoreBackend for crate::D1Store {
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
         crate::D1Store::create_evaluation(self, e).await
     }
-
-    // ===== Claim (Sprint 5.3) =====
-
-    // ===== Source Registry (Sprint 5.6) =====
 }
+
+//  Legacy StoreBackend — empty composite (all capabilities on subtraits).
+
+impl StoreBackend for crate::D1Store {}
 
 //  Fine-grained P4 subtraits — methods above were lifted off StoreBackend and
 //  are now reachable through composition instead of the legacy supertrait.

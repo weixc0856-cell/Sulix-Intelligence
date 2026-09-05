@@ -19,9 +19,7 @@
 //! continues to compile without changes because `StoreBackend` is a
 //! supertrait of every smaller trait.
 
-use async_trait::async_trait;
-
-use domain::{traits::*, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, StoreError};
+use domain::traits::*;
 
 /// Storage backend for the Sulix Intelligence platform.
 ///
@@ -29,10 +27,11 @@ use domain::{traits::*, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, Sto
 /// `T: StoreBackend` generic code continues to compile as we migrate toward
 /// smaller, context-specific boundaries.
 ///
-/// Only the decision vertical remains on the body (shrunken by P4 batches 0–9);
-/// every other capability now lives on a smaller [`traits`] subtrait. The
-/// decision vertical is ported in the decoupling plan §5 (GATED).
-#[async_trait(?Send)]
+/// Empty composite body: every capability now lives on a smaller [`traits`]
+/// subtrait. The legacy decision-write vertical lives on
+/// [`DecisionWriteStore`], which this trait also composes so that
+/// `T: StoreBackend` callers (worker-entry's production DecisionService) keep
+/// the four write methods unchanged (decoupling plan §5, GATED).
 pub trait StoreBackend:
     FeedRepository
     + FeedQueryService
@@ -65,22 +64,6 @@ pub trait StoreBackend:
     + ArtifactStore
     + RuleStore
     + SignalStore
+    + DecisionWriteStore
 {
-    // ==== Decision lifecycle (pre-Event-Sourcing) ====
-
-    /// Create a new decision (called by api/services/decision.rs; maps to DecisionRepository::save_decision).
-    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError>;
-
-    /// Update decision status.
-    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError>;
-
-    // ---- Outcome Events ----
-
-    /// Record a factual outcome observation.
-    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError>;
-
-    // ---- Decision Evaluation ----
-
-    /// Record a judgment about whether a decision's hypothesis was correct.
-    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError>;
 }
