@@ -15,10 +15,10 @@
 | P0/P1 baseline + dependency fence | ✅ done |
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
 | P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
-| P4 remove `StoreBackend` | 🟡 **Phase A 完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles 的 supertrait 方法已拆除（batch 0–4，见 §2 尾部 commit 清单），body 收敛 45→36；`StoreBackend` 终局删除仍待 remaining-domain generic 消费方收窄（Phase B §3） |
-| P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 直接 `use store::`） |
+| P4 remove `StoreBackend` | 🟡 **Phase A（batch 0–5，45→19）+ Phase B 收窄（batch 6–9，19→8）已完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles/rule/artifact/article-analysis 全拆出 supertrait；3 个 generic `S: StoreBackend` 消费方（article_persistence/artifact_registry → 小 trait，worker-entry FeedContext → 具体 `store::Store`）已收窄；`StoreBackend` body 现**仅余 8 个 decision 方法（§5 GATED）**。终局删除 supertrait + P5 见 §3 |
+| P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 直接 `use store::`）；P7 guard 已将其余 8 条 infra 边记入 `GRANDFATHERED`（删边即收紧） |
 | P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
-| P7 cargo-metadata 架构护栏 | 🟡 仅 heuristic 脚本，未入 CI |
+| P7 cargo-metadata 架构护栏 | ✅ done（`fcb728b`）：`shared-kernel/tests/architecture.rs` + lint.yml 独立 `architecture-guard` job |
 
 ## 1. 目标与边界
 
@@ -107,6 +107,22 @@ application services (P5)`。
 - 接入 `.github/workflows/lint.yml` 独立 job。
 
 **Commit**：`test(governance): architecture dependency guard (P7)`。
+
+### Phase B（收窄）+ Phase C 完成记录（2026-09-05，未 push）
+
+| Batch | Commit | 内容 |
+|---|---|---|
+| 6 | `ca4d4ee` | 新 `ArticleAnalysisStore` → 收窄 `D1ArticlePersistence`（body 19→17） |
+| 7 | `847fc29` | 新 `ArtifactStore` → 收窄 `D1ArtifactRegistry`（body 17→14） |
+| 8+9 | `a406b82` | worker-entry `FeedContext<S: StoreBackend>` → 具体 `store::Store`（ingestion + queue 两处）；`record_fetch_result` 归入 `FeedRepository`；新 `RuleStore`；删 `insert_article`+3 entity 别名（body 14→**8**，仅余 GATED decision 方法） |
+| C | `fcb728b` | P7 `shared-kernel/tests/architecture.rs` + lint.yml `architecture-guard` job（333→334 tests 全绿） |
+
+收窄后 `StoreBackend` body = **8 个 decision 方法**（create_decision/get_decision/update_decision_status/
+create_outcome/get_decision_outcomes/create_evaluation/get_decision_evaluations/get_latest_evaluation，§5 GATED）。
+测试 334 passed / 0 failed；guard 空表（0 grandfathered / 0 removable）；fmt / clippy / wasm 全绿。
+
+**下一步**：§3 终局（删 `StoreBackend` supertrait）+ P5（api 编排上收 application、`api → store = 0`；
+届时删 P7 guard `GRANDFATHERED` 中 `api:*` 与 `application:store` 条目即自动收紧）。
 
 ---
 
