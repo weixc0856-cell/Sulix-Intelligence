@@ -1,162 +1,123 @@
 # Decoupling Advance Plan (2026-09-05 — 续 decoupling plan P1–P7)
 
 续《[2026-08-21-architecture-decoupling-plan.md](./2026-08-21-architecture-decoupling-plan.md)》。
-2026-09-05 经项目状态遍历确认真实进度，用户裁决：**主线 = 继续 DDD 去耦**；
-**intelligence-domain 存续裁决暂缓**（矛盾已标注于 final-arch-v2 §4 与本 plan 目标态图）。
+2026-09-05 状态遍历 + decision recon 后，用户裁决：**主线 = 继续 DDD 去耦，P4 先行**；
+**decision 接线不构成干净一步 → 记为 gated vertical**；intelligence-domain 存续裁决仍暂缓
+（矛盾已标注于 final-arch-v2 §4）。
 
 ---
 
-## 0. 现状基线（2026-09-05，遍历核对，非仅文档）
+## 0. 现状基线（2026-09-05，遍历 + recon 核对，非仅文档）
 
 | 项 | 状态 |
 |---|---|
 | `GRANDFATHERED`（`scripts/check-layered-deps.sh`） | **= 0**（13→10→8→7→0） |
-| P0 baseline / P1 dependency fence | ✅ done |
+| P0/P1 baseline + dependency fence | ✅ done |
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
-| P3 adapter migration | 🟡 部分（signal/context/ai-pipeline 已 port 到 infra；**`D1DecisionRepository` 未接线**） |
-| P4 remove `StoreBackend` | ❌ 未动（`store/src/backend.rs` supertrait 仍存在，d1_delegate 转发） |
-| P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 仍直接 `use store::`） |
-| P6 清理旧 engine 壳 / 伪迁移层 | 🔒 **GATED** —— 依赖 intelligence-domain 裁决 |
+| P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
+| P4 remove `StoreBackend` | ❌ 未动（supertrait + d1_delegate 转发 + memory/backend 仍在） |
+| P5 application 唯一用例入口 | ❌ 未动（application 仍薄，api 直接 `use store::`） |
+| P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
 | P7 cargo-metadata 架构护栏 | 🟡 仅 heuristic 脚本，未入 CI |
-| Task B（P6 置信度归域 + CF 审计 + 5 资源重置） | ✅ closed（`acfaff8` / `62ffd8e`） |
 
-**基础设施 infra 实况**（供 P3-finish 精确范围）：`crates/infrastructure/src/` 已含
-`signal_repository.rs` / `context_repository.rs` / `memory_repository.rs` /
-`reflection_repository.rs` / `decision_repository.rs` / `event_log.rs` /
-`signal_event_log.rs` / `semantic_query.rs` / `article_persistence.rs` 等。
-**不在本线建**（p2-port-closure 已记录、有意为之）：`SignalEvidenceRepository`（evidence 无独立生命周期）、
-Claim/Observation/Framework adapters（无生产消费方 / decorative）。
+## 1. 目标与边界
+
+DDD 单向依赖 `Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。推进 P4 → P5 → P7；
+P3-finish（decision）单独裁决。**不变量**：测试数不减；`GRANDFATHERED` 保持空；每迁移 before tests →
+migrate → after tests；fmt/clippy/wasm 绿。
 
 ---
 
-## 1. 本线目标与边界
+## 2. Phase A — P4：已 port 上下文先行拆 `StoreBackend`（当前主线）
 
-**目标**：把 frozen `final-architecture-v2.md` §4 的 DDD 单向依赖（
-`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`）推进到 P4/P5/P7 完成、
-P3 收口；`api→store` / `application→store` 收敛；`StoreBackend` 拆除。
+**recon 结论（2026-09-05，decision 上下文）**：`D1DecisionRepository` 生产零接线；production 写路径走
+`api::services::decision::DecisionService`（直连 store + `insert_outbox`）；decision-engine 为半成品域
+（aggregate 无 Serialize / outcome 无持久化 / 状态词汇 `active` vs `Proposed` 不对齐 / `save` 仅 INSERT /
+`CreateDecision` 无 expected_outcomes）。**强切写路径 = 丢 outbox 事件、丢返回行语义、丢字段 → 行为风险。**
+故 P4 从**已完整 port 的上下文**（signal / context / reflection / memory，其 store 方法已被 infra adapter
+接管）开始，逐域拆掉 supertrait 方法；decision 接线单列 §5。
 
-**边界（本线不做，列 §7 相邻积压）**：API key 相关（重灌 feed/embedding backfill）、`.ok()` 硬化、
-cron vars、历史资源清理、intelligence-domain 裁决、sprint 编号文档归一。
+**P4 Recon（动代码前必做，产出为准）**
+1. `crates/store/src/backend.rs` supertrait 方法按 bounded context 分组（signal/context/reflection/
+   memory/decision/outbox/…）。注意：`#[deprecated]`、"no new methods" 只约束新增，不约束存量。
+2. **关键**：infra adapters（`D1SignalRepository` / `D1ContextRepository` / `D1ReflectionRepository` /
+   `D1MemoryRepository` 及 `D1DecisionRepository`）当前 `impl<S: StoreBackend>` 是否经 supertrait 调 store
+   方法？若是，拆除前须先把 adapter bound 从 `StoreBackend` 收窄到对应 small trait
+   （`store::traits/repo/*`、`traits/query/*`）或 `D1Store` 具体类型——这是 P4 的真工作量。
+3. 逐域找出 supertrait 方法的全部调用点（generic `S: StoreBackend` 消费方）：infra adapters、
+   application services、api、worker-entry、tests。分三类：(a) 零生产调用 → 可直接删；(b) 仅 infra
+   adapter 经 bound 调用 → 收窄 bound 后可删；(c) 仍被 api/application 直连 → 先迁移调用方。
+4. MemoryStore（memory/backend.rs）是测试替身：确认其实现的 supertrait 方法删除后测试是否仍覆盖
+   （对应域 infra adapter 的映射测试是否已就位，能接管）。
 
-**不变量（贯穿每一 commit）**：测试数不减反增；`GRANDFATHERED` 保持空表；每次迁移满足
-before tests → migrate → after tests；fmt/clippy/wasm 门禁绿。
-
----
-
-## 2. Phase A — P3 收尾（wire `D1DecisionRepository`）
-
-参考 p2-port-closure "Residual P2 port state"：DecisionRepository adapter
-`D1DecisionRepository` 排期 Phase 6.2C，**未接线**。
-
-**Recon（动代码前必做，产出为准，勿按本文件猜）**
-1. 读 `crates/infrastructure/src/decision_repository.rs` —— 是完整 adapter 还是 stub？trait 面
-   `DecisionRepository` 定义在 `crates/decision-engine/src/repository.rs`，比对两方签名。
-2. 找 decision-engine 的真实消费方：grep `decision_engine::` / 决策用例 在 `api`、`worker-entry`，
-   确认它们当前是直接 `store`（`store/src/backend.rs` decision 段 / `d1_delegate.rs`）还是已走端口。
-3. 顺带核对 signal 侧无残留直连 store（P3 R2 已 port，快速 grep 确认即可）。
-
-**Actions**
-- 组装点注入：在 `worker-entry` composition root 实例化 `D1DecisionRepository`（依赖 `D1Store`），
-  传入 decision 消费者，替换其 `StoreBackend`/`store` 直连。
-- 若 adapter 缺方法 → 补齐并加 T2 式映射测试（entity↔row 双向）。
-- 不动 claim/observation/framework（有意不建 adapter）。
+**Actions（分 commit，逐 bounded context；无生产消费方的 supertrait 方法直接删，不建 speculative port）**
+1. 收窄 infra adapter bound（`StoreBackend` → 小 trait / 具体 store），消除其对 supertrait 的依赖。
+2. 迁移残余 generic 消费方；删除对应 supertrait 方法 + `d1_delegate.rs` 的 supertrait impl 段 +
+   `memory/backend.rs` 对应 impl（若 MemoryStore 测试已由 adapter 映射测试接管）。
+3. 终态：`backend.rs` supertrait 方法数收敛到仍被 generic 消费方使用的集合，再整体拆 supertrait（见 §3）。
 
 **Verify / Commit**
-- `bash scripts/check-layered-deps.sh` → 空表；decision 消费方 `use store::` 归零（若涉及）。
-- `cargo test --workspace`（计数 ≥ before）；fmt/clippy/wasm 绿。
-- Commit：`refactor(decision-engine): wire D1DecisionRepository through composition root`。
+- 每步 `cargo test --workspace` 不降；`-D warnings`；`scripts/check-layered-deps.sh` 空表。
+- Commit 粒度：每 bounded context `refactor(store): drop StoreBackend <domain> methods`。
 
 ---
 
-## 3. Phase B — P4 收缩/拆除 `StoreBackend`
+## 3. Phase B — P4 终局 + P5 application 唯一用例入口
 
-最终 `StoreBackend = 0`（final-arch DoD）。现 `store/src/backend.rs` supertrait（约 50 方法，
-`#[deprecated]`）+ `d1_delegate.rs`（~774 行转发）+ `memory/backend.rs`（~1328 行）。
+StoreBackend supertrait 方法清到不再有 generic 消费方后，删除 supertrait 定义；随后 P5：
+- `api` handler 业务编排上收 `crates/application/src/services/*`；`api`/`worker-entry` 改调 application。
+- 收敛：`api → store = 0`；`grep -R "use store::" crates/api` = 0。
+- 注意 api 与 application 各有一个 `DecisionService` 撞名 —— P5 收敛时需消歧（重命名/合并）。
 
-**Recon**
-1. 按 bounded context 盘点 supertrait 方法 → 每个已被哪个 infra adapter 覆盖（signal/context/
-   reflection/memory/decision 已 port，剩 article/feed/briefing/entity/observation/claim 段）。
-2. **关键风险**：`MemoryStore`（memory/backend.rs）是测试替身。确认哪些测试/用例仍依赖它——
-   在删之前要么迁移到 infra 的 in-memory adapter，要么按用例替换，不得裸删后全红。
-
-**Actions（分 commit，逐个 bounded context）**
-1. 未 port 的域方法：先给对应域在 infra 建 adapter（仅在**有真实消费方**时；无消费方的方法直接删，
-   不建 speculative port —— 沿用 p2 的 SignalEvidence 门）。
-2. 消费方全部切走后，删除 supertrait 方法 → 最终删 `backend.rs` supertrait 定义。
-3. 删除 `d1_delegate.rs` 转发（被 store 的细粒度 `traits/*` 取代）。
-4. MemoryStore：若仍作测试替身 → 保留在 store（作为 test util）或等价替换，并在 DoD 说明去处。
-
-**Verify / Commit**
-- 每步 `cargo test --workspace` 计数不降；`-D warnings`。
-- Commit 粒度：每 bounded context 一个 `refactor(store): drop StoreBackend <domain> methods`。
+**Commit**：`refactor(store): delete StoreBackend supertrait` / `refactor(api): route use-cases through
+application services (P5)`。
 
 ---
 
-## 4. Phase C — P5 application 唯一用例入口
+## 4. Phase C — P7 cargo-metadata 架构护栏（可与 P4/P5 并行）
 
-**Actions**
-- 把 `api` handler 里的业务编排上收为 `crates/application/src/services/*` 用例（decision/signal/
-  briefing 等已有 `radar.rs`/`semantic_search.rs`/`decision.rs` 先例 → 按需扩展）。
-- `api`/`worker-entry` 改为调用 application 用例；`api → store` 引用收敛到 0（DoD #3）。
-- 依赖面收敛：api 只依赖 application + domain 类型 + worker。
-
-**Verify / Commit**
-- `grep -R "use store::" crates/api` = 0；`use application::` 覆盖所有用例路径。
-- 架构护栏（Phase E）红线先行对齐。
-- Commit：`refactor(api): route use-cases through application services (P5)`。
-
----
-
-## 5. Phase D — P7 cargo-metadata 架构护栏（与 P5 并行可先行）
-
-**Actions**
-- 建 `crates/shared-kernel/tests/architecture.rs`（或独立 guard crate，不引新第三方依赖——
-  decoupling plan Task 7.1 明示用 `cargo metadata` JSON）。
+- 建 `crates/shared-kernel/tests/architecture.rs`（不引第三方依赖，用 `cargo metadata` JSON）。
 - 断言 forbidden edges：domain→store/worker；application→worker；api→infrastructure/vectorize/
-  embedding/event-store/object-store；循环依赖。红线按 DoD。
-- 接入 `.github/workflows/lint.yml`（独立 job）。
+  embedding/event-store/object-store；无循环依赖。
+- 接入 `.github/workflows/lint.yml` 独立 job。
 
-**Verify / Commit**
-- CI job 独立跑，回归即红。Commit：`test(governance): architecture dependency guard (P7)`。
+**Commit**：`test(governance): architecture dependency guard (P7)`。
+
+---
+
+## 5. Phase D — Decision vertical（GATED，不并入 P4 主线）
+
+recon（本文件 §2）证明 decision 接线是**半成品域迁移**而非机械去耦步。像 p2 的 SignalEvidence gate 一样
+**记录为待决议 vertical**：当 decision-engine 域补齐（aggregate 序列化/outcome 持久化/status 词汇对齐/
+`save` upsert/事件经 aggregate 发射 + 两个 `DecisionService` 消歧）后，另立 Phase 执行：
+读路由（list/detail/by_signal）先切 → 写路由后切。裁决前不动 production 决策路径。
 
 ---
 
 ## 6. Phase E — P6（GATED）+ 收尾文档同步
 
-**P6 — 等 intelligence-domain 裁决**（见 §0；裁决后再定 Phase 6 范围）。裁决前**不执行**删除
-signal/claim/reflection/memory engine 壳、不删除 intelligence-domain、不搬 confidence。
-
-**收尾（去耦主线结束时做，Task 7.2 基线）**
-- 更新 `CLAUDE.md` 架构/依赖一节（依最终依赖图）。
-- 更新 `FULL_REVIEW_REPORT.md` §5 基线（Health Score / 依赖图 / tech debt）。
-- 归一 sprint 编号叙事（frozen 文档 Sprint 1–5 与执行中的 Sprint 6.5/6.2C 双轨）——作为独立 docs commit。
+P6 等 intelligence-domain 裁决。收尾（Task 7.2 基线）：更新 `CLAUDE.md` 架构/依赖节、
+`FULL_REVIEW_REPORT.md` §5、归一 sprint 编号叙事（独立 docs commit）。
 
 ---
 
-## 7. 相邻积压（tracked，不在本线内推进；均已在别处记录）
+## 7. 相邻积压（tracked，不在本线内推进）
 
-| 项 | 触发/依赖 | 记录处 |
-|---|---|---|
-| 重灌 feed/文章 + embedding backfill | 需 DeepSeek chat API key（用户约束：先不调 key） | `docs/ops/cf-reset-2026-09-03/CHAT_API_KEY_PENDING.md` + audit addendum |
-| `.ok()` binding 静默失败硬化（R2/Vectorize/KV） | 独立加固 | audit Recommendations #1 |
-| `CRON_REFLECTION_ENABLED`/`CRON_MEMORY_ENABLED` vars | 特性激活时 | audit #4 |
-| KV `title` 自文档字段 | 小 | audit #2 |
-| 历史资源清理（rss-*/portal-*/agent/index/…） | 独立授权任务 | audit Historical Resources |
-| intelligence-domain 存续裁决 | 架构决定 | final-arch §4 标注 + 本 plan §0 |
-| Vectorize 惯用法目标态 / 消息 `mark_failed` 语义 / outbox 迁移 | 架构/行为 | audit #3 / p2 行为注 |
+重灌 feed/文章 + embedding backfill（需 DeepSeek key，用户约束先不调）；`.ok()` 硬化；
+`CRON_REFLECTION/MEMORY` vars；KV `title`；历史资源清理（独立授权）；intelligence-domain 裁决；
+decision vertical（§5）；Vectorize 惯用法目标态；`mark_failed` 语义；outbox 迁移。
 
 ---
 
-## 8. 完成定义（本线阶段性）
+## 8. 完成定义（阶段性）
 
-- P3 收尾：`D1DecisionRepository` wired；决策消费方无 `store` 直连；测试不降。
-- P4：`StoreBackend` supertrait 删除；`d1_delegate` 转发删除；MemoryStore 去处明确；测试不降。
-- P5：`api → store = 0`；application 覆盖所有用例。
+- P4：signal/context/reflection/memory 的 supertrait 方法移除；无 generic `StoreBackend` 消费方残留于
+  已 port 域；`StoreBackend` 终局可删；测试不降、guard 空表、fmt/clippy/wasm 绿。
+- P5：`api → store = 0`；application 覆盖所有用例；`DecisionService` 撞名消歧。
 - P7：cargo-metadata 架构守卫入 CI 且绿。
-- 全程：`GRANDFATHERED` 空表不变；fmt/clippy/wasm 绿。
-- P6：仅在 intelligence-domain 裁决后按裁决范围执行。
+- P6 / Decision vertical：仅按各自裁决后执行。
 
 ## 9. Gates
 
-- 每 Phase = 独立 commit。**push = BLOCKED，须用户明确确认**（沿用记忆 `sulix-cf-resource-policy`）。
-- 本线纯代码，不触碰 Cloudflare allowlist/denylist 资源；`wrangler.toml` 不改。
+每 Phase = 独立 commit。**push = BLOCKED，须用户明确确认**（沿用记忆 `sulix-cf-resource-policy`）。
+纯代码，不触碰 Cloudflare allowlist/denylist；`wrangler.toml` 不改。
