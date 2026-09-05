@@ -8,7 +8,7 @@
 //! - `POST   /api/intelligence/decisions/:id/status`     — update status
 
 use serde_json::json;
-use store::{D1Store, NewDecisionEvaluation, NewOutcomeEvent, Store};
+use store::{D1Store, DecisionRepository, NewDecisionEvaluation, NewOutcomeEvent, Store};
 use worker::*;
 
 use crate::services::decision::{CreateDecision, DecisionService};
@@ -39,7 +39,7 @@ pub async fn detail(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match store.get_decision(id).await {
+    match store.find_decision(id).await {
         Ok(Some(decision)) => response::json_ok(json!({ "success": true, "decision": decision })),
         Ok(None) => response::json_err(404, "decision not found"),
         Err(e) => {
@@ -226,7 +226,7 @@ pub async fn list_evaluations(_req: Request, ctx: RouteContext<()>) -> Result<Re
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match store.get_decision_evaluations(decision_id).await {
+    match <Store as store::DecisionQueryService>::list_evaluations(&store, decision_id).await {
         Ok(evaluations) => response::json_ok(json!({ "success": true, "evaluations": evaluations })),
         Err(e) => {
             console_log!("[Sulix:evaluations] list failed: {e}");
@@ -242,7 +242,7 @@ pub async fn list_outcomes(_req: Request, ctx: RouteContext<()>) -> Result<Respo
         Some(v) => v,
         None => return response::json_err(400, "invalid decision id"),
     };
-    match store.get_decision_outcomes(decision_id).await {
+    match <Store as store::DecisionQueryService>::list_outcomes(&store, decision_id).await {
         Ok(outcomes) => response::json_ok(json!({ "success": true, "outcomes": outcomes })),
         Err(e) => {
             console_log!("[Sulix:outcomes] list failed: {e}");
@@ -269,7 +269,7 @@ pub async fn timeline(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let decision = match store.get_decision(id).await {
+    let decision = match store.find_decision(id).await {
         Ok(Some(d)) => d,
         Ok(None) => return response::json_err(404, "decision not found"),
         Err(e) => {
@@ -287,7 +287,7 @@ pub async fn timeline(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         description: format!("Status: {}, Confidence: {:.0}%", decision.status, decision.confidence * 100.0),
     });
 
-    if let Ok(outcomes) = store.get_decision_outcomes(id).await {
+    if let Ok(outcomes) = <Store as store::DecisionQueryService>::list_outcomes(&store, id).await {
         for o in &outcomes {
             events.push(TimelineEvent {
                 timestamp: o.observed_at,
@@ -298,7 +298,7 @@ pub async fn timeline(_req: Request, ctx: RouteContext<()>) -> Result<Response> 
         }
     }
 
-    if let Ok(evals) = store.get_decision_evaluations(id).await {
+    if let Ok(evals) = <Store as store::DecisionQueryService>::list_evaluations(&store, id).await {
         for e in &evals {
             events.push(TimelineEvent {
                 timestamp: e.evaluated_at,
@@ -377,7 +377,7 @@ pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Respons
         None => return response::json_err(400, "invalid decision id"),
     };
 
-    let decision = match store.get_decision(id).await {
+    let decision = match store.find_decision(id).await {
         Ok(Some(d)) => d,
         Ok(None) => return response::json_err(404, "decision not found"),
         Err(e) => {
@@ -417,7 +417,7 @@ pub async fn explanation(_req: Request, ctx: RouteContext<()>) -> Result<Respons
     }
 
     // Load outcomes for accuracy summary
-    let outcome_summary = match store.get_decision_outcomes(id).await {
+    let outcome_summary = match <Store as store::DecisionQueryService>::list_outcomes(&store, id).await {
         Ok(outcomes) if !outcomes.is_empty() => {
             let confirmed = outcomes
                 .iter()

@@ -93,7 +93,7 @@ impl<S: StoreBackend> DecisionService<S> {
         })
         .await;
 
-        self.store.get_decision(id).await?.ok_or_else(|| StoreError::D1("decision not found after create".into()))
+        self.store.find_decision(id).await?.ok_or_else(|| StoreError::D1("decision not found after create".into()))
     }
 
     /// Change decision status and emit a DecisionStatusChanged event via outbox.

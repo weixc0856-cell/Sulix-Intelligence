@@ -99,7 +99,7 @@ impl<S: StoreBackend> DecisionRepository for D1DecisionRepository<S> {
     async fn find(&self, id: &str) -> Result<Option<DecisionAggregate>, DecisionError> {
         let d1_id = Self::d1_id(id)?;
         self.store
-            .get_decision(d1_id)
+            .find_decision(d1_id)
             .await
             .map_err(|e| DecisionError::Infrastructure(e.to_string()))
             .map(|opt| opt.map(Self::from_store))

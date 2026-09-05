@@ -229,7 +229,7 @@ pub struct ExpandResponse {
 
 impl<S> GraphProjectionService<S>
 where
-    S: store::DecisionQueryService + store::OutcomeQueryService + store::StoreBackend,
+    S: store::DecisionRepository + store::OutcomeQueryService,
 {
     /// Expand a node to reveal its neighbors (signals, outcomes, reflections).
     ///
@@ -250,7 +250,7 @@ where
         match parts[0] {
             "DEC" => {
                 // Load the decision
-                if let Ok(Some(decision)) = self.store.get_decision(entity_id).await {
+                if let Ok(Some(decision)) = self.store.find_decision(entity_id).await {
                     nodes.push(GraphNode {
                         id: format!("DEC-{:06}", decision.id),
                         entity_id: decision.id,
