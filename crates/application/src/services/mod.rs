@@ -5,3 +5,4 @@
 //! implementations at the composition root.
 
 pub mod decision;
+pub mod sources;

@@ -4,6 +4,7 @@
 use serde_json::json;
 use worker::*;
 
+use application::SourceService;
 use store::{NewSource, Store};
 
 use crate::shared::response;
@@ -11,7 +12,7 @@ use crate::shared::response;
 /// GET /api/sources
 /// List all sources with optional ?tier= and ?policy= filters.
 pub async fn sources_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = SourceService::new(Store::new(ctx.env.d1("DB")?));
 
     let url = req.url()?;
     let pairs = url.query_pairs().collect::<Vec<_>>();
@@ -20,7 +21,7 @@ pub async fn sources_list(req: Request, ctx: RouteContext<()>) -> Result<Respons
     let limit = pairs.iter().find(|(k, _)| k == "limit").and_then(|(_, v)| v.parse::<u32>().ok()).unwrap_or(50);
     let offset = pairs.iter().find(|(k, _)| k == "offset").and_then(|(_, v)| v.parse::<u32>().ok()).unwrap_or(0);
 
-    match store.list_sources(tier, policy, limit, offset).await {
+    match service.list(tier, policy, limit, offset).await {
         Ok(sources) => response::json_ok(json!({ "sources": sources })),
         Err(e) => {
             console_log!("[Sulix:sources] list failed: {e}");
@@ -31,13 +32,13 @@ pub async fn sources_list(req: Request, ctx: RouteContext<()>) -> Result<Respons
 
 /// GET /api/sources/:id
 pub async fn sources_get(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = SourceService::new(Store::new(ctx.env.d1("DB")?));
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),
     };
 
-    match store.find_source(id).await {
+    match service.get(id).await {
         Ok(Some(s)) => response::json_ok(json!({ "source": s })),
         Ok(None) => response::json_err(404, "source not found"),
         Err(e) => {
@@ -49,13 +50,13 @@ pub async fn sources_get(_req: Request, ctx: RouteContext<()>) -> Result<Respons
 
 /// POST /api/sources — Create a new source entry.
 pub async fn sources_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = SourceService::new(Store::new(ctx.env.d1("DB")?));
     let body: NewSource = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    match store.save_source(&body).await {
+    match service.create(&body).await {
         Ok(id) => response::json_ok(json!({ "id": id })),
         Err(e) => {
             console_log!("[Sulix:sources] create failed: {e}");
@@ -66,7 +67,7 @@ pub async fn sources_create(mut req: Request, ctx: RouteContext<()>) -> Result<R
 
 /// PUT /api/sources/:id — Update a source entry.
 pub async fn sources_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = SourceService::new(Store::new(ctx.env.d1("DB")?));
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),
@@ -77,16 +78,8 @@ pub async fn sources_update(mut req: Request, ctx: RouteContext<()>) -> Result<R
         Err(_) => return response::json_err(400, "invalid request body"),
     };
 
-    // Ensure feed_id is preserved
-    let mut update = body;
-    if update.feed_id.is_none() {
-        // Fetch existing to preserve feed_id link
-        if let Ok(Some(existing)) = store.find_source(id).await {
-            update.feed_id = existing.feed_id;
-        }
-    }
-
-    match store.save_source(&update).await {
+    // feed_id preservation is an application invariant (SourceService::update).
+    match service.update(id, &body).await {
         Ok(new_id) => response::json_ok(json!({ "id": new_id })),
         Err(e) => {
             console_log!("[Sulix:sources] update failed: {e}");
@@ -97,13 +90,13 @@ pub async fn sources_update(mut req: Request, ctx: RouteContext<()>) -> Result<R
 
 /// DELETE /api/sources/:id
 pub async fn sources_delete(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let store = Store::new(ctx.env.d1("DB")?);
+    let service = SourceService::new(Store::new(ctx.env.d1("DB")?));
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid source id"),
     };
 
-    match store.delete_source(id).await {
+    match service.delete(id).await {
         Ok(_) => response::json_ok(json!({ "deleted": true })),
         Err(e) => {
             console_log!("[Sulix:sources] delete failed: {e}");
