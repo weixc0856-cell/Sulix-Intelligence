@@ -640,7 +640,7 @@ impl SignalQueryService for MemoryStore {
     async fn get_active_signal_threads(&self, _limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
         Ok(Vec::new())
     }
-    async fn signals_today(&self) -> Result<Vec<TodaySignal>, StoreError> {
+    async fn signals_today(&self, _now: i64) -> Result<Vec<TodaySignal>, StoreError> {
         Ok(Vec::new())
     }
 }

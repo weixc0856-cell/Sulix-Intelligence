@@ -1,7 +1,11 @@
 //! System/aggregation route handlers.
 //! Health, pipeline status, dashboard, stats, categories, tags, signals, and debug endpoints.
+//!
+//! Each handler delegates its D1 reads to [`application::SystemService`]; only
+//! the KV cache-aside (categories/tags) and KV pipeline-metrics enrichment
+//! (pipeline_status) stay route-level, since KV is delivery-layer infra.
 
-use application::TrustService;
+use application::{SystemService, TrustService};
 use serde_json::json;
 use worker::*;
 
@@ -18,9 +22,9 @@ pub(crate) async fn ping(_req: Request, _ctx: RouteContext<Store>) -> Result<Res
 }
 
 pub(crate) async fn debug_feeds_due(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = SystemService::new(ctx.data.clone());
     let now = (js_sys::Date::now() / 1000.0) as i64;
-    match store.feeds_due_for_fetch(now, None).await {
+    match service.feeds_due(now).await {
         Ok(feeds) => response::json_ok(
             json!({"now": now, "feeds_due": feeds.len(), "feeds": feeds.iter().map(|f| json!({"id": f.id, "title": f.title, "last_fetched_at": f.last_fetched_at, "fetch_interval_sec": f.fetch_interval_sec, "extraction_level": f.extraction_level})).collect::<Vec<_>>()}),
         ),
@@ -29,11 +33,11 @@ pub(crate) async fn debug_feeds_due(_req: Request, ctx: RouteContext<Store>) -> 
 }
 
 pub(crate) async fn pipeline_status(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = SystemService::new(ctx.data.clone());
     let now = (js_sys::Date::now() / 1000.0) as i64;
-    match store.pipeline_status(now).await {
+    match service.pipeline_status(now).await {
         Ok(mut status) => {
-            // Enrich with pipeline timing metrics from KV
+            // Enrich with pipeline timing metrics from KV (route-level infra)
             if let Ok(cache) = ctx.env.kv("CACHE") {
                 if let Ok(Some(metrics_str)) = cache.get("pipeline_metrics").text().await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&metrics_str) {
@@ -48,26 +52,26 @@ pub(crate) async fn pipeline_status(_req: Request, ctx: RouteContext<Store>) -> 
 }
 
 pub(crate) async fn health(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    match store.health_stats().await {
+    let service = SystemService::new(ctx.data.clone());
+    match service.health_stats().await {
         Ok(s) => response::json_ok(json!({"status": "ok", "stats": s})),
         Err(e) => response::json_err_internal(&e.to_string()),
     }
 }
 
 pub(crate) async fn dashboard(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    match (store.health_stats().await, store.feed_stats().await) {
-        (Ok(stats), Ok(feeds)) => response::json_ok(json!({"status": "ok", "stats": stats, "feeds": feeds})),
-        _ => response::json_err(500, "dashboard query failed"),
+    let service = SystemService::new(ctx.data.clone());
+    match service.dashboard().await {
+        Ok((stats, feeds)) => response::json_ok(json!({"status": "ok", "stats": stats, "feeds": feeds})),
+        Err(_) => response::json_err(500, "dashboard query failed"),
     }
 }
 
 pub(crate) async fn stats(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    match (store.score_distribution().await, store.article_trend(14).await) {
-        (Ok(scores), Ok(trend)) => response::json_ok(json!({"score_distribution": scores, "articles_per_day": trend})),
-        _ => response::json_err(500, "stats query failed"),
+    let service = SystemService::new(ctx.data.clone());
+    match service.score_stats().await {
+        Ok((scores, trend)) => response::json_ok(json!({"score_distribution": scores, "articles_per_day": trend})),
+        Err(_) => response::json_err(500, "stats query failed"),
     }
 }
 
@@ -80,8 +84,8 @@ pub(crate) async fn categories(_req: Request, ctx: RouteContext<Store>) -> Resul
             return Ok(resp);
         }
     }
-    let store = ctx.data.clone();
-    match store.categories_summary().await {
+    let service = SystemService::new(ctx.data.clone());
+    match service.categories().await {
         Ok(list) => {
             let result = serde_json::json!({"categories": list.into_iter().map(|(cat, count)| serde_json::json!({"category": cat, "article_count": count})).collect::<Vec<_>>()});
             if let Ok(json_str) = serde_json::to_string(&result) {
@@ -102,8 +106,8 @@ pub(crate) async fn tags(_req: Request, ctx: RouteContext<Store>) -> Result<Resp
             return Ok(resp);
         }
     }
-    let store = ctx.data.clone();
-    match store.tags_summary().await {
+    let service = SystemService::new(ctx.data.clone());
+    match service.tags().await {
         Ok(list) => {
             let result = serde_json::json!({"tags": list.into_iter().map(|(tag, count)| serde_json::json!({"tag": tag, "count": count})).collect::<Vec<_>>()});
             if let Ok(json_str) = serde_json::to_string(&result) {
@@ -124,9 +128,9 @@ pub(crate) async fn trust(_req: Request, ctx: RouteContext<Store>) -> Result<Res
 }
 
 pub(crate) async fn intelligence_signals(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = SystemService::new(ctx.data.clone());
     let now = (js_sys::Date::now() / 1000.0) as i64;
-    match store.signals_today(now).await {
+    match service.signals_today(now).await {
         Ok(signals) => response::json_ok(json!({
             "date": params::fmt_date_ymd(now),
             "generated_at": params::fmt_datetime_iso(now),

@@ -345,12 +345,8 @@ impl SignalQueryService for crate::D1Store {
     async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError> {
         crate::D1Store::get_active_signal_threads(self, limit).await
     }
-    async fn signals_today(&self) -> Result<Vec<TodaySignal>, StoreError> {
-        // NOTE: signals_today in D1Store currently takes (now: i64). Pass 0 for now;
-        // the query uses `now-86400` internally so the exact value matters mostly for
-        // the "last 24h" window. A call with real `now` will be wired when SignalQueryService
-        // is promoted to its own infrastructure crate.
-        crate::D1Store::signals_today(self, 0).await
+    async fn signals_today(&self, now: i64) -> Result<Vec<TodaySignal>, StoreError> {
+        crate::D1Store::signals_today(self, now).await
     }
 }
 

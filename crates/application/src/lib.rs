@@ -31,4 +31,5 @@ pub use services::observations::ObservationService;
 pub use services::rules::{RuleError, RuleService};
 pub use services::sources::SourceService;
 pub use services::strategies::StrategyPreviewService;
+pub use services::system::SystemService;
 pub use services::trust::TrustService;

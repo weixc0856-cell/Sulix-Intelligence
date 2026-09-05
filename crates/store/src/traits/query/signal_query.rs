@@ -29,7 +29,11 @@ pub trait SignalQueryService {
     async fn get_active_signal_threads(&self, limit: u32) -> Result<Vec<SignalBriefInput>, StoreError>;
 
     /// Legacy: today's signals (entity-anchored, V1 format).
-    async fn signals_today(&self) -> Result<Vec<TodaySignal>, StoreError>;
+    ///
+    /// `now` must be supplied by the caller — the store never reads the
+    /// runtime clock.  (The inherent `D1Store` method always took `now`; the
+    /// trait previously dropped it, hardcoding `0` in the delegate bridge.)
+    async fn signals_today(&self, now: i64) -> Result<Vec<TodaySignal>, StoreError>;
 }
 
 /// Batch read-model queries for Radar / Projection.
