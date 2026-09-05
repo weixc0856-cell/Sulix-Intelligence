@@ -15,8 +15,8 @@
 | P0/P1 baseline + dependency fence | ✅ done |
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
 | P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
-| P4 remove `StoreBackend` | 🟡 **Phase A（batch 0–5，45→19）+ Phase B 收窄（batch 6–9，19→8）已完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles/rule/artifact/article-analysis 全拆出 supertrait；3 个 generic `S: StoreBackend` 消费方（article_persistence/artifact_registry → 小 trait，worker-entry FeedContext → 具体 `store::Store`）已收窄；`StoreBackend` body 现**仅余 8 个 decision 方法（§5 GATED）**。终局删除 supertrait + P5 见 §3 |
-| P5 application 唯一用例入口 | 🟡 **Phase 1（Source/Entity 上收 application）已完成（2026-09-05，记录见 §3）**：业务编排移入 `services/{sources,entities}.rs`，api 委托；`api → store` 减少未归零（handler 仍自建 `Store::new`，composition-root 注入 = P5b）。`StoreBackend` supertrait 仍存（body=8 GATED decision）。P7 guard `GRANDFATHERED` 已记 `application:store` + `api:*` 8 边（删边即收紧） |
+| P4 remove `StoreBackend` | 🟡 **Phase A（45→19）+ Phase B 收窄（19→8）+ 读端解锁收尾（8→4）已完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles/rule/artifact/article-analysis 全拆出 supertrait；3 个 generic `S: StoreBackend` 消费方已收窄；**决策读端 4 方法（get_decision/…outcomes/…evaluations/latest_evaluation）已删，读 surface 全走 subtrait（§3 记录）**；`StoreBackend` body 现**仅余 4 个 GATED decision 写方法（§5 GATED）**。终局删除 supertrait + P5 见 §3 |
+| P5 application 唯一用例入口 | 🟡 **Phase 1（Source/Entity 上收 application）已完成（2026-09-05，记录见 §3）**：业务编排移入 `services/{sources,entities}.rs`，api 委托；`api → store` 减少未归零（handler 仍自建 `Store::new`，composition-root 注入 = P5b）。`StoreBackend` supertrait 仍存（body=4 GATED decision 写方法）。P7 guard `GRANDFATHERED` 已记 `application:store` + `api:*` 8 边（删边即收紧） |
 | P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
 | P7 cargo-metadata 架构护栏 | ✅ done（`fcb728b`）：`shared-kernel/tests/architecture.rs` + lint.yml 独立 `architecture-guard` job |
 
@@ -147,6 +147,34 @@ decision 方法），终局删除留待 decision vertical（§5）。
 **下一步（续主线）**：P5b composition-root；Phase 2 域（Article 读需先定 search/R2/content-governance 的
 port 边界、Feed、Rules CRUD、briefing、compliance/takedown、trust-stats）；§3 终局删 `StoreBackend`
 supertrait（GATED）。
+
+### 决策读端解锁完成记录（P4 收尾，body 8→4；未 push，等用户确认）
+
+读端（非 GATED）4 方法已有独立 subtrait surface，先迁移生产调用点、再删 body surface —— 本轮只做
+**读解锁**，4 个 GATED 写方法与 decision vertical（§5）一律不动。
+
+| Commit | 内容 |
+|---|---|
+| `272c5e2` | `refactor(api): read decisions via subtraits` —— 迁移全部读调用：`routes/decision.rs` `get_decision`→`DecisionRepository::find_decision`（detail/timeline/explanation）；outcomes/evaluations → `<Store as store::DecisionQueryService>::list_outcomes/list_evaluations`（UFCS，因两方法各在 2 个 subtrait 上；沿 `graph.rs` 既有风格）；`api services/decision.rs` write-path read-back 改 `find_decision`（`S: StoreBackend` bound 不变，`find_decision` 已在 supertrait 上）；`infrastructure D1DecisionRepository::find` 改 `find_decision`；**`application graph.rs` `GraphProjectionService::expand` bound 收紧** `DecisionQueryService+OutcomeQueryService+StoreBackend`→`DecisionRepository+OutcomeQueryService`（same-migration bound tightening：实际只用到这两者） |
+| `1a77cfc` | `refactor(store): retire decision read methods from StoreBackend body (8→4)` —— 删 `backend.rs` 4 个 body 读方法（get_decision/get_decision_outcomes/get_decision_evaluations/get_latest_evaluation）+ `d1_delegate.rs` 4 个 `impl StoreBackend for D1Store` read delegates + `memory/backend.rs` 4 个 `impl StoreBackend for MemoryStore` body impl。**未删**：underlying SQL / 各 subtrait impl / MemoryStore state（`find_decision` 仍 delegate 到同一 D1 lookup） |
+
+迁移后读 surface 全走：`DecisionRepository::find_decision` + `DecisionQueryService::list_outcomes/
+list_evaluations` + `OutcomeQueryService::list_outcomes` + `EvaluationQueryService::list_evaluations`。
+
+`StoreBackend` body = **4 个 GATED 写方法**：create_decision/update_decision_status/create_outcome/
+create_evaluation。`get_latest_evaluation` 0 调用点，无迁移直接删。测试 **346 passed / 0 failed**（不增不减）；
+guard 空表（0/0）；fmt / clippy -D warnings / wasm / P7 architecture-guard 全绿。structural acceptance：
+body=4 确认；api/application/infrastructure 对 4 个旧读方法生产调用 = 0。
+
+**方法解析要点（复用时注意）**：concrete 类型调 trait-only 方法需 trait in scope（`routes/decision.rs`
+补 import `DecisionRepository`）；generic 只需 where bound；同名跨 subtrait 方法用 UFCS 消歧。
+
+**边界**：`DecisionQueryService::get_latest_evaluation` / `EvaluationQueryService::get_latest_evaluation`
+仍为 dead code，独立 cleanup backlog（§7），本轮未清；decision vertical（§5）仍整体 GATED。
+
+**下一步**：P4 最后一个非-GATED shrink 收口。后续不再从 `StoreBackend` 搬方法，而是集中解决 decision
+write vertical 的 domain/persistence contract（§5），再一次性消灭剩余 4 个 GATED body 方法 + 删
+`StoreBackend` supertrait（§3 终局）。
 
 ---
 

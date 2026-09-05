@@ -69,8 +69,9 @@ D:\Project\intel-web (Astro — frontend)
 ## Backend Crate Dependencies（decoupling 现状 2026-09-05 — 详见 decoupling plan + final-architecture-v2）
 
 DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。进度：P4 `StoreBackend` body
-45→**8**（仅余 GATED decision 方法，supertrait 未删）；P7 架构守卫已入 CI；P5 Phase 1（Source/Entity
-编排上收 application）已完成 —— 详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。
+45→**4**（仅余 GATED decision 写方法，读端 4 方法已删、读 surface 全走 subtrait，supertrait 未删）；P7
+架构守卫已入 CI；P5 Phase 1（Source/Entity 编排上收 application）已完成 ——
+详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。
 
 ```
 delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
@@ -112,7 +113,7 @@ cargo fmt --check                            # 格式统一
 `ai-pipeline`、`context-engine`、`agent-engine`、`claim-engine`。
 
 `cargo-deny` 只能做全局限禁、无法按消费者作用域封禁，故用该脚本补足边缘级约束。去耦总纲、进度与剩余项
-（P4 `StoreBackend` body=8 / P5 Phase 1 Source+Entity 上收 / P5b composition-root / Phase 2 域 /
+（P4 `StoreBackend` body=4 / P5 Phase 1 Source+Entity 上收 / P5b composition-root / Phase 2 域 /
 P6 删壳 / GATED decision vertical）见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`、
 `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 与
 `docs/architecture/final-architecture-v2.md`。
