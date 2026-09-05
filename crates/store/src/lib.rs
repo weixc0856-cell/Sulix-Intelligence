@@ -20,11 +20,14 @@ pub use domain::decision::record_crud::{NewDecisionRecord, NewOutcome};
 
 mod d1_delegate;
 
+use std::sync::Arc;
+
 use worker::D1Database;
 
 /// Production D1-backed store.
+#[derive(Clone)]
 pub struct D1Store {
-    pub(crate) db: D1Database,
+    pub(crate) db: Arc<D1Database>,
 }
 
 /// Backward-compatible alias.
@@ -56,7 +59,7 @@ pub(crate) fn is_cron_healthy(last_run_at: Option<i64>, now: i64) -> bool {
 
 impl D1Store {
     pub fn new(db: D1Database) -> Self {
-        Self { db }
+        Self { db: Arc::new(db) }
     }
 }
 
