@@ -21,10 +21,7 @@
 
 use async_trait::async_trait;
 
-use crate::{
-    traits::*, Decision, DecisionEvaluation, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, OutcomeEvent,
-    StoreError,
-};
+use crate::{traits::*, NewDecision, NewDecisionEvaluation, NewOutcomeEvent, StoreError};
 
 /// Storage backend for the Sulix Intelligence platform.
 ///
@@ -74,9 +71,6 @@ pub trait StoreBackend:
     /// Create a new decision (called by api/services/decision.rs; maps to DecisionRepository::save_decision).
     async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError>;
 
-    /// Get a decision by id (called by reflection-engine; maps to DecisionRepository::find_decision).
-    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError>;
-
     /// Update decision status.
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError>;
 
@@ -85,17 +79,8 @@ pub trait StoreBackend:
     /// Record a factual outcome observation.
     async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError>;
 
-    /// List outcome observations for a decision.
-    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError>;
-
     // ---- Decision Evaluation ----
 
     /// Record a judgment about whether a decision's hypothesis was correct.
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError>;
-
-    /// List all evaluations for a decision, newest first.
-    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError>;
-
-    /// Get the latest evaluation for a decision.
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
 }

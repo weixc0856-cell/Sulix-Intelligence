@@ -732,10 +732,6 @@ impl StoreBackend for MemoryStore {
         Ok(id)
     }
 
-    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
-        Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
-    }
-
     // ── Decision lifecycle (pre-Event-Sourcing) ──
 
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
@@ -764,10 +760,6 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
-        Ok(self.outcomes.borrow().iter().filter(|o| o.decision_id == decision_id).cloned().collect())
-    }
-
     // ── Evaluation ──
 
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
@@ -787,15 +779,6 @@ impl StoreBackend for MemoryStore {
         });
         Ok(id)
     }
-    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
-        Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
-    }
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        let result: Vec<DecisionEvaluation> =
-            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
-        Ok(result.into_iter().last())
-    }
-
     // ===== Claim (Sprint 5.3) =====
 }
 

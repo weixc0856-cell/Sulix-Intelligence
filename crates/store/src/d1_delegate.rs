@@ -425,10 +425,6 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::create_decision(self, d).await
     }
 
-    async fn get_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
-        crate::D1Store::get_decision(self, id).await
-    }
-
     async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
         crate::D1Store::update_decision_status(self, id, status).await
     }
@@ -437,20 +433,8 @@ impl StoreBackend for crate::D1Store {
         crate::D1Store::create_outcome(self, e).await
     }
 
-    async fn get_decision_outcomes(&self, decision_id: i64) -> Result<Vec<OutcomeEvent>, StoreError> {
-        crate::D1Store::get_decision_outcomes(self, decision_id).await
-    }
-
     async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
         crate::D1Store::create_evaluation(self, e).await
-    }
-
-    async fn get_decision_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
-        crate::D1Store::get_decision_evaluations(self, decision_id).await
-    }
-
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        crate::D1Store::get_latest_evaluation(self, decision_id).await
     }
 
     // ===== Claim (Sprint 5.3) =====
