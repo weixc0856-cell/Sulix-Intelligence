@@ -14,5 +14,6 @@
 //! keep working for existing callers.
 
 pub mod models;
+pub use models::*;
 
 pub mod traits;

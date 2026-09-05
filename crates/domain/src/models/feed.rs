@@ -1,0 +1,151 @@
+use serde::{Deserialize, Serialize};
+
+// ---- Error ----
+//
+// StoreError is host-agnostic by design: the D1 access layer (`store`) converts
+// the Cloudflare host error into this type via its own `StoreResultExt` helper,
+// keeping this crate free of any host dependency.
+
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("d1 error: {0}")]
+    D1(String),
+}
+
+// ---- Entities ----
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Feed {
+    pub id: i64,
+    pub url: String,
+    pub title: Option<String>,
+    pub category: Option<String>,
+    pub fetch_interval_sec: i64,
+    pub last_fetched_at: Option<i64>,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+    pub status: String,
+    pub extraction_level: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NewArticle {
+    pub feed_id: i64,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub raw_content_r2_key: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Article {
+    pub id: i64,
+    pub feed_id: i64,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PendingArticle {
+    pub id: i64,
+    pub feed_id: i64,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
+    pub raw_content_r2_key: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArticleDetail {
+    pub id: i64,
+    pub feed_id: i64,
+    pub feed_name: Option<String>,
+    pub guid: String,
+    pub title: String,
+    pub url: Option<String>,
+    pub published_at: Option<i64>,
+    pub ai_summary: String,
+    pub ai_tags: Option<String>,
+    pub score: f64,
+}
+
+/// Reference to an article with its embedding for ANN-based discovery.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArticleEmbeddingRef {
+    pub article_id: i64,
+    pub vector_id: String,
+    pub published_at: i64,
+    pub source_id: i64,
+    pub entity_ids: Vec<i64>,
+}
+
+// ---- View models / query results ----
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FeedStats {
+    pub id: i64,
+    pub title: Option<String>,
+    pub url: String,
+    pub category: Option<String>,
+    pub status: String,
+    pub last_fetched_at: Option<i64>,
+    pub article_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScoreDist {
+    pub top: i64,
+    pub medium: i64,
+    pub low: i64,
+    pub unscored: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DayCount {
+    pub day: String,
+    pub cnt: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HealthStats {
+    pub feed_count: i64,
+    pub active_feed_count: i64,
+    pub article_count: i64,
+    pub last_cron_run_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RuleEntry {
+    pub id: i64,
+    pub name: String,
+    pub rule_json: String,
+    pub audience_tag: String,
+    pub enabled: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SignalStrategy {
+    pub id: i64,
+    pub name: String,
+    pub signal_type: Option<String>,
+    pub rule_json: String,
+    pub audience_tag: String,
+    #[serde(default)]
+    pub score_delta: f64,
+    #[serde(deserialize_with = "crate::models::deserialize_bool_from_any")]
+    pub enabled: bool,
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}

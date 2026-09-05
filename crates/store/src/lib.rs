@@ -2,11 +2,13 @@
 //! talks to storage only through this crate, so backend swaps never leak
 //! into business logic.
 //!
-//! Type definitions live in [`models`] and are re-exported from the crate
-//! root so callers write `store::Feed` / `store::StoreError` etc.
+//! Contracts (traits + DTOs + `StoreError`) live in the infra-free `domain`
+//! crate and are re-exported from this crate root so callers keep writing
+//! `store::Feed` / `store::StoreError` etc. The [`d1`] module holds the D1 SQL
+//! implementations; [`D1Store`] implements every `domain::*` trait via
+//! [`d1_delegate`], and [`memory::MemoryStore`] is the in-memory test double.
 
-pub mod models;
-pub use models::*;
+pub use domain::*;
 
 pub mod backend;
 pub mod memory;
@@ -14,12 +16,10 @@ pub mod traits;
 pub use backend::StoreBackend;
 pub use traits::*;
 
-pub mod domain;
-
-pub use domain::briefing::BriefingSummary;
-pub use domain::decision::record_crud::{NewDecisionRecord, NewOutcome};
+pub mod d1;
 
 mod d1_delegate;
+mod s_err;
 
 use std::sync::Arc;
 

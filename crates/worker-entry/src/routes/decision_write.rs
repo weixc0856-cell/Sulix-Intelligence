@@ -390,7 +390,7 @@ pub(crate) async fn create_outcome_metric(
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
     };
-    use store::domain::decision::record_crud::NewOutcome;
+    use store::NewOutcome;
     let body = NewOutcome {
         decision_id: id,
         metric: input.metric,

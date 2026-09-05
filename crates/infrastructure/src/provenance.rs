@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use shared_kernel::lineage_query::{LineageEntry, LineageQuery};
-use store::domain::provenance::LineageRow;
+use store::d1::provenance::LineageRow;
 use store::D1Store;
 
 /// Which side of a lineage edge is the query target.
