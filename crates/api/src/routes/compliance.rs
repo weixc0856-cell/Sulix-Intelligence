@@ -4,6 +4,7 @@
 //! Approved takedowns create content_visibility_overrides (block serving).
 //! Source policy is NOT modified by takedown — overrides are independent.
 
+use application::ComplianceService;
 use serde::Deserialize;
 use serde_json::json;
 use worker::*;
@@ -30,7 +31,7 @@ struct TakedownStatusBody {
 /// Submit a takedown request. If article_id is provided, immediately
 /// blocks article serving via visibility override.
 pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ComplianceService::new(ctx.data.clone());
     let body: SubmitTakedownBody = match req.json().await {
         Ok(b) => b,
         Err(_) => return response::json_err(400, "invalid request body"),
@@ -43,7 +44,7 @@ pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Resu
         return response::json_err(400, "either source_id or article_id is required");
     }
 
-    match store.create_takedown(body.source_id, body.article_id, &body.requester_email, &body.reason).await {
+    match service.submit(body.source_id, body.article_id, &body.requester_email, &body.reason).await {
         Ok(takedown_id) => response::json_ok(json!({
             "takedown_id": takedown_id,
             "status": "submitted",
@@ -59,7 +60,7 @@ pub async fn submit_takedown(mut req: Request, ctx: RouteContext<Store>) -> Resu
 /// GET /api/compliance/takedowns
 /// List all takedown requests (admin).
 pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ComplianceService::new(ctx.data.clone());
 
     let status_filter =
         req.url().ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.to_string()));
@@ -69,7 +70,7 @@ pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Re
         .and_then(|u| u.query_pairs().find(|(k, _)| k == "limit").and_then(|(_, v)| v.parse::<u32>().ok()))
         .unwrap_or(50);
 
-    match store.list_takedowns(status_filter.as_deref(), limit).await {
+    match service.list(status_filter.as_deref(), limit).await {
         Ok(takedowns) => response::json_ok(json!({ "takedowns": takedowns })),
         Err(e) => {
             console_log!("[Sulix:compliance] list takedowns failed: {e}");
@@ -81,7 +82,7 @@ pub async fn list_takedowns(req: Request, ctx: RouteContext<Store>) -> Result<Re
 /// PUT /api/compliance/takedowns/:id/status
 /// Update takedown status (admin).
 pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = ComplianceService::new(ctx.data.clone());
     let id: i64 = match ctx.param("id").and_then(|s| s.parse().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid takedown id"),
@@ -97,7 +98,7 @@ pub async fn update_takedown_status(mut req: Request, ctx: RouteContext<Store>) 
         _ => return response::json_err(400, "invalid status: must be 'approved', 'rejected', or 'reviewing'"),
     }
 
-    match store.update_takedown_status(id, &body.status, body.notes.as_deref()).await {
+    match service.update_status(id, &body.status, body.notes.as_deref()).await {
         Ok(_) => response::json_ok(json!({ "status": "updated", "takedown_id": id })),
         Err(e) => {
             console_log!("[Sulix:compliance] update status failed: {e}");

@@ -13,14 +13,14 @@ use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, ClaimEvidence,
-    ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
-    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
-    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot,
-    NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection,
-    NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
-    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter,
-    SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary,
+    ClaimEvidence, ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionStats,
+    DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary,
+    EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent,
+    NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent,
+    NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection,
+    RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread,
+    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 // ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
@@ -1233,5 +1233,68 @@ impl SignalStore for MemoryStore {
 
     async fn load_signal_events(&self, thread_id: i64, _limit: u32) -> Result<Vec<SignalEvent>, StoreError> {
         Ok(self.signal_events.borrow().iter().filter(|e| e.thread_id == thread_id).cloned().collect())
+    }
+}
+
+// ── Phase 2 persistence ports (briefing / compliance / trust) ──
+//
+// MemoryStore models none of these aggregates, so every seam surfaces the
+// "not implemented" error (the same convention the write stubs above use) and
+// the services are exercised against D1 in production.
+
+#[async_trait(?Send)]
+impl BriefingStore for MemoryStore {
+    async fn save_briefing(
+        &self,
+        _date: &str,
+        _generated_at: i64,
+        _signal_count: u32,
+        _content: &str,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn load_today_briefing(&self, _date: &str) -> Result<Option<String>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn list_briefings(&self) -> Result<Vec<BriefingSummary>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn get_briefing_by_id(&self, _id: i64) -> Result<Option<String>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+}
+
+#[async_trait(?Send)]
+impl TakedownStore for MemoryStore {
+    async fn create_takedown(
+        &self,
+        _source_id: Option<i64>,
+        _article_id: Option<i64>,
+        _requester_email: &str,
+        _reason: &str,
+    ) -> Result<i64, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn list_takedowns(&self, _status: Option<&str>, _limit: u32) -> Result<Vec<serde_json::Value>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn update_takedown_status(&self, _id: i64, _status: &str, _notes: Option<&str>) -> Result<(), StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+}
+
+#[async_trait(?Send)]
+impl MetricsStore for MemoryStore {
+    async fn model_reliability_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn decision_accuracy_stats(&self) -> Result<serde_json::Value, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn outcome_success_stats(&self) -> Result<serde_json::Value, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
+    }
+    async fn calibration_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        Err(StoreError::D1("not implemented".into()))
     }
 }

@@ -14,6 +14,7 @@
 //! - 500  Stored content corrupted (non-transient — investigate)
 
 use crate::{fmt_date_ymd, json_err, json_err_internal, json_ok, param_i64, Store};
+use application::BriefingService;
 use object_store::{ObjectStore, R2Store};
 use serde::Deserialize;
 use worker::*;
@@ -72,10 +73,10 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<R
         return json_ok(briefing);
     }
 
-    // 3. R2 miss — D1 legacy fallback
-    let store = ctx.data.clone();
+    // 3. R2 miss — D1 legacy fallback (D1 read through BriefingService)
+    let service = BriefingService::new(ctx.data.clone());
 
-    match store.load_today_briefing(&date).await {
+    match service.today(&date).await {
         Ok(Some(content)) => match serde_json::from_str::<serde_json::Value>(&content) {
             Ok(briefing) => {
                 if let Ok(json_str) = serde_json::to_string(&briefing) {
@@ -101,8 +102,8 @@ pub async fn today_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<R
 
 /// GET /api/intelligence/briefings — list all historical briefings.
 pub async fn list_briefings(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-    match store.list_briefings().await {
+    let service = BriefingService::new(ctx.data.clone());
+    match service.list().await {
         Ok(briefings) => json_ok(serde_json::json!({ "success": true, "briefings": briefings })),
         Err(e) => json_err_internal(&e.to_string()),
     }
@@ -110,12 +111,12 @@ pub async fn list_briefings(_req: Request, ctx: RouteContext<Store>) -> Result<R
 
 /// GET /api/intelligence/briefings/:id — single historical briefing.
 pub async fn get_briefing(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
+    let service = BriefingService::new(ctx.data.clone());
     let id = match param_i64(&ctx, "id") {
         Some(v) => v,
         None => return json_err(400, "invalid briefing id"),
     };
-    match store.get_briefing_by_id(id).await {
+    match service.get(id).await {
         Ok(Some(content)) => match serde_json::from_str::<serde_json::Value>(&content) {
             Ok(briefing) => json_ok(briefing),
             Err(e) => json_err_internal(&e.to_string()),

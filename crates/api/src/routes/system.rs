@@ -1,6 +1,7 @@
 //! System/aggregation route handlers.
 //! Health, pipeline status, dashboard, stats, categories, tags, signals, and debug endpoints.
 
+use application::TrustService;
 use serde_json::json;
 use worker::*;
 
@@ -115,63 +116,11 @@ pub(crate) async fn tags(_req: Request, ctx: RouteContext<Store>) -> Result<Resp
 }
 
 pub(crate) async fn trust(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {
-    let store = ctx.data.clone();
-
-    // Health stats (total articles, feeds)
-    let health = store.health_stats().await.ok();
-
-    // Decision stats (evaluations, accuracy)
-    let decision_stats = store.decision_stats().await.ok();
-
-    // Source reliability
-    let sources = store.list_sources(None, None, 100, 0).await.unwrap_or_default();
-    let source_reliability: Vec<serde_json::Value> = sources
-        .iter()
-        .filter(|s| s.trust_score.is_some())
-        .map(|s| {
-            json!({
-                "name": s.name.as_deref().unwrap_or("Unknown"),
-                "tier": s.tier,
-                "trust_score": s.trust_score.unwrap_or(0.0),
-                "verified": s.verified,
-                "policy": s.policy,
-            })
-        })
-        .collect();
-
-    let total_sources = sources.len();
-    let accuracy_rate = decision_stats.as_ref().and_then(|ds| {
-        let total = ds.evaluation_summary.total_evaluated;
-        if total > 0 {
-            Some(ds.evaluation_summary.confirmed as f64 / total as f64)
-        } else {
-            None
-        }
-    });
-
-    // Model invocation stats from reasoning_runs table
-    let model_stats = store.model_reliability_stats().await.unwrap_or_default();
-
-    // Calibration stats
-    let calibration_stats = store.calibration_stats().await.unwrap_or_default();
-
-    // Decision accuracy (Sprint 6.0)
-    let decision_accuracy = store.decision_accuracy_stats().await.unwrap_or_default();
-    let outcome_success = store.outcome_success_stats().await.unwrap_or_default();
-
-    response::json_ok(json!({
-        "signals_analyzed": health.as_ref().map(|h| h.article_count).unwrap_or(0),
-        "active_sources": total_sources,
-        "total_decisions": decision_stats.as_ref().map(|ds| ds.total_decisions).unwrap_or(0),
-        "total_evaluations": decision_stats.as_ref().map(|ds| ds.evaluation_summary.total_evaluated).unwrap_or(0),
-        "accuracy_rate": accuracy_rate,
-        "source_reliability": source_reliability,
-        "evaluation_summary": decision_stats.map(|ds| ds.evaluation_summary),
-        "model_reliability": model_stats,
-        "calibration": calibration_stats,
-        "decision_accuracy": decision_accuracy,
-        "outcome_success": outcome_success,
-    }))
+    let service = TrustService::new(ctx.data.clone());
+    match service.build().await {
+        Ok(report) => response::json_ok(report),
+        Err(e) => response::json_err_internal(&e.to_string()),
+    }
 }
 
 pub(crate) async fn intelligence_signals(_req: Request, ctx: RouteContext<Store>) -> Result<Response> {

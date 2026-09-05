@@ -10,14 +10,14 @@ use std::collections::HashMap;
 use crate::backend::StoreBackend;
 use crate::traits::*;
 use crate::{
-    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, Claim, ClaimEvidence,
-    ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod, EntityActivitySummary,
-    EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats,
-    Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision,
-    NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection, NewSource,
-    Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
-    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter,
-    SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
+    Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary, Claim,
+    ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionStats, DiscoveryMethod,
+    EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed,
+    FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot,
+    NewDecision, NewDecisionEvaluation, NewMemory, NewObservation, NewOutbox, NewOutcomeEvent, NewReflection,
+    NewSource, Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity,
+    RelatedEntityRef, ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread,
+    SignalThreadFilter, SignalUpsertResult, Source, StoreError, TodaySignal, UpdateReflection,
 };
 
 //  Repositories (save / find)
@@ -518,6 +518,63 @@ impl RuleStore for crate::D1Store {
     }
     async fn delete_rule(&self, id: i64) -> Result<(), StoreError> {
         crate::D1Store::delete_rule(self, id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl BriefingStore for crate::D1Store {
+    async fn save_briefing(
+        &self,
+        date: &str,
+        generated_at: i64,
+        signal_count: u32,
+        content: &str,
+    ) -> Result<(), StoreError> {
+        crate::D1Store::save_briefing(self, date, generated_at, signal_count, content).await
+    }
+    async fn load_today_briefing(&self, date: &str) -> Result<Option<String>, StoreError> {
+        crate::D1Store::load_today_briefing(self, date).await
+    }
+    async fn list_briefings(&self) -> Result<Vec<BriefingSummary>, StoreError> {
+        crate::D1Store::list_briefings(self).await
+    }
+    async fn get_briefing_by_id(&self, id: i64) -> Result<Option<String>, StoreError> {
+        crate::D1Store::get_briefing_by_id(self, id).await
+    }
+}
+
+#[async_trait(?Send)]
+impl TakedownStore for crate::D1Store {
+    async fn create_takedown(
+        &self,
+        source_id: Option<i64>,
+        article_id: Option<i64>,
+        requester_email: &str,
+        reason: &str,
+    ) -> Result<i64, StoreError> {
+        crate::D1Store::create_takedown(self, source_id, article_id, requester_email, reason).await
+    }
+    async fn list_takedowns(&self, status: Option<&str>, limit: u32) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::list_takedowns(self, status, limit).await
+    }
+    async fn update_takedown_status(&self, id: i64, status: &str, notes: Option<&str>) -> Result<(), StoreError> {
+        crate::D1Store::update_takedown_status(self, id, status, notes).await
+    }
+}
+
+#[async_trait(?Send)]
+impl MetricsStore for crate::D1Store {
+    async fn model_reliability_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::model_reliability_stats(self).await
+    }
+    async fn decision_accuracy_stats(&self) -> Result<serde_json::Value, StoreError> {
+        crate::D1Store::decision_accuracy_stats(self).await
+    }
+    async fn outcome_success_stats(&self) -> Result<serde_json::Value, StoreError> {
+        crate::D1Store::outcome_success_stats(self).await
+    }
+    async fn calibration_stats(&self) -> Result<Vec<serde_json::Value>, StoreError> {
+        crate::D1Store::calibration_stats(self).await
     }
 }
 

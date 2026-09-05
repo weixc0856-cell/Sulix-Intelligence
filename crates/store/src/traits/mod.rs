@@ -9,24 +9,30 @@
 
 pub mod article_analysis_store;
 pub mod artifact_store;
+pub mod briefing_store;
 pub mod context_snapshot_store;
 pub mod event_index_store;
 pub mod memory_persistence;
+pub mod metrics_store;
 pub mod outbox_store;
 pub mod query;
 pub mod reflection_persistence;
 pub mod repo;
 pub mod rule_store;
 pub mod signal_store;
+pub mod takedown_store;
 
 pub use article_analysis_store::ArticleAnalysisStore;
 pub use artifact_store::ArtifactStore;
+pub use briefing_store::BriefingStore;
 pub use context_snapshot_store::ContextSnapshotStore;
 pub use event_index_store::EventIndexStore;
 pub use memory_persistence::MemoryPersistence;
+pub use metrics_store::MetricsStore;
 pub use outbox_store::OutboxStore;
 pub use query::*;
 pub use reflection_persistence::ReflectionPersistence;
 pub use repo::*;
 pub use rule_store::RuleStore;
 pub use signal_store::SignalStore;
+pub use takedown_store::TakedownStore;

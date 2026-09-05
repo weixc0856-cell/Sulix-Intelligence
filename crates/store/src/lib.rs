@@ -16,6 +16,7 @@ pub use traits::*;
 
 pub mod domain;
 
+pub use domain::briefing::BriefingSummary;
 pub use domain::decision::record_crud::{NewDecisionRecord, NewOutcome};
 
 mod d1_delegate;
