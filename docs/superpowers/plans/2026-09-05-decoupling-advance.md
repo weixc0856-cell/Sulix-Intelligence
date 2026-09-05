@@ -16,7 +16,7 @@
 | P2 domain-owned ports | ✅ done（Reflection/Memory/Signal/Context；p2-port-closure 2026-09-03） |
 | P3 adapter migration | 🟡 **signal/context/reflection/memory 已走 infra adapter 并接线**；decision 例外（见 §5） |
 | P4 remove `StoreBackend` | 🟡 **Phase A（45→19）+ Phase B 收窄（19→8）+ 读端解锁收尾（8→4）已完成（2026-09-05）**：signal/context/reflection/memory/outbox/event/memory-articles/rule/artifact/article-analysis 全拆出 supertrait；3 个 generic `S: StoreBackend` 消费方已收窄；**决策读端 4 方法（get_decision/…outcomes/…evaluations/latest_evaluation）已删，读 surface 全走 subtrait（§3 记录）**；`StoreBackend` body 现**仅余 4 个 GATED decision 写方法（§5 GATED）**。终局删除 supertrait + P5 见 §3 |
-| P5 application 唯一用例入口 | 🟡 **Phase 1（Source/Entity 上收 application）已完成（2026-09-05，记录见 §3）**：业务编排移入 `services/{sources,entities}.rs`，api 委托；`api → store` 减少未归零（handler 仍自建 `Store::new`，composition-root 注入 = P5b）。`StoreBackend` supertrait 仍存（body=4 GATED decision 写方法）。P7 guard `GRANDFATHERED` 已记 `application:store` + `api:*` 8 边（删边即收紧） |
+| P5 application 唯一用例入口 | 🟡 **Phase 1（Source/Entity 上收 application）+ P5b（composition-root 注入）均已完成（2026-09-05，记录见下文）**：业务编排在 `services/{sources,entities}.rs`；HTTP `Store` 由 worker-entry `runtime/http.rs` composition root 构造、经 `Router::with_data` 注入（`RouteContext<Store>`，handler `ctx.data.clone()`）。`api → store` Cargo 边**仍存**（P5b 只改 Store 构造位置、不改依赖图，P7 `GRANDFATHERED` 未删）；`search_articles` direct-D1 = Phase 2 例外。`StoreBackend` supertrait 仍存（body=4 GATED decision 写方法） |
 | P6 清理旧 engine 壳 / 伪迁移层 | 🔒 GATED —— intelligence-domain 裁决 |
 | P7 cargo-metadata 架构护栏 | ✅ done（`fcb728b`）：`shared-kernel/tests/architecture.rs` + lint.yml 独立 `architecture-guard` job |
 
@@ -175,6 +175,36 @@ body=4 确认；api/application/infrastructure 对 4 个旧读方法生产调用
 **下一步**：P4 最后一个非-GATED shrink 收口。后续不再从 `StoreBackend` 搬方法，而是集中解决 decision
 write vertical 的 domain/persistence contract（§5），再一次性消灭剩余 4 个 GATED body 方法 + 删
 `StoreBackend` supertrait（§3 终局）。
+
+### P5b composition-root 注入完成记录（2026-09-05，已 push `414c1b4` + `e50b712`）
+
+api handler 自建 `Store::new(ctx.env.d1("DB")?)` 上收 worker-entry HTTP runtime（composition root），
+经 `Router::with_data(store)` 注入 `RouteContext<Store>`。本轮**只改 Store 获取位置**，不改变 Cargo
+依赖图：`api → store` 仍存（P7 `GRANDFATHERED` 不删，删边留待 Phase 2 上收）；cron/queue jobs 保持
+自建 store。
+
+| Commit | 内容 |
+|---|---|
+| `414c1b4` | `refactor(store): make D1Store cloneable for router injection` —— `D1Store.db: D1Database` → `Arc<D1Database>` + `#[derive(Clone)]`；domain SQL 走 Deref 零改动 |
+| `e50b712` | `refactor(worker-entry): build Store at composition root and inject via Router::with_data` —— `api::router(store) -> Router<'static, Store>`（`Router::with_data` 起步，因 `Router::new()` 仅在 `Router<()>` 上）；api + worker-entry HTTP internal 全部 handler `RouteContext<()>`→`RouteContext<Store>`、`Store::new(ctx.env.d1(...))`→`ctx.data.clone()`（~90 处 / 24 文件）；`param_i64<D>` 泛型化；`decision build_decision_service` / `reflection build_engine` 改收 store 参数（reflection 3×D1Store 构造 → store.clone）；`today_briefing` 删 per-handler D1-binding 503 |
+
+**§9 行为裁决（D1 = HTTP router 统一前置依赖）**：HTTP 全路由仅 `cors_preflight`/`ping`（system.rs）
+不读 D1；二者留 store-injected router 上（签名改、body 忽略 `ctx.data`）。理由：`env.d1("DB")` 仅本地
+binding 解析（D1 宕机表现为查询错误而非 binding 失败）；binding 未配置 = worker 整体不可用，此时 503
+暴露配置错误优于 200 掩盖。two-router 拆分（无 D1 router 先跑、404 落回）记入 §7 backlog。
+`today_briefing` KV/R2 cache-first 路径在 D1 binding 未配置时被前置 503 挡住 —— 同上可接受，已记录。
+
+**Phase 2 exception**：`search_articles` 仍 `ctx.env.d1("DB")?` → `D1FtsSearch`（search-port 属 Phase 2
+Article 读，不在 P5b 顺手做）—— Gate B 唯一授权例外。
+
+structural acceptance（Gate A/B/C）：api 内 `Store::new`/`D1Store::new` = 0（仅 R2Store/EventStoreLog
+等非 D1 构造）；api 内 `env.d1("DB")` = 仅 article.rs `search_articles`；worker-entry `env.d1` =
+http.rs composition root + jobs/queue（cron 保持现状）。测试 **346 passed / 0 failed**；guard 空表
+（0/0）；fmt / clippy -D warnings / wasm / P7 architecture-guard 全绿。
+
+**下一步**：Phase 2 域上收（Article 读先定 search/R2/content-governance port 边界、Feed、Rules CRUD、
+briefing、compliance、trust-stats）→ 届时删 P7 guard `GRANDFATHERED` 中 `api:*`/`application:store`
+条目即自动收紧。
 
 ---
 

@@ -70,7 +70,8 @@ D:\Project\intel-web (Astro — frontend)
 
 DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。进度：P4 `StoreBackend` body
 45→**4**（仅余 GATED decision 写方法，读端 4 方法已删、读 surface 全走 subtrait，supertrait 未删）；P7
-架构守卫已入 CI；P5 Phase 1（Source/Entity 编排上收 application）已完成 ——
+架构守卫已入 CI；P5 Phase 1（Source/Entity 编排上收 application）+ **P5b composition-root 注入**（HTTP
+Store 由 worker-entry 构造、经 `Router::with_data` 注入，handler 读 `ctx.data.clone()`）均已完成 ——
 详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。
 
 ```
@@ -83,8 +84,10 @@ delivery: worker-entry → api；worker-entry 组装 infrastructure adapters
           → 禁止直接依赖 store/vectorize/embedding/event-store/object-store（CI 守卫，见下）
 application：services/*.rs（UseCase 编排，generic over 最窄 store subtrait；零 Worker/HTTP/js_sys；
              MemoryStore 单测）—— Source/Entity 已上收
-api → store：Source/Entity 经 application::SourceService/EntityService 委托；其余域仍直连 store 且
-       handler 自建 `Store::new(...)`（P5b composition-root 注入后 → api → store = 0）
+api → store：Cargo 边仍存（P7 GRANDFATHERED 未删）。Store 经 composition-root 注入 —— worker-entry
+       runtime/http.rs 构造 → `Router::with_data` → handler `ctx.data.clone()`（不再自建
+       `Store::new`）；Source/Entity 业务经 application::SourceService/EntityService，其余域仍直连
+       store；`search_articles` direct-D1（D1FtsSearch）为 Phase 2 例外
 api → search/rules/embedding/vectorize 耦合仍存（P5 收敛目标）
 infrastructure adapters（D1XxxRepository / R2 / Vectorize）→ store(D1 access)/embedding/object-store
 store → worker (D1Database)
