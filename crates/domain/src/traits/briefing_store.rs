@@ -5,9 +5,9 @@ use crate::{BriefingSummary, StoreError};
 /// Daily-briefing persistence seam (D1 `intelligence_briefs`).
 ///
 /// Added in Phase 2 so the briefing use-cases ride a narrow port instead of
-/// the concrete [`StoreBackend`](crate::StoreBackend) or inherent `D1Store`
-/// methods.  R2 archive reads and KV caching are deliberately NOT here — they
-/// are runtime orchestration owned by `worker-entry` (Phase 2 plan §10).
+/// inherent `D1Store` methods.  R2 archive reads and KV caching are
+/// deliberately NOT here — they are runtime orchestration owned by
+/// `worker-entry` (Phase 2 plan §10).
 #[async_trait(?Send)]
 pub trait BriefingStore {
     /// Persist a generated daily briefing (upsert by date).

@@ -4,8 +4,7 @@ use crate::{DiscoveryMethod, EntitySignalCandidate, SignalDetail, SignalEvent, S
 
 /// Signal lifecycle + instance + timeline-event persistence and read-back.
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// and event-store backends bind this instead of the legacy supertrait.
+/// Infra adapters and event-store backends bind this narrow seam directly.
 /// Signal thread aggregates (`save_signal`/`find_signal*`) belong in
 /// [`super::repo::SignalRepository`]; read-model queries (radar, detail,
 /// listing) belong in [`super::query::SignalQueryService`]. This trait holds

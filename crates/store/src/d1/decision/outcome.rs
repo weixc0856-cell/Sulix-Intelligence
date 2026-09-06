@@ -10,8 +10,9 @@ use worker::wasm_bindgen::JsValue;
 use crate::{NewOutcomeEvent, OutcomeEvent};
 
 impl crate::D1Store {
-    /// Record a factual outcome observation for a decision.
-    pub async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, crate::StoreError> {
+    /// Record a factual outcome observation for a decision (backing the
+    /// `OutcomeRepository::save_outcome` port).
+    pub async fn insert_outcome_event(&self, e: &NewOutcomeEvent) -> Result<i64, crate::StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let observed_at = e.observed_at.unwrap_or(now);
         let row = self
@@ -33,7 +34,7 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await
             .s_err()?;
-        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("create_outcome failed".into()))
+        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("insert_outcome_event failed".into()))
     }
 
     /// List factual outcome observations for a decision, newest first.

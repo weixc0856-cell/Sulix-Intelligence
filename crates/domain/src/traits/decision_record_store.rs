@@ -5,9 +5,8 @@ use crate::{DecisionOutcome, DecisionRecord, NewDecisionRecord, NewOutcome, Stor
 /// Decision-Record persistence seam (D1 `decision_records` + related rows).
 ///
 /// Covers both reads and the record's own writes (outcome-metric creation,
-/// memo persistence) that form the "Verifiable Decision Record" sub-aggregate,
-/// distinct from the GATED decision-write vertical (decision lifecycle /
-/// engine events) which still goes through [`StoreBackend`](crate::StoreBackend).
+/// memo persistence) that form the "Verifiable Decision Record" sub-aggregate —
+/// a separate persistence seam from the decision-engine vertical's row write.
 ///
 /// Added in Phase 2 so the `/api/decision-records` read/memo use-cases ride a
 /// narrow port instead of the concrete [`crate::D1Store`] inherent methods.

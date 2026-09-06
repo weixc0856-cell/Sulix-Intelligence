@@ -12,8 +12,8 @@ use crate::types::{AgentContext, ContextRequestOptions};
 /// ContextBuilder — facade that orchestrates the full pipeline.
 ///
 /// Generic over [`ContextRepository`]; the composition root supplies a concrete
-/// adapter (e.g. `D1ContextRepository`). Previously this was generic over
-/// `StoreBackend`; the engine no longer names a store type.
+/// adapter (e.g. `D1ContextRepository`). The engine never names a concrete
+/// store type.
 pub struct ContextBuilder<R: ContextRepository> {
     repo: R,
 }

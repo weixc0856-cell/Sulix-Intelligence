@@ -1,24 +1,23 @@
-//! Anti-corruption layer: implements every domain trait + the legacy
-//! `StoreBackend` for [`D1Store`](crate::D1Store).
+//! Anti-corruption layer: implements every `domain` trait for
+//! [`D1Store`](crate::D1Store).
 //!
-//! Each method delegates 1:1 to a `D1Store` method ?no additional logic.
+//! Each method delegates 1:1 to a `D1Store` inherent method (no additional
+//! logic).
 
 use async_trait::async_trait;
 
 use std::collections::HashMap;
 
-use crate::backend::StoreBackend;
-use crate::DecisionWriteStore;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary, Claim,
     ClaimEvidence, ConfidenceEvent, DayCount, Decision, DecisionEvaluation, DecisionOutcome, DecisionRecord,
     DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail, EntitySignalCandidate,
     EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle, NewArtifact, NewClaim,
-    NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation, NewDecisionRecord, NewMemory,
-    NewObservation, NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry,
-    OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef, ScoreDist,
-    SignalBriefInput, SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter, SignalUpsertResult,
-    Source, StoreError, TodaySignal, UpdateReflection,
+    NewConfidenceEvent, NewContextSnapshot, NewDecisionEvaluation, NewDecisionRecord, NewMemory, NewObservation,
+    NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry, OutcomeEvent,
+    PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef, ScoreDist, SignalBriefInput,
+    SignalDetail, SignalEvent, SignalStrategy, SignalThread, SignalThreadFilter, SignalUpsertResult, Source,
+    StoreError, TodaySignal, UpdateReflection,
 };
 use domain::traits::*;
 
@@ -145,9 +144,6 @@ impl SignalRepository for crate::D1Store {
 
 #[async_trait(?Send)]
 impl DecisionRepository for crate::D1Store {
-    async fn save_decision(&self, decision: &NewDecision) -> Result<i64, StoreError> {
-        crate::D1Store::create_decision(self, decision).await
-    }
     async fn find_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
         crate::D1Store::get_decision(self, id).await
     }
@@ -170,14 +166,14 @@ impl DecisionIdSource for crate::D1Store {
 #[async_trait(?Send)]
 impl OutcomeRepository for crate::D1Store {
     async fn save_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
-        crate::D1Store::create_outcome(self, e).await
+        crate::D1Store::insert_outcome_event(self, e).await
     }
 }
 
 #[async_trait(?Send)]
 impl EvaluationRepository for crate::D1Store {
     async fn save_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
-        crate::D1Store::create_evaluation(self, e).await
+        crate::D1Store::insert_decision_evaluation(self, e).await
     }
 }
 
@@ -448,35 +444,7 @@ impl BatchSignalQueryService for crate::D1Store {
     }
 }
 
-//  Legacy decision-write vertical — now on the narrow `DecisionWriteStore`
-//  port (GATED relocation; bodies unchanged). `StoreBackend` remains as an
-//  empty composite for compatibility.
-
-#[async_trait(?Send)]
-impl DecisionWriteStore for crate::D1Store {
-    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
-        crate::D1Store::create_decision(self, d).await
-    }
-
-    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
-        crate::D1Store::update_decision_status(self, id, status).await
-    }
-
-    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
-        crate::D1Store::create_outcome(self, e).await
-    }
-
-    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
-        crate::D1Store::create_evaluation(self, e).await
-    }
-}
-
-//  Legacy StoreBackend — empty composite (all capabilities on subtraits).
-
-impl StoreBackend for crate::D1Store {}
-
-//  Fine-grained P4 subtraits — methods above were lifted off StoreBackend and
-//  are now reachable through composition instead of the legacy supertrait.
+//  Fine-grained domain subtraits — each reachable on its own narrow port.
 
 #[async_trait(?Send)]
 impl ArticleAnalysisStore for crate::D1Store {

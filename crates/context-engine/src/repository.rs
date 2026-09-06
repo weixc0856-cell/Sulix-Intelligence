@@ -1,8 +1,8 @@
 //! ContextRepository — persistence port for the context engine.
 //!
 //! Implementations live in `infrastructure` (e.g. `D1ContextRepository`).
-//! Kept to the three methods the builder actually calls — not a general
-//! store abstraction (see StoreBackend deprecation).
+//! Kept to the three methods the builder actually calls — not a general store
+//! abstraction.
 
 use async_trait::async_trait;
 

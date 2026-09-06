@@ -1,7 +1,6 @@
 //! LineageQuery trait — resolves artifact lineage from the provenance store.
 //!
 //! Implementations live in infrastructure (D1) and test (memory).
-//! This is NOT on StoreBackend (which is frozen).
 
 use async_trait::async_trait;
 

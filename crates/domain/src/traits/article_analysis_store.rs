@@ -4,9 +4,8 @@ use crate::StoreError;
 
 /// Article analysis/content lifecycle persistence (derived data on `articles`).
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// (e.g. the ai-pipeline persistence seam) bind this instead of the legacy
-/// supertrait.  Row *insertion* stays on [`ArticleRepository`](crate::ArticleRepository);
+/// Infra adapters (e.g. the ai-pipeline persistence seam) bind this narrow
+/// seam directly.  Row *insertion* stays on [`ArticleRepository`](crate::ArticleRepository);
 /// this seam covers the post-ingestion writes: AI summary results and the R2
 /// key of the extracted full-text body.
 #[async_trait(?Send)]

@@ -1,39 +1,11 @@
-//! Decision CRUD — create, get, update decision records.
+//! Decision CRUD — get, upsert, id-allocation.
 
 use crate::s_err::StoreResultExt;
 use worker::wasm_bindgen::JsValue;
 
-use crate::{Decision, NewDecision};
+use crate::Decision;
 
 impl crate::D1Store {
-    /// Create a new decision record. Returns the new id.
-    pub async fn create_decision(&self, d: &NewDecision) -> Result<i64, crate::StoreError> {
-        let now = (js_sys::Date::now() / 1000.0) as i64;
-        let row = self
-            .db
-            .prepare(
-                "INSERT INTO decisions \
-                 (signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, confidence, status, priority, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?8, ?9, ?10) RETURNING id",
-            )
-            .bind(&[
-                d.signal_thread_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
-                d.actor_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
-                d.decision_type.as_str().into(),
-                d.title.as_str().into(),
-                d.hypothesis.as_deref().map_or(JsValue::null(), |s| s.into()),
-                d.rationale.as_deref().map_or(JsValue::null(), |s| s.into()),
-                JsValue::from_f64(d.confidence),
-                d.priority.as_str().into(),
-                JsValue::from_f64(now as f64),
-                JsValue::from_f64(now as f64),
-            ]).s_err()?
-            .first::<serde_json::Value>(None)
-            .await.s_err()?;
-
-        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("create_decision failed".into()))
-    }
-
     /// Allocate the next `decisions.id` for a new decision-engine aggregate.
     ///
     /// The row primary key is written explicitly from the aggregate id (see
@@ -114,19 +86,6 @@ impl crate::D1Store {
                 JsValue::from_f64(d.created_at as f64),
                 JsValue::from_f64(d.updated_at as f64),
             ])
-            .s_err()?
-            .run()
-            .await
-            .s_err()?;
-        Ok(())
-    }
-
-    /// Update decision status.
-    pub async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), crate::StoreError> {
-        let now = (js_sys::Date::now() / 1000.0) as i64;
-        self.db
-            .prepare("UPDATE decisions SET status = ?1, updated_at = ?2 WHERE id = ?3")
-            .bind(&[status.into(), JsValue::from_f64(now as f64), JsValue::from_f64(id as f64)])
             .s_err()?
             .run()
             .await

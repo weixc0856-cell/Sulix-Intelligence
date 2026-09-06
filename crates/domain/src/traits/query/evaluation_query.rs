@@ -1,9 +1,8 @@
 //! Read-model queries for the Decision Evaluation domain.
 //!
 //! Evaluations are created by [`super::super::repo::EvaluationRepository`].
-//! `list_evaluations` was historically `get_decision_evaluations` on
-//! `StoreBackend`; the separate `get_latest_evaluation` read was retired as
-//! dead code (2026-09-06).
+//! `list_evaluations` was historically the `get_decision_evaluations` read; the
+//! separate `get_latest_evaluation` read was retired as dead code (2026-09-06).
 
 use async_trait::async_trait;
 

@@ -1,9 +1,9 @@
 //! Read-model queries for the Decision Loop domain.
 //!
-//! Decision mutations (`save_decision`, `find_decision`) belong in
-//! [`super::super::repo::DecisionRepository`].  Status updates, outcomes,
-//! and evaluations remain on [`StoreBackend`](crate::StoreBackend) until
-//! event sourcing is formalised.
+//! Decision-row reads (`find_decision`) belong in
+//! [`super::super::repo::DecisionRepository`]; the row write goes through
+//! `DecisionUpsertStore` (decision-engine vertical).  Outcome and evaluation
+//! reads live here alongside the decision stats.
 
 use async_trait::async_trait;
 

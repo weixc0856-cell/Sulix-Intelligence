@@ -6,10 +6,9 @@ use crate::{Feed, StoreError};
 ///
 /// `save_feed` covers insert/update of a whole aggregate; `find_feed` loads by
 /// primary key; `record_fetch_result` persists the etag / last-modified
-/// observed after a fetch (lifted off [`StoreBackend`](crate::StoreBackend) in
-/// P4 so feed lifecycle state lives on the feed seam).  The field-level CRUD
-/// conveniences (`insert_feed` / `update_feed` / `set_feed_status`) were added
-/// in Phase 2 so the API's Feed CRUD use-cases can run through this seam.
+/// observed after a fetch (part of the feed lifecycle seam).  The field-level
+/// CRUD conveniences (`insert_feed` / `update_feed` / `set_feed_status`) were
+/// added in Phase 2 so the API's Feed CRUD use-cases can run through this seam.
 #[async_trait(?Send)]
 pub trait FeedRepository {
     /// Insert or update a feed.  Returns the feed id.

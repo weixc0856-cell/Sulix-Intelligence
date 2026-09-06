@@ -9,8 +9,9 @@ use worker::wasm_bindgen::JsValue;
 use crate::{DecisionEvaluation, NewDecisionEvaluation};
 
 impl crate::D1Store {
-    /// Record a judgment about whether a decision's hypothesis was correct.
-    pub async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, crate::StoreError> {
+    /// Record a judgment about whether a decision's hypothesis was correct
+    /// (backing the `EvaluationRepository::save_evaluation` port).
+    pub async fn insert_decision_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, crate::StoreError> {
         let now = (js_sys::Date::now() / 1000.0) as i64;
         let evaluated_at = e.evaluated_at.unwrap_or(now);
         let row = self
@@ -33,7 +34,8 @@ impl crate::D1Store {
             .first::<serde_json::Value>(None)
             .await
             .s_err()?;
-        row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("create_evaluation failed".into()))
+        row.and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| crate::StoreError::D1("insert_decision_evaluation failed".into()))
     }
 
     /// List all evaluations for a decision, newest first.

@@ -1,9 +1,9 @@
 //! Read-model queries for the Article domain.
 //!
-//! Article mutations (insert, `set_ai_summary`, `set_raw_content_r2_key`)
-//! and AI-analysis methods remain on [`StoreBackend`](crate::StoreBackend)
-//! until `ArticleAnalysis` and `SemanticIndexRecord` are promoted to their own
-//! aggregate roots.
+//! Article insert lives on [`super::super::repo::ArticleRepository`];
+//! AI-analysis writes (`set_ai_summary`, `set_raw_content_r2_key`) live on the
+//! `ArticleAnalysisStore` seam until `ArticleAnalysis` and
+//! `SemanticIndexRecord` are promoted to their own aggregate roots.
 
 use async_trait::async_trait;
 

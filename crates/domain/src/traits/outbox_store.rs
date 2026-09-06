@@ -4,8 +4,7 @@ use crate::{NewOutbox, OutboxEntry, StoreError};
 
 /// Object-outbox persistence (deferred R2 archive writes).
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// and event-store backends bind this instead of the legacy supertrait.
+/// Infra adapters and event-store backends bind this narrow seam directly.
 #[async_trait(?Send)]
 pub trait OutboxStore {
     /// Enqueue a new outbox entry for deferred R2 archive write.

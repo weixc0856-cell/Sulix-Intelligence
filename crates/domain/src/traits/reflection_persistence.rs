@@ -4,8 +4,7 @@ use crate::{NewReflection, Reflection, StoreError, UpdateReflection};
 
 /// Reflection-index persistence (Decision Reflection Engine).
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// bind this instead of the legacy supertrait. Named `ReflectionPersistence`
+/// Infra adapters bind this narrow seam directly. Named `ReflectionPersistence`
 /// to avoid colliding with the `reflection_engine::repository::ReflectionRepository`
 /// domain port it serves.
 #[async_trait(?Send)]

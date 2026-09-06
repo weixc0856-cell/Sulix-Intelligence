@@ -6,9 +6,8 @@ use crate::StoreError;
 /// `content_visibility_overrides`).
 ///
 /// Added in Phase 2 so the `/api/compliance/*` use-cases ride a narrow port
-/// instead of the concrete [`StoreBackend`](crate::StoreBackend) or inherent
-/// `D1Store` methods.  The store returns loose row JSON for listings; no typed
-/// aggregate model exists yet.
+/// instead of inherent `D1Store` methods.  The store returns loose row JSON for
+/// listings; no typed aggregate model exists yet.
 #[async_trait(?Send)]
 pub trait TakedownStore {
     /// Submit a takedown request and block access to the referenced content.

@@ -10,9 +10,7 @@
 
 pub use domain::*;
 
-pub mod backend;
 pub mod memory;
-pub use backend::StoreBackend;
 
 pub mod d1;
 

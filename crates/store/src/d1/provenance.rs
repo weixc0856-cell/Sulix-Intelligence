@@ -1,6 +1,6 @@
 //! D1 provenance queries — resolves artifact lineage from D1.
 //!
-//! Not on StoreBackend (frozen). Direct `impl D1Store` method.
+//! Direct `impl D1Store` method.
 
 use crate::s_err::StoreResultExt;
 use serde::Deserialize;

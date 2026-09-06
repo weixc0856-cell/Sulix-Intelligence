@@ -1,8 +1,8 @@
 //! Read-model queries for the Feed domain.
 //!
-//! Feed lifecycle mutations (record_fetch_result, set_feed_status) and
-//! rule CRUD remain on [`StoreBackend`](crate::StoreBackend) until they are
-//! promoted to their own domain services.
+//! Feed lifecycle mutations (`record_fetch_result`, `set_feed_status`) live on
+//! [`super::super::repo::FeedRepository`]; rule CRUD lives on the `RuleStore`
+//! seam.
 
 use async_trait::async_trait;
 

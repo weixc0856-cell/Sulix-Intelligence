@@ -6,7 +6,7 @@ use crate::{Article, NewArticle, StoreError};
 ///
 /// The `Article` type represents content identity (title, url, published_at).
 /// AI-generated analysis (summary, tags, entities, embedding) and the raw
-/// content R2 key are managed separately through [`StoreBackend`] methods
+/// content R2 key are managed through the `ArticleAnalysisStore` seam
 /// (`set_ai_summary`, `set_raw_content_r2_key`) until they are promoted to
 /// their own domain aggregate (`ArticleAnalysis`, `SemanticIndexRecord`).
 #[async_trait(?Send)]

@@ -1,4 +1,4 @@
-//! In-memory [`StoreBackend`](crate::StoreBackend) implementation for tests.
+//! In-memory implementation of the `domain` store traits for tests.
 //!
 //! Uses `HashMap` / `Vec` instead of D1.  Supports failure injection so
 //! pipeline error-handling paths can be exercised without a database.

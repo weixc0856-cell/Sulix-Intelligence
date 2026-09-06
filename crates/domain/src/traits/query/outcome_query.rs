@@ -1,8 +1,7 @@
 //! Read-model queries for the Outcome domain.
 //!
-//! Outcomes are created by [`super::super::repo::OutcomeRepository`].
-//! These read methods were historically on `StoreBackend` as
-//! `get_decision_outcomes`.
+//! Outcomes are created by [`super::super::repo::OutcomeRepository`]; these
+//! reads were historically the `get_decision_outcomes` read.
 
 use async_trait::async_trait;
 

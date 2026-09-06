@@ -1,9 +1,8 @@
 //! Store-backed [`SignalPersistence`] / [`SignalDiscovery`] / [`SignalQuery`] adapters.
 //!
 //! Bridges the signal-engine write-orchestration + candidate-discovery ports
-//! onto the D1 store (fine-grained `SignalStore`/`SignalQueryService`/… traits,
-//! never the legacy `StoreBackend`). Lives in infrastructure so signal-engine
-//! never depends on store.
+//! onto the D1 store (fine-grained `SignalStore`/`SignalQueryService`/…
+//! traits). Lives in infrastructure so signal-engine never depends on store.
 //!
 //! Unlike Round-1 adapters (owned `store: S`), these hold the store **by
 //! reference** (`&'a S`): `MemoryStore`/`D1Store` are not `Clone`, and the

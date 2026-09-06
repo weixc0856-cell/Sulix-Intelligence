@@ -5,8 +5,8 @@
 //!
 //! ## Bounded context
 //!
-//! This is **not** part of [`store`] — the `StoreBackend` trait abstracts
-//! D1 (operational state), while `ObjectStore` abstracts R2 (memory archive).
+//! This is **not** part of [`store`] — the store crate abstracts D1
+//! (operational state), while `ObjectStore` abstracts R2 (memory archive).
 //! They live in separate crates because they have different semantics:
 //! query/join/aggregate vs. put/get/delete.
 

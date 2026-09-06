@@ -37,8 +37,8 @@ pub struct SummaryResult {
 // ---------------------------------------------------------------------------
 
 /// Persistence seam for the summarization step. One use-case method only —
-/// deliberately NOT a general store abstraction (see StoreBackend deprecation).
-/// Implementations live in `infrastructure` (e.g. `D1ArticlePersistence`).
+/// deliberately NOT a general store abstraction. Implementations live in
+/// `infrastructure` (e.g. `D1ArticlePersistence`).
 #[async_trait(?Send)]
 pub trait ArticlePersistence {
     async fn set_ai_summary(

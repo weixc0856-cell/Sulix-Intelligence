@@ -1,4 +1,4 @@
-//! Single `impl StoreBackend for MemoryStore` block.
+//! In-memory trait implementations for `MemoryStore` (the test double).
 //!
 //! Rust does not allow splitting trait impls across files in the same crate.
 //! However, the methods are thin wrappers around MemoryStore fields.
@@ -10,21 +10,20 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use super::{ArtifactData, EntityInternal, MemoryStore, RelationEdge};
-use crate::backend::StoreBackend;
 use crate::{
     Article, ArticleDetail, ArticleEmbeddingRef, ArtifactEntry, ArtifactRecord, BriefArticle, BriefingSummary,
     ClaimEvidence, ConfidenceEvent, ContextSnapshot, DayCount, Decision, DecisionEvaluation, DecisionOutcome,
     DecisionRecord, DecisionStats, DiscoveryMethod, EntityActivitySummary, EntityArticle, EntityDetail,
     EntitySignalCandidate, EntitySummary, EventIndexEntry, Feed, FeedStats, HealthStats, Memory, NewArticle,
-    NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecision, NewDecisionEvaluation,
-    NewDecisionRecord, NewMemory, NewObservation, NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource,
-    Observation, OutboxEntry, OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef,
-    ScoreDist, SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult,
-    Source, StoreError, TodaySignal, UpdateReflection,
+    NewArtifact, NewClaim, NewConfidenceEvent, NewContextSnapshot, NewDecisionEvaluation, NewDecisionRecord, NewMemory,
+    NewObservation, NewOutbox, NewOutcome, NewOutcomeEvent, NewReflection, NewSource, Observation, OutboxEntry,
+    OutcomeEvent, PendingArticle, RadarResponse, Reflection, RelatedEntity, RelatedEntityRef, ScoreDist,
+    SignalBriefInput, SignalDetail, SignalEvent, SignalThread, SignalThreadFilter, SignalUpsertResult, Source,
+    StoreError, TodaySignal, UpdateReflection,
 };
 use domain::traits::*;
 
-// ── Trait impls for MemoryStore (10 subtraits + legacy StoreBackend) ──
+// ── Trait impls for MemoryStore ──
 
 #[async_trait(?Send)]
 impl FeedRepository for MemoryStore {
@@ -185,27 +184,6 @@ impl SignalRepository for MemoryStore {
 
 #[async_trait(?Send)]
 impl DecisionRepository for MemoryStore {
-    async fn save_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_decision_id.borrow();
-        *self.next_decision_id.borrow_mut() = id + 1;
-        self.decisions.borrow_mut().push(Decision {
-            id,
-            signal_thread_id: d.signal_thread_id,
-            actor_id: d.actor_id,
-            decision_type: d.decision_type.clone(),
-            title: d.title.clone(),
-            hypothesis: d.hypothesis.clone(),
-            rationale: d.rationale.clone(),
-            confidence: d.confidence,
-            status: "active".into(),
-            priority: d.priority.clone(),
-            expected_outcomes: None,
-            created_at: now,
-            updated_at: now,
-        });
-        Ok(id)
-    }
     async fn find_decision(&self, id: i64) -> Result<Option<Decision>, StoreError> {
         Ok(self.decisions.borrow().iter().find(|d| d.id == id).cloned())
     }
@@ -725,87 +703,11 @@ impl EvaluationQueryService for MemoryStore {
     }
 }
 
-// ── Legacy decision-write vertical — now on `DecisionWriteStore` (GATED ──
-// ── relocation; bodies unchanged). `StoreBackend` is an empty composite. ──
-
-#[async_trait(?Send)]
-impl DecisionWriteStore for MemoryStore {
-    async fn create_decision(&self, d: &NewDecision) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_decision_id.borrow();
-        *self.next_decision_id.borrow_mut() = id + 1;
-        self.decisions.borrow_mut().push(Decision {
-            id,
-            signal_thread_id: d.signal_thread_id,
-            actor_id: d.actor_id,
-            decision_type: d.decision_type.clone(),
-            title: d.title.clone(),
-            hypothesis: d.hypothesis.clone(),
-            rationale: d.rationale.clone(),
-            confidence: d.confidence,
-            status: "active".into(),
-            priority: d.priority.clone(),
-            expected_outcomes: None,
-            created_at: now,
-            updated_at: now,
-        });
-        Ok(id)
-    }
-
-    // ── Decision lifecycle (pre-Event-Sourcing) ──
-
-    async fn update_decision_status(&self, id: i64, status: &str) -> Result<(), StoreError> {
-        if let Some(d) = self.decisions.borrow_mut().iter_mut().find(|d| d.id == id) {
-            d.status = status.to_string();
-            d.updated_at = 1000000;
-        }
-        Ok(())
-    }
-
-    // ── Outcome ──
-
-    async fn create_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_outcome_id.borrow();
-        *self.next_outcome_id.borrow_mut() = id + 1;
-        let observed_at = e.observed_at.unwrap_or(now);
-        self.outcomes.borrow_mut().push(OutcomeEvent {
-            id,
-            decision_id: e.decision_id,
-            outcome_type: e.outcome_type.clone(),
-            observation: e.observation.clone(),
-            evidence_url: e.evidence_url.clone(),
-            observed_at,
-            created_at: now,
-        });
-        Ok(id)
-    }
-    // ── Evaluation ──
-
-    async fn create_evaluation(&self, e: &NewDecisionEvaluation) -> Result<i64, StoreError> {
-        let now = 1000000;
-        let id = *self.next_decision_id.borrow();
-        *self.next_decision_id.borrow_mut() = id + 1;
-        let evaluated_at = e.evaluated_at.unwrap_or(now);
-        self.evaluations.borrow_mut().push(DecisionEvaluation {
-            id,
-            decision_id: e.decision_id,
-            evaluation: e.evaluation.clone(),
-            confidence: e.confidence,
-            reasoning: e.reasoning.clone(),
-            evaluator: e.evaluator.clone(),
-            evaluated_at,
-            created_at: now,
-        });
-        Ok(id)
-    }
-}
-
 // ── Canonical decision-row write (decision-engine vertical) ──
 // Idempotent insert-or-update by primary key, replacing the legacy two-step
-// `create_decision` + `update_decision_status` (GATED `DecisionWriteStore`,
-// deleted in P4). Aggregate-owned columns refresh; `created_at` is preserved
-// from the first insert; `updated_at` is refreshed.
+// row insert + separate status update (removed in P4). Aggregate-owned columns
+// refresh; `created_at` is preserved from the first insert; `updated_at` is
+// refreshed.
 
 #[async_trait(?Send)]
 impl DecisionUpsertStore for MemoryStore {
@@ -847,9 +749,7 @@ impl DecisionIdSource for MemoryStore {
     }
 }
 
-impl StoreBackend for MemoryStore {}
-
-// ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
+// ── Fine-grained domain subtraits — each on its own narrow port ──
 
 #[async_trait(?Send)]
 impl ArticleAnalysisStore for MemoryStore {

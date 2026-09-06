@@ -4,8 +4,7 @@ use crate::{EventIndexEntry, StoreError};
 
 /// Event archive index persistence (outbox-first Event Sourcing).
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// and event-store backends bind this instead of the legacy supertrait.
+/// Infra adapters and event-store backends bind this narrow seam directly.
 #[async_trait(?Send)]
 pub trait EventIndexStore {
     /// Insert a row into the event_archive_index table.

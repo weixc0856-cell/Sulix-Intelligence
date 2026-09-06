@@ -4,9 +4,8 @@ use crate::{ArtifactEntry, ArtifactRecord, NewArtifact, StoreError};
 
 /// Artifact-registry persistence (D1 `artifact_registry` index rows).
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so infra adapters
-/// (e.g. the R2-backed artifact registry) bind this instead of the legacy
-/// supertrait.  The object bytes themselves live in R2; this seam tracks the
+/// Infra adapters (e.g. the R2-backed artifact registry) bind this narrow seam
+/// directly.  The object bytes themselves live in R2; this seam tracks the
 /// index rows (type, entity, object key) used to locate and list artifacts.
 #[async_trait(?Send)]
 pub trait ArtifactStore {

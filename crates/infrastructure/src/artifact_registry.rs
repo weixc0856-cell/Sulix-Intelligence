@@ -200,9 +200,10 @@ mod tests {
         assert_eq!(bytes, Some(b"hypothesis memo".to_vec()));
     }
 
-    // KNOWN DEFECT (decoupling P3): `find_by_owner()` calls StoreBackend::list_artifacts,
-    // which reads the memory_artifacts table — a DIFFERENT table from the
-    // artifact_registry row that `store()` writes (MemoryStore mirrors this split).
+    // KNOWN DEFECT (decoupling P3): `find_by_owner()` calls the store's
+    // `list_artifacts` read, which reads the memory_artifacts table — a DIFFERENT
+    // table from the artifact_registry row that `store()` writes (MemoryStore
+    // mirrors this split).
     // It also ignores owner_type/owner_id entirely. Un-ignore once find_by_owner
     // reads the artifact_registry table and filters by the owner in metadata.
     #[test]

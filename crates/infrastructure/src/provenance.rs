@@ -14,8 +14,8 @@ use store::D1Store;
 ///
 /// Extracted from the adapter loop as a pure function so the direction semantics
 /// are unit-testable without a D1 connection (`query_lineage` is a direct
-/// `impl D1Store` method — "frozen" off StoreBackend — so the adapter itself is
-/// not host-injectable until decoupling P3 turns this into a real port).
+/// `impl D1Store` method, so the adapter itself is not host-injectable until
+/// decoupling P3 turns this into a real port).
 fn target_side<'a>(direction: &str, row: &'a LineageRow) -> (&'a str, &'a str) {
     if direction == "from" {
         (&row.to_artifact_type, &row.to_artifact_id)

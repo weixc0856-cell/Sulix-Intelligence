@@ -4,11 +4,10 @@ use crate::{SignalStrategy, StoreError};
 
 /// Rule-configuration read/write seam.
 ///
-/// Lifted off [`StoreBackend`](crate::StoreBackend) in P4 so the rule
-/// configuration surface has its own boundary instead of riding the legacy
-/// supertrait.  Workers that score articles fetch the enabled rules here and
-/// parse them into `rules::Rule` values.  The CRUD methods were added in
-/// Phase 2 so the API's `/api/rules` use-cases run through this seam.
+/// The rule-configuration surface has its own boundary instead of riding a
+/// store-wide composite.  Workers that score articles fetch the enabled rules
+/// here and parse them into `rules::Rule` values.  The CRUD methods were added
+/// in Phase 2 so the API's `/api/rules` use-cases run through this seam.
 #[async_trait(?Send)]
 pub trait RuleStore {
     /// Return `rule_json` strings for every enabled rule matching `audience_tag`.

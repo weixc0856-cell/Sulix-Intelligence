@@ -1,9 +1,8 @@
 //! Read-model queries for the Signal Intelligence domain.
 //!
 //! Signal thread mutations (`save_signal`, `find_signal*`) belong in
-//! [`super::super::repo::SignalRepository`].  Instance appends and lifecycle
-//! updates remain on [`StoreBackend`](crate::StoreBackend) until
-//! event sourcing is formalised.
+//! [`super::super::repo::SignalRepository`]; instance appends and lifecycle
+//! updates live on the `SignalStore` seam.
 
 use async_trait::async_trait;
 

@@ -17,13 +17,11 @@ use crate::{Decision, StoreError};
 /// - `created_at` is preserved from the first insert (never rewritten by a
 ///   later upsert) and `updated_at` is refreshed.
 ///
-/// This is deliberately **not** on the deprecated `StoreBackend` composite and
-/// **not** a rename of the GATED `DecisionWriteStore` methods — it is the new
-/// vertical's row write, added (P2, 2026-09-06) so
-/// `infrastructure::D1DecisionRepository::save` can stop composing the legacy
-/// `create_decision` + `update_decision_status` (which duplicated rows on a
-/// second save and dropped `expected_outcomes`). `DecisionWriteStore` /
-/// `StoreBackend` are deleted once the write path no longer references them.
+/// This is the decision-engine vertical's canonical row write (P2, 2026-09-06),
+/// added so `infrastructure::D1DecisionRepository::save` persists an aggregate
+/// state in place. It replaced the legacy two-step row insert + separate status
+/// update, which duplicated rows on a second save and dropped
+/// `expected_outcomes`.
 #[async_trait(?Send)]
 pub trait DecisionUpsertStore {
     /// Insert a decision row, or update it in place if the id already exists.

@@ -3,9 +3,9 @@
 //! Lives in infrastructure (not decision-engine) to keep domain pure.
 //!
 //! `S` is bound to the **narrow domain decision ports** the adapter actually
-//! calls (row upsert + DTO read + query) — not the deprecated `StoreBackend`
-//! composite, which carries no method this adapter needs that these three
-//! don't (P2, 2026-09-06). `StoreBackend` is deleted in P4.
+//! calls: row upsert (`DecisionUpsertStore`), DTO read (`DecisionRepository`)
+//! and query (`DecisionQueryService`). It never depends on a store-wide
+//! composite (narrowed since P2, 2026-09-06).
 
 use async_trait::async_trait;
 use decision_engine::{

@@ -1,8 +1,7 @@
 //! Read-model query traits — **read operations only**.
 //!
-//! Each QueryService trait matches a bounded context and mirrors the read
-//! methods that were historically part of `StoreBackend`.  Write-side
-//! persistence for the corresponding aggregate lives in
+//! Each QueryService trait matches a bounded context and is **read-only**.
+//! Write-side persistence for the corresponding aggregate lives in
 //! [`super::repo`].
 
 pub mod article_query;

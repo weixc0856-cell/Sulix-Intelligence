@@ -3,9 +3,8 @@
 //! - [`repo`] — Aggregate persistence (save / find).  ~2-3 methods each.
 //! - [`query`] — Read-model queries (list, radar, detail, stats).  ~5-15 methods each.
 //!
-//! The legacy [`StoreBackend`](crate::StoreBackend) supertrait composes all of
-//! the above, so existing `T: StoreBackend` generic code continues to compile
-//! without changes.
+//! Callers depend on exactly the narrow trait(s) they call; there is no legacy
+//! composite supertrait anymore.
 
 pub mod article_analysis_store;
 pub mod artifact_store;
@@ -14,7 +13,6 @@ pub mod context_snapshot_store;
 pub mod decision_id_source;
 pub mod decision_record_store;
 pub mod decision_upsert;
-pub mod decision_write_store;
 pub mod event_index_store;
 pub mod memory_persistence;
 pub mod metrics_store;
@@ -33,7 +31,6 @@ pub use context_snapshot_store::ContextSnapshotStore;
 pub use decision_id_source::DecisionIdSource;
 pub use decision_record_store::DecisionRecordStore;
 pub use decision_upsert::DecisionUpsertStore;
-pub use decision_write_store::DecisionWriteStore;
 pub use event_index_store::EventIndexStore;
 pub use memory_persistence::MemoryPersistence;
 pub use metrics_store::MetricsStore;

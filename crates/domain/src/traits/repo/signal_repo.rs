@@ -6,8 +6,8 @@ use crate::{SignalThread, StoreError};
 ///
 /// Manages the signal thread lifecycle (active / decaying / resolved / archived).
 /// Signal instances (daily snapshots) and timeline events are written through
-/// [`super::super::backend::StoreBackend`] methods (`append_signal_instance_v2`,
-/// `insert_signal_event`) until event sourcing is formalised.
+/// the `SignalStore` seam (`append_signal_instance_v2`, `insert_signal_event`)
+/// until event sourcing is formalised.
 /// Read-model queries (radar, detail, candidates) belong in
 /// [`super::super::query::SignalQueryService`].
 #[async_trait(?Send)]

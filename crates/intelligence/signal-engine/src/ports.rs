@@ -68,7 +68,7 @@ pub trait SemanticQuery {
 /// Signal write orchestration boundary — the `run()` write path.
 ///
 /// Wraps the store's thread upsert / instance append / lifecycle calls so the
-/// engine no longer reaches `StoreBackend` directly.
+/// engine reaches only these narrow ports.
 #[async_trait(?Send)]
 pub trait SignalPersistence {
     /// Upsert a signal thread by its `signal_key`; reports whether it was
@@ -106,8 +106,8 @@ pub trait SignalPersistence {
 
 /// Candidate-discovery boundary — the source read path.
 ///
-/// Wraps the store's entity-candidate + recent-embedded-article queries so the
-/// discovery sources no longer reach `StoreBackend` directly.
+/// Wraps the store's entity-candidate + recent-embedded-article queries so
+/// discovery sources reach only these narrow ports.
 #[async_trait(?Send)]
 pub trait SignalDiscovery {
     /// Entity-anchored signal candidates with quality filters.
@@ -132,10 +132,10 @@ pub trait SignalDiscovery {
 /// Read-model boundary — the query service's store reads.
 ///
 /// Wraps the store's signal read-model calls (detail / stored events / thread
-/// listing) so the read-model assembly in `query/` no longer reaches
-/// `StoreBackend` directly. Only the methods the live read models actually call
-/// are ported (radar-era `get_active_signal_threads` / `load_thread_related_entities`
-/// were deleted with their dead consumers in P3 Round 2).
+/// listing) so the read-model assembly in `query/` reaches only these narrow
+/// ports. Only the methods the live read models actually call are ported
+/// (radar-era `get_active_signal_threads` / `load_thread_related_entities` were
+/// deleted with their dead consumers in P3 Round 2).
 #[async_trait(?Send)]
 pub trait SignalQuery {
     /// Full thread detail read model.
