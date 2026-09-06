@@ -179,4 +179,24 @@ ADR 固化「decision 事件 = 可从事实行重放」+ 记录 reconciliation �
 
 **验证**：`cargo test --workspace` **398 passed**（基线 397 + 新测试）；clippy（infra + worker-entry，`-D warnings`）干净；`cargo fmt --check` 干净；wasm gate（`cargo check -p worker-entry --target wasm32-unknown-unknown`）通过。变更：`crates/worker-entry/src/routes/decision_write.rs`、`crates/infrastructure/src/decision_repository.rs`。
 
-**仍未动**（按处置表属 P1/后续，ADR 固化）：create 撞号加固、outbox reconciliation、`format_id` 在 infra event-log / signal-event-log 的同类撞车面、verdict 列。
+### 其余 `format_id(sec, seq)` emitter 撞车面排查（2026-09-06，结论：无激活面，不改码）
+
+逐一核验全仓每个 event_id 发射源（对 commit `425ea53` 修复后的 HEAD）：
+
+| emitter | event_id 构造 | seq 语义 | 撞车判定 |
+|---|---|---|---|
+| `worker-entry decision_write`（outcome 双发） | 已改四段 `evt_{sec}_{ms}_{seq}_{nonce}` | 每 emit 随机消歧 | **已修**（③，`425ea53`） |
+| `infrastructure/event_log.rs` `EventStoreLog`（reflection） | `evt_{occurred_at}_{seq_for_aggregate}` | seq = aggregate_id 的确定性 64-bit 哈希（FNV），**同 aggregate 恒定** | **无激活面**：reflection-engine 每次生成只 append 一个 `DomainEvent`，aggregate_id = 每轮唯一的 `REF-{reflection_id}`（`service.rs:212-220`）→ 同秒同 aggregate 双发不可达。哈希的**确定性是 retry-dedup 的 load-bearing 特性**（注释明言 re-append 同 id），改成随机会破坏重试幂等 —— **保留不动** |
+| `infrastructure/signal_event_log.rs` `EventStoreSignalLog`（signal） | `evt_{occurred_at}_{sequence}` | sequence = 引擎 run 内单调 `events_written`（每次 append 前 +1，`signal-engine/lib.rs:136-155`） | **无激活面**：run 内同 `now` 但 seq 单调不等；跨 run 30-min 间隔，同 wall-second 不可能。仅「两 run 并发且内部计数同值落同秒」才理论撞 —— 当前 signal job 单 cron、不并发 |
+| `event-store` 写路径（`event_archive_index`） | 透传 envelope.event_id | — | `UNIQUE(event_id)` + `INSERT OR IGNORE` 是**放大器**：任一上游重复 id → 第二个事件从索引史静默消失。上游全部排查后仅 decision_write 曾触达（已修） |
+| `shared-kernel/events.rs` `event_id()` | `evt_{fastrand::u64}` | 随机 64-bit | 概率性，可忽略 |
+
+**结论**：§5.2「确定性撞车只在 decision_write」**证实**。两类 infra adapter 的 seq 空间（run 内单调 / 逐事件新鲜 REF id）使同秒同 id 不可达；reflection 的确定性哈希应保留。**无新增代码改动。**
+
+### ADR-005 / ADR-006 固化（② ④，2026-09-06）
+
+按 audit §2/§4 建议把两个架构分叉升为正式 ADR：
+- **ADR-005** `docs/decisions/005-decision-id-allocation.md` —— ② 保留 single-writer `MAX(id)+1`；DB 自增 + `DEC`/row-pk 解耦记为后续重构项。
+- **ADR-006** `docs/decisions/006-decision-event-outbox.md` —— ④ decision outbox best-effort 收口为「decision 专属策略（事件可从事实行重建，因此可容忍）+ reconciliation 后续项」；不推翻 SD-C/SD-D，不把 best-effort 扩散到 fail-closed 的兄弟源。
+
+**仍未动**（各自 backlog / 需 owner）：create 撞号加固的代码落地、outbox reconciliation job、verdict 列 + 写路径 verdict 源、`event_log.rs` 同 aggregate 同秒多类型事件的（当前不可达的）结构性护栏。
