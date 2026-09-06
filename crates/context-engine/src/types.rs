@@ -42,7 +42,9 @@ pub struct RetrievalPlan {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionQuery {
     pub domain: Option<String>,
-    pub status: Option<String>,
+    /// Evidence allowlist: only decisions whose status is listed here qualify as
+    /// Advisor evidence (active = executing, completed = done). Empty = no evidence.
+    pub statuses: Vec<String>,
     pub limit: u32,
 }
 

@@ -41,8 +41,22 @@ pub(crate) async fn run(mut req: Request, ctx: RouteContext<ProductionAppService
 
     let store = ctx.data.store.clone();
 
-    let provider: Box<dyn model_runtime::ModelProvider> =
-        try_build_provider(&ctx.env).unwrap_or_else(|| Box::new(model_runtime::NoopProvider::new()));
+    // Fail-closed: `try_build_provider` is None only when AI_API_KEY is missing or
+    // empty (ModelRuntimeConfig::from_env errors on no key). Without a provider the
+    // Advisor must NOT serve a Noop 200 that fakes an answer — it returns 503. The
+    // only escape hatch is an explicit `AI_PROVIDER=noop` (local dev), never an
+    // unset key.
+    let provider: Box<dyn model_runtime::ModelProvider> = match try_build_provider(&ctx.env) {
+        Some(p) => p,
+        None => {
+            let override_noop =
+                ctx.env.var("AI_PROVIDER").ok().map(|v| v.to_string().eq_ignore_ascii_case("noop")).unwrap_or(false);
+            if !override_noop {
+                return response::json_err(503, "advisor unavailable: AI_API_KEY not configured");
+            }
+            Box::new(model_runtime::NoopProvider::new())
+        }
+    };
     let llm = Box::new(ModelProviderLLM::new(provider));
     let runtime = AgentRuntime::new(Box::new(CtxWrapper(ContextBuilder::new(D1ContextRepository::new(store)))), llm);
 

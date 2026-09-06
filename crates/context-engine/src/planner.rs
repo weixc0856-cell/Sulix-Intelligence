@@ -6,8 +6,13 @@ pub fn plan(intent: &Intent) -> RetrievalPlan {
     let domain = intent.domain.as_deref();
     let stage = &intent.stage;
 
-    let decision_query =
-        Some(DecisionQuery { domain: domain.map(String::from), status: Some("active".into()), limit: 10 });
+    // Advisor evidence allowlist: executing (active) + completed decisions. Superseded /
+    // draft / proposed / approved are not historical evidence for the advisor.
+    let decision_query = Some(DecisionQuery {
+        domain: domain.map(String::from),
+        statuses: vec!["active".into(), "completed".into()],
+        limit: 10,
+    });
 
     let reflection_query = match stage {
         CognitiveStage::Review => {
@@ -44,7 +49,11 @@ mod tests {
             entity: None,
         };
         let plan = plan(&intent);
-        assert_eq!(plan.decision_query.as_ref().unwrap().domain.as_deref(), Some("investment"));
+        let decision_query = plan.decision_query.as_ref().unwrap();
+        assert_eq!(decision_query.domain.as_deref(), Some("investment"));
+        // Advisor evidence allowlist — only executing (active) + completed
+        // decisions qualify as evidence; superseded/draft/etc. are excluded.
+        assert_eq!(decision_query.statuses, vec!["active".to_string(), "completed".to_string()]);
         assert!(!plan.pattern_enabled);
     }
 

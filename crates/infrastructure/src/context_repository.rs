@@ -26,8 +26,18 @@ impl<S: DecisionQueryService + MemoryPersistence + ContextSnapshotStore> D1Conte
 
 #[async_trait(?Send)]
 impl<S: DecisionQueryService + MemoryPersistence + ContextSnapshotStore> ContextRepository for D1ContextRepository<S> {
-    async fn list_decisions(&self, limit: u32) -> Result<Vec<DecisionRecord>, ContextError> {
-        let rows = self.store.list_decisions(None, limit).await.map_err(Self::to_persistence)?;
+    async fn list_decisions(&self, statuses: &[&str], limit: u32) -> Result<Vec<DecisionRecord>, ContextError> {
+        if statuses.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Evidence allowlist: one equality query per allowed status, then merge on
+        // the system side. Deliberately keeps DecisionQueryService single-status
+        // (shared by other consumers) and avoids dynamic IN-placeholder SQL.
+        let mut rows: Vec<store::Decision> = Vec::new();
+        for status in statuses {
+            rows.extend(self.store.list_decisions(Some(status), limit).await.map_err(Self::to_persistence)?);
+        }
+        let rows = merge_eligible(rows, limit);
         Ok(rows
             .into_iter()
             .map(|d| DecisionRecord {
@@ -71,5 +81,66 @@ impl<S: DecisionQueryService + MemoryPersistence + ContextSnapshotStore> Context
             user_scope: snap.user_scope.clone(),
         };
         self.store.save_context_snapshot(&req).await.map_err(Self::to_persistence)
+    }
+}
+
+/// Merge per-status decision rows into one deterministic, capped evidence set.
+///
+/// Ordering is `created_at DESC, id DESC` — the `id` tie-breaker keeps the
+/// evidence set stable across calls for equal `created_at` rows (same DB state
+/// ⇒ same evidence list ⇒ reproducible Advisor context).
+fn merge_eligible(rows: Vec<store::Decision>, limit: u32) -> Vec<store::Decision> {
+    let mut rows = rows;
+    rows.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.id.cmp(&a.id)));
+    rows.truncate(limit as usize);
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use store::Decision;
+
+    fn decision(id: i64, created_at: i64) -> Decision {
+        Decision {
+            id,
+            signal_thread_id: None,
+            actor_id: None,
+            decision_type: "test".into(),
+            title: format!("decision {id}"),
+            hypothesis: None,
+            rationale: None,
+            confidence: 0.5,
+            status: "completed".into(),
+            priority: "medium".into(),
+            expected_outcomes: None,
+            created_at,
+            updated_at: created_at,
+        }
+    }
+
+    #[test]
+    fn merge_sorts_created_at_desc_then_id_desc() {
+        let rows = vec![decision(1, 100), decision(2, 300), decision(3, 300), decision(4, 200)];
+        let merged = merge_eligible(rows, 10);
+        let ids: Vec<i64> = merged.iter().map(|d| d.id).collect();
+        // created_at desc; the two equal-created_at rows (2,3) order by id desc (3 then 2).
+        assert_eq!(ids, vec![3, 2, 4, 1]);
+    }
+
+    #[test]
+    fn merge_caps_at_limit() {
+        let rows = vec![decision(1, 100), decision(2, 200), decision(3, 300), decision(4, 400)];
+        let merged = merge_eligible(rows, 2);
+        let ids: Vec<i64> = merged.iter().map(|d| d.id).collect();
+        assert_eq!(ids, vec![4, 3]);
+    }
+
+    #[test]
+    fn merge_is_deterministic() {
+        let rows = vec![decision(1, 100), decision(2, 100), decision(3, 100)];
+        let first: Vec<i64> = merge_eligible(rows.clone(), 10).iter().map(|d| d.id).collect();
+        let second: Vec<i64> = merge_eligible(rows, 10).iter().map(|d| d.id).collect();
+        assert_eq!(first, second);
     }
 }

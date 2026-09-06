@@ -29,6 +29,13 @@ pub struct AgentResponse {
     pub context_id: String,
     pub execution: ExecutionMetadata,
     pub session_id: Option<SessionId>,
+    /// Advisor evidence gate: fewer than `ReasoningPolicy::min_evidence_items`
+    /// matched decisions were in context when the answer was generated.
+    /// Computed from the system-side context (pre-LLM), never from model output.
+    pub insufficient_evidence: bool,
+    /// Set when `insufficient_evidence` is true. "Insufficient evidence" is a
+    /// valid Advisor output state (HTTP 200), not a system error.
+    pub disclaimer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +58,11 @@ pub struct ExecutionMetadata {
     pub stages: Vec<AgentStage>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AgentStage {
     ContextBuilding,
     PromptConstruction,
     LLMInference,
-    ResponseValidation,
     Completed,
 }
 
