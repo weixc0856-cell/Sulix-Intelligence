@@ -22,6 +22,15 @@ pub struct Decision {
     pub confidence: f64,
     pub status: String,
     pub priority: String,
+    /// JSON array string of the aggregate's `ExpectedOutcome`s (migration
+    /// 0050). `None` = "no predictions recorded" (legacy rows) — the new
+    /// decision-engine write path always writes a value (possibly `[]`).
+    /// SD-B invariant: `expected_outcomes` is aggregate state persisted here;
+    /// observed outcomes are reconstructed from `outcome_events`, never a
+    /// column. `#[serde(default)]` keeps rows decoded before/without the
+    /// column clean (None) instead of erroring.
+    #[serde(default)]
+    pub expected_outcomes: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

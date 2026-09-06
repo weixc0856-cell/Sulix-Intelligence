@@ -13,7 +13,7 @@ impl crate::D1Store {
                 .db
                 .prepare(
                     "SELECT id, signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, \
-                                confidence, status, priority, created_at, updated_at \
+                                confidence, status, priority, expected_outcomes, created_at, updated_at \
                          FROM decisions WHERE status = ?1 ORDER BY created_at DESC LIMIT ?2",
                 )
                 .bind(&[s.into(), JsValue::from_f64(limit as f64)])
@@ -27,7 +27,7 @@ impl crate::D1Store {
                 .db
                 .prepare(
                     "SELECT id, signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, \
-                                confidence, status, priority, created_at, updated_at \
+                                confidence, status, priority, expected_outcomes, created_at, updated_at \
                          FROM decisions ORDER BY created_at DESC LIMIT ?1",
                 )
                 .bind(&[JsValue::from_f64(limit as f64)])
@@ -45,7 +45,7 @@ impl crate::D1Store {
         self.db
             .prepare(
                 "SELECT id, signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, \
-                        confidence, status, priority, created_at, updated_at \
+                        confidence, status, priority, expected_outcomes, created_at, updated_at \
                  FROM decisions WHERE signal_thread_id = ?1 ORDER BY created_at DESC LIMIT 50",
             )
             .bind(&[JsValue::from_f64(signal_thread_id as f64)])

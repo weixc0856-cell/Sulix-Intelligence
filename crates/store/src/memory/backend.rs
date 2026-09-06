@@ -200,6 +200,7 @@ impl DecisionRepository for MemoryStore {
             confidence: d.confidence,
             status: "active".into(),
             priority: d.priority.clone(),
+            expected_outcomes: None,
             created_at: now,
             updated_at: now,
         });
@@ -744,6 +745,7 @@ impl DecisionWriteStore for MemoryStore {
             confidence: d.confidence,
             status: "active".into(),
             priority: d.priority.clone(),
+            expected_outcomes: None,
             created_at: now,
             updated_at: now,
         });
@@ -796,6 +798,37 @@ impl DecisionWriteStore for MemoryStore {
             created_at: now,
         });
         Ok(id)
+    }
+}
+
+// ── Canonical decision-row write (decision-engine vertical) ──
+// Idempotent insert-or-update by primary key, replacing the legacy two-step
+// `create_decision` + `update_decision_status` (GATED `DecisionWriteStore`,
+// deleted in P4). Aggregate-owned columns refresh; `created_at` is preserved
+// from the first insert; `updated_at` is refreshed.
+
+#[async_trait(?Send)]
+impl DecisionUpsertStore for MemoryStore {
+    async fn upsert_decision(&self, d: &Decision) -> Result<(), StoreError> {
+        let mut decisions = self.decisions.borrow_mut();
+        match decisions.iter_mut().find(|row| row.id == d.id) {
+            Some(existing) => {
+                existing.signal_thread_id = d.signal_thread_id;
+                existing.actor_id = d.actor_id;
+                existing.decision_type = d.decision_type.clone();
+                existing.title = d.title.clone();
+                existing.hypothesis = d.hypothesis.clone();
+                existing.rationale = d.rationale.clone();
+                existing.confidence = d.confidence;
+                existing.status = d.status.clone();
+                existing.priority = d.priority.clone();
+                existing.expected_outcomes = d.expected_outcomes.clone();
+                existing.updated_at = d.updated_at;
+                // created_at deliberately preserved from the first insert.
+            }
+            None => decisions.push(d.clone()),
+        }
+        Ok(())
     }
 }
 

@@ -1,0 +1,11 @@
+-- Decision vertical (P2, 2026-09-06): persist the decision aggregate's
+-- expected_outcomes on the `decisions` row.
+--
+--   expected_outcomes = aggregate state -> persisted in decisions (JSON array)
+--   observed_outcomes = observed facts  -> reconstructed from outcome_events
+--
+-- (SD-B invariant — expected has a column here; observed deliberately does not.)
+--
+-- Nullable TEXT: NULL == "no predictions recorded" (legacy rows written before
+-- this migration). The new aggregate write path always sets it (possibly '[]').
+ALTER TABLE decisions ADD COLUMN expected_outcomes TEXT;
