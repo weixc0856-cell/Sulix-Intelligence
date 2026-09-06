@@ -7,6 +7,8 @@
 > 拆分（status 映射 ≠ outcome lifecycle）、SD-D（save/outbox 一致性边界，不引 UoW）、P1 aggregate
 > invariant（禁 use-case/route 直写 status）、save 语义钉死（persist aggregate，D1 upsert 是实现细节）、
 > P2 upsert 字段策略（created_at 保留）、删测试须有 replacement owner、P4 双 grep 终验防旧方法换名藏匿。
+> **执行状态（2026-09-06）**：P1 `de0ab18` / P2 `50ebf9a` / P3 `66a7843` 已 push；P4 `f8de0cd`
+> （删 seam，46 files +125/−421）已 commit **未 push**；workspace **397 passed**。
 > **不变量**：outbox 事件契约原样、测试数不降、guard 空表、fmt/clippy/wasm 绿、每 checkpoint 独立 commit；
 > **push = BLOCKED** 至用户确认。纯代码 + 一条 D1 migration 文件（不 apply 到 CF，不碰资源）。
 

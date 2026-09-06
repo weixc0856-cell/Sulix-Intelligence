@@ -76,13 +76,19 @@ intelligence-domain（伪迁移）
 > 注意区分两个 crate：09-06 新建 `domain` = persistence 端口/DTO 契约层（机械搬迁壳）；`intelligence-domain`
 > = 领域类型/纯逻辑。两 crate 更名消歧另议（低优先）。记录：`docs/decisions/004-intelligence-domain-kept.md`。
 
-> **现状补记（2026-09-06）**：P4（`StoreBackend` body → 0；GATED decision 写方法 4 条迁窄 trait
-> `DecisionWriteStore`，StoreBackend 保留为空 composite 供 worker-entry 生产 DecisionService 合成）、
-> P5 Phase 1 / P5b（composition-root 注入）、Phase 2（api 六条 concrete-infra edge 归零）及主线最后一步
-> **`application:store` 正常边归零**均已收口：application 改指 infra-free `domain` crate（23 trait bound +
-> DTO + StoreError），store 降为 application dev-dep（仅单测 MemoryStore）；新 crate `composition` 承载
-> `ProductionAppServices = AppServices<D1Store>`（wiring only）。P7 guard `GRANDFATHERED = &[]`，
-> 新增 domain/application 不得依赖 composition 规则。详见 decoupling plan。
+> **现状补记（2026-09-06）**：P4（`StoreBackend` body → 0）、P5 Phase 1 / P5b（composition-root 注入）、
+> Phase 2（api 六条 concrete-infra edge 归零）及主线最后一步 **`application:store` 正常边归零**均已收口：
+> application 改指 infra-free `domain` crate（窄 trait + DTO + StoreError），store 降为 application
+> dev-dep（仅单测 MemoryStore）；新 crate `composition` 承载 `ProductionAppServices = AppServices<D1Store>`
+> （wiring only）。P7 guard `GRANDFATHERED = &[]`，新增 domain/application 不得依赖 composition 规则。
+> 详见 decoupling plan。
+>
+> **D2 decision vertical 收口（同日，接上）**：`domain::DecisionWriteStore`（4 GATED 写方法）与空
+> `StoreBackend` composite 已整体删除（GATED seam 终局），生产 decision 写唯一路径 = worker-entry →
+> application DecisionService → decision-engine aggregate → `decision_engine::DecisionRepository` +
+> `domain::OutboxStore`。P4 双 grep 归零、workspace 397 passed。详见
+> `docs/superpowers/plans/2026-09-06-decision-vertical.md`。（因此下文 P4 步与 guard 清单里
+> "StoreBackend forbidden" 属历史计划措辞 —— 该类型已不存在，P7 实际锁的是 crate 依赖图。）
 
 ---
 

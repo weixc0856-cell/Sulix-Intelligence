@@ -229,6 +229,27 @@ recon（本文件 §2）证明 decision 接线是**半成品域迁移**而非机
 `save` upsert/事件经 aggregate 发射 + 两个 `DecisionService` 消歧）后，另立 Phase 执行：
 读路由（list/detail/by_signal）先切 → 写路由后切。裁决前不动 production 决策路径。
 
+### Phase D 完成记录（2026-09-06，D2 decision vertical，已独立 plan：`2026-09-06-decision-vertical.md`）
+
+用户拍板（有条件通过）后以 P1–P4 执行完，每 checkpoint 独立绿 + 独立 commit：
+
+- **P1** `de0ab18` decision-engine 域硬化（aggregate serde 快照、status DAG invariant #5 禁直写、`save`
+  契约、`encode/decode_expected_outcomes`）。
+- **P2** `50ebf9a` D1 补齐：`expected_outcomes` 列（migration 0050）+ 新窄端口 `DecisionUpsertStore::
+  upsert_decision`（ON CONFLICT upsert）+ infra `D1DecisionRepository` bound 收窄。
+- **P3** `66a7843` 生产写路径收口：application `DecisionService` 重写为真 use-case（aggregate
+  propose→approve→execute），worker-entry `decision_write.rs` 四条 route 变纯 delivery adapter（信封
+  byte-parity + row-before-envelope）；新 `DecisionIdSource`（MAX+1）端口。
+- **P4** `f8de0cd` **终局删 seam**：删 `DecisionWriteStore`（4 GATED 写方法）+ 空 `StoreBackend` composite
+  + 双 impl + 死 `save_decision`/`create_decision`/`update_decision_status`；D1 fact 写 rename canonical
+  名。双 grep 归零：`rg 'StoreBackend|DecisionWriteStore' crates` → 0。
+
+**结果**：`StoreBackend` supertrait 与 4 条 GATED 写方法**已不存在**；生产 decision 写唯一路径 =
+worker-entry → application DecisionService → decision-engine aggregate → `decision_engine::
+DecisionRepository` + `domain::OutboxStore`（§5 DoD 达成，见 `2026-09-06-decision-vertical.md`）。
+残余（out of D2 scope）：`DecisionRecordStore`（Sprint 6.0）保留；read 路由未重构；两个
+`DecisionRepository` 名并存未合并。push 状态：P1–P3 已 push；P4 `f8de0cd` 未 push（等用户确认）。
+
 ---
 
 ## 6. Phase E — P6（GATED）+ 收尾文档同步
@@ -242,7 +263,8 @@ P6 等 intelligence-domain 裁决。收尾（Task 7.2 基线）：更新 `CLAUDE
 
 重灌 feed/文章 + embedding backfill（需 DeepSeek key，用户约束先不调）；`.ok()` 硬化；
 `CRON_REFLECTION/MEMORY` vars；KV `title`；历史资源清理（独立授权）；intelligence-domain 裁决；
-decision vertical（§5）；Vectorize 惯用法目标态；`mark_failed` 语义；outbox 迁移。
+~~decision vertical（§5）~~（已完成 2026-09-06，见 §5 完成记录）；Vectorize 惯用法目标态；`mark_failed` 语义；
+outbox 迁移。
 
 ---
 

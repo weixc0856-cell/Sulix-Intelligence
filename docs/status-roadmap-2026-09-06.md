@@ -17,8 +17,11 @@
   `check-layered-deps.sh`（0 grandfathered / 0 removable）/ architecture guard。
 - **生产数据为空**：CF 五资源已重置（2026-09-05），D1/KV/Vectorize 空库空索引；
   **DeepSeek chat API key 未填** → summarizer 自停、`ai_summary` 空、无 embedding → 播种 + backfill 全被锁。
-- **阻碍架构进一步收口的只剩两个 GATED 决议**：`intelligence-domain` 存废（D1）与 Decision vertical（D2）——
-  都是领域语义重设计，不是机械搬迁，需用户拍板。
+- **D2 Decision vertical 已执行**（2026-09-06，`de0ab18`/`50ebf9a`/`66a7843` 已 push + `f8de0cd` 待 push）：
+  生产 decision 写路径上收 decision-engine 真 use-case；GATED `DecisionWriteStore` + 空 `StoreBackend`
+  composite **已整体删除**（P4），workspace 397 passed。
+- **阻碍架构进一步收口的只剩一个 GATED 决议**：`intelligence-domain` 存废（D1）—— 领域语义重设计，
+  需用户拍板。
 
 ---
 
@@ -77,8 +80,8 @@ domain/application ─✗→ composition（防反向成环）
   Vectorize 重建 1024 维 cosine。**D1 与 Vectorize 现为空**。
 - **CI gates**（lint.yml）：fmt / clippy -D / test / wasm32 gate / `architecture-guard` job；
   `cargo-deny check bans licenses sources`（**advisories 未启用**，因 fxhash unmaintained，见决议 D4）。
-- **测试基线**：全量 `cargo test --workspace` = **379 passed / 0 failed**（2026-09-06 实测）。
-  文档口径漂移：CLAUDE.md 记 346（2026-09-05），README 记 "350+/351" —— 均过期，Wave A 统一为 379。
+- **测试基线**：全量 `cargo test --workspace` = **397 passed / 0 failed**（2026-09-06 D2 P3/P4 实测；
+  decoupling 收口 floor = 379）。文档口径漂移：CLAUDE.md 记 379 / README 记 "350+/351"，Wave A 统一。
 - **wrangler `[build]` = 单一 Worker 构建入口**（ADR-003，已接受）；toolchain 1.97.0 由 rust-toolchain.toml 钉死。
 
 ---
@@ -93,13 +96,20 @@ domain/application ─✗→ composition（防反向成环）
   ② 删除 → 把类型/纯逻辑并入新 `domain` crate 后删壳（work 更大）。
 - 挡：P6 收口 + README/两份 plan/架构文档同步。
 
-### D2 — Decision vertical（GATED，最大的架构收尾）
-- decision-engine 是"半成品域"：aggregate 缺 Serialize、outcome 未持久化、status 词汇不齐（`active` vs `Proposed`）、
-  `save` 只 INSERT 无 upsert、`CreateDecision` 无 expected_outcomes。
-- 生产写路径走 worker-entry 的 `DecisionService`（`S: StoreBackend` 空 composite，4 GATED write + insert_outbox）；
-  application 的 `services/decision.rs::DecisionService`（`S: DecisionWriteStore`）与之撞名。
-- **挡**：`StoreBackend` 空 composite 的最终删除（4 条 GATED 写方法 + insert_outbox 消灭）。
-- 规则：裁决前**不动 production 决策路径**。域补齐后先切读路由、后切写路由（`2026-09-05-decoupling-advance.md` §5）。
+### D2 — Decision vertical（✅ 已执行 2026-09-06，见 `2026-09-06-decision-vertical.md`）
+- 背景（为何曾 GATED）：decision-engine 是"半成品域"（aggregate 缺 Serialize、outcome 未持久化、status
+  词汇不齐、`save` 无 upsert、`CreateDecision` 无 expected_outcomes）；生产写路径走 worker-entry 的
+  `DecisionService`（`S: StoreBackend` 空 composite），与 application 死 `DecisionService` 撞名。
+- **裁决**：用户有条件通过（2026-09-06）→ 执行 P1–P4（每 checkpoint 独立绿 + 独立 commit）。
+- **落地**：P1 域硬化（serde 快照 / status DAG invariant / save 契约）；P2 D1 补齐（`expected_outcomes` 列
+  + `DecisionUpsertStore::upsert_decision`）；P3 真 use-case + worker-entry 纯 delivery adapter（信封
+  byte-parity，row-before-envelope）；**P4 删 seam**：`DecisionWriteStore` + 空 `StoreBackend` composite 整体
+  删除，双 grep 归零。**`StoreBackend` 已删除**，生产 decision 写唯一路径 =
+  worker-entry → application DecisionService → decision-engine aggregate → `decision_engine::DecisionRepository`
+  + `domain::OutboxStore`。
+- **残余**（out of D2 scope）：`DecisionRecordStore`（Sprint 6.0）不动；read 路由未重构；
+  `domain::DecisionRepository`（读 DTO）与 `decision_engine::DecisionRepository`（aggregate）双名并存未合并。
+- **push 状态**：P1–P3 已 push；P4 `f8de0cd` 未 push（等用户确认）。
 
 ### D3 — Vectorize 访问目标态
 - custom `#[wasm_bindgen]` shim vs 上游/惯用 binding 契约 —— 架构层定夺（`cf-resource-conformity.md` rec #3）。
@@ -129,15 +139,16 @@ domain/application ─✗→ composition（防反向成环）
 - FTS5 查询长度上限（P3，query 无 cap）。
 - **DoD**：每项有测试或明确行为断言；clippy/test 全绿。
 
-### Wave C — 决议驱动的架构收口（依赖 D1 / D2 拍板）
-- **D2 通过后**：decision-engine 域补齐（aggregate 序列化 / outcome 持久化 / status 对齐 / save upsert /
-  事件经 aggregate 发射 + `CreateDecision.expected_outcomes`）→ 两个 DecisionService 消歧 → 读路由先切、
-  写路由后切 → 删 4 GATED 写方法 + `StoreBackend` 空 composite（P4 终局）。
+### Wave C — 决议驱动的架构收口
+- **D2 部分 ✅（已执行 2026-09-06，P1–P4）**：decision-engine 域补齐（aggregate 序列化 / outcome 持久化 /
+  status 对齐 / save upsert / `expected_outcomes`）→ application 真 use-case 上收 + worker-entry 变纯
+  delivery adapter（SD-C，信封由 route 构造）→ **删 4 GATED 写方法 + `StoreBackend` 空 composite
+  （P4 终局，双 grep 归零）**。DoD 达成。
 - **D1 通过后**：intelligence-domain 定归宿 → P6 收口 + 三份文档同步。
 - **search_articles（软议题，非违规）**：现为 worker-entry delivery 层直连 `env.d1("DB")` + `search::D1FtsSearch`，
-  属**合规** infra 访问、无 api 边。仅当想统一 service/port 边界时才考虑再上收 —— 低优先，可由 D2 顺带定。
+  属**合规** infra 访问、无 api 边。仅当想统一 service/port 边界时才考虑再上收 —— 低优先。
 - Outbox 定位：当前 Reflection/Memory 双 port 上的显式 seam → 是否集中到 `shared/events`（Wave C 或 backlog）。
-- **DoD**：D2 = `StoreBackend` 删除 + 写路由走 domain；D1 = 唯一 domain 概念落定 + docs 同步。
+- **DoD**：D1 = 唯一 domain 概念落定 + docs 同步。
 
 ### Wave D — 测试补齐（testing-plan T6–T9 + adapter mapping gap）
 - T6 application use-case 测试（decision/signal services；先确认 `MemoryArtifactRegistry` 测试替身是否存在）。
@@ -160,10 +171,11 @@ domain/application ─✗→ composition（防反向成环）
 ## 7. 建议执行顺序
 
 1. **Wave A（现在可做）**：无决议依赖，顺手把健康分与测试数修到一致。
-2. **D1 / D2 决议**：交用户拍板（是继续架构收口的唯二门闩）；决议前不动 production 决策路径、不动 intelligence-domain。
-3. **Wave C（D2 通过后）**：Decision vertical —— 唯一剩的大型架构收尾，且解锁 `StoreBackend` 删除。
+2. **D1 决议**：交用户拍板（现在继续架构收口的**唯一**门闩）；决议前不动 intelligence-domain。（D2 已拍板
+   并执行完 P1–P4。）
+3. **Wave C（D1 通过后）**：intelligence-domain 定归宿 → P6 收口 + 文档同步。
 4. **Wave E**：等你填 key + 放行 —— 与代码 wave 正交，随时可插。
-5. Wave B / D 可在决议等待期并行推进（皆不依赖 D1/D2）。
+5. Wave B / D 可在决议等待期并行推进（皆不依赖 D1）。
 
 ---
 

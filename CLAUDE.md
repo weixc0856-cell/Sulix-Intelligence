@@ -32,7 +32,7 @@ D:\Project\Sulix Intelligence (Rust workspace — backend)
 ├── rust-toolchain.toml      ← pinned Rust toolchain (single source for channel/components/targets)
 ├── migrations/              ← D1 schema, single source of truth (47 files; numbered 0001…0049)
 ├── crates/
-│   ├── store/               ← D1 access: implements domain::* traits (D1Store) + MemoryStore + legacy StoreBackend
+│   ├── store/               ← D1 access: implements domain::* traits (D1Store) + MemoryStore test double
 │   ├── domain/              ← infra-free persistence ports: DTOs + ~36 narrow traits + StoreError (re-exported by store)
 │   ├── fetcher/             ← RSS/Atom fetch + SSRF guard + AbortSignal timeout
 │   ├── rules/               ← Filter/scoring engine (pure logic, unit-tested)
@@ -70,15 +70,17 @@ D:\Project\intel-web (Astro — frontend)
 
 ## Backend Crate Dependencies（decoupling 现状 2026-09-06 — 详见 decoupling plan + final-architecture-v2）
 
-DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。**主线 decoupling 已收口**
-（C1–C6，2026-09-06）：P4 `StoreBackend` body 归零（GATED decision 写方法 4 条迁到窄 trait
-`DecisionWriteStore`，StoreBackend 保留为空 composite 供 worker-entry 生产 DecisionService 合成）；P5
-Phase 1 + P5b composition-root 注入；Phase 2（Domain Lift）api 六条 concrete-infra edge 归零；最后一步
-**`application:store` 正常依赖边归零** —— application 改指 infra-free `domain` crate（23 trait bound +
-DTO + StoreError），`store` 降为 application 的 dev-dep（仅单测 MemoryStore）。新 crate：`domain`
-（端口 + 契约）与 `composition`（仅 `ProductionAppServices = AppServices<D1Store>` 一行 wiring）。
-`GRANDFATHERED` 现为空表（P7 全硬禁）。api 只经 `composition::ProductionAppServices` 访问服务。
-详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md` 与 `docs/architecture/final-architecture-v2.md`。
+DDD 目标单向流：`Delivery → Application → Domain ↑ Ports ↑ Infrastructure`。**decoupling 主线已收口**
+（C1–C6 + D2 decision vertical，2026-09-06）：application 改指 infra-free `domain` crate（窄 trait +
+DTO + StoreError），`store` 降为 application 的 dev-dep（仅单测 MemoryStore）；新 crate `domain`（端口 +
+契约）与 `composition`（仅 `ProductionAppServices = AppServices<D1Store>` 一行 wiring）；api 只经
+`composition::ProductionAppServices` 访问服务。**D2 decision vertical 删掉了最后一条 seam**：GATED
+`DecisionWriteStore`（4 方法）与空 `StoreBackend` composite 已整体删除 —— 生产 decision 写路径现为
+`worker-entry → application DecisionService → decision-engine aggregate → decision_engine::DecisionRepository`
++ `domain::OutboxStore`（decision 写唯一路径；D1Store/domain 上已无任何 legacy decision 直写方法名）。
+`GRANDFATHERED` 为空表（P7 全硬禁）。
+详见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`、`docs/superpowers/plans/2026-09-06-decision-vertical.md`
+与 `docs/architecture/final-architecture-v2.md`。
 
 ```
 delivery: worker-entry → api + composition + store；worker-entry 组装 infrastructure adapters
@@ -130,7 +132,9 @@ cargo fmt --check                            # 格式统一
 composition-root / Phase 2 api 边归零 / P6 删壳 / GATED decision vertical / `application:store` edge 迁
 domain ports（已完成 2026-09-06））见 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`、
 `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 与
-`docs/architecture/final-architecture-v2.md`。
+`docs/architecture/final-architecture-v2.md`。上表所列 `DecisionWriteStore`/`StoreBackend` seam 为 D2 的
+中间态：**已于 2026-09-06 由 D2 decision vertical（P1–P4）整体删除**，现无该 seam —— 见
+`docs/superpowers/plans/2026-09-06-decision-vertical.md`。
 
 #### P7 跨 crate 架构护栏（decoupling — 已入 CI 2026-09-05；GRANDFATHERED 空表 2026-09-06）
 
@@ -144,7 +148,7 @@ infra 边（空表），前者锁 domain/application/api 的新边界。
 Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).
 ```bash
 cargo check --workspace
-cargo test --workspace              # 379 passed（2026-09-06 实测，仅后端；以实际运行为准）
+cargo test --workspace              # 397 passed（2026-09-06 实测，仅后端；floor 379；以实际运行为准）
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 cargo check --workspace --all-features --target wasm32-unknown-unknown   # wasm gate (PR + deploy)
