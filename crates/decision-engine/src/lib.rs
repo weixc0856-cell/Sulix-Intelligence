@@ -42,7 +42,9 @@ pub use commands::{
 };
 pub use error::DecisionError;
 pub use events::DecisionDomainEvent;
-pub use outcome::{ExpectedOutcome, ObservedOutcome, OutcomeVerdict};
+pub use outcome::{
+    decode_expected_outcomes, encode_expected_outcomes, ExpectedOutcome, ObservedOutcome, OutcomeVerdict,
+};
 pub use repository::DecisionRepository;
 pub use status::DecisionStatus;
 

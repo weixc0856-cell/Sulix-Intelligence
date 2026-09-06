@@ -13,10 +13,25 @@ use crate::error::DecisionError;
 ///
 /// Methods use domain types exclusively — no D1, no JsValue, no SQL.
 /// The `save` method persists the aggregate's current state; the
-/// application layer handles event emission separately.
+/// application layer handles event emission separately (via
+/// [`DecisionAggregate::drain_events`]).
+///
+/// ## `save` contract (P1, 2026-09-06)
+///
+/// `save(decision)` = **persist the aggregate's current state, keyed by
+/// aggregate id**. The first `save` of an id inserts; later `save`s of
+/// the same id update that row in place (idempotent in spirit — a second
+/// `save` without state change is a no-op on the row). The concrete
+/// mechanism an adapter chooses (D1 `INSERT … ON CONFLICT(id) DO UPDATE`,
+/// which fields to refresh vs. preserve such as `created_at`) is an
+/// **implementation detail** owned by the adapter — this contract must
+/// not be specialised to D1, and callers may rely only on
+/// "state is persisted and `find` returns it back afterwards". `save`
+/// performs no invariant validation (the aggregate's behavioural methods
+/// already did).
 #[async_trait(?Send)]
 pub trait DecisionRepository {
-    /// Persist a decision aggregate (insert or update).
+    /// Persist a decision aggregate's current state by aggregate id.
     async fn save(&self, decision: &DecisionAggregate) -> Result<(), DecisionError>;
 
     /// Load a decision aggregate by its domain ID.

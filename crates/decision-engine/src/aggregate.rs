@@ -6,6 +6,7 @@
 //! steps. Every behavioral method enforces the aggregate's invariants and
 //! produces `DecisionDomainEvent`s that the application layer drains.
 
+use serde::{Deserialize, Serialize};
 use shared_kernel::ids::DecisionId;
 
 use crate::commands::{
@@ -25,6 +26,19 @@ use crate::status::DecisionStatus;
 /// 3. `Completed` requires at least one observed outcome.
 /// 4. Events are accumulated and drained — each event is emitted exactly
 ///    once by the application service.
+/// 5. Status is mutated **only** through the named behavioural methods
+///    (`propose` / `approve` / `execute` / `complete` / `invalidate`).
+///    There is deliberately **no** public status setter and no generic
+///    `change_status` — the application layer must never write `status`
+///    directly (P1, 2026-09-06).
+///
+/// ## Serialization note
+///
+/// The `Serialize`/`Deserialize` derives are an **internal round-trip /
+/// snapshot helper only** — not the D1 persistence contract. `events` is
+/// transient and skipped. Production hydration goes through
+/// [`DecisionAggregate::reconstruct`]; D1 field mapping is owned by the
+/// repository adapter.
 ///
 /// ## Dead-code note
 ///
@@ -34,7 +48,7 @@ use crate::status::DecisionStatus;
 /// columns. `#[allow(dead_code)]` prevents false positives until the
 /// full repository cycle (save → find → hydrate) is wired in Phase 6.2C.
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DecisionAggregate {
     /// Domain ID (`DEC-{id:06}`).
     id: DecisionId,
@@ -64,7 +78,9 @@ pub struct DecisionAggregate {
     created_at: i64,
     updated_at: i64,
     /// Uncommitted domain events — consumed by the application service
-    /// after `save()` succeeds.
+    /// after `save()` succeeds. Transient: never serialized/deserialized
+    /// (serde `skip` → empty on hydrate).
+    #[serde(skip)]
     events: Vec<DecisionDomainEvent>,
 }
 
@@ -415,5 +431,47 @@ mod tests {
         })
         .unwrap();
         assert_eq!(*agg.status(), DecisionStatus::Invalidated);
+    }
+
+    #[test]
+    fn serde_round_trip_preserves_state_and_skips_transient_events() {
+        let mut cmd = make_propose(7);
+        cmd.expected_outcomes = vec![
+            ExpectedOutcome {
+                metric: "accuracy".into(),
+                expected_value: ">= 0.9".into(),
+                measurement_method: "eval set".into(),
+            },
+            ExpectedOutcome {
+                metric: "latency".into(),
+                expected_value: "< 200ms".into(),
+                measurement_method: "p95".into(),
+            },
+        ];
+        let mut agg = DecisionAggregate::propose(cmd, 1000).unwrap();
+
+        // The aggregate currently holds a pending Proposed event — it must
+        // NOT leak into the state snapshot.
+        let json = serde_json::to_string(&agg).unwrap();
+        assert!(!json.contains("decision.proposed"), "transient events must not serialize");
+        assert!(!json.contains("\"events\""), "events field must be skipped");
+
+        let mut copy: DecisionAggregate = serde_json::from_str(&json).unwrap();
+        // Transient buffer starts empty on the hydrated copy...
+        assert!(copy.drain_events().is_empty());
+        // ...while the original still owns its pending event.
+        assert_eq!(agg.drain_events().len(), 1);
+
+        // State round-trips exactly (stable re-serialization).
+        assert_eq!(serde_json::to_string(&copy).unwrap(), json);
+        assert_eq!(copy.id().0, "DEC-000007");
+        assert_eq!(*copy.status(), DecisionStatus::Proposed);
+        assert!(f64::abs(copy.confidence() - 0.85) < f64::EPSILON);
+        assert_eq!(copy.expected_outcomes().len(), 2);
+        assert_eq!(copy.expected_outcomes()[0].metric, "accuracy");
+        assert_eq!(copy.expected_outcomes()[1].expected_value, "< 200ms");
+        assert!(copy.observed_outcomes().is_empty());
+        assert_eq!(copy.created_at(), 1000);
+        assert_eq!(copy.updated_at(), 1000);
     }
 }
