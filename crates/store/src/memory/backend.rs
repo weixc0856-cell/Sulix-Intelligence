@@ -708,11 +708,6 @@ impl DecisionQueryService for MemoryStore {
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
         Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
     }
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        let result: Vec<DecisionEvaluation> =
-            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
-        Ok(result.into_iter().last())
-    }
 }
 
 #[async_trait(?Send)]
@@ -726,11 +721,6 @@ impl OutcomeQueryService for MemoryStore {
 impl EvaluationQueryService for MemoryStore {
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
         Ok(self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect())
-    }
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        let result: Vec<DecisionEvaluation> =
-            self.evaluations.borrow().iter().filter(|e| e.decision_id == decision_id).cloned().collect();
-        Ok(result.into_iter().last())
     }
 }
 

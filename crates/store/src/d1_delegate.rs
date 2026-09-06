@@ -369,9 +369,6 @@ impl DecisionQueryService for crate::D1Store {
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
         crate::D1Store::get_decision_evaluations(self, decision_id).await
     }
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        crate::D1Store::get_latest_evaluation(self, decision_id).await
-    }
 }
 
 #[async_trait(?Send)]
@@ -421,9 +418,6 @@ impl ObservationQueryService for crate::D1Store {
 impl EvaluationQueryService for crate::D1Store {
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError> {
         crate::D1Store::get_decision_evaluations(self, decision_id).await
-    }
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError> {
-        crate::D1Store::get_latest_evaluation(self, decision_id).await
     }
 }
 

@@ -56,25 +56,4 @@ impl crate::D1Store {
             .results()
             .s_err()
     }
-
-    /// Get the latest evaluation for a decision.
-    pub async fn get_latest_evaluation(
-        &self,
-        decision_id: i64,
-    ) -> Result<Option<DecisionEvaluation>, crate::StoreError> {
-        let result: Option<DecisionEvaluation> = self
-            .db
-            .prepare(
-                "SELECT id, decision_id, evaluation, confidence, reasoning, evaluator, evaluated_at, created_at \
-                 FROM decision_evaluations \
-                 WHERE decision_id = ?1 \
-                 ORDER BY created_at DESC LIMIT 1",
-            )
-            .bind(&[JsValue::from_f64(decision_id as f64)])
-            .s_err()?
-            .first::<DecisionEvaluation>(None)
-            .await
-            .s_err()?;
-        Ok(result)
-    }
 }

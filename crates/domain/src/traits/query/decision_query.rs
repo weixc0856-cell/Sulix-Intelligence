@@ -25,7 +25,4 @@ pub trait DecisionQueryService {
 
     /// List all evaluations for a decision, newest first.
     async fn list_evaluations(&self, decision_id: i64) -> Result<Vec<DecisionEvaluation>, StoreError>;
-
-    /// Get the latest evaluation for a decision.
-    async fn get_latest_evaluation(&self, decision_id: i64) -> Result<Option<DecisionEvaluation>, StoreError>;
 }
