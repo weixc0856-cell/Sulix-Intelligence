@@ -12,30 +12,58 @@ use std::collections::BTreeSet;
 
 use application::RadarProjectionService;
 use composition::ProductionAppServices;
+use event_store::EventR2Backend;
+use infrastructure::signal_event_log::EventStoreSignalLog;
 use infrastructure::signal_repository::D1SignalQuery;
+use object_store::R2Store;
 use serde_json::json;
+use signal_engine::models::SignalDetail;
 use signal_engine::query::SignalQueryService;
+use signal_engine::SignalError;
+use store::D1Store;
 use worker::*;
 
 use super::response;
 
+/// Build the R2-backed signal event log for the read path — the same adapter
+/// the cron job uses on the write path. Wiring it into the query service makes
+/// detail timelines surface the stored events instead of silently falling back
+/// to the legacy D1 `signal_events` table the engine no longer writes
+/// (write/read divergence, fixed 2026-09-06).
+fn signal_event_log(env: &Env, store: &D1Store) -> Option<EventStoreSignalLog> {
+    env.bucket("RAW_CONTENT")
+        .ok()
+        .map(|bucket| EventStoreSignalLog::new(Box::new(EventR2Backend::new(store.clone(), R2Store::new(bucket)))))
+}
+
+/// Unified Signal Detail read — store-backed query + R2 event log.
+async fn load_signal_detail(
+    ctx: &RouteContext<ProductionAppServices>,
+    id: i64,
+) -> Result<Option<SignalDetail>, SignalError> {
+    let store = ctx.data.store.clone();
+    let query = D1SignalQuery::new(&store);
+    let log = signal_event_log(&ctx.env, &store);
+    let qs = SignalQueryService::new(&query);
+    let qs = match log.as_ref() {
+        Some(log) => qs.with_event_log(log),
+        None => qs,
+    };
+    qs.thread_detail(id).await
+}
+
 /// GET /api/intelligence/threads/:id — Signal Thread Detail (Read Model).
 ///
-/// Uses the unified SignalQueryService to build the response: merges instance
-/// timeline with stored signal_events, adds the rule-based summary. The event
-/// log is intentionally left unset (as the migrated api handler did), so the
-/// D1 `signal_events` fallback is the timeline source — no behaviour change.
+/// Uses the unified SignalQueryService to build the response: merges the
+/// instance timeline with stored events (R2 archive via the event log, D1
+/// `signal_events` fallback), adds the rule-based summary.
 pub(crate) async fn thread_detail(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid thread id"),
     };
 
-    let store = ctx.data.store.clone();
-    let query = D1SignalQuery::new(&store);
-    let qs = SignalQueryService::new(&query);
-
-    match qs.thread_detail(id).await {
+    match load_signal_detail(&ctx, id).await {
         Ok(Some(detail)) => response::json_ok(json!({ "success": true, "signal": detail })),
         Ok(None) => response::json_err(404, "thread not found"),
         Err(e) => {
@@ -92,16 +120,18 @@ pub(crate) async fn radar(_req: Request, ctx: RouteContext<ProductionAppServices
 /// GET /api/intelligence/signals/:id — Signal Detail page.
 ///
 /// Returns the full SignalDetail DTO for human investigation:
-/// thread metadata, health, timeline, evidence, entities, related signals.
+/// thread metadata, health, timeline (instances + stored events), evidence,
+/// entities, related signals. Same unified read model as `thread_detail` —
+/// previously this drove a raw `store.load_signal_detail` (instances only,
+/// no stored events); both now merge the R2 event archive (2026-09-06).
 pub(crate) async fn signal_detail(_req: Request, ctx: RouteContext<ProductionAppServices>) -> Result<Response> {
-    let store = ctx.data.store.clone();
     let id = match ctx.param("id").and_then(|s| s.parse::<i64>().ok()) {
         Some(v) => v,
         None => return response::json_err(400, "invalid signal id"),
     };
 
-    match store.load_signal_detail(id).await {
-        Ok(Some(detail)) => response::json_ok(serde_json::json!({ "success": true, "signal": detail })),
+    match load_signal_detail(&ctx, id).await {
+        Ok(Some(detail)) => response::json_ok(json!({ "success": true, "signal": detail })),
         Ok(None) => response::json_err(404, "signal not found"),
         Err(e) => {
             console_log!("[Sulix:signal] load_signal_detail failed: {e}");
