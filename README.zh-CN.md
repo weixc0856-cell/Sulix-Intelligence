@@ -98,7 +98,7 @@ infrastructure（D1 适配器，实现领域 trait）──→ store（仅作为
 ```bash
 # 需要 wasm32-unknown-unknown 目标
 cargo check --workspace
-cargo test --workspace              # 318+ 单元测试
+cargo test --workspace              # 379 个单元测试（2026-09-06 实测）
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
@@ -198,22 +198,25 @@ Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
 ## 迁移状态
 
-Sprint 6.5 去耦（Store 上帝对象拆除）**进行中**。状态截至 2026-09-05
-（`GRANDFATHERED` 已空 —— 依赖栅栏全面收紧）：
+Sprint 6.5 去耦（Store 上帝对象拆除）**已完成**（2026-09-06）。`application → store` 正常依赖边归零，
+`GRANDFATHERED` 空表且全硬禁。新 crate：`domain`（infra-free 端口 + DTO + `StoreError`）与 `composition`
+（wiring-only，仅 `ProductionAppServices = AppServices<D1Store>`）。
 
-**已完成：** P1（依赖 bans + 分层依赖门禁，**`GRANDFATHERED` = 0**）· P2（Reflection/Memory/Signal/Context
+**已完成：** P1（依赖 bans + 分层依赖门禁，`GRANDFATHERED` = 0）· P2（Reflection/Memory/Signal/Context
 域仓库端口）· P3 部分（ai-pipeline 脱离 store；signal-engine + context-engine 经 ports 脱离
-store/vectorize/event-store）· T1（基线修复）· T2（infrastructure 适配器测试）· T3（shared-kernel/events
-契约测试）· T4（llvm-cov + 70% 门禁）· T5（PR wasm 门禁）· T10（基线追踪）
+store/vectorize/event-store）· P4（`StoreBackend` body → 0，保留为**空 composite** 供 worker-entry
+`DecisionService` 合成，GATED 写方法迁 `DecisionWriteStore`）· P5（application 唯一用例入口；
+Source/Entity 上收；composition-root 注入）· Phase 2 + C1–C7（`api → concrete-infra` = 0；
+application 改指 infra-free `domain`；store → dev-dep）· P7（cargo-metadata 架构守卫入 CI）· T1（基线修复）·
+T2（infrastructure 适配器测试）· T3（shared-kernel/events 契约测试）· T4（llvm-cov + 70% 门禁）·
+T5（PR wasm 门禁）· T10（基线追踪）
 
-**待办：** P3 收尾（`D1DecisionRepository` 接线；infrastructure 逐域仓库文件 + 适配器映射测试）→
-P4（收缩/拆除 `StoreBackend`，~50 deprecated 方法 + delegate）→ P5（application 成为唯一用例入口，
-收敛 api/worker-entry 依赖面）→ P6（删除旧 engine 壳 + `StoreBackend` 伪层；**intelligence-domain
-存续待决议** —— frozen arch v2 §P6 与现行用法矛盾）→ P7（cargo-metadata 架构守卫入 CI）；测试
-T6（应用层用例测试）、T7（去耦每 commit 硬约束）、T8（跨域集成：observe→claim→signal→decision→reflection）、
-T9（delivery 层测试）
+**待办：** GATED **decision vertical**（补全 decision-engine 域 → 切除最后 4 条 `DecisionWriteStore`
+写方法 + 空 `StoreBackend` composite）→ **P6 范围裁决**（intelligence-domain 存续待决议 —— frozen arch
+v2 §P6 与现行用法矛盾）→ 测试 T6（应用层用例测试）、T7（去耦每 commit 硬约束）、T8（跨域集成：
+observe→claim→signal→decision→reflection）、T9（delivery 层测试）
 
-计划文档：`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md`（P1–P7）与 `docs/superpowers/plans/2026-08-21-testing-plan.md`（T1–T10）。
+状态与路线图：`docs/status-roadmap-2026-09-06.md`。计划文档：`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md`（P1–P7）、`docs/superpowers/plans/2026-08-21-testing-plan.md`（T1–T10）与 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。
 
 ## 前端
 

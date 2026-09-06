@@ -7,6 +7,20 @@
 
 ---
 
+> **2026-09-06 主线收口补录（C1–C7，已 push `2b1ff69..da2c29a`）**：本节 §0 的 P4/P5 行记录的是 09-05
+> 中间态。09-06 已完成**主线最后一步**：`application → store` 正常依赖边 = 0 —— 23 trait bound + DTO +
+> `StoreError` 迁入新 infra-free `domain` crate（store 实现并 `pub use domain::*` 再导出），store 降为
+> application dev-dep（仅 MemoryStore 单测）；新增 wiring-only `composition` crate
+> （`ProductionAppServices = AppServices<D1Store>`），api/worker-entry 改指它（`api → concrete-infra = 0`
+> 保持）。application 死 `DecisionService` 收窄到 `DecisionWriteStore`（§5 GATED 4 write 方法承载，
+> SQL/契约/outbox-first 零改动），`StoreBackend` 保留为空 composite（worker-entry 生产 DecisionService
+> 仍用，body = 0）。P7 guard `GRANDFATHERED = &[]`，新增 domain/application → composition 禁边。
+> StoreError 去 worker（3 行 `impl From<worker::Error>` 删除，store 本地 `.s_err()` 承接）。
+> 状态与路线图见 `docs/status-roadmap-2026-09-06.md`；CLAUDE.md 已同步。本计划 §0 以下各节为 09-05
+> 执行记录，阅读时以收口后状态为准。
+
+---
+
 ## 0. 现状基线（2026-09-05，遍历 + recon 核对，非仅文档）
 
 | 项 | 状态 |

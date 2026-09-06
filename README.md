@@ -98,7 +98,7 @@ Source Registry → Content Policy → Observation
 ```bash
 # Backend (wasm32-unknown-unknown target required)
 cargo check --workspace
-cargo test --workspace              # 350+ tests (Sprint 6.4 baseline 351)
+cargo test --workspace              # 379 tests (2026-09-06 measured)
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
@@ -201,24 +201,27 @@ Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
 ## Migration Status
 
-Sprint 6.5 decoupling (Store god-object demolition) is **in progress**. Status as of 2026-09-05
-(`GRANDFATHERED` now empty — the dependency fence is fully tightened):
+Sprint 6.5 decoupling (Store god-object demolition) is **complete** as of 2026-09-06
+(`application → store` normal edge zeroed; `GRANDFATHERED` empty and hard-enforced). New crates:
+`domain` (infra-free ports + DTOs + `StoreError`) and `composition` (wiring-only
+`ProductionAppServices = AppServices<D1Store>`).
 
-**Done:** P1 (dependency bans + layered-deps gate, **`GRANDFATHERED` = 0**) · P2 (domain-owned repository
+**Done:** P1 (dependency bans + layered-deps gate, `GRANDFATHERED` = 0) · P2 (domain-owned repository
 ports for Reflection/Memory/Signal/Context) · P3 part (ai-pipeline decoupled from store; signal-engine +
-context-engine off store/vectorize/event-store via ports) · T1 (baseline) · T2 (infrastructure adapter
-tests) · T3 (shared-kernel/events contract tests) · T4 (llvm-cov + 70% gate) · T5 (PR wasm gate) ·
-T10 (baseline tracking)
+context-engine off store/vectorize/event-store via ports) · P4 (`StoreBackend` body → 0; retained as an
+**empty composite** for worker-entry's `DecisionService`, GATED writes on `DecisionWriteStore`) ·
+P5 (`application` sole use-case entry; Source/Entity lifted; composition-root injection) · Phase 2 +
+C1–C7 (`api → concrete-infra` = 0; application re-pointed to infra-free `domain`; store → dev-dep) ·
+P7 (cargo-metadata architecture guard in CI) · T1 (baseline) · T2 (infrastructure adapter tests) ·
+T3 (shared-kernel/events contract tests) · T4 (llvm-cov + 70% gate) · T5 (PR wasm gate) · T10 (baseline tracking)
 
-**Remaining:** P3 finish (`D1DecisionRepository` wiring; per-domain `infrastructure` repository files +
-adapter mapping tests) → P4 (shrink/remove `StoreBackend`, ~50 deprecated methods + delegates) → P5
-(`application` becomes the sole use-case entry; converge `api`/`worker-entry` dep faces) → P6 (delete old
-engine shells + `StoreBackend` pseudo-layer; **`intelligence-domain` fate under review** — frozen arch v2
-§P6 vs current usage disagree) → P7 (cargo-metadata architecture guard in CI); tests T6 (application
-use-case tests), T7 (decoupling per-commit guard), T8 (cross-domain integration:
+**Remaining:** GATED **decision vertical** (complete decision-engine domain → cut the last 4
+`DecisionWriteStore` write methods + the empty `StoreBackend` composite) → **P6 scope resolution**
+(`intelligence-domain` keep/delete under review — frozen arch v2 §P6 vs current usage disagree) →
+tests T6 (application use-case tests), T7 (decoupling per-commit guard), T8 (cross-domain integration:
 observe→claim→signal→decision→reflection), T9 (delivery-layer tests)
 
-Plans: `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` (P1–P7) and `docs/superpowers/plans/2026-08-21-testing-plan.md` (T1–T10).
+Status & roadmap: `docs/status-roadmap-2026-09-06.md`. Plans: `docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` (P1–P7), `docs/superpowers/plans/2026-08-21-testing-plan.md` (T1–T10), and `docs/superpowers/plans/2026-09-05-decoupling-advance.md`.
 
 ## Frontend
 

@@ -144,7 +144,7 @@ infra 边（空表），前者锁 domain/application/api 的新边界。
 Toolchain is pinned by `rust-toolchain.toml` (single source — keep CI dtolnay pins in sync).
 ```bash
 cargo check --workspace
-cargo test --workspace              # 346 passed（2026-09-05，仅后端；以实际运行为准）
+cargo test --workspace              # 379 passed（2026-09-06 实测，仅后端；以实际运行为准）
 cargo clippy --workspace -- -D warnings
 cargo fmt --check
 cargo check --workspace --all-features --target wasm32-unknown-unknown   # wasm gate (PR + deploy)
