@@ -212,8 +212,7 @@ T2（infrastructure 适配器测试）· T3（shared-kernel/events 契约测试�
 T5（PR wasm 门禁）· T10（基线追踪）
 
 **待办：** GATED **decision vertical**（补全 decision-engine 域 → 切除最后 4 条 `DecisionWriteStore`
-写方法 + 空 `StoreBackend` composite）→ **P6 范围裁决**（intelligence-domain 存续待决议 —— frozen arch
-v2 §P6 与现行用法矛盾）→ 测试 T6（应用层用例测试）、T7（去耦每 commit 硬约束）、T8（跨域集成：
+写方法 + 空 `StoreBackend` composite）→ **P6**（删除旧 engine 壳 + `store::domain/*` 伪迁移层；intelligence-domain **保留** —— 2026-09-06 已裁决）→ 测试 T6（应用层用例测试）、T7（去耦每 commit 硬约束）、T8（跨域集成：
 observe→claim→signal→decision→reflection）、T9（delivery 层测试）
 
 状态与路线图：`docs/status-roadmap-2026-09-06.md`。计划文档：`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md`（P1–P7）、`docs/superpowers/plans/2026-08-21-testing-plan.md`（T1–T10）与 `docs/superpowers/plans/2026-09-05-decoupling-advance.md`。

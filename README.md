@@ -216,8 +216,7 @@ P7 (cargo-metadata architecture guard in CI) · T1 (baseline) · T2 (infrastruct
 T3 (shared-kernel/events contract tests) · T4 (llvm-cov + 70% gate) · T5 (PR wasm gate) · T10 (baseline tracking)
 
 **Remaining:** GATED **decision vertical** (complete decision-engine domain → cut the last 4
-`DecisionWriteStore` write methods + the empty `StoreBackend` composite) → **P6 scope resolution**
-(`intelligence-domain` keep/delete under review — frozen arch v2 §P6 vs current usage disagree) →
+`DecisionWriteStore` write methods + the empty `StoreBackend` composite) → **P6** (delete old engine shells + `store::domain/*` pseudo-layer; `intelligence-domain` **kept** — resolved 2026-09-06) →
 tests T6 (application use-case tests), T7 (decoupling per-commit guard), T8 (cross-domain integration:
 observe→claim→signal→decision→reflection), T9 (delivery-layer tests)
 

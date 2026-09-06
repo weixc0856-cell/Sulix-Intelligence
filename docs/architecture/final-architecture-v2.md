@@ -65,17 +65,16 @@ intelligence-domain（伪迁移）
 - **P3 — Adapter Migration**：Store 实现拆到 infrastructure/，每个 adapter 加测试。
 - **P4 — Remove StoreBackend**：按 bounded context 逐个迁移，`StoreBackend = 0`。
 - **P5 — Application Extraction**：把 API handler 的业务编排抽成 Application Use Case。
-- **P6 — Remove intelligence-domain**：彻底删除伪迁移层。
+- **P6 — Remove intelligence-domain**：原表述"彻底删除伪迁移层"；2026-09-06 裁决**保留** intelligence-domain
+  （见下方注）→ P6 收口语义 = 删除旧 engine 壳 + `store::domain/*` 伪迁移层。
 - **P7 — Architecture Guard**：CI 自动验证 domain→infrastructure / application→concrete adapter / api→store / StoreBackend 均 forbidden。
 
-> ⚠️ **CONTRADICTION / 待决议（2026-09-05）**：本行 P6 "删除 intelligence-domain" 与下列冲突：
-> (a) decoupling plan（`docs/superpowers/plans/2026-08-21-architecture-decoupling-plan.md` 目标态图 +
-> Task 6.1）把 `intelligence-domain` 当作 signal/claim 领域类型的**永久归宿**（DoD #4 要求
-> "`intelligence_domain::` 为唯一来源"）；(b) README 目标架构同样保留它；(c) Task B P6（commit
-> `acfaff8`）刚把 confidence 纯逻辑**迁入** intelligence-domain。
-> **裁决暂缓（2026-09-05 决定）**：去耦先推不受影响的 P3 收尾 / P4 / P5 / P7；P6 范围（删
-> intelligence-domain 与否）等本矛盾裁决后再定。裁决后需同步更新本节、decoupling plan、README。
-> 若保留：P6 语义改为"删除旧 engine 壳 + `store::domain/*` 伪迁移层"，不含 intelligence-domain。
+> ✅ **裁决（2026-09-06）**：**保留 intelligence-domain**，定为 signal/claim/decision 纯领域类型的永居所
+> （与此前冲突证据一致：decoupling plan 目标态图 + DoD #4 "`intelligence_domain::` 为唯一来源" + README +
+> Task B P6 `acfaff8` 迁 confidence 入它）。原 2026-09-05 标注的 CONTRADICTION 据此消解：**P6 收口语义修订**
+> 为"删除旧 engine 壳 + `store::domain/*` 伪迁移层"，**不含** intelligence-domain。
+> 注意区分两个 crate：09-06 新建 `domain` = persistence 端口/DTO 契约层（机械搬迁壳）；`intelligence-domain`
+> = 领域类型/纯逻辑。两 crate 更名消歧另议（低优先）。记录：`docs/decisions/004-intelligence-domain-kept.md`。
 
 > **现状补记（2026-09-06）**：P4（`StoreBackend` body → 0；GATED decision 写方法 4 条迁窄 trait
 > `DecisionWriteStore`，StoreBackend 保留为空 composite 供 worker-entry 生产 DecisionService 合成）、

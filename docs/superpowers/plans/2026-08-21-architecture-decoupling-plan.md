@@ -49,10 +49,10 @@ infrastructure（D1 适配器，实现领域 trait）──→ store（仅作为
                     worker-entry（只依赖 api + infrastructure + worker）
 ```
 
-> ⚠️ **CONTRADICTION / 待决议（2026-09-05）**：本图把 `intelligence-domain` 列为 signal/claim 消费方的
-> 永久域层，`final-architecture-v2.md` §4 却把 **P6 = "Remove intelligence-domain"**。Task B P6
-> （`acfaff8`，confidence 迁入 intelligence-domain）也采用"保留"方向。裁决暂缓：先推 P3 收尾 / P4 / P5 /
-> P7，Phase 6 范围等裁决后再定。详见 `final-architecture-v2.md` §4 标注。
+> ✅ **裁决（2026-09-06）**：**保留 intelligence-domain**（与本图一致，P6 矛盾消解）。本图
+> `intelligence-domain` = signal/claim 永久域层维持不变；Task B P6 `acfaff8`（confidence 迁入）方向正确。
+> P6 收口语义 = "删除旧 engine 壳 + `store::domain/*` 伪迁移层"，不含 intelligence-domain。
+> 记录：`docs/decisions/004-intelligence-domain-kept.md`；详见 `final-architecture-v2.md` §4 标注。
 
 ---
 
