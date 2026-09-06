@@ -58,6 +58,28 @@ async fn emit_envelope(store: &D1Store, event: &EventEnvelope) {
         .await;
 }
 
+/// Per-emit event id.
+///
+/// `event_archive_index` keys rows on `event_id … UNIQUE` (migration 0022) and
+/// the archive insert is `INSERT OR IGNORE` (store `event_archive.rs`), so a
+/// duplicated id silently drops the second event from the queryable index. The
+/// former `evt_{sec}_{seq}` (seq = a row id) collided **deterministically**
+/// whenever one request emitted two envelopes — outcome completion wrote
+/// `OutcomeObserved` and `DecisionStatusChanged` in the same second with the
+/// same numeric `outcome_id` — and the second insert was ignored, losing the
+/// completion event from the event history (③, 2026-09-06).
+///
+/// Disambiguate per emit with the wall-clock millisecond + a random nonce
+/// (`seq` retained for debuggability). The format has four segments, so it can
+/// never equal a legacy `evt_{sec}_{seq}` id from other emitters by
+/// construction; the R2 object key still partitions by the second-granularity
+/// `occurred_at` (`event_keys::event`).
+fn event_id(now: i64, seq: u64) -> String {
+    let ms = js_sys::Date::now() as u64;
+    let nonce = (js_sys::Math::random() * u32::MAX as f64) as u32;
+    format!("evt_{now}_{ms}_{seq}_{nonce:08x}")
+}
+
 /// Build a decision/outcome outbox envelope (byte-parity with the pre-P3
 /// `DecisionService::emit_event` construction).
 fn envelope(
@@ -71,7 +93,7 @@ fn envelope(
     EventEnvelope {
         schema_version: 1,
         event_version: 1,
-        event_id: event_keys::format_id(now, seq),
+        event_id: event_id(now, seq),
         aggregate: AggregateRef { aggregate_type: aggregate_type.into(), aggregate_id },
         event_type: event_type.into(),
         payload,

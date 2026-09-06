@@ -10,10 +10,10 @@
 use async_trait::async_trait;
 use decision_engine::{
     decode_expected_outcomes, encode_expected_outcomes, DecisionAggregate, DecisionError, DecisionStatus,
-    ReconstructDecision,
+    ObservedOutcome, OutcomeVerdict, ReconstructDecision,
 };
 use shared_kernel::ids::DecisionId;
-use store::{Decision, DecisionQueryService, DecisionRepository, DecisionUpsertStore};
+use store::{Decision, DecisionQueryService, DecisionRepository, DecisionUpsertStore, OutcomeEvent};
 
 /// Maps domain `DecisionAggregate` to/from D1 `decisions` table rows.
 pub struct D1DecisionRepository<S> {
@@ -54,7 +54,7 @@ impl<S: DecisionRepository + DecisionQueryService + DecisionUpsertStore> D1Decis
             .ok_or_else(|| DecisionError::NotFound(id.to_string()))
     }
 
-    fn from_store(d: Decision) -> DecisionAggregate {
+    fn from_store(d: Decision, observed_outcomes: Vec<ObservedOutcome>) -> DecisionAggregate {
         let status = Self::status_from_d1(&d.status);
         DecisionAggregate::reconstruct(ReconstructDecision {
             id: DecisionId::new(d.id),
@@ -69,12 +69,42 @@ impl<S: DecisionRepository + DecisionQueryService + DecisionUpsertStore> D1Decis
             actor_id: d.actor_id,
             // expected_outcomes: NULL/absent column (legacy rows) degrades to [].
             expected_outcomes: decode_expected_outcomes(d.expected_outcomes.as_deref()),
-            // observed_outcomes reconstructed from outcome_events (SD-B) —
-            // not a column; hydration from events is a P2 backlog item.
-            observed_outcomes: vec![],
+            // observed_outcomes is not a column — it is reconstructed from the
+            // `outcome_events` fact rows so a hydrated aggregate is a faithful
+            // reconstruction (a `Completed`/outcome-bearing decision must not
+            // present an empty outcome list, or `complete()` would reject it
+            // with MissingOutcome despite persisted outcomes) (①, 2026-09-06).
+            observed_outcomes,
             created_at: d.created_at,
             updated_at: d.updated_at,
         })
+    }
+
+    /// Map one `outcome_events` fact row onto the aggregate's `ObservedOutcome`.
+    ///
+    /// The fact layer stores observations, not verdicts (no verdict column, and
+    /// the write path maps every completing outcome to
+    /// `OutcomeVerdict::Inconclusive`), so hydration is verdict-neutral to stay
+    /// consistent with [`crate`]'s write mapping. A durable verdict would need a
+    /// new column + caller-supplied verdict input (SD-B backlog item).
+    fn from_outcome(e: &OutcomeEvent) -> ObservedOutcome {
+        ObservedOutcome {
+            metric: e.outcome_type.clone(),
+            actual_value: e.observation.clone(),
+            outcome_type: OutcomeVerdict::Inconclusive,
+            evidence_url: e.evidence_url.clone(),
+            observed_at: if e.observed_at > 0 { e.observed_at } else { e.created_at },
+        }
+    }
+
+    /// Load the `observed_outcomes` for a decision from its `outcome_events`
+    /// fact rows (the fact layer is the durable observation store).
+    async fn load_outcomes(&self, decision_id: i64) -> Result<Vec<ObservedOutcome>, DecisionError> {
+        self.store
+            .list_outcomes(decision_id)
+            .await
+            .map(|rows| rows.iter().map(Self::from_outcome).collect())
+            .map_err(|e| DecisionError::Infrastructure(e.to_string()))
     }
 
     /// Map the aggregate onto a full `decisions` row. Unlike the legacy
@@ -110,27 +140,38 @@ impl<S: DecisionRepository + DecisionQueryService + DecisionUpsertStore> decisio
 
     async fn find(&self, id: &str) -> Result<Option<DecisionAggregate>, DecisionError> {
         let d1_id = Self::d1_id(id)?;
-        self.store
-            .find_decision(d1_id)
-            .await
-            .map_err(|e| DecisionError::Infrastructure(e.to_string()))
-            .map(|opt| opt.map(Self::from_store))
+        let row = match self.store.find_decision(d1_id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(DecisionError::Infrastructure(e.to_string())),
+        };
+        let observed = self.load_outcomes(row.id).await?;
+        Ok(Some(Self::from_store(row, observed)))
     }
 
     async fn find_by_signal(&self, signal_thread_id: i64) -> Result<Vec<DecisionAggregate>, DecisionError> {
-        self.store
+        let rows = self
+            .store
             .decisions_by_signal(signal_thread_id)
             .await
-            .map_err(|e| DecisionError::Infrastructure(e.to_string()))
-            .map(|vec| vec.into_iter().map(Self::from_store).collect())
+            .map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let observed = self.load_outcomes(row.id).await?;
+            out.push(Self::from_store(row, observed));
+        }
+        Ok(out)
     }
 
     async fn list(&self, status: Option<&str>, limit: u32) -> Result<Vec<DecisionAggregate>, DecisionError> {
-        self.store
-            .list_decisions(status, limit)
-            .await
-            .map_err(|e| DecisionError::Infrastructure(e.to_string()))
-            .map(|vec| vec.into_iter().map(Self::from_store).collect())
+        let rows =
+            self.store.list_decisions(status, limit).await.map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let observed = self.load_outcomes(row.id).await?;
+            out.push(Self::from_store(row, observed));
+        }
+        Ok(out)
     }
 }
 
@@ -409,5 +450,36 @@ mod tests {
 
         let all = futures::executor::block_on(repo.list(None, 10)).unwrap();
         assert_eq!(all.len(), 4);
+    }
+
+    #[test]
+    fn find_hydrates_observed_outcomes_from_outcome_events() {
+        use store::NewOutcomeEvent;
+        use store::OutcomeRepository as _;
+        let repo = Repo::new(MemoryStore::new());
+
+        // Decision sitting at Executing with an outcome fact already recorded —
+        // the state that used to hydrate `observed_outcomes = []` and made
+        // `complete()` reject with MissingOutcome despite the persisted outcome.
+        futures::executor::block_on(repo.save(&make_aggregate(1, DecisionStatus::Executing, None))).unwrap();
+        futures::executor::block_on(repo.store.save_outcome(&NewOutcomeEvent {
+            decision_id: 1,
+            outcome_type: "accuracy".into(),
+            observation: "reached 0.92".into(),
+            evidence_url: Some("https://example.com/run".into()),
+            observed_at: Some(9_000),
+        }))
+        .unwrap();
+
+        let mut found = futures::executor::block_on(repo.find("DEC-000001")).unwrap().expect("row must exist");
+        assert_eq!(found.observed_outcomes().len(), 1, "observed_outcomes must hydrate from outcome_events");
+        assert_eq!(found.observed_outcomes()[0].metric, "accuracy");
+        assert_eq!(found.observed_outcomes()[0].actual_value, "reached 0.92");
+        assert_eq!(found.observed_outcomes()[0].observed_at, 9_000);
+
+        // Faithful reconstruction: the aggregate can now complete (the invariant
+        // sees the persisted outcome) — previously MissingOutcome.
+        found.complete().unwrap();
+        assert_eq!(*found.status(), DecisionStatus::Completed);
     }
 }
