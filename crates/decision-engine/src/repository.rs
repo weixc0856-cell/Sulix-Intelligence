@@ -34,6 +34,17 @@ pub trait DecisionRepository {
     /// Persist a decision aggregate's current state by aggregate id.
     async fn save(&self, decision: &DecisionAggregate) -> Result<(), DecisionError>;
 
+    /// Persist a **brand-new** aggregate, atomically refusing to overwrite an
+    /// id that already has a row.
+    ///
+    /// Returns `Ok(true)` when the new row was written; `Ok(false)` when a row
+    /// with the same aggregate id already exists — a concurrent create claimed
+    /// the id first (two creates can read the same `MAX(id)+1`; ADR-005) — and
+    /// nothing was persisted (②, 2026-09-06). Only the create path calls this;
+    /// lifecycle updates keep using [`save`], whose upsert semantics are correct
+    /// for an aggregate that already owns its row.
+    async fn save_new(&self, decision: &DecisionAggregate) -> Result<bool, DecisionError>;
+
     /// Load a decision aggregate by its domain ID.
     async fn find(&self, id: &str) -> Result<Option<DecisionAggregate>, DecisionError>;
 

@@ -732,6 +732,15 @@ impl DecisionUpsertStore for MemoryStore {
         }
         Ok(())
     }
+
+    async fn try_insert_decision(&self, d: &Decision) -> Result<bool, StoreError> {
+        let mut decisions = self.decisions.borrow_mut();
+        if decisions.iter().any(|row| row.id == d.id) {
+            return Ok(false); // id already claimed by a (racing) create — nothing written
+        }
+        decisions.push(d.clone());
+        Ok(true)
+    }
 }
 
 // ── Decision id allocation (decision-engine vertical) ──

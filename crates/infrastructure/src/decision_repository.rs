@@ -138,6 +138,11 @@ impl<S: DecisionRepository + DecisionQueryService + DecisionUpsertStore> decisio
         self.store.upsert_decision(&row).await.map_err(|e| DecisionError::Infrastructure(e.to_string()))
     }
 
+    async fn save_new(&self, decision: &DecisionAggregate) -> Result<bool, DecisionError> {
+        let row = Self::into_row(decision)?;
+        self.store.try_insert_decision(&row).await.map_err(|e| DecisionError::Infrastructure(e.to_string()))
+    }
+
     async fn find(&self, id: &str) -> Result<Option<DecisionAggregate>, DecisionError> {
         let d1_id = Self::d1_id(id)?;
         let row = match self.store.find_decision(d1_id).await {
@@ -481,5 +486,39 @@ mod tests {
         // sees the persisted outcome) — previously MissingOutcome.
         found.complete().unwrap();
         assert_eq!(*found.status(), DecisionStatus::Completed);
+    }
+
+    #[test]
+    fn save_new_inserts_a_fresh_id() {
+        let repo = Repo::new(MemoryStore::new());
+        let fresh = make_aggregate(7, DecisionStatus::Executing, None);
+
+        let inserted = futures::executor::block_on(repo.save_new(&fresh)).unwrap();
+        assert!(inserted, "save_new on an unclaimed id must insert");
+
+        let found = futures::executor::block_on(repo.find("DEC-000007")).unwrap().expect("row must exist");
+        assert_eq!(*found.status(), DecisionStatus::Executing);
+    }
+
+    #[test]
+    fn save_new_refuses_an_existing_id_without_overwriting() {
+        let repo = Repo::new(MemoryStore::new());
+        let first = make_aggregate(1, DecisionStatus::Executing, None); // title "Decision 1", created_at 500
+        futures::executor::block_on(repo.save(&first)).unwrap();
+
+        // A second creator racing to the same id must be refused, not upserted
+        // over the first row (②: two concurrent creates can compute the same
+        // MAX(id)+1 — ADR-005).
+        let racer = make_aggregate_full(1, DecisionStatus::Completed, Some(7), sample_outcomes());
+        let inserted = futures::executor::block_on(repo.save_new(&racer)).unwrap();
+        assert!(!inserted, "save_new must refuse an id that already has a row");
+
+        // The original row is untouched — nothing was silently lost.
+        let found = futures::executor::block_on(repo.find("DEC-000001")).unwrap().expect("row must exist");
+        assert_eq!(*found.status(), DecisionStatus::Executing, "racer must not have overwritten the row");
+        assert_eq!(found.title(), "Decision 1");
+        assert_eq!(found.signal_thread_id(), None);
+        assert!(found.expected_outcomes().is_empty());
+        assert_eq!(futures::executor::block_on(repo.list(None, 100)).unwrap().len(), 1);
     }
 }

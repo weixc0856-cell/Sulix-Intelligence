@@ -26,4 +26,18 @@ use crate::{Decision, StoreError};
 pub trait DecisionUpsertStore {
     /// Insert a decision row, or update it in place if the id already exists.
     async fn upsert_decision(&self, decision: &Decision) -> Result<(), StoreError>;
+
+    /// Insert a **brand-new** decision row, refusing (not overwriting) when the
+    /// id already exists.
+    ///
+    /// Returns `Ok(true)` when the row was inserted, `Ok(false)` when a row with
+    /// the same id is already present and nothing was written — i.e. a racing
+    /// create claimed the id first (②, 2026-09-06; ADR-005).
+    ///
+    /// The create path must use this instead of [`upsert_decision`], whose
+    /// `ON CONFLICT(id) DO UPDATE` would otherwise let a second concurrent
+    /// create (both having read the same `MAX(id)+1`) silently overwrite the
+    /// first creator's row. Update paths (persisting an existing aggregate) keep
+    /// using [`upsert_decision`].
+    async fn try_insert_decision(&self, decision: &Decision) -> Result<bool, StoreError>;
 }

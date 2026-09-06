@@ -38,16 +38,38 @@ compose `DEC-{id}` → then propose), decoupling the aggregate's public
 `DEC-{id}` identity from the row primary key, and a change to the
 `DecisionCreated` / propose event contract. Structural refactor — deferred.
 
-If and when concurrent decision creates become real, harden without touching
-allocation: verify by reading the row back after save, or map a duplicate-key
-write to `409` + client retry (idempotent re-posts already no-op).
+The create path is **hardened now** (2026-09-06) rather than waiting for the
+race to bite, and it hardens *without touching allocation*:
+
+- `domain::DecisionUpsertStore::try_insert_decision` /
+  `decision_engine::DecisionRepository::save_new` insert with
+  `INSERT … ON CONFLICT(id) DO NOTHING`; `changes() == 1` iff this call created
+  the row, so a duplicate primary key becomes a `Ok(false)` refusal instead of a
+  silent `DO UPDATE` overwrite.
+- `ApplicationService::create` loops on that refusal: on `Ok(false)` it re-runs
+  `next_decision_id()` and re-proposes with the fresh id (bounded retries), so a
+  create that loses the id race gets a *new* id rather than silently clobbering
+  the winner's row.
+
+Read-back-after-save was considered and rejected as the detection mechanism: it
+is unsound under concurrency — the loser's read-back can observe the row before
+the winner's overwrite lands, so it cannot detect the loss. The atomic
+conditional insert has no such window. The `save` (idempotent upsert) path is
+unchanged: a second save of the *same* aggregate id is an in-place update by
+design.
 
 ## Consequences
 
-- Single-writer remains a documented correctness assumption on decision create;
-  a genuinely concurrent create can still silently clobber a row (probability
-  low today).
-- No schema change and no event-contract change.
+- Single-writer `MAX(id)+1` remains the allocation scheme; no schema change and
+  no event-contract change.
+- A create that races another create now **retries on a fresh id instead of
+  silently overwriting** — the audit ② clobber is closed on the code path, while
+  allocation stays single-writer for the (rare) re-allocate loop.
+- Cost: an extra `save_new` port + delegate across store/memory/infra/application
+  and two bounded retry hops per collision — negligible at decision-create
+  frequency.
+- Structural refactor (DB auto-increment + `DEC`/row-pk decoupling) remains
+  recorded as the accepted future work.
 - DB auto-increment + `DEC`/row-pk decoupling is recorded as the accepted
   future refactor — revisit the moment a second write driver (multi-operator,
   queue-driven decision create) appears.

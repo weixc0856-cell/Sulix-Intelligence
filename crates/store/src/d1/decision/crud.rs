@@ -92,4 +92,45 @@ impl crate::D1Store {
             .s_err()?;
         Ok(())
     }
+
+    /// Insert a brand-new decision row, **refusing** (not updating) when the id
+    /// already exists — see `domain::DecisionUpsertStore::try_insert_decision`.
+    ///
+    /// Same column set / bind order as [`Self::upsert_decision`], but
+    /// `ON CONFLICT(id) DO NOTHING` turns a duplicate primary key into a 0-row
+    /// no-op instead of an in-place update, so `changes() == 1` iff this call
+    /// created the row. The create path uses this so two concurrent creates
+    /// (both reading the same `MAX(id)+1`) cannot silently overwrite each other
+    /// (②, 2026-09-06; ADR-005).
+    pub(crate) async fn try_insert_decision(&self, d: &Decision) -> Result<bool, crate::StoreError> {
+        let result = self
+            .db
+            .prepare(
+                "INSERT INTO decisions \
+                 (id, signal_thread_id, actor_id, decision_type, title, hypothesis, rationale, confidence, status, \
+                  priority, expected_outcomes, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
+                 ON CONFLICT(id) DO NOTHING",
+            )
+            .bind(&[
+                JsValue::from_f64(d.id as f64),
+                d.signal_thread_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+                d.actor_id.map_or(JsValue::null(), |v| JsValue::from_f64(v as f64)),
+                d.decision_type.as_str().into(),
+                d.title.as_str().into(),
+                d.hypothesis.as_deref().map_or(JsValue::null(), |s| s.into()),
+                d.rationale.as_deref().map_or(JsValue::null(), |s| s.into()),
+                JsValue::from_f64(d.confidence),
+                d.status.as_str().into(),
+                d.priority.as_str().into(),
+                d.expected_outcomes.as_deref().map_or(JsValue::null(), |s| s.into()),
+                JsValue::from_f64(d.created_at as f64),
+                JsValue::from_f64(d.updated_at as f64),
+            ])
+            .s_err()?
+            .run()
+            .await
+            .s_err()?;
+        Ok(result.meta().ok().flatten().and_then(|m| m.changes).unwrap_or(0) == 1)
+    }
 }

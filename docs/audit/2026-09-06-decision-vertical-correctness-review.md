@@ -197,6 +197,11 @@ ADR 固化「decision 事件 = 可从事实行重放」+ 记录 reconciliation �
 
 按 audit §2/§4 建议把两个架构分叉升为正式 ADR：
 - **ADR-005** `docs/decisions/005-decision-id-allocation.md` —— ② 保留 single-writer `MAX(id)+1`；DB 自增 + `DEC`/row-pk 解耦记为后续重构项。
+  **代码已落地**（同日）：create 路径新增 `try_insert_decision`/`save_new` 原子条件插入
+  （`ON CONFLICT(id) DO NOTHING` + `changes()==1`），`create` 对撞号返回 `Ok(false)` 时重新分配 id
+  有界重试 —— 静默覆盖关闭，且未改动分配本身（读回校验因并发下不健全被弃用）。
 - **ADR-006** `docs/decisions/006-decision-event-outbox.md` —— ④ decision outbox best-effort 收口为「decision 专属策略（事件可从事实行重建，因此可容忍）+ reconciliation 后续项」；不推翻 SD-C/SD-D，不把 best-effort 扩散到 fail-closed 的兄弟源。
 
-**仍未动**（各自 backlog / 需 owner）：create 撞号加固的代码落地、outbox reconciliation job、verdict 列 + 写路径 verdict 源、`event_log.rs` 同 aggregate 同秒多类型事件的（当前不可达的）结构性护栏。
+**仍未动**（各自 backlog / 需 owner）：outbox reconciliation job（④ ADR 后续项）、verdict 列 + 写路径
+verdict 源（SD-B，需 owner 决策）、`event_log.rs` 同 aggregate 同秒多类型事件的（当前不可达的）结构性护栏。
+（② 的代码加固已于 2026-09-06 落地，见上；仅剩 ④/verdict/event_log 三条。）

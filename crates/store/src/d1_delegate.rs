@@ -154,6 +154,9 @@ impl DecisionUpsertStore for crate::D1Store {
     async fn upsert_decision(&self, decision: &Decision) -> Result<(), StoreError> {
         crate::D1Store::upsert_decision(self, decision).await
     }
+    async fn try_insert_decision(&self, decision: &Decision) -> Result<bool, StoreError> {
+        crate::D1Store::try_insert_decision(self, decision).await
+    }
 }
 
 #[async_trait(?Send)]

@@ -128,28 +128,41 @@ impl<R: DecisionRepository, S: DecisionIdSource + OutcomeRepository + Evaluation
     /// Create flow — the aggregate id must precede `propose` (its events embed
     /// `DEC-{id}` at proposal time), so the id is allocated from the store's id
     /// space first (the numeric suffix **is** the `decisions` primary key).
+    ///
+    /// The row write uses `save_new` (insert-or-refuse), **not** `save`
+    /// (upsert): two concurrent creates can read the same `MAX(id)+1`
+    /// (single-writer allocation, ADR-005), and `save`'s upsert would let the
+    /// second silently overwrite the first creator's row. A refused insert means
+    /// the id was just claimed by a racing create, so the flow re-allocates and
+    /// retries (②, 2026-09-06). Bounded, then a conflict surfaces.
     pub async fn create(&self, cmd: ProposeDecision) -> Result<CreatedDecision, DecisionError> {
-        let decision_id =
-            self.store.next_decision_id().await.map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
-        let mut cmd = cmd;
-        cmd.id = decision_id;
+        const CREATE_RETRIES: usize = 4;
+        for _ in 0..CREATE_RETRIES {
+            let decision_id =
+                self.store.next_decision_id().await.map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
+            let mut proposal = cmd.clone();
+            proposal.id = decision_id;
 
-        let mut decision = DecisionAggregate::propose(cmd, Self::now())?;
+            let mut decision = DecisionAggregate::propose(proposal, Self::now())?;
 
-        // Legacy create landed decisions directly at `'active'` (Executing), and
-        // every read side treats `'active'` as "live decision" (dashboard stats,
-        // context-engine retrieval, `GET /decisions?status=active`). Reproduce
-        // that end-state through the legal DAG steps — propose → approve →
-        // execute — rather than a lossy status write (P3 decision, 2026-09-06).
-        decision.approve(ApproveDecision { decision_id: decision.id().0.clone(), approved_by: "system".into() })?;
-        decision.execute(ExecuteDecision { decision_id: decision.id().0.clone() })?;
+            // Legacy create landed decisions directly at `'active'` (Executing), and
+            // every read side treats `'active'` as "live decision" (dashboard stats,
+            // context-engine retrieval, `GET /decisions?status=active`). Reproduce
+            // that end-state through the legal DAG steps — propose → approve →
+            // execute — rather than a lossy status write (P3 decision, 2026-09-06).
+            decision.approve(ApproveDecision { decision_id: decision.id().0.clone(), approved_by: "system".into() })?;
+            decision.execute(ExecuteDecision { decision_id: decision.id().0.clone() })?;
 
-        self.repo.save(&decision).await?;
-
-        // Drain only after the save succeeded — on failure the events stay
-        // uncommitted with the aggregate (SD-D invariant).
-        let events = decision.drain_events();
-        Ok(CreatedDecision { decision_id, aggregate: decision, events })
+            if self.repo.save_new(&decision).await? {
+                // Drain only after the save succeeded — on failure the events stay
+                // uncommitted with the aggregate (SD-D invariant).
+                let events = decision.drain_events();
+                return Ok(CreatedDecision { decision_id, aggregate: decision, events });
+            }
+            // `Ok(false)`: the id raced with a concurrent create — re-allocate
+            // and retry. The collided aggregate is dropped, never persisted.
+        }
+        Err(DecisionError::Conflict("decision id allocation exhausted after repeated create collisions".into()))
     }
 
     /// Lifecycle transition via the aggregate's named methods. Idempotent: a
@@ -313,6 +326,19 @@ mod tests {
             Ok(())
         }
 
+        async fn save_new(&self, decision: &DecisionAggregate) -> Result<bool, DecisionError> {
+            if self.fail_saves {
+                return Err(DecisionError::Infrastructure("injected save failure".into()));
+            }
+            let snapshot = serde_json::to_string(decision).map_err(|e| DecisionError::Infrastructure(e.to_string()))?;
+            let mut rows = self.rows.borrow_mut();
+            if rows.contains_key(&decision.id().0) {
+                return Ok(false); // id already claimed (racing create) — refuse
+            }
+            rows.insert(decision.id().0.clone(), snapshot);
+            Ok(true)
+        }
+
         async fn find(&self, id: &str) -> Result<Option<DecisionAggregate>, DecisionError> {
             match self.rows.borrow().get(id).cloned() {
                 Some(snapshot) => {
@@ -458,6 +484,39 @@ mod tests {
         // Both rows exist and are independently Executing.
         assert_eq!(*find(&repo, a.decision_id).status(), DecisionStatus::Executing);
         assert_eq!(*find(&repo, b.decision_id).status(), DecisionStatus::Executing);
+    }
+
+    #[test]
+    fn create_retries_when_the_allocated_id_is_already_taken() {
+        let repo = MemAggregateRepo::default();
+        let service = svc(&repo, MemoryStore::new());
+
+        // Occupy DEC-000001 — the id MemoryStore's counter hands out first — so
+        // the first allocation races exactly like two concurrent D1 creates both
+        // reading MAX(id)+1 = 1 (②, ADR-005). create must detect the refusal and
+        // re-allocate rather than silently overwrite.
+        seed(&repo, 1, DecisionStatus::Executing);
+
+        let created = block_on(service.create(create_cmd(0))).unwrap();
+        assert_eq!(created.decision_id, 2, "racing create must re-allocate past the taken id");
+
+        // Both rows survive — the original was never clobbered.
+        assert_eq!(*find(&repo, 1).status(), DecisionStatus::Executing, "original row must be untouched");
+        assert_eq!(*find(&repo, 2).status(), DecisionStatus::Executing, "retried create must land Executing");
+    }
+
+    #[test]
+    fn create_returns_conflict_when_allocation_keeps_colliding() {
+        let repo = MemAggregateRepo::default();
+        let service = svc(&repo, MemoryStore::new());
+
+        // Occupy every id the allocator hands out across the bounded retries
+        // (counter starts at 1 → ids 1..=4 on the 4 attempts).
+        for id in 1..=4 {
+            seed(&repo, id, DecisionStatus::Executing);
+        }
+        let err = block_on(service.create(create_cmd(0))).unwrap_err();
+        assert!(matches!(err, DecisionError::Conflict(_)), "exhausted retries must surface a conflict: {err:?}");
     }
 
     #[test]
