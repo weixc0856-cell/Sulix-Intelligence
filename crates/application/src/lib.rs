@@ -26,7 +26,10 @@ pub use services::briefing::BriefingService;
 pub use services::claims::ClaimService;
 pub use services::compliance::ComplianceService;
 pub use services::confidence::ConfidenceService;
-pub use services::decision::DecisionService;
+pub use services::decision::{
+    CreatedDecision, DecisionError, DecisionLifecycleCommand, DecisionService, EvaluationRecording,
+    LifecycleTransition, OutcomeRecording,
+};
 pub use services::decision_read::DecisionReadService;
 pub use services::entities::EntityService;
 pub use services::feeds::FeedService;

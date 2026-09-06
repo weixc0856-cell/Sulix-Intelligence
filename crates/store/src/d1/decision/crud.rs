@@ -34,6 +34,26 @@ impl crate::D1Store {
         row.and_then(|v| v["id"].as_i64()).ok_or_else(|| crate::StoreError::D1("create_decision failed".into()))
     }
 
+    /// Allocate the next `decisions.id` for a new decision-engine aggregate.
+    ///
+    /// The row primary key is written explicitly from the aggregate id (see
+    /// `upsert_decision`), so a fresh decision needs its id *before* the row
+    /// exists. `MAX(id) + 1` keeps the aggregate id space aligned with the
+    /// auto-increment space legacy rows used. Single-writer assumption — a
+    /// concurrent create may hand out the same id (documented risk, see
+    /// `domain::DecisionIdSource`).
+    pub(crate) async fn next_decision_id(&self) -> Result<i64, crate::StoreError> {
+        let row = self
+            .db
+            .prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM decisions")
+            .bind(&[])
+            .s_err()?
+            .first::<serde_json::Value>(None)
+            .await
+            .s_err()?;
+        Ok(row.and_then(|v| v["next"].as_i64()).unwrap_or(1))
+    }
+
     /// Get a single decision by id.
     pub async fn get_decision(&self, id: i64) -> Result<Option<Decision>, crate::StoreError> {
         let result = self

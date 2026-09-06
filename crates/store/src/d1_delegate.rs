@@ -161,6 +161,13 @@ impl DecisionUpsertStore for crate::D1Store {
 }
 
 #[async_trait(?Send)]
+impl DecisionIdSource for crate::D1Store {
+    async fn next_decision_id(&self) -> Result<i64, StoreError> {
+        crate::D1Store::next_decision_id(self).await
+    }
+}
+
+#[async_trait(?Send)]
 impl OutcomeRepository for crate::D1Store {
     async fn save_outcome(&self, e: &NewOutcomeEvent) -> Result<i64, StoreError> {
         crate::D1Store::create_outcome(self, e).await

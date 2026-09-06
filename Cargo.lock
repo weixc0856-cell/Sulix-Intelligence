@@ -1700,6 +1700,7 @@ dependencies = [
  "console_error_panic_hook",
  "content-governance",
  "context-engine",
+ "decision-engine",
  "embedding",
  "entity",
  "event-store",

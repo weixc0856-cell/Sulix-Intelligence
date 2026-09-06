@@ -832,6 +832,21 @@ impl DecisionUpsertStore for MemoryStore {
     }
 }
 
+// ── Decision id allocation (decision-engine vertical) ──
+// The aggregate id's numeric suffix is the decisions primary key, and
+// `DecisionAggregate::propose` needs it before the row exists. Allocate from
+// the same monotonic counter the legacy insert path used, advancing at
+// allocation time so two sequential creates cannot collide.
+
+#[async_trait(?Send)]
+impl DecisionIdSource for MemoryStore {
+    async fn next_decision_id(&self) -> Result<i64, StoreError> {
+        let id = *self.next_decision_id.borrow();
+        *self.next_decision_id.borrow_mut() = id + 1;
+        Ok(id)
+    }
+}
+
 impl StoreBackend for MemoryStore {}
 
 // ── Fine-grained P4 subtraits (lifted off StoreBackend) ──
