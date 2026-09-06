@@ -122,7 +122,7 @@ where
         // 2. Build context
         let builder = ReflectionContextBuilder::new(&self.repository);
         let context = builder.build(decision_id).await.map_err(|e| {
-            let _ = self.mark_failed(reflection_id, &format!("context_error: {e}"));
+            let _ = self.mark_failed(reflection_id, decision_id, &format!("context_error: {e}"));
             format!("context build failed: {e}")
         })?;
 
@@ -135,7 +135,7 @@ where
 
         // 4. Generate reflection (LLM)
         let draft = self.generator.generate(&context).await.map_err(|e| {
-            let _ = self.mark_failed(reflection_id, &format!("llm_error: {e}"));
+            let _ = self.mark_failed(reflection_id, decision_id, &format!("llm_error: {e}"));
             format!("LLM generation failed: {e}")
         })?;
 
@@ -143,7 +143,7 @@ where
         let v = validation::validate(&draft);
         if !v.valid {
             let msg = format!("validation_failed: {}", v.errors.join("; "));
-            let _ = self.mark_failed(reflection_id, &msg).await;
+            let _ = self.mark_failed(reflection_id, decision_id, &msg).await;
             return Err(msg);
         }
 
@@ -224,12 +224,17 @@ where
 
     /// Mark a reflection as failed with error message.
     ///
-    /// The retry-count lookup mirrors the pre-decoupling behaviour exactly: it
-    /// reads whatever row [`ReflectionRepository::find_latest_for_decision`]
-    /// resolves for the id passed in. Switching that lookup to a true by-id read
-    /// is a behavioural fix intentionally left out of the porting change.
-    async fn mark_failed(&self, id: i64, error: &str) {
-        let ref_lookup = self.repository.find_latest_for_decision(id).await.ok().flatten();
+    /// Retry bookkeeping is keyed by the *decision* this run belongs to, not by
+    /// the reflection row id: `UNIQUE(decision_id)` means the row `id` names is
+    /// exactly the decision's latest reflection, so
+    /// `find_latest_for_decision(decision_id)` reads its current `retry_count`
+    /// and the `retry_count < 3` cap advances on every real failure. Looking the
+    /// count up by `id` (a reflection row id, as this used to) resolves to None
+    /// on the D1 adapter — reflection ids and decision ids are different
+    /// sequences — so `retry_count` was pinned at 0 and the cap never engaged
+    /// (R-1, 2026-09-06).
+    async fn mark_failed(&self, id: i64, decision_id: i64, error: &str) {
+        let ref_lookup = self.repository.find_latest_for_decision(decision_id).await.ok().flatten();
         let retry_count = ref_lookup.map(|r| r.retry_count + 1).unwrap_or(0);
         let _ = self
             .repository
@@ -273,6 +278,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::rc::Rc;
 
     use futures::executor::LocalPool;
@@ -423,6 +429,143 @@ mod tests {
         }
     }
 
+    /// A `ReflectionRepository` double faithful to the D1 contract the cron
+    /// relies on — `UNIQUE(decision_id)` (one live row per decision) plus the
+    /// infra adapter's re-open semantics — so the R-1 retry regression can be
+    /// driven through the real engine pipeline. The plain [`FakeRepo`] above
+    /// returns a constant `Some(retry_count: 0)` for *any* input, which is
+    /// exactly the masking that hid `mark_failed` reading the count by
+    /// reflection row id (on the real adapter that resolves to None, so the
+    /// count never advanced and the `<3` cap never engaged).
+    #[derive(Clone)]
+    struct RetryRepo {
+        /// decision_id → the live row (D1 `UNIQUE(decision_id)`).
+        rows: Rc<RefCell<HashMap<i64, RetryRow>>>,
+        next_id: Rc<RefCell<i64>>,
+        /// decision ids handed to `find_latest_for_decision` — pins the key the
+        /// retry bookkeeping lookup actually uses.
+        lookups: Rc<RefCell<Vec<i64>>>,
+    }
+
+    #[derive(Clone)]
+    struct RetryRow {
+        id: i64,
+        status: String,
+        retry_count: i64,
+    }
+
+    impl RetryRepo {
+        fn new() -> Self {
+            Self {
+                rows: Rc::new(RefCell::new(HashMap::new())),
+                next_id: Rc::new(RefCell::new(0)),
+                lookups: Rc::new(RefCell::new(Vec::new())),
+            }
+        }
+
+        fn retry_count(&self, decision_id: i64) -> i64 {
+            self.rows.borrow().get(&decision_id).map(|r| r.retry_count).unwrap_or(-1)
+        }
+
+        fn status(&self, decision_id: i64) -> String {
+            self.rows.borrow().get(&decision_id).map(|r| r.status.clone()).unwrap_or_default()
+        }
+
+        fn looked_up_ids(&self) -> Vec<i64> {
+            self.lookups.borrow().clone()
+        }
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl ReflectionRepository for RetryRepo {
+        async fn create(&self, decision_id: i64, _job_id: &str) -> Result<i64, ReflectionError> {
+            let mut rows = self.rows.borrow_mut();
+            // Snapshot the current row (the real adapter does a read-then-write);
+            // UNIQUE(decision_id) keeps this an accurate model of the live state.
+            let current = rows.get(&decision_id).cloned();
+            match current {
+                None => {
+                    let id = *self.next_id.borrow();
+                    *self.next_id.borrow_mut() = id + 1;
+                    rows.insert(decision_id, RetryRow { id, status: "generating".into(), retry_count: 0 });
+                    Ok(id)
+                }
+                Some(existing) => {
+                    // Mirror infra `D1ReflectionRepository::create`: a `failed`
+                    // row still under the cap is re-opened on the same id; any
+                    // other state (generated / generating / cap exhausted) is
+                    // refused.
+                    if existing.status == "failed" && existing.retry_count < 3 {
+                        rows.get_mut(&decision_id).expect("row is present").status = "generating".into();
+                        Ok(existing.id)
+                    } else {
+                        Err(ReflectionError::AlreadyTracked(decision_id))
+                    }
+                }
+            }
+        }
+
+        async fn update(&self, update: &ReflectionUpdate) -> Result<(), ReflectionError> {
+            let mut rows = self.rows.borrow_mut();
+            if let Some(row) = rows.values_mut().find(|row| row.id == update.id) {
+                row.status = update.status.clone();
+                if let Some(rc) = update.retry_count {
+                    row.retry_count = rc;
+                }
+            }
+            Ok(())
+        }
+
+        async fn find_latest_for_decision(
+            &self,
+            decision_id: i64,
+        ) -> Result<Option<ReflectionRecord>, ReflectionError> {
+            self.lookups.borrow_mut().push(decision_id);
+            let row = self.rows.borrow().get(&decision_id).cloned();
+            Ok(row.map(|r| ReflectionRecord { id: r.id, decision_id, retry_count: r.retry_count }))
+        }
+
+        async fn load_decision_context(&self, decision_id: i64) -> Result<Option<DecisionFacts>, ReflectionError> {
+            // Same valid facts as FakeRepo — completeness passes, so execution
+            // reaches the generator/validation stage where failures land.
+            Ok(Some(DecisionFacts {
+                decision_id,
+                title: "Test decision".into(),
+                decision_type: "investment".into(),
+                hypothesis: Some("adoption follows capability".into()),
+                confidence: 0.8,
+                outcome: Some(OutcomeSnapshot { id: 1, outcome_type: "success".into(), observation: "adopted".into() }),
+                evaluations: Vec::new(),
+            }))
+        }
+
+        async fn enqueue_event(
+            &self,
+            _object_type: &str,
+            _object_key: &str,
+            _payload: &serde_json::Value,
+        ) -> Result<(), ReflectionError> {
+            Ok(())
+        }
+    }
+
+    /// Generator whose draft always fails validation (empty lessons), so every
+    /// `execute_at` run ends at the awaited `mark_failed` path.
+    struct RetryFailingGenerator;
+
+    #[async_trait::async_trait(?Send)]
+    impl ReflectionGenerator for RetryFailingGenerator {
+        async fn generate(&self, _context: &ReflectionContext) -> Result<ReflectionDraft, String> {
+            Ok(ReflectionDraft {
+                result: "wrong".into(),
+                confidence_calibration: "accurate".into(),
+                quality_score: 0.5,
+                lessons: Vec::new(),
+                rules: Vec::new(),
+            })
+        }
+    }
+
     /// Hard regression for the step-8/step-9 dual write: a successful execute
     /// must enqueue the outbox payload AND append the same payload to the
     /// EventLog, with consistent event type / aggregate / correlation.
@@ -504,5 +647,43 @@ mod tests {
 
         assert!(repo_state.borrow().enqueued.is_empty(), "no outbox write on failure");
         assert!(log_state.borrow().is_empty(), "no event-log write on failure");
+    }
+
+    /// R-1 regression (engine seam): across repeated failures the retry_count
+    /// must advance 1 → 2 → 3 on the decision's own row, and `mark_failed` must
+    /// read that count by *decision_id*. The old code looked it up by reflection
+    /// row id — which the D1 adapter resolves to None (reflection ids ≠ decision
+    /// ids) — pinning the count at 0 forever and letting a decision fail
+    /// indefinitely without the `<3` cap ever giving up.
+    #[test]
+    fn failed_attempts_advance_retry_count_to_the_cap() {
+        let repo = RetryRepo::new();
+        let (log, _log_state) = FakeLog::new();
+        let engine = ReflectionEngine::new(repo.clone(), log, RetryFailingGenerator, FakeArtifacts);
+
+        let job = ReflectionJob {
+            decision_id: DECISION_ID,
+            trigger: ReflectionTrigger::Api,
+            correlation_id: "corr-retry".into(),
+        };
+
+        let mut pool = LocalPool::new();
+        for attempt in 1..=3 {
+            let res = pool.run_until(engine.execute_at(&job, NOW));
+            assert!(res.is_err(), "attempt {attempt} must fail validation");
+            assert_eq!(repo.retry_count(DECISION_ID), attempt, "attempt {attempt} must record retry_count {attempt}");
+            assert_eq!(repo.status(DECISION_ID), "failed");
+        }
+
+        // Every retry lookup went out keyed by the DECISION id, never the
+        // reflection row id (0): under the old code these lookups used the
+        // reflection id and resolved to None → retry_count stayed 0.
+        assert_eq!(repo.looked_up_ids(), vec![DECISION_ID; 3], "mark_failed must read the retry budget by decision_id");
+
+        // Attempt 4: the row has exhausted the cap → the adapter refuses to
+        // re-open it, so execution stops at create instead of running again.
+        let exhausted = pool.run_until(engine.execute_at(&job, NOW));
+        assert!(exhausted.is_err(), "cap-exhausted decision must be refused");
+        assert!(exhausted.unwrap_err().contains("already tracked"), "refusal must surface the AlreadyTracked reason");
     }
 }

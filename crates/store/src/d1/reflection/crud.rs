@@ -102,7 +102,16 @@ impl crate::D1Store {
             .s_err()
     }
 
-    /// List completed decisions (>7d) without a reflection.
+    /// List completed decisions (>7d) that have no reflection row at all.
+    ///
+    /// Any decision that already has a reflection row — including one whose
+    /// failed row has exhausted the retry cap — is intentionally excluded: a
+    /// `failed` row under the cap is picked up by
+    /// [`D1Store::failed_reflections_for_retry`] (whose `retry_count < 3` is
+    /// also the cap `D1ReflectionRepository` enforces on re-entry), and an
+    /// exhausted row must be given up on rather than re-picked every cycle.
+    /// Filtering only on `status != 'failed'` here used to make cap-exhausted
+    /// rows look fresh again, bypassing the cap (R-1, 2026-09-06).
     pub async fn decisions_eligible_for_reflection(&self, now: i64, limit: u32) -> Result<Vec<i64>, StoreError> {
         let cutoff = now - 604800;
         let rows: Vec<serde_json::Value> = self
@@ -111,7 +120,7 @@ impl crate::D1Store {
                 "SELECT d.id FROM decisions d \
                  WHERE d.status IN ('completed', 'superseded') \
                    AND d.updated_at < ?1 \
-                   AND NOT EXISTS (SELECT 1 FROM reflections r WHERE r.decision_id = d.id AND r.status != 'failed') \
+                   AND NOT EXISTS (SELECT 1 FROM reflections r WHERE r.decision_id = d.id) \
                  LIMIT ?2",
             )
             .bind(&[JsValue::from_f64(cutoff as f64), JsValue::from_f64(limit as f64)])
